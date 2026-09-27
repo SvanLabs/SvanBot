@@ -202,7 +202,7 @@ mod tests {
         let mut kk = Range::empty();
         for &(a, b) in combos().cards.iter() {
             if a.rank() == 11 && b.rank() == 11 {
-                kk.w[sv10_cards::range::combo_index(a, b)] = 1.0;
+                kk.w[sv10_cards::range::combo_index(a, b).expect("a table combo")] = 1.0;
             }
         }
         let aa_kk = equity_vs_ranges(two("Ah", "As"), &[], &[&kk], 200_000, &mut rng);
@@ -359,7 +359,7 @@ mod tests {
             let made = made_percentiles(mask);
             let mut rng = SmallRng::seed_from_u64(9);
             for hole in [two("Qh", "Jh"), two("7h", "6h"), two("2d", "2s")] {
-                let i = sv10_cards::range::combo_index(hole[0], hole[1]);
+                let i = sv10_cards::range::combo_index(hole[0], hole[1]).expect("two named cards");
                 let eq = ((exact[i] - 0.55 * made[i]) / 0.45) as f64;
                 let mc = equity_vs_ranges(hole, &board, &[&full], 150_000, &mut rng);
                 assert!((eq - mc).abs() < 0.006, "board {b:?} hole {}{}: exact {eq} mc {mc}", hole[0], hole[1]);

@@ -46,6 +46,9 @@ pub fn samples_from_hand(hand: &HandSummary, models: &ModelStore, exclude: &[Str
         .collect();
     let mut out = Vec::new();
     for (seat, cards) in &hand.shown {
+        // A shown pair that is not a legal hand has no combo to score: skip the seat rather than
+        // carry the table's sentinel into a range index.
+        let Some(combo) = combo_index(cards[0], cards[1]) else { continue };
         let Some((_, name)) = hand.players.iter().find(|(s, _)| s == seat) else { continue };
         if exclude.contains(name) || folded.contains(seat) {
             continue;
@@ -67,14 +70,7 @@ pub fn samples_from_hand(hand: &HandSummary, models: &ModelStore, exclude: &[Str
             history: hand.history.clone(),
         };
         let boards = [3usize, 4, 5].map(|n| board_info(&hand.board[..n]));
-        out.push(ShowdownSample {
-            sit,
-            seat: *seat,
-            name: name.clone(),
-            profile: models.profile(name),
-            combo: combo_index(cards[0], cards[1]),
-            boards,
-        });
+        out.push(ShowdownSample { sit, seat: *seat, name: name.clone(), profile: models.profile(name), combo, boards });
     }
     out
 }
@@ -350,6 +346,22 @@ mod tests {
         }
     }
 
+    /// A shown pair naming one card twice has no combo index. The fit must not keep that seat as an
+    /// observation: with the table's `u16::MAX` sentinel standing in for an index, scoring it
+    /// indexes a 1326-entry range out of bounds.
+    #[test]
+    fn a_shown_pair_of_one_card_is_not_an_observation() {
+        let board = ["Qd", "8s", "3c", "Th", "2h"].map(|c| Card::parse(c).expect("a real card"));
+        let dup = Card::parse("Ah").expect("a real card");
+        let hero = [Card::parse("Kd").expect("a real card"), Card::parse("Jc").expect("a real card")];
+        let corrupt = hand(&board, [dup, dup], hero, 40);
+        let samples = samples_from_hand(&corrupt, &ModelStore::default(), &[]);
+        let ll = mean_log_likelihood(&samples, &RangeParams::DEFAULT);
+        assert!(ll.is_finite(), "the surviving observation scores a finite likelihood: {ll}");
+        assert_eq!(samples.len(), 1, "only the seat with a real pair is an observation");
+        assert_eq!(samples[0].name(), "hero");
+    }
+
     /// LESSONS 28 for the timing tell (0234): no stored hand carries think times yet, so the fit's
     /// pass path is exercised here. A villain who bets the river slowly with strong hands and fast
     /// with the rest must yield a positive `think_exp` that raises held-out likelihood, while the
@@ -363,7 +375,7 @@ mod tests {
             deck.shuffle(&mut rng);
             let board = deck[..5].to_vec();
             let (villain, hero) = ([deck[5], deck[6]], [deck[7], deck[8]]);
-            let strong = board_info(&board).pct[combo_index(villain[0], villain[1])] < 0.25;
+            let strong = board_info(&board).pct[combo_index(villain[0], villain[1]).expect("two dealt cards")] < 0.25;
             hands.push(hand(&board, villain, hero, if strong { 2_400 } else { 40 }));
         }
         let mut models = ModelStore::default();

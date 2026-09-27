@@ -153,7 +153,8 @@ impl Agent for ArchetypeAgent {
                 }
             };
         }
-        let s = board_strengths(&sit.board)[combo_index(sit.hole[0], sit.hole[1])] as f64;
+        let Some(i) = combo_index(sit.hole[0], sit.hole[1]) else { return passive };
+        let s = board_strengths(&sit.board)[i] as f64;
         if sit.can_check {
             let strong = s > 0.8 - a.aggression * 0.25;
             if (strong && rng.random::<f64>() < 0.4 + a.aggression * 0.6) || rng.random::<f64>() < a.bluff {
@@ -474,8 +475,9 @@ impl ProfileAgent {
         action
     }
 
-    /// Hand strength within the agent's own continuing range on this board (1 = strongest).
-    fn strength(&self, sit: &Situation) -> f32 {
+    /// Hand strength within the agent's own continuing range on this board (1 = strongest); `None`
+    /// when the hole pair is not a legal hand.
+    fn strength(&self, sit: &Situation) -> Option<f32> {
         let info = sv10_model::oprange::board_info(&sit.board);
         let table = &preflop::table().combo_percentile;
         let mut range = sv10_cards::range::Range::empty();
@@ -485,9 +487,9 @@ impl ProfileAgent {
                 range.w[i] = 1.0;
             }
         }
-        let me = combo_index(sit.hole[0], sit.hole[1]);
+        let me = combo_index(sit.hole[0], sit.hole[1])?;
         range.w[me] = 1.0;
-        1.0 - sv10_model::oprange::range_percentiles(&range, &info.strength)[me]
+        Some(1.0 - sv10_model::oprange::range_percentiles(&range, &info.strength)[me])
     }
 }
 
@@ -499,9 +501,11 @@ impl Agent for ProfileAgent {
         if sit.street == Street::Preflop {
             return self.preflop(sit, rng);
         }
+        let passive = if sit.can_check { Action::Check } else { Action::Fold };
+        let Some(s) = self.strength(sit) else { return passive };
         let p = &self.c.profile;
         let st = sit.street.index() - 1;
-        let s = self.strength(sit) as f64;
+        let s = s as f64;
         let me = sit.hero_seat;
         let pot = sit.pot as f64;
         let pf_aggressor = sit.history.iter().rfind(|r| r.street == Street::Preflop && aggressive(r)).map(|r| r.seat);
@@ -536,56 +540,4 @@ impl Agent for ProfileAgent {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn rate(c: &sv10_model::model::Counter) -> f32 {
-        c.hit / c.opp.max(1.0)
-    }
-
-    #[test]
-    fn profile_agents_reproduce_their_profile() {
-        for (tag, tweak) in [
-            ("tight-foldy", (0.12f32, 0.04f32, 0.60f32, 0.55f32, 0.30f32, 0.05f32)),
-            ("loose-sticky", (0.35, 0.12, 0.25, 0.30, 0.50, 0.12)),
-        ] {
-            let (open, three, fold3, fold_bet, bet_first, raise) = tweak;
-            let mut p = ModelStore::default().profile("x");
-            p.open_pos = [open * 0.7, open * 1.45, open];
-            p.limp = 0.05;
-            p.three_bet = three;
-            p.call_open = 0.12;
-            p.fold_to_3bet = fold3;
-            p.fold_vs_bet = [fold_bet; 3];
-            p.fold_vs_size = [fold_bet; 3];
-            p.bet_first = [bet_first; 3];
-            p.cbet = bet_first + 0.15;
-            p.fold_to_cbet = fold_bet;
-            p.raise_vs_bet = [raise; 3];
-            let mut agents: Vec<Box<dyn Agent>> = (0..6)
-                .map(|i| Box::new(ProfileAgent::new(ProfileClone::exact("x", p.clone()), format!("p{i}"))) as Box<dyn Agent>)
-                .collect();
-            let mut obs = ModelStore::default();
-            crate::sim::run_table_observed(&mut agents, 3000, 100, 42, Some(&mut obs));
-            let st = &obs.population;
-            let sum3 = |a: &[sv10_model::model::Counter; 3]| sv10_model::model::Counter {
-                opp: a.iter().map(|c| c.opp).sum(),
-                hit: a.iter().map(|c| c.hit).sum(),
-            };
-            let got = [
-                ("open", rate(&st.open_raise), (p.open_pos[0] * 3.0 + p.open_pos[1] * 2.0 + p.open_pos[2]) / 6.0, 0.05),
-                ("3bet", rate(&st.three_bet), three, 0.04),
-                ("fold_to_3bet", rate(&st.fold_to_3bet), fold3, 0.10),
-                ("bet_first", rate(&sum3(&st.bet_first)), bet_first, 0.08),
-                ("fold_vs_bet", rate(&sum3(&st.fold_vs_bet)), fold_bet, 0.10),
-                ("raise_vs_bet", rate(&sum3(&st.raise_vs_bet)), raise, 0.06),
-                ("cbet", rate(&st.cbet), bet_first + 0.15, 0.10),
-            ];
-            let report: Vec<String> = got.iter().map(|(k, g, t, _)| format!("{k} {g:.3} vs {t:.3}")).collect();
-            eprintln!("{tag}: {}", report.join(", "));
-            for (k, g, t, tol) in got {
-                assert!((g - t).abs() <= tol, "{tag} {k}: observed {g:.3}, target {t:.3} ({})", report.join(", "));
-            }
-        }
-    }
-}
+mod tests;
