@@ -19,8 +19,14 @@ impl Hand {
     /// river with two or more players left, the net is averaged over every possible runout of the
     /// unseen cards (all dealt hole cards are known here), or over `max_runouts` random runouts
     /// when there are more. Its expectation equals `net()`'s, with far less variance; otherwise it
-    /// is `net()`.
+    /// is `net()`. `max_runouts` is a cap on sampled runouts and zero is not a usable one — an
+    /// average over no runouts is not an estimate of anything — so it is clamped to one runout.
     pub fn expected_net<R: Rng>(&self, max_runouts: usize, rng: &mut R) -> Vec<f64> {
+        // One runout is the cheapest sample of the expectation there is, so a zero budget buys that
+        // sample rather than dividing by zero runouts and returning a NaN for every seat (#6). The
+        // clamp belongs on the bound and not on the mean below: guarding the division would turn a
+        // zero count into a plausible-looking number rather than making it unreachable.
+        let max_runouts = max_runouts.max(1);
         let realized: Vec<f64> = self.net().iter().map(|&x| x as f64).collect();
         let closed_at = self.history.last().map(|r| r.street.board_len()).unwrap_or(0);
         if !self.showdown() || closed_at >= 5 {
