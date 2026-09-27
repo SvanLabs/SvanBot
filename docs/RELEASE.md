@@ -9,14 +9,15 @@ is releasable at all.
 
 ## What ships
 
-Today a release is **the tagged source**. There is no release workflow yet, so no binaries are
-attached and nothing is attested: an operator builds from the tag (the README's Quick start), and
-`scripts/release.sh` bakes the commit into the binary so the running build can say where it came
-from.
+Pushing a `v*` tag runs `.github/workflows/release.yml`: it attaches the portable x86-64-v2/v3
+bundle (`scripts/portable.sh`) with its SHA-256 and a build attestation, and pushes a container image
+to `ghcr.io/svanlabs/svanbot`. Running the workflow by hand with an existing tag backfills one.
 
 | Artifact | Produced by | Verified by |
 |---|---|---|
 | The tagged source | `git tag -a` on a commit the gate passed | the green CI run on that commit |
+| Portable bundle (`.tar.gz`) | the release workflow, `scripts/portable.sh` | `gh attestation verify <file> --repo SvanLabs/SvanBot`, and its `.sha256` |
+| Container image | the release workflow, `Dockerfile` | `gh attestation verify oci://ghcr.io/svanlabs/svanbot:<tag> --repo SvanLabs/SvanBot` |
 | `THIRD-PARTY-NOTICES.md` | `python3 scripts/notices.py` | `python3 scripts/notices.py --check` (part of the gate) |
 | SBOM (CycloneDX 1.5) | `python3 scripts/notices.py --sbom target/sbom.cdx.json` | attached to the release by hand, when wanted |
 | Build identity | `scripts/release.sh`, which bakes the commit into `sv10_bot::BUILD_COMMIT` | `curl 127.0.0.1:5000/api/health` reports it |
@@ -65,11 +66,6 @@ gh run list --repo SvanLabs/SvanBot --commit "$(git rev-list -n1 vX.Y.Z)"
 ```
 
 ## Status
-
-- **No release workflow yet.** A workflow that cross-builds `sv10-bot`, `learner` and `analyst` on
-  a tag and attests them (`actions/attest-build-provenance`) would let a download be checked with
-  `gh attestation verify`. Until it exists, a release is source only, and this document does not
-  claim otherwise.
 
 - **Not on crates.io.** Every crate sets `publish = false`. The libraries under `crates/libs/` are
   written to be publishable — no path dependencies outside the workspace, no private registry — so

@@ -1,0 +1,89 @@
+# Release artifacts (#16): on a `v*` tag, the portable bundle is attached to the release with an
+# attestation, and a container image goes to ghcr.io/svanlabs/svanbot. `workflow_dispatch` backfills an
+# existing tag; a pull request touching the image only builds it, to prove it still builds.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v10.0.0"
+        required: true
+  pull_request:
+    paths: ["Dockerfile", ".dockerignore", "scripts/container-start.sh", ".github/workflows/release.yml"]
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  bundle:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: cd web && npm ci
+      - run: scripts/portable.sh
+      - id: out
+        run: |
+          f=$(ls target/dist/*.tar.gz)
+          (cd target/dist && sha256sum "$(basename "$f")" > "$(basename "$f").sha256")
+          echo "file=$f" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.out.outputs.file }}
+      - run: gh release upload "$TAG" "${{ steps.out.outputs.file }}" "${{ steps.out.outputs.file }}.sha256" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || env.TAG }}
+      - uses: docker/setup-buildx-action@v3
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/svanlabs/svanbot:${{ env.TAG }}
+            ghcr.io/svanlabs/svanbot:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/SvanLabs/SvanBot
+            org.opencontainers.image.description=Autonomous CPU-only poker-bot fleet for openpoker.ai
+            org.opencontainers.image.licenses=MIT OR Apache-2.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/svanlabs/svanbot
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
