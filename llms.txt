@@ -1,0 +1,86 @@
+# SvanBot
+
+> An autonomous, CPU-only six-max no-limit hold'em bot fleet for [openpoker.ai](https://openpoker.ai):
+> a Rust workspace, a React control room, and a learner that has to prove every change before it
+> ships. Every artifact in this repository — code, tests, docs, issues, pull requests — is written by
+> an AI system, and each one says which system in a `Generated-by:` line.
+
+This file is for an AI agent asked to get SvanBot running, or to change it. Read the section that
+matches the job and follow it literally; the traps in it are the ones that have actually bitten.
+
+## Get a fleet running
+
+Prerequisites: Linux x86-64 (x86-64-v2 or newer), Rust 1.98.1 (pinned in `rust-toolchain.toml`),
+Node 26, `zstd`, and an openpoker.ai API key. **No GPU is used or needed.** An i7-4770K with 32 GB is the
+reference machine — anything newer is faster.
+
+```sh
+git clone https://github.com/SvanLabs/SvanBot.git && cd SvanBot
+scripts/setup.sh                     # toolchains, .env (mode 600, random dashboard password), build, test
+$EDITOR .env                         # put the key in SVANBOT_API_KEY, and a bot name
+scripts/start.sh                     # fleet + learner + dashboard
+```
+
+The dashboard is then at `http://127.0.0.1:5000` (host and port come from `.env`; the password is the
+`SVANBOT_WEB__OPERATOR_TOKEN` `setup.sh` generated). `scripts/status.sh` and `scripts/stop.sh` do what
+they say. There is no account, no signup and no cloud service: the whole system is these processes on
+this box.
+
+That is one command to a working fleet, but **the first build is the wait** — a full workspace compile
+and a `cargo test` on the reference CPU, not two minutes. Later runs are incremental.
+
+To check the install before trusting it:
+
+```sh
+scripts/check.sh full                # exactly what CI runs
+curl -s localhost:5000/api/health    # the running build's commit and health
+```
+
+## The traps
+
+These are the mistakes an agent makes here, in the order they are usually made.
+
+1. **Never build into `target/release` while a fleet is running.** A release build lands in the
+   directory live processes hot-swap from, so an untested build reaches play. Use
+   `CARGO_TARGET_DIR=target/dev cargo build` — every script here already defaults to it.
+2. **`SVANBOT_API_KEY` lives in `.env` only.** It is gitignored and the pre-commit hook refuses a
+   commit containing a key. Never put it in a file, an issue, a pull request or a log you paste.
+3. **`scripts/check.sh full` is the gate, and it is also CI.** A red run here and a red run there are
+   the same failure with the same fix. Run it before pushing, not after.
+4. **Every commit and pull request needs `Generated-by: <tool>/<model>`** in the footer/body — e.g.
+   `Generated-by: claude-code/claude-opus-5`. `scripts/provenance.py check` enforces it and the gate
+   runs that check, so an artifact without the line does not merge.
+5. **`.cargo/config.toml` compiles for the machine doing the compiling** (`-C target-cpu=native`).
+   That is right for a fleet that only runs where it was built and wrong anywhere the binary travels;
+   `Dockerfile` and `scripts/portable.sh` override it, and anything shipped must.
+6. **This project accepts no hand-written code.** Contributions are expected to be agent-directed —
+   see §0 of `CONTRIBUTING.md`. Directing the agent well is the contribution.
+
+## Before changing anything
+
+Read `AGENTS.md` first: it is the engineering brief, and it names the two hard invariants and the
+crate layering that a change must not break. `docs/LESSONS.md` explains why the rules are what they
+are, as mistakes this project has already paid for. `docs/README.md` maps every document to the
+question it answers.
+
+A change to the decision path or to stored data needs a paired simulation on identical cards, and a
+speed-only change must reproduce the reference simulation exactly. The gate enforces the rest.
+
+## Docs
+
+- [AGENTS.md](https://github.com/SvanLabs/SvanBot/blob/main/AGENTS.md): the engineering brief — layout, the two hard invariants, the style the gate enforces.
+- [docs/README.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/README.md): the documentation map; which document answers which question.
+- [docs/OPERATIONS.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/OPERATIONS.md): the runbook — updates, backups, restore, fault drills, moving a checkout onto this repository.
+- [docs/ARCHITECTURE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/ARCHITECTURE.md): processes, crates, and the path a decision takes.
+- [docs/GUIDE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/GUIDE.md): the control room, panel by panel.
+- [docs/LESSONS.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/LESSONS.md): why the rules exist, as escaped defects.
+- [docs/RELEASE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/RELEASE.md): how a version is cut and published.
+- [CONTRIBUTING.md](https://github.com/SvanLabs/SvanBot/blob/main/CONTRIBUTING.md): the standard a change is held to, every MUST marked.
+- [README.md](https://github.com/SvanLabs/SvanBot/blob/main/README.md): the human front page — highlights, architecture diagrams, quick start.
+
+## Runtime data
+
+No databases, no archives, no player data and no screenshots of live play are in this repository.
+`scripts/fetch-data.sh` restores runtime data from an archive an operator supplies. An agent starting
+from a fresh clone has an empty store, which is the normal first-boot state — the fleet will fetch
+hands from the venue as it plays.
