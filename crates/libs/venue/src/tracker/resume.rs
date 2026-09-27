@@ -62,9 +62,13 @@ impl TableTracker {
         if self.dealt.is_empty() {
             self.dealt = h.dealt.clone();
         }
+        // `len` counts bytes and the slices below are byte ranges, so the guard is a check on two
+        // cards only while the text is ASCII: a four-byte `hole` holding a two-byte character
+        // would otherwise slice inside it and panic on the char boundary.
         if self.hole.is_none()
             && let Some(cards) = &h.hole
             && cards.len() == 4
+            && cards.is_ascii()
             && let (Some(a), Some(b)) = (Card::parse(&cards[..2]), Card::parse(&cards[2..]))
         {
             self.hole = Some([a, b]);
@@ -148,6 +152,21 @@ mod tests {
         next.resume_hand(&open);
         assert_eq!(next.hole, None);
         assert!(next.knows_hand("h9"), "settling needs the stack, not the cards");
+    }
+
+    /// Four bytes is not four card characters. The guard passes on the byte length, so a `hole`
+    /// holding a two-byte character used to reach the slice below it and panic inside the
+    /// character; it is refused instead, exactly as a `hole` that does not parse is.
+    #[test]
+    fn a_saved_hole_of_multibyte_text_is_refused_rather_than_sliced() {
+        let mut open = mid_hand().open_hand().unwrap();
+        open.hole = Some("AéK".into()); // 4 bytes: `A`, a two-byte `é`, and `K`
+        assert_eq!(open.hole.as_ref().unwrap().len(), 4, "the byte length is what the guard tests");
+        assert_eq!(open.hole.as_ref().unwrap().chars().count(), 3, "and it holds three characters");
+        let mut next = TableTracker::default();
+        next.reset_table();
+        next.resume_hand(&open);
+        assert_eq!(next.hole, None, "the bytes are not two cards");
     }
 
     /// `knows_hand` asks for our seat's start stack: without it the net cannot be computed, and the
