@@ -35,6 +35,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The SvanBot account, so the action authors commits and comments as SvanBot
+          # rather than claude[bot]. The token is optional: unset, the action falls
+          # back to the workflow token and nothing changes.
+          bot_id: "121799761"
+          bot_name: "SvanBot"
+          github_token: ${{ secrets.SVANBOT_PAT || github.token }}
 
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
