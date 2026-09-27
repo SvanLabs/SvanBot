@@ -198,7 +198,7 @@ mod tests {
         let (q, df, z) = heterogeneity(&[1.0; 101]);
         assert_eq!((q, df), (101.0, 100.0));
         assert!(z.abs() < 0.3, "{z}");
-        // A real spread: Q 256 on 102 df is far beyond noise.
+        // The 2026-09-26 study: Q 256 on 102 df is far beyond noise.
         let spread: Vec<f64> = (0..103).map(|i| if i % 2 == 0 { 1.58 } else { -1.58 }).collect();
         let (q, df, z) = heterogeneity(&spread);
         assert!((q - 257.1).abs() < 0.5 && df == 102.0 && z > 7.0, "{q} {df} {z}");

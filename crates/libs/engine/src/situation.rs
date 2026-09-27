@@ -243,8 +243,8 @@ pub fn position_of(seats: &[usize], button: usize, seat: usize) -> Position {
 pub mod fixtures {
     use super::*;
 
-    /// A river spot: a 906,781-chip stack moved all-in, a short stack called 1,320, and hero
-    /// (3,716 behind) faces a call of 3,716.
+    /// River spot from live hand c27d0070 (2026-09-14): a 906,781-chip stack moved all-in,
+    /// a short stack called 1,320, and hero (3,716 behind) faces a call of 3,716.
     pub fn uncallable_overshove() -> Situation {
         let p = |seat, name: &str, stack, bet, folded| PlayerInfo { seat, name: name.into(), stack, bet, folded };
         Situation {
@@ -262,18 +262,18 @@ pub mod fixtures {
             max_raise_to: None,
             players: vec![
                 p(0, "SuraGunnar", 3_716, 0, false),
-                p(1, "villain1", 0, 906_631, false),
-                p(2, "villain2", 6_918, 0, true),
-                p(3, "villain3", 8_573, 0, true),
-                p(4, "villain4", 0, 1_320, false),
-                p(5, "villain5", 2_033, 0, true),
+                p(1, "silentflute", 0, 906_631, false),
+                p(2, "L1RA_X", 6_918, 0, true),
+                p(3, "x909", 8_573, 0, true),
+                p(4, "mephisto1419", 0, 1_320, false),
+                p(5, "coal78", 2_033, 0, true),
             ],
             history: vec![],
         }
     }
 
-    /// A river spot: two short stacks are all-in, one deep player (QQ) can still act, hero holds
-    /// 8s7h (a pair of sevens) with 4,787 behind.
+    /// River spot from live hand of Svanar, 2026-09-15 07:42 UTC: two short stacks are all-in, one
+    /// deep player (QQ) can still act, hero holds 8s7h (a pair of sevens) with 4,787 behind.
     pub fn river_jam_with_all_ins() -> Situation {
         use crate::engine::{ActionKind::*, ActionRecord};
         let p = |seat, name: &str, stack, bet, folded| PlayerInfo { seat, name: name.into(), stack, bet, folded };
@@ -304,7 +304,7 @@ pub mod fixtures {
             min_raise_to: Some(20),
             max_raise_to: Some(4_787),
             players: vec![
-                p(0, "villain0", 10_337, 0, false),
+                p(0, "montana2ab", 10_337, 0, false),
                 p(1, "p1", 1_880, 0, true),
                 p(2, "p2", 0, 0, false),
                 p(3, "p3", 0, 0, false),

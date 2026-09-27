@@ -89,11 +89,9 @@ pub fn flow_to_hero(hand: &HandSummary, pot: i64, winners: &[&str], hero_seat: u
 mod tests {
     use super::*;
 
-    /// A synthetic hand in the shape the server stores: hero (seat 4, big blind) moves all in on the
-    /// flop with an `AllIn` record carrying no amount, seat 5 raises to 5,000 and only 3,000 of it is
-    /// matched. The stored pot is 6,070 — the two matched 3,000s plus the small blind's 10 and seat
-    /// 2's 60 preflop — so `pot` has to be this hand's own total, not an independent number.
-    const ALL_IN: &str = r#"{"players":[[0,"villain0"],[1,"villain1"],[2,"villain2"],[3,"villain3"],[4,"SurSvan"],[5,"villain5"]],"button":2,"bb":20,"history":[{"seat":5,"street":"Preflop","kind":"Raise","to":60,"pot_before":30,"to_call_before":20,"bet_before":0,"full_raise":true},{"seat":0,"street":"Preflop","kind":"Fold","to":0,"pot_before":90,"to_call_before":60,"bet_before":0,"full_raise":false},{"seat":1,"street":"Preflop","kind":"Fold","to":0,"pot_before":90,"to_call_before":60,"bet_before":0,"full_raise":false},{"seat":2,"street":"Preflop","kind":"Call","to":60,"pot_before":90,"to_call_before":60,"bet_before":0,"full_raise":false},{"seat":3,"street":"Preflop","kind":"Fold","to":0,"pot_before":150,"to_call_before":50,"bet_before":10,"full_raise":false},{"seat":4,"street":"Preflop","kind":"Call","to":60,"pot_before":150,"to_call_before":40,"bet_before":20,"full_raise":false},{"seat":4,"street":"Flop","kind":"AllIn","to":0,"pot_before":190,"to_call_before":0,"bet_before":0,"full_raise":false},{"seat":5,"street":"Flop","kind":"Raise","to":5000,"pot_before":3130,"to_call_before":2940,"bet_before":0,"full_raise":true},{"seat":2,"street":"Flop","kind":"Fold","to":0,"pot_before":8130,"to_call_before":5000,"bet_before":0,"full_raise":false}],"board":["Kd","7h","2c","9s","3d"],"shown":[[4,["Ks","Qh"]],[5,["7d","7c"]]]}"#;
+    /// A live hand as stored (2026-09-24): hero (seat 4, big blind) moves all in on the flop with
+    /// an `AllIn` record carrying no amount, seat 5 raises to 4,629 and only 2,000 of it is called.
+    const ALL_IN: &str = r#"{"players":[[0,"MissCard"],[1,"jonnaBee"],[2,"Bertabot"],[3,"RObert"],[4,"SurSvan"],[5,"POKER_STUDY_AI"]],"button":2,"bb":20,"history":[{"seat":5,"street":"Preflop","kind":"Raise","to":50,"pot_before":30,"to_call_before":20,"bet_before":0,"full_raise":true},{"seat":0,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":1,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":2,"street":"Preflop","kind":"Call","to":50,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":3,"street":"Preflop","kind":"Fold","to":0,"pot_before":130,"to_call_before":40,"bet_before":10,"full_raise":false},{"seat":4,"street":"Preflop","kind":"Call","to":50,"pot_before":130,"to_call_before":30,"bet_before":20,"full_raise":false},{"seat":4,"street":"Flop","kind":"AllIn","to":0,"pot_before":160,"to_call_before":0,"bet_before":0,"full_raise":false},{"seat":5,"street":"Flop","kind":"Raise","to":4629,"pot_before":2110,"to_call_before":1950,"bet_before":0,"full_raise":true},{"seat":2,"street":"Flop","kind":"Fold","to":0,"pot_before":6739,"to_call_before":4629,"bet_before":0,"full_raise":false}],"board":["5d","As","3s","6s","Th"],"shown":[[4,["Ts","Ac"]],[5,["Ah","5h"]]]}"#;
 
     fn hand(json: &str) -> HandSummary {
         serde_json::from_str(json).unwrap()
@@ -101,31 +99,31 @@ mod tests {
 
     #[test]
     fn all_in_amounts_come_from_the_pot_and_uncalled_chips_are_returned() {
-        let c = contributions(&hand(ALL_IN), 6070).expect("reconciles");
-        assert_eq!(c[&4], 3000, "hero's all-in: 20 blind + 40 call + 2,940 shove");
-        assert_eq!(c[&5], 3000, "5,000 raise-to, matched only up to hero's 3,000");
-        assert_eq!((c[&2], c[&3], c[&0], c[&1]), (60, 10, 0, 0));
-        assert_eq!(contributions(&hand(ALL_IN), 6071), None, "a pot the rebuild cannot reproduce is not guessed");
+        let c = contributions(&hand(ALL_IN), 4060).expect("reconciles");
+        assert_eq!(c[&4], 2000, "hero's all-in: 20 blind + 30 call + 1,950 shove");
+        assert_eq!(c[&5], 2000, "4,629 raise-to, only 2,000 of it called");
+        assert_eq!((c[&2], c[&3], c[&0], c[&1]), (50, 10, 0, 0));
+        assert_eq!(contributions(&hand(ALL_IN), 4061), None, "a pot the rebuild cannot reproduce is not guessed");
     }
 
     #[test]
     fn flow_charges_only_the_players_chips_moved_between() {
         let h = hand(ALL_IN);
-        let f: HashMap<usize, f64> = flow_to_hero(&h, 6070, &["SurSvan"], 4).unwrap().into_iter().collect();
-        assert_eq!((f[&5], f[&2], f[&3], f[&0]), (3000.0, 60.0, 10.0, 0.0));
-        assert_eq!(f.values().sum::<f64>(), 3070.0, "a sole winner's flows add up to its net");
-        let lost: HashMap<usize, f64> = flow_to_hero(&h, 6070, &["villain5"], 4).unwrap().into_iter().collect();
-        assert_eq!(lost[&5], -3000.0, "all of hero's loss goes to the one winner");
+        let f: HashMap<usize, f64> = flow_to_hero(&h, 4060, &["SurSvan"], 4).unwrap().into_iter().collect();
+        assert_eq!((f[&5], f[&2], f[&3], f[&0]), (2000.0, 50.0, 10.0, 0.0));
+        assert_eq!(f.values().sum::<f64>(), 2060.0, "a sole winner's flows add up to its net");
+        let lost: HashMap<usize, f64> = flow_to_hero(&h, 4060, &["POKER_STUDY_AI"], 4).unwrap().into_iter().collect();
+        assert_eq!(lost[&5], -2000.0, "all of hero's loss goes to the one winner");
         assert_eq!((lost[&2], lost[&3], lost[&0]), (0.0, 0.0, 0.0), "the folders took none of it");
     }
 
     #[test]
     fn split_pots_share_the_transfer_and_move_nothing_between_winners() {
         let h = hand(ALL_IN);
-        let f: HashMap<usize, f64> = flow_to_hero(&h, 6070, &["SurSvan", "villain5"], 4).unwrap().into_iter().collect();
-        assert_eq!((f[&5], f[&2], f[&3]), (0.0, 30.0, 5.0));
-        assert_eq!(flow_to_hero(&h, 6070, &["Nobody"], 4), None);
-        assert_eq!(flow_to_hero(&h, 6070, &["SurSvan"], 9), None, "hero must be dealt in");
+        let f: HashMap<usize, f64> = flow_to_hero(&h, 4060, &["SurSvan", "POKER_STUDY_AI"], 4).unwrap().into_iter().collect();
+        assert_eq!((f[&5], f[&2], f[&3]), (0.0, 25.0, 5.0));
+        assert_eq!(flow_to_hero(&h, 4060, &["Nobody"], 4), None);
+        assert_eq!(flow_to_hero(&h, 4060, &["SurSvan"], 9), None, "hero must be dealt in");
     }
 
     #[test]

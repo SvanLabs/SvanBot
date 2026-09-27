@@ -165,15 +165,15 @@ mod tests {
     #[test]
     fn the_seat_read_is_the_number_the_rivals_panel_shows() {
         let table: HashMap<String, HeadToHead> = [
-            ("villain0".to_string(), with(&[-40.0, -60.0].repeat(100))),
-            ("villain1".to_string(), with(&[30.0, 50.0].repeat(100))),
+            ("silentflute".to_string(), with(&[-40.0, -60.0].repeat(100))),
+            ("w1nner".to_string(), with(&[30.0, 50.0].repeat(100))),
             ("quiet".to_string(), with(&[1.0, -1.0].repeat(10))),
         ]
         .into_iter()
         .collect();
         let panel = rivals(&table, &HashMap::new(), 150.0, 20.0, 5);
-        let read = read_one(&table, "villain0", 150.0, 20.0).unwrap();
-        let shown = panel["nemeses"].as_array().unwrap().iter().find(|r| r["name"] == "villain0").unwrap();
+        let read = read_one(&table, "silentflute", 150.0, 20.0).unwrap();
+        let shown = panel["nemeses"].as_array().unwrap().iter().find(|r| r["name"] == "silentflute").unwrap();
         for field in ["hands", "bb_per_100", "low_95", "high_95", "beats_us", "we_beat"] {
             assert_eq!(read[field], shown[field], "{field} differs between the two surfaces");
         }
@@ -181,7 +181,7 @@ mod tests {
         assert!(read["beats_us"] == true, "a consistent −50 chips a hand clears 95% even in a family");
         assert!(read_one(&table, "quiet", 150.0, 20.0).is_none(), "below the shared-hands floor");
         assert!(read_one(&table, "nobody", 150.0, 20.0).is_none(), "an opponent we have never shared a hand with");
-        let w = read_one(&table, "villain1", 150.0, 20.0).unwrap();
+        let w = read_one(&table, "w1nner", 150.0, 20.0).unwrap();
         assert!(w["we_beat"] == true, "and a donor is flagged as ours to beat");
     }
 
@@ -206,18 +206,18 @@ mod tests {
     #[test]
     fn rivals_rank_nemeses_and_donors_with_intervals_and_avatars() {
         let mut table = HashMap::new();
-        table.insert("villain0".to_string(), with(&[-40.0, -60.0].repeat(100)));
-        table.insert("villain2".to_string(), with(&[30.0, 10.0].repeat(100)));
+        table.insert("Kenza".to_string(), with(&[-40.0, -60.0].repeat(100)));
+        table.insert("jonnaBee3".to_string(), with(&[30.0, 10.0].repeat(100)));
         table.insert("coinflip".to_string(), with(&[500.0, -500.0].repeat(100)));
         table.insert("rare".to_string(), with(&[-900.0; 10]));
-        let avatars = HashMap::from([("villain0".to_string(), "https://x/k.png".to_string())]);
+        let avatars = HashMap::from([("Kenza".to_string(), "https://x/k.png".to_string())]);
         let r = rivals(&table, &avatars, 150.0, 20.0, 5);
         assert_eq!(r["opponents"], 3, "under 150 hands is left out");
-        assert_eq!(r["nemeses"][0]["name"], "villain0");
+        assert_eq!(r["nemeses"][0]["name"], "Kenza");
         assert_eq!(r["nemeses"][0]["bb_per_100"], -250.0);
         assert_eq!(r["nemeses"][0]["beats_us"], true);
         assert_eq!(r["nemeses"][0]["avatar_url"], "https://x/k.png");
-        assert_eq!(r["donors"][0]["name"], "villain2");
+        assert_eq!(r["donors"][0]["name"], "jonnaBee3");
         assert_eq!(r["donors"][0]["we_beat"], true);
         // A break-even coin flip is neither a nemesis nor a donor.
         assert!(r["nemeses"].as_array().unwrap().iter().chain(r["donors"].as_array().unwrap()).all(|c| c["name"] != "coinflip"));

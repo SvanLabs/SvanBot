@@ -290,9 +290,8 @@ mod tests {
     }
 
     #[test]
-    fn verifies_a_table_state_and_detects_tampering() {
-        // A synthetic table_state frame in the exact shape the server sends, with the hash the
-        // server's own canonicalisation of it produces.
+    fn verifies_a_real_table_state_and_detects_tampering() {
+        // A live table_state frame archived by SvanBotV9.1 (hash as sent by the server).
         let mut frame: Value = serde_json::from_str(include_str!("../tests/fixtures/table_state_hash.json")).unwrap();
         assert_eq!(verify(&frame), Some(true));
         frame["pot"] = json!(frame["pot"].as_i64().unwrap() + 1);

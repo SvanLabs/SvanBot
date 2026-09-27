@@ -1,6 +1,7 @@
 //! Compute profiles (0187): how much of the machine the fleet spends, set from the dashboard.
 //!
-//! A profile sets only compute: the live Monte Carlo budget and
+//! Operator (2026-09-23): "add so user can change different profiles on the web to tune everything
+//! to their hardware on the fly." A profile sets only compute: the live Monte Carlo budget and
 //! the learner's and analyst's thread counts, never a strategy knob. The live budget never drops
 //! below the learner's own simulation budget (`Tuning::decision_samples`), the budget the promotion
 //! gate measured the policy at. Each process applies a change on its next poll: the live bots at

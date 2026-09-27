@@ -84,17 +84,17 @@ pub struct Params {
     /// `fold_logit_shift`: never promoted, 0 in the learner and the golden snapshot.
     pub river_jam_call_shift: f64,
     /// Live-fitted equity shift subtracted from any call against an all-in once the pot reaches
-    /// [`crate::policy::DEEP_CALL_MIN_POT_BB`]: calls in 500+ bb pots over-estimated equity by
-    /// 0.154 ± 0.080 while smaller pots were calibrated. Fitted on older hands and used only
+    /// [`crate::policy::DEEP_CALL_MIN_POT_BB`] (2026-09-23): calls in 500+ bb pots over-estimated
+    /// equity by 0.154 ± 0.080 while smaller pots were calibrated. Fitted on older hands and used only
     /// while it wins on newer ones; local like `river_jam_call_shift`, never promoted.
     pub deep_call_shift: f64,
-    /// Live-fitted logit shift on the everyone-folds estimate of our preflop raises (36,080 raises
-    /// predicted about twice the folds that happened). Fitted from real outcomes and installed only
-    /// on a held-out log-loss win; local, never promoted, 0 in the learner and golden.
+    /// Live-fitted logit shift on the everyone-folds estimate of our preflop raises (2026-09-23:
+    /// 36,080 raises predicted about twice the folds that happened). Fitted from real outcomes and
+    /// installed only on a held-out log-loss win; local, never promoted, 0 in the learner and golden.
     pub preflop_fold_logit_shift: f64,
     /// Live-fitted equity shift subtracted from a call against an all-in whose bet was at least
-    /// [`crate::policy::OVERBET_CALL_MIN_RATIO`] times the pot before it (against 4x+ pot shoves our
-    /// estimate was 0.623 vs 0.297 exact, n 36). Local, never promoted.
+    /// [`crate::policy::OVERBET_CALL_MIN_RATIO`] times the pot before it (2026-09-23: against 4x+ pot
+    /// shoves our estimate was 0.623 vs 0.297 exact, n 36). Local, never promoted.
     pub overbet_call_shift: f64,
     /// Live-fitted slope of the size-scaled overbet call shift (0233): against an all-in of `r` times
     /// the pot (r ≥ [`crate::policy::OVERBET_CALL_MIN_RATIO`]) the estimate is lowered by

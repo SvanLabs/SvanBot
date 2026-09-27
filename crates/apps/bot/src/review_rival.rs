@@ -376,9 +376,9 @@ pub fn allin_luck(store: &Store, names: &[String]) -> Result<String> {
 mod tests {
     use super::*;
 
-    /// The all-in hand of `sv10_core::flow`'s tests: SurSvan (seat 4, big blind) shoves the flop,
-    /// villain5 (seat 5, the preflop raiser) calls 2,000, villain2 folds.
-    const ALL_IN: &str = r#"{"players":[[0,"villain0"],[1,"villain1"],[2,"villain2"],[3,"villain3"],[4,"SurSvan"],[5,"villain5"]],"button":2,"bb":20,"history":[{"seat":5,"street":"Preflop","kind":"Raise","to":50,"pot_before":30,"to_call_before":20,"bet_before":0,"full_raise":true},{"seat":0,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":1,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":2,"street":"Preflop","kind":"Call","to":50,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":3,"street":"Preflop","kind":"Fold","to":0,"pot_before":130,"to_call_before":40,"bet_before":10,"full_raise":false},{"seat":4,"street":"Preflop","kind":"Call","to":50,"pot_before":130,"to_call_before":30,"bet_before":20,"full_raise":false},{"seat":4,"street":"Flop","kind":"AllIn","to":0,"pot_before":160,"to_call_before":0,"bet_before":0,"full_raise":false},{"seat":5,"street":"Flop","kind":"Raise","to":4629,"pot_before":2110,"to_call_before":1950,"bet_before":0,"full_raise":true},{"seat":2,"street":"Flop","kind":"Fold","to":0,"pot_before":6739,"to_call_before":4629,"bet_before":0,"full_raise":false}],"board":["5d","As","3s","6s","Th"],"shown":[[4,["Ts","Ac"]],[5,["Ah","5h"]]]}"#;
+    /// The live all-in hand of `sv10_core::flow`'s tests: SurSvan (seat 4, big blind) shoves the flop,
+    /// POKER_STUDY_AI (seat 5, the preflop raiser) calls 2,000, Bertabot folds.
+    const ALL_IN: &str = r#"{"players":[[0,"MissCard"],[1,"jonnaBee"],[2,"Bertabot"],[3,"RObert"],[4,"SurSvan"],[5,"POKER_STUDY_AI"]],"button":2,"bb":20,"history":[{"seat":5,"street":"Preflop","kind":"Raise","to":50,"pot_before":30,"to_call_before":20,"bet_before":0,"full_raise":true},{"seat":0,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":1,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":2,"street":"Preflop","kind":"Call","to":50,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":3,"street":"Preflop","kind":"Fold","to":0,"pot_before":130,"to_call_before":40,"bet_before":10,"full_raise":false},{"seat":4,"street":"Preflop","kind":"Call","to":50,"pot_before":130,"to_call_before":30,"bet_before":20,"full_raise":false},{"seat":4,"street":"Flop","kind":"AllIn","to":0,"pot_before":160,"to_call_before":0,"bet_before":0,"full_raise":false},{"seat":5,"street":"Flop","kind":"Raise","to":4629,"pot_before":2110,"to_call_before":1950,"bet_before":0,"full_raise":true},{"seat":2,"street":"Flop","kind":"Fold","to":0,"pot_before":6739,"to_call_before":4629,"bet_before":0,"full_raise":false}],"board":["5d","As","3s","6s","Th"],"shown":[[4,["Ts","Ac"]],[5,["Ah","5h"]]]}"#;
 
     /// 0317: a confrontation is classified by how it ended, the pot type, position and the preflop
     /// raiser, and the rival's share of an all-in's luck is exactly 2·min(contribution)/pot of ours.
@@ -399,13 +399,13 @@ mod tests {
     }
 
     /// 0317: the c-bet answer is found only when the rival raised last preflop, bet the flop first,
-    /// and we acted after the bet — here villain5 raised, but we led the flop, so it is no c-bet.
+    /// and we acted after the bet — here POKER_STUDY_AI raised, but we led the flop, so it is no c-bet.
     #[test]
     fn a_flop_c_bet_answer_needs_the_raiser_to_bet_first() {
         let h: HandSummary = serde_json::from_str(ALL_IN).unwrap();
         assert_eq!(cbet_answer(&h, 4), None, "we shoved first: not a c-bet");
         let mut bet = h.clone();
-        // Seat 5 bets the flop first; we (seat 4) fold, then villain2 calls.
+        // Seat 5 bets the flop first; we (seat 4) fold, then Bertabot calls.
         bet.history.truncate(6);
         let r = |seat, kind, to, pot_before, to_call_before| sv10_core::engine::ActionRecord {
             seat,
