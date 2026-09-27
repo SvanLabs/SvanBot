@@ -305,8 +305,9 @@ Because agents and reviewers read this code in pieces:
 
 `.github/workflows/check.yml` runs on every pull request and every push to `main`, in three jobs:
 
-- **`web`** — `npm ci`, `tsc --noEmit` and a production build, so a change under `web/` gets an answer
-  in about a minute instead of waiting behind a Rust build.
+- **`web`** — `npm ci`, `npm run typecheck` (both tsconfigs: the app's `src`, and the Playwright specs
+  plus the web root's Node-side config files) and a production build, so a change under `web/` gets an
+  answer in about a minute instead of waiting behind a Rust build.
 - **`gate`** — `scripts/check.sh full`, the same command you run locally. That is the whole gate in
   one place: AI provenance, placeholder markers, rustfmt, the file-size check, clippy `-D warnings`,
   cargo-deny, the third-party notices check, the tool tests, docs drift, the workspace tests and

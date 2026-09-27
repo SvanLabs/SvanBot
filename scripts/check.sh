@@ -2,7 +2,7 @@
 # Anti-regression gate (0110). Every commit and release passes it.
 #   scripts/check.sh commit   pre-commit hook: placeholder markers, ai provenance, secret scan, rustfmt,
 #                             clippy -D warnings, golden snapshot and property tests when crates/ is
-#                             staged, tsc when web/src is
+#                             staged, tsc when web/ is
 #   scripts/check.sh full     release gate: rustfmt, clippy, cargo-deny, docs drift, full workspace tests, tsc
 #   scripts/check.sh deep     full + property/fuzz tests at 100k cases (weekly or before big changes)
 #   scripts/check.sh lint     rustfmt, clippy, cargo-deny only (release.sh runs its own tests)
@@ -75,7 +75,9 @@ if [ "$mode" = commit ]; then
   step "secret scan (staged)"
   scripts/pre-commit-secret-scan.sh || fail "secret scan"
   git diff --cached --name-only | grep -qE '^(crates/|Cargo\.(toml|lock)|deny\.toml)' || staged_crates=0
-  git diff --cached --name-only | grep -q '^web/src/' || staged_web=0
+  # Anything under web/, not just web/src/: the specs and the web root's config files are type-checked
+  # too, and a change confined to them must not skip the check that covers them.
+  git diff --cached --name-only | grep -q '^web/' || staged_web=0
 fi
 
 # The full gate's test build starts now and overlaps everything up to the test run.
@@ -144,7 +146,10 @@ esac
 
 if [ "$staged_web" = 1 ] && [ -d web/node_modules ]; then
   step "tsc"
-  (cd web && npx tsc --noEmit) || fail "tsc"
+  # Both configs: tsconfig.json is the browser app (`src`), tsconfig.tests.json is the Playwright
+  # specs and the web root's Node-side config files. Running only the first is what let the specs
+  # drift unchecked, so the two are one step and one command.
+  (cd web && npm run typecheck --silent) || fail "tsc"
 fi
 step_end
 total=$(($(date +%s) - check_t0))
