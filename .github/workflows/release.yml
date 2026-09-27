@@ -1,6 +1,7 @@
 # Release artifacts (#16): on a `v*` tag, the portable bundle is attached to the release with an
 # attestation, and a container image goes to ghcr.io/svanlabs/svanbot. `workflow_dispatch` backfills an
-# existing tag; a pull request touching the image only builds it, to prove it still builds.
+# existing tag; a tag older than the `Dockerfile` has no image to build, and the image job says so
+# rather than failing. A pull request touching the image only builds it, to prove it still builds.
 name: release
 
 on:
@@ -60,14 +61,39 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.sha || env.TAG }}
-      - uses: docker/setup-buildx-action@v3
-      - if: github.event_name != 'pull_request'
+      # The container artifact only exists from the commit that added the Dockerfile, and a tag can
+      # predate it — `v10.0.0` does. Backfilling such a tag used to die inside build-push-action with
+      # "failed to read dockerfile: open Dockerfile: no such file or directory", which reads like a
+      # broken build rather than an old tag. This guard ends the job deliberately and explains itself
+      # in the run summary. It must never fall back to another ref: an image carrying a release's tag
+      # has to come from that release's tree, or the provenance attestation below means nothing.
+      - id: dockerfile
+        run: |
+          if [ -f Dockerfile ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "### No container image for $TAG"
+            echo
+            echo "$TAG is commit $(git rev-parse --short HEAD), which predates the Dockerfile, so"
+            echo "there is no container artifact to build for it. The tag and its release bundle are"
+            echo "unaffected, and nothing was pushed to ghcr.io."
+            echo
+            echo "No image is built: only a different ref has a Dockerfile, and an image carrying"
+            echo "this tag built from that ref would not be this release."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - if: steps.dockerfile.outputs.present == 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.dockerfile.outputs.present == 'true' && github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - id: push
+      - if: steps.dockerfile.outputs.present == 'true'
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -81,7 +107,7 @@ jobs:
             org.opencontainers.image.licenses=MIT OR Apache-2.0
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - if: github.event_name != 'pull_request'
+      - if: steps.dockerfile.outputs.present == 'true' && github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ghcr.io/svanlabs/svanbot
