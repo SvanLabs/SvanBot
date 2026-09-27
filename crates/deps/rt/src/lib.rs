@@ -172,6 +172,27 @@ pub fn sync_dir(path: &Path) -> std::io::Result<()> {
     std::fs::File::open(dir)?.sync_all()
 }
 
+/// Remove the file at `path`, counting one that is not there as success: every caller uses this to
+/// clear the way for a write, and a file that is already gone has already cleared it. Any other
+/// failure is returned rather than discarded — the caller is about to write at `path`, and a file
+/// that survived this is a file the write lands in (issue #326).
+pub fn remove_stale_file(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
+
+/// [`remove_stale_file`] for a whole tree: the staging directory an interrupted run left behind is
+/// cleared before the next run stages into it, and a tree that cannot be cleared is an error rather
+/// than something to write on top of. A path that is not a directory is an error too.
+pub fn remove_stale_dir(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
+
 /// A random RFC 4122 version-4 identifier, lowercase hyphenated.
 pub fn uuid_v4() -> String {
     let mut b: [u8; 16] = sv10_rng::os_bytes();
@@ -215,6 +236,27 @@ mod durable_tests {
         evict_cache(&b).unwrap();
         assert_eq!(std::fs::read(&b).unwrap(), std::fs::read(&a).unwrap());
         assert!(sync_file(&dir.join("missing")).is_err(), "a missing file is an error, never a silent pass");
+    }
+
+    #[test]
+    fn removing_what_is_already_gone_is_success_and_what_stays_is_an_error() {
+        let dir = std::env::temp_dir().join(format!("sv10-rt-remove-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("tree")).unwrap();
+        std::fs::write(dir.join("tree/held"), b"x").unwrap();
+        std::fs::write(dir.join("gone"), b"x").unwrap();
+        std::fs::write(dir.join("plain"), b"x").unwrap();
+        // A path that is not there is already what the caller asked for.
+        remove_stale_file(&dir.join("never-there")).unwrap();
+        remove_stale_dir(&dir.join("also-never-there")).unwrap();
+        remove_stale_file(&dir.join("gone")).unwrap();
+        assert!(!dir.join("gone").exists());
+        // A tree is not a file and a file is not a tree: each mix-up is a real failure, returned
+        // rather than reported as done, because the caller is about to write at that path.
+        assert!(remove_stale_file(&dir.join("tree")).is_err(), "a directory is not removed as a file");
+        assert!(remove_stale_dir(&dir.join("plain")).is_err(), "a file is not removed as a directory");
+        remove_stale_dir(&dir.join("tree")).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
 

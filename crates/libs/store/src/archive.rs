@@ -157,7 +157,6 @@ const LEVEL_MONTHLY: u32 = 19;
 /// Returns the archive names written and removed.
 pub fn run(root: &Path, src: &Sources, now: chrono::DateTime<chrono::Utc>, keep: Retention) -> Result<(Vec<String>, Vec<String>)> {
     std::fs::create_dir_all(root).with_context(|| format!("archive root {}", root.display()))?;
-    clear_stale_tmp(root);
     let mut made = Vec::new();
     let week = format!("weekly/{}", now.format("%G-W%V"));
     let day = format!("daily/{}", now.format("%Y-%m-%d"));
@@ -365,6 +364,8 @@ pub fn restore(root: &Path, name: &str, out: &Path) -> Result<Vec<PathBuf>> {
                 let delta = out.join(".history-delta.db");
                 decompress_checked(&from, &delta, e)?;
                 apply_delta(&to, &delta, &full.watermarks)?;
+                // Best-effort: the restore is what was asked for and it is written and checked; this
+                // is the temporary the rows came out of, and failing the restore over it would be wrong.
                 let _ = std::fs::remove_file(&delta);
                 let conn = Connection::open(&to)?;
                 crate::integrity::check_connection(&conn).map_err(|err| anyhow::anyhow!("restored history.db failed its check: {err}"))?;
@@ -438,25 +439,22 @@ pub fn load_manifest(dir: &Path) -> Result<Manifest> {
     Ok(m)
 }
 
-fn clear_stale_tmp(root: &Path) {
-    for kind in [Kind::Daily, Kind::Weekly, Kind::Monthly] {
-        for e in std::fs::read_dir(root.join(kind.dir())).into_iter().flatten().filter_map(|e| e.ok()) {
-            if e.file_name().to_string_lossy().starts_with(".tmp-") {
-                let _ = std::fs::remove_dir_all(e.path());
-            }
-        }
-    }
-}
-
+/// Staging directory for `name`, with the `.tmp-*` a run that was interrupted left under any kind
+/// cleared first: an archive staged into one of those would be written and verified on top of it.
 fn stage_dir(root: &Path, name: &str) -> Result<PathBuf> {
     let final_dir = root.join(name);
     if final_dir.join(MANIFEST).exists() {
         bail!("{name} already exists");
     }
     let parent = final_dir.parent().context("archive name without a kind")?;
+    for kind in [Kind::Daily, Kind::Weekly, Kind::Monthly] {
+        let entries = std::fs::read_dir(root.join(kind.dir())).into_iter().flatten().filter_map(|e| e.ok());
+        for e in entries.filter(|e| e.file_name().to_string_lossy().starts_with(".tmp-")) {
+            sv10_rt::remove_stale_dir(&e.path()).with_context(|| format!("stale staging {}", e.path().display()))?;
+        }
+    }
     let leaf = final_dir.file_name().context("archive name without a leaf")?.to_string_lossy();
     let tmp = parent.join(format!(".tmp-{leaf}"));
-    let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp)?;
     Ok(tmp)
 }
@@ -486,8 +484,8 @@ fn finish(root: &Path, tmp: &Path, manifest: Manifest) -> Result<Manifest> {
     sync_tree(tmp)?;
     let problems = verify(tmp, true);
     if !problems.is_empty() {
-        let _ = std::fs::remove_dir_all(tmp);
-        bail!("{} failed verification after writing: {}", manifest.name, problems.join("; "));
+        let left = sv10_rt::remove_stale_dir(tmp).err().map(|e| format!(" (its staging dir was left behind: {e})"));
+        bail!("{} failed verification after writing: {}{}", manifest.name, problems.join("; "), left.unwrap_or_default());
     }
     let final_dir = root.join(&manifest.name);
     // An older copy under the same name is replaced; failing to remove it makes the rename fail below.
@@ -604,7 +602,7 @@ fn id_watermarks(conn: &Connection, schema: &str) -> Result<BTreeMap<String, i64
 /// a new database at `to`, in one read snapshot. Returns the source's full row counts at that
 /// snapshot, which a restore must reproduce.
 fn write_delta(history: &Path, to: &Path, marks: &BTreeMap<String, i64>) -> Result<BTreeMap<String, i64>> {
-    let _ = std::fs::remove_file(to);
+    sv10_rt::remove_stale_file(to).with_context(|| format!("clearing the delta at {}", to.display()))?;
     let conn =
         Connection::open_with_flags(to, OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_URI)?;
     let uri = format!("file:{}?mode=ro", history.to_string_lossy().replace('?', "%3f").replace('#', "%23"));
@@ -687,8 +685,8 @@ fn restore_db(from: &Path, to: &Path, e: &Entry) -> Result<()> {
 fn decompress_checked(from: &Path, to: &Path, e: &Entry) -> Result<()> {
     zstd(&["-d", "--long=27", "-q", "-f"], Some(from), Some(to))?;
     if crate::integrity::file_sha256(to)? != e.raw_sha256 {
-        let _ = std::fs::remove_file(to);
-        bail!("{} decompressed to different content", e.name);
+        let left = sv10_rt::remove_stale_file(to).err().map(|err| format!("; it is still at {} ({err})", to.display()));
+        bail!("{} decompressed to different content{}", e.name, left.unwrap_or_default());
     }
     Ok(())
 }

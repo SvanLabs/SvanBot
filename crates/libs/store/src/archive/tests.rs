@@ -200,3 +200,25 @@ fn a_new_week_starts_a_new_full_and_stale_staging_is_cleared() {
     assert_eq!(made, vec!["weekly/2026-W39".to_string()]);
     assert_eq!(list(&root, Kind::Weekly), vec!["weekly/2026-W38".to_string(), "weekly/2026-W39".to_string()]);
 }
+
+/// Issue #326: the removal of a stale staging directory had its result dropped, so one that would not
+/// go was written into instead — `create_dir_all` succeeds on a directory that is still there, and the
+/// weekly would be staged and verified on top of whatever the interrupted run left in it.
+#[cfg(unix)]
+#[test]
+fn a_staging_directory_that_will_not_go_stops_the_run_before_it_is_written_into() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = tmp("stubborn-stage");
+    let root = d.join("archive");
+    let src = Sources { live: d.join("live.db"), history: d.join("history.db"), repo: None, app_version: "test".into() };
+    let stale = root.join("weekly/.tmp-2026-W38");
+    std::fs::create_dir_all(&stale).unwrap();
+    std::fs::write(stale.join("staged-before-the-crash.db"), b"a run that never finished").unwrap();
+    // Read and traverse, but no write: `remove_dir_all` cannot unlink what is inside it.
+    std::fs::set_permissions(&stale, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let err = run(&root, &src, at(19, 3), Retention::default()).unwrap_err().to_string();
+    assert!(err.contains(".tmp-2026-W38"), "the error has to name the staging directory it could not clear: {err}");
+    assert!(stale.join("staged-before-the-crash.db").exists(), "nothing may be staged into a directory that outlived its removal");
+    std::fs::set_permissions(&stale, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::remove_dir_all(&d).unwrap();
+}

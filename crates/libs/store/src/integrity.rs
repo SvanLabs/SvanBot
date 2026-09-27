@@ -48,8 +48,13 @@ fn sidecar(path: &Path) -> PathBuf {
 /// Check a freshly written backup and record its hash; a backup that fails is deleted.
 pub fn seal_backup(path: &Path) -> Result<()> {
     if let Err(e) = quick_check(path) {
-        let _ = std::fs::remove_file(path);
-        anyhow::bail!("backup {} failed its check and was removed: {e}", path.display());
+        // What became of the file is said, not assumed (issue #326): a backup that could not be
+        // removed is still the newest `.db` in the directory, which is the first one a restore reads.
+        let gone = match sv10_rt::remove_stale_file(path) {
+            Ok(()) => "was removed".to_string(),
+            Err(err) => format!("is still there and could not be removed ({err})"),
+        };
+        anyhow::bail!("backup {} failed its check and {gone}: {e}", path.display());
     }
     // `VACUUM INTO` and `fs::copy` leave the file in the page cache: sync it first, so a disk that
     // cannot store it fails here instead of reading back as zeros later (0308).
@@ -275,6 +280,27 @@ mod tests {
         assert!(matches!(ensure_healthy(&db, &d.join("backups")).unwrap(), Health::Quarantined { .. }));
         assert!(!db.exists());
         assert!(hand_ids(&db).is_empty());
+    }
+
+    /// A backup that fails its check is deleted, and the error has to say which of the two happened:
+    /// one that is still there is the newest `.db` in the directory, so a message claiming a removal
+    /// that did not happen sends the operator looking in the wrong place (issue #326).
+    #[cfg(unix)]
+    #[test]
+    fn a_backup_that_fails_its_check_says_whether_the_file_went() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = dir("seal-message");
+        let held = d.join("held");
+        std::fs::create_dir_all(&held).unwrap();
+        let path = held.join("svanbot10-2026091500.db");
+        std::fs::write(&path, b"not a database").unwrap();
+        std::fs::set_permissions(&held, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let err = seal_backup(&path).unwrap_err().to_string();
+        assert!(path.exists() && err.contains("could not be removed"), "claimed a removal that did not happen: {err}");
+        std::fs::set_permissions(&held, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let err = seal_backup(&path).unwrap_err().to_string();
+        assert!(!path.exists() && err.contains("was removed"), "{err}");
+        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

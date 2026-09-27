@@ -161,6 +161,8 @@ fn sidecar(path: &std::path::Path) -> std::path::PathBuf {
 
 fn discard(paths: &[&std::path::Path]) {
     for p in paths {
+        // Best-effort: the caller is already returning an error, and the next run's
+        // `clear_stale_temporaries` collects whatever is left here and warns about it (0292).
         let _ = std::fs::remove_file(p);
     }
 }
@@ -272,9 +274,14 @@ pub(super) fn rotate_backups_keeping(dir: &std::path::Path, hourly: usize, daily
         files.sort();
         while files.len() > keep {
             let old = files.remove(0);
-            let _ = std::fs::remove_file(&old);
+            // A copy that will not go is the disk filling up later; rotation is where that starts
+            // to matter, so it says so rather than counting itself done (issue #326).
+            if let Err(e) = sv10_rt::remove_stale_file(&old) {
+                tracing::warn!("could not rotate out {} (the directory keeps it): {e}", old.display());
+            }
             let mut side = old.into_os_string();
             side.push(".sha256");
+            // Its seal is best-effort: an orphaned `.sha256` matches nothing this directory is read by.
             let _ = std::fs::remove_file(side);
         }
     }
@@ -323,7 +330,11 @@ pub(super) fn write_backup_status(
         "mirror": mirror.json(mirror_dir, now.timestamp()),
         "tables": {"flop": sv10_core::tables::loaded(3).is_some(), "turn": sv10_core::tables::loaded(4).is_some()},
     });
-    let _ = shared.store.put_kv(INTEGRITY_STATUS_KEY, &status.to_string());
+    // The dashboard's storage row is this key: a write that does not land leaves the previous run's
+    // numbers on the page as if they were this run's, with nothing else to say they are old (#326).
+    if let Err(e) = shared.store.put_kv(INTEGRITY_STATUS_KEY, &status.to_string()) {
+        tracing::warn!("the backup status could not be stored: {e}");
+    }
     match mirror {
         // Loud and non-fatal: the failure is in the log and on the dashboard's storage row, but play
         // and the SSD backups carry on (0292).
