@@ -160,9 +160,17 @@ fn binomial(n: usize, k: usize) -> u64 {
 /// main and side pots to the best hand `values` (higher is better) among the seats that are not
 /// `folded` and reached each level; odd chips go to the first winner left of `button`. Shared by
 /// the simulator's settlement and the luck-adjustment of stored hands (`sv10_model::allin`).
+///
+/// A pot no seat can win is void. With every seat `folded` there is no winner to pay — a state play
+/// cannot reach, because the hand ends at one live seat (`advance_if_needed`) — and a void pot goes
+/// back to the seats that paid into it: each seat gets exactly its own wagers, so the hand moves no
+/// chips and settlement stays zero-sum. Paying nobody instead would destroy the pot.
 pub fn split_pots(invested: &[i64], folded: &[bool], values: &[u32], button: usize) -> Vec<i64> {
     let n = invested.len();
     let live: Vec<usize> = (0..n).filter(|&i| !folded[i]).collect();
+    if live.is_empty() {
+        return invested.to_vec();
+    }
     let mut order: Vec<usize> = (0..n).collect();
     order.sort_by_key(|&i| std::cmp::Reverse(invested[i]));
     let top = order[0];
