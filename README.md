@@ -13,12 +13,12 @@
 ![CPU only](https://img.shields.io/badge/GPU-none%20required-4c7a5a?style=flat-square)
 ![Own foundations](https://img.shields.io/badge/deps-own%20RNG%20·%20SHA--256%20·%20DEFLATE%20·%20mmap-8a6d2f?style=flat-square)
 
+[**Start here**](#-start-here) ·
 [**Highlights**](#-highlights) ·
 [**How it decides**](#-how-a-decision-is-made) ·
-[**Architecture**](#-architecture) ·
 [**Quick start**](#-quick-start) ·
-[**Documentation**](#-documentation) ·
-[**Contributing**](#-contributing)
+[**First pull request**](#-your-first-pull-request) ·
+[**Docs**](#-documentation)
 
 </div>
 
@@ -42,6 +42,22 @@
 against reconstructed opponent ranges, and the best one is played.</sub>
 
 </div>
+
+---
+
+## 👋 Start here
+
+Find the row that fits you. Each one is a short path, read in order, and says what "done" looks like.
+
+| You want to… | Read, in this order | You are done when… |
+|---|---|---|
+| 🎮 **Run a fleet** on your own machine | [Quick start](#-quick-start) → [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | the control room at `http://127.0.0.1:5000` shows your bots seated |
+| 🔍 **Understand how it plays** | [How a decision is made](#-how-a-decision-is-made) → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → [`docs/GUIDE.md`](docs/GUIDE.md) | you can follow one decision from the table state to the action sent |
+| 🛠️ **Make your first change** | [Your first pull request](#-your-first-pull-request) → [`CONTRIBUTING.md`](CONTRIBUTING.md) | CI is green on your pull request |
+| 🤖 **You are an AI agent** | [`AGENTS.md`](AGENTS.md), then the issue you were given | `scripts/check.sh full` passes and your pull request names you |
+
+Not sure which one? The [documentation map](docs/README.md) lists every document with the question
+it answers.
 
 ---
 
@@ -143,6 +159,15 @@ flowchart LR
   L -->|"promoted params, fitted models"| M
 ```
 
+1. **Track.** The WebSocket client keeps the table state and verifies the server's state hash.
+2. **Situate.** On your turn, the state becomes a *situation*: seats, stacks, pot and board.
+3. **Price.** Each opponent's range is rebuilt from their stats, our table image and their sizing and
+   timing tells, and the EV search prices every legal action against it.
+4. **Act.** The best action is sent — always one the server listed in `valid_actions`, always with
+   its `hand_id` and `turn_token`.
+5. **Learn.** Hands land in the store; the learner, a separate process, tunes the policy and
+   promotes a change only after it wins on fresh deals.
+
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) walks the full path, the processes and the
 invariants.
 
@@ -205,23 +230,28 @@ flowchart LR
   stats --> bot
 ```
 
-| Path | Contents |
-|---|---|
-| `crates/deps/` (`rng`, `digest`, `rt`, `mmap`, `pack`) | Our own zero-dependency foundations: seedable RNG, SHA-256/HMAC, runtime helpers, shared read-only file maps, DEFLATE compression |
-| `crates/libs/` (`cards`, `equity`, `engine`, `nn`) | Verified 7-card evaluator, equity and board-strength tables, multiway rules engine, MLP |
-| `crates/libs/` (`model`, `policy`, `stats`) | Opponent statistics, range reconstruction and calibration, the EV policy, agents and the paired simulator, shared statistics |
-| `crates/libs/` (`venue`, `store`) | Protocol tracker, SQLite store (compressed cold columns, integrity checks, archives) |
-| `crates/apps/core` | Re-exports the poker crates as `sv10_core::*`; `sim`, `probe`, `bench` and `tables` tools |
-| `crates/apps/bot` | The fleet binary (WebSocket clients, dashboard API, background jobs), learner, analyst, review, replay, calibration, ingest and archive tools |
-| `web/` | Control-room dashboard (Vite + React + TypeScript), served by the fleet binary |
-| `docs/` | Architecture, operations runbook, protocol/data/learner/dashboard specs, lessons learned |
-| `scripts/` | Setup, the check gate, release with hot swap, update, start/stop, backups, monitoring |
+</details>
 
-**On the names.** The project is **SvanBot**, and the crates keep their `sv10-` prefix while the
-binaries stay `sv10-bot`, `learner` and `analyst`. Some files also keep the older `svanbot10`
-spelling — `svanbot10.db`, `scripts/svanbot10.service`. Renaming them would be a large mechanical
-diff that buys nothing; they are stable identifiers, and renaming a database file is a migration
-rather than a rename.
+**Where things live** — a change belongs in exactly one of these:
+
+| Path | What is there | Go here to… |
+|---|---|---|
+| `crates/deps/` | Our own zero-dependency foundations: RNG, SHA-256/HMAC, runtime helpers, file maps, DEFLATE | replace a third-party crate |
+| `crates/libs/` | The poker and data libraries: cards, equity, rules engine, opponent models, policy, statistics, protocol tracker, store | change how the bot thinks or what it stores |
+| `crates/apps/core` | Re-exports the libraries as `sv10_core::*`; the `sim`, `probe`, `bench` and `tables` tools | run a simulation or a benchmark |
+| `crates/apps/bot` | The fleet binary (WebSocket clients, dashboard API, background jobs), learner, analyst and review tools | change anything that touches the network, the database or the clock |
+| `web/` | The control room (Vite + React + TypeScript), served by the fleet binary | change the dashboard; its API contract is `web/src/types.ts` |
+| `scripts/` | Setup, the check gate, release with hot swap, update, start and stop, backups, monitoring | change how it is built, checked or run |
+| `docs/` | Architecture, runbook, specs and lessons — see the [documentation map](docs/README.md) | find out why something is the way it is |
+
+<details>
+<summary><b>On the names</b>: SvanBot, <code>sv10-*</code> and <code>svanbot10</code></summary>
+
+The project is **SvanBot**, and the crates keep their `sv10-` prefix while the binaries stay
+`sv10-bot`, `learner` and `analyst`. Some files also keep the older `svanbot10` spelling —
+`svanbot10.db`, `scripts/svanbot10.service`. They are stable identifiers: renaming them would be a
+large mechanical diff that buys nothing, and renaming a database file is a migration rather than a
+rename.
 
 </details>
 
@@ -230,27 +260,46 @@ rather than a rename.
 <a id="quick-start"></a>
 ## 🚀 Quick start
 
-**Requirements:** Linux x86-64 (x86-64-v2 or newer) · Rust 1.98.1 (pinned in
-[`rust-toolchain.toml`](rust-toolchain.toml)) · Node 26 for the dashboard · `zstd` for archives and
-`cargo-deny` for the licence checks · **no GPU**
+**You need:** Linux x86-64 (x86-64-v2 or newer) · Rust 1.98.1 (pinned in
+[`rust-toolchain.toml`](rust-toolchain.toml)) · Node 26 for the dashboard · `zstd` and `cargo-deny`
+· an Open Poker API key · **no GPU**.
 
-```sh
-scripts/setup.sh            # toolchain check, creates .env (mode 600) from .env.example, builds
-$EDITOR .env                # add your Open Poker API key(s)
-scripts/check.sh full       # the anti-regression gate
-scripts/release.sh          # build, test, install into target/release
-scripts/start.sh            # fleet, learner and dashboard on http://127.0.0.1:5000
-```
+1. **Set up.** Checks the toolchain, creates `.env` (mode 600) from `.env.example`, and builds.
 
-`scripts/status.sh` and `scripts/stop.sh` do what they say, and a systemd user unit
-(`scripts/svanbot10.service`) keeps the fleet running across reboots.
+   ```sh
+   scripts/setup.sh
+   ```
 
+2. **Add your key.** Put your Open Poker API key(s) in `.env`. It is gitignored, and the pre-commit
+   hook refuses a commit that contains a key.
+
+3. **Run the gate.** The same checks CI runs; it should end green.
+
+   ```sh
+   scripts/check.sh full
+   ```
+
+4. **Build, install and start** the fleet, the learner and the dashboard.
+
+   ```sh
+   scripts/release.sh
+   scripts/start.sh
+   ```
+
+5. **Open the control room** at `http://127.0.0.1:5000` and watch each bot connect and take a seat.
+
+After that, `scripts/status.sh` and `scripts/stop.sh` do what they say, and a systemd user unit
+(`scripts/svanbot10.service`) keeps the fleet running across reboots. The runbook for everything
+else — updates, backups, fault drills — is [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+
+> [!IMPORTANT]
 > **Building while a fleet is running?** Use `CARGO_TARGET_DIR=target/dev`. A release build lands
 > in the directory the live processes hot-swap from, so building there swaps untested code into a
 > running bot.
 
 <a id="update"></a>
-### 🔄 One-click update
+<details>
+<summary><b>🔄 One-click update</b>: how the Update button stays safe</summary>
 
 Click **Update** in the dashboard's System view; a stage-weighted progress bar shows every step
 while the bots keep playing.
@@ -264,14 +313,64 @@ flowchart LR
 A failed run changes nothing, and the checkout returns to where it was. **Roll back to a saved
 build** uses the same bar. `scripts/update.sh` does the same from a terminal.
 
----
+</details>
 
 <details>
-<summary><b>🛠️ Development</b></summary>
+<summary><b>⚙️ Configuration</b>: the settings most operators touch</summary>
+
+All settings live in `.env` (gitignored, mode 600; see `.env.example`).
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `SVANBOT_WEB__HOST` | Dashboard bind address | `127.0.0.1` |
+| `SVANBOT_WEB_PORT` | Dashboard port | `5000` |
+| `SVANBOT_WEB__OPERATOR_TOKEN` | Required before the dashboard is reachable from other machines | unset |
+| `SVANBOT_ARCHIVE_DIR` | Second-disk directory for archives and the hourly backup mirror | `artifacts/archive` |
+
+Without an operator token the dashboard accepts changes only on a loopback address. Runtime data —
+databases, archives, screenshots — is **not** in this repository; `scripts/fetch-data.sh` restores
+it from an archive you supply.
+
+</details>
+
+---
+
+<a id="first-pull-request"></a>
+## 🛠️ Your first pull request
+
+You are welcome here, and **you are expected to bring an agent**. Every change in this repository
+is made by an AI coding agent that a person directs — Claude Code, Codex, Aider, whichever you use —
+and hand-written contributions are declined however good they are ([`CONTRIBUTING.md`](CONTRIBUTING.md) §0).
+Directing the agent well is the contribution.
+
+1. **Pick an issue.** Start with
+   [**good first issue**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+   or [**agent-friendly**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3Aagent-friendly).
+   Each one says where the problem is, why it matters, and the fix it expects.
+2. **Fork, and make a branch** named for the change — `fix/split-pots-all-folded`, `docs/…`.
+3. **Hand your agent [`AGENTS.md`](AGENTS.md) and the issue.** `AGENTS.md` is the brief: where
+   code goes, the two hard invariants, and everything the gate enforces.
+4. **Run the gate** before you push. It is the same command CI runs, so a green run here is a green
+   run there.
+
+   ```sh
+   scripts/check.sh full
+   ```
+
+5. **Open the pull request.** The template asks for three things: what generated it
+   (`Generated-by: <tool>/<model>`, also in every commit footer), why, and what changed.
+
+CI runs the gate on every pull request. Pull requests from this repository's own branches also get
+an automatic Claude review, and collaborators can mention **@claude** in a comment to ask for a fix
+or an explanation.
+
+<details>
+<summary><b>🧑‍💻 Everyday development commands</b></summary>
 
 ```sh
 export CARGO_TARGET_DIR=target/dev   # never build into target/release while the fleet runs
 python3 scripts/test.py              # every workspace test, in parallel (seconds after an edit)
+python3 scripts/test.py <filter>     # just the tests you touched
 scripts/check.sh commit              # what the pre-commit hook runs: markers, secrets, fmt, clippy, golden
 scripts/check.sh full                # plus cargo-deny, docs drift, every workspace test and the dashboard's tsc
 cd web && npm run build              # dashboard production build
@@ -293,58 +392,22 @@ Ground rules, each learned the hard way ([`docs/LESSONS.md`](docs/LESSONS.md) ha
 
 </details>
 
-<details>
-<summary><b>⚙️ Configuration</b></summary>
-
-All settings live in `.env` (gitignored, mode 600; see `.env.example`). The ones most operators
-touch:
-
-| Variable | Meaning | Default |
-|---|---|---|
-| `SVANBOT_WEB__HOST` | Dashboard bind address | `127.0.0.1` |
-| `SVANBOT_WEB_PORT` | Dashboard port | `5000` |
-| `SVANBOT_WEB__OPERATOR_TOKEN` | Required before the dashboard is reachable from other machines | unset |
-| `SVANBOT_ARCHIVE_DIR` | Second-disk directory for archives and the hourly backup mirror | `artifacts/archive` |
-
-Without an operator token the dashboard accepts changes only on a loopback address. Runtime data —
-databases, archives, screenshots — is **not** in this repository; `scripts/fetch-data.sh` restores
-it from an archive you supply.
-
-</details>
-
 ---
 
 <a id="docs"></a>
 ## 📚 Documentation
 
-| Document | Covers |
+| You want to… | Read |
 |---|---|
-| 🏛️ [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Processes, crates, the decision path, invariants |
-| 🧰 [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Runbook, benchmarks, fault drills, host checklist |
-| 📖 [`docs/GUIDE.md`](docs/GUIDE.md) | The user guide, also served by the dashboard's `/docs` page |
-| 🔌 [`docs/SPEC-protocol.md`](docs/SPEC-protocol.md) | The Open Poker WebSocket protocol as implemented |
-| 💾 [`docs/SPEC-data.md`](docs/SPEC-data.md) | Store schema, compressed columns, archives, integrity |
-| 🧠 [`docs/SPEC-learner.md`](docs/SPEC-learner.md) | Champion/challenger search and the promotion gate |
-| 🖥️ [`docs/SPEC-dashboard.md`](docs/SPEC-dashboard.md) | Dashboard API and panels |
-| 📦 [`docs/RELEASE.md`](docs/RELEASE.md) | Release checklist |
-| 📝 [`docs/LESSONS.md`](docs/LESSONS.md) | Mistakes already paid for, each with a standing rule |
-
-`CONTEXT.md` is the domain glossary — what "flagship bot", "fleet" and "season record" mean here.
-
-<a id="contributing"></a>
-## 🤝 Contributing
-
-You are welcome, and **you are expected to bring an agent.** This repository does not accept
-hand-written contributions, however good: every artifact in it is machine-generated and carries a
-`Generated-by:` line naming the system that produced it. Directing an agent is exactly how
-contributions are made here — see [`CONTRIBUTING.md`](CONTRIBUTING.md) §0.
-
-[`AGENTS.md`](AGENTS.md) is the short brief an agent should read first, and it is the one file
-every major coding agent already looks for. `docs/LESSONS.md` explains why the rules are what they
-are, which is usually the difference between a change that is accepted and one that is not.
-
-**Before you open a pull request:** run `scripts/check.sh full`. It is the same command CI runs, so
-a red run locally and a red run in CI are the same failure with the same fix.
+| See every document and the question it answers | 🗺️ [`docs/README.md`](docs/README.md) — the documentation map |
+| Run, update, back up or troubleshoot a fleet | 🧰 [`docs/OPERATIONS.md`](docs/OPERATIONS.md) |
+| Use the control room and understand what it shows | 📖 [`docs/GUIDE.md`](docs/GUIDE.md) — also the dashboard's `/docs` page |
+| Understand the processes, the crates and the decision path | 🏛️ [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Know why a rule exists before you change it | 📝 [`docs/LESSONS.md`](docs/LESSONS.md) |
+| Look up a term — flagship bot, fleet, season record | 📘 [`CONTEXT.md`](CONTEXT.md) |
+| Work on the protocol, the store, the learner or the dashboard API | 🔌 [`SPEC-protocol`](docs/SPEC-protocol.md) · 💾 [`SPEC-data`](docs/SPEC-data.md) · 🧠 [`SPEC-learner`](docs/SPEC-learner.md) · 🖥️ [`SPEC-dashboard`](docs/SPEC-dashboard.md) |
+| Cut a release | 📦 [`docs/RELEASE.md`](docs/RELEASE.md) |
+| Ask a question or report a vulnerability | 💬 [`SUPPORT.md`](SUPPORT.md) · 🔒 [`SECURITY.md`](SECURITY.md) |
 
 ## ♟️ Fair play
 

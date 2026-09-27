@@ -29,6 +29,7 @@ CLAUDE.md
 .claude/agents/reviewer.md
 .claude/agents/boundaries.md
 README.md
+CONTRIBUTING.md
 CONTEXT.md
 docs/ARCHITECTURE.md
 docs/OPERATIONS.md
@@ -39,3 +40,4 @@ docs/SPEC-learner.md
 docs/SPEC-dashboard.md
 docs/LESSONS.md
 docs/GUIDE.md
+docs/README.md

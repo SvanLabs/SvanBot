@@ -1,5 +1,14 @@
 # SvanBot operations runbook
 
+> **Read this when** you are running a fleet: the everyday commands, updates and rollbacks,
+> backups, benchmarks and fault drills.
+> **Before this:** [Quick start](../README.md#-quick-start) in the README.
+> **Related:** [`docs/GUIDE.md`](GUIDE.md) section 10 for the dashboard. · [All docs](README.md)
+
+**On this page:** [Everyday](#everyday) · [Build and test](#build-and-test) · [Benchmarks](#benchmarks) ·
+[Data](#data) · [Cleanliness](#cleanliness) · [Linux settings](#linux-settings) ·
+[Fault drills](#fault-drills) · [Hot-swap releases](#hot-swap-releases) · [Split fleet](#split-fleet-off-by-default)
+
 All commands run from the repository root. Binaries live in `target/release/`.
 
 ## Everyday
@@ -8,10 +17,10 @@ All commands run from the repository root. Binaries live in `target/release/`.
 |---|---|
 | Start fleet + learner + dashboard | `scripts/start.sh` (builds if binaries are missing; `REBUILD=1` forces) |
 | Stop everything | `scripts/stop.sh [--hold 30m\|8h\|forever]`: the keepalive leaves the fleet down for the hold (default 30 min); `systemctl --user stop svanbot10` holds forever; `scripts/start.sh` clears it |
-| Keepalive (0145) | `scripts/keepalive.sh` restarts `svanbot10.service` when no supervisor runs, no hold is in force and no release holds the lock; decisions in `artifacts/logs/keepalive.log`, `KEEPALIVE_DRY=1` to check. Install once: `cp scripts/svanbot10.service scripts/svanbot10-keepalive.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now svanbot10-keepalive.timer` |
+| Keepalive | `scripts/keepalive.sh` restarts `svanbot10.service` when no supervisor runs, no hold is in force and no release holds the lock; decisions in `artifacts/logs/keepalive.log`, `KEEPALIVE_DRY=1` to check. Install once: `cp scripts/svanbot10.service scripts/svanbot10-keepalive.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now svanbot10-keepalive.timer` |
 | Rename a bot | Change its name in `.env` (`SVANBOT_MAIN_NAME` / `BOT_n_NAME`) and restart. Its season stays one record because each start links the names under the API key. For names used before that record existed, set `SVANBOT_ALIASES=New:Old[,New2:Old2]` once. The server export labels older hands with the new name, so fleet-check matches export rows by hand id |
-| Update from GitHub (one click) | Dashboard → Releases & updates → **Update** (0236): fetches `origin/main` (`SVANBOT_UPDATE_BRANCH`, `SVANBOT_UPDATE_REMOTE`), fast-forwards this checkout, runs `scripts/release.sh`, and shows a progress bar (stages, time left, bots still playing, the hot swap). By hand: `scripts/update.sh`; `scripts/update.sh --check` only fetches and prints `<behind> <commit>`. It refuses uncommitted build inputs and local commits the branch lacks; a failed release restores the checkout, and play never stops. **First time after merging 0236**: the installed build predates the fetch, so run `git pull` once (then click Update or run `scripts/release.sh`) |
-| Ship a new build without stopping play | `scripts/release.sh` (committed tree; lint, the test build and the release build side by side at idle CPU priority, then the tests; ~40 s for a one-file change, ~4 min cold; installs atomically; the fleet hot-swaps when no bot is mid-turn, the learner between steps (at most ~2 min, 0334); every stage prints its time and one over 120 s is a warning; history in `artifacts/releases.log`, progress in `artifacts/release-progress.json`) |
+| Update from GitHub (one click) | Dashboard → Releases & updates → **Update**: fetches `origin/main` (`SVANBOT_UPDATE_BRANCH`, `SVANBOT_UPDATE_REMOTE`), fast-forwards this checkout, runs `scripts/release.sh`, and shows a progress bar (stages, time left, bots still playing, the hot swap). By hand: `scripts/update.sh`; `scripts/update.sh --check` only fetches and prints `<behind> <commit>`. It refuses uncommitted build inputs and local commits the branch lacks; a failed release restores the checkout, and play never stops. **First Update on an older install**: the installed build predates the fetch, so run `git pull` once (then click Update or run `scripts/release.sh`) |
+| Ship a new build without stopping play | `scripts/release.sh` (committed tree; lint, the test build and the release build side by side at idle CPU priority, then the tests; ~40 s for a one-file change, ~4 min cold; installs atomically; the fleet hot-swaps when no bot is mid-turn, the learner between steps (at most ~2 min); every stage prints its time and one over 120 s is a warning; history in `artifacts/releases.log`, progress in `artifacts/release-progress.json`) |
 | Restart only the fleet | `scripts/restart-bot.sh` |
 | Season boundary check | `scripts/season-check.sh before LABEL` shortly before a season ends, `scripts/season-check.sh after LABEL` about an hour into the next: carry-over (opponent models, champion lineage, response/range models, stored hands) and live state (every bot on the new season, playing, season hands reset); PASS/FAIL lines, exit 1 on failure, files in `artifacts/season-checks/` |
 | Add, remove or switch off bots; change keys, buy-in, seeking | Dashboard → Settings → Open bot setup (`#setup`): validated, "Check key" asks openpoker.ai for the registered name, saves `.env` atomically (previous copy `artifacts/.env.previous`, mode 600) and restarts the fleet at the next moment no bot is mid-turn. Without `SVANBOT_WEB__OPERATOR_TOKEN` it only works on a loopback-bound dashboard opened as 127.0.0.1 |
@@ -20,43 +29,43 @@ All commands run from the repository root. Binaries live in `target/release/`.
 | Autostart at boot | `systemctl --user enable svanbot10.service` (disable to keep it off) |
 | Review after decision changes | `./target/release/review all 5` |
 | Leak finder as JSON | `./target/release/review leaks` |
-| Fold-prediction calibration by street | `./target/release/review fold-cal` (the learner's fit, printed, not stored; 0156) |
-| Equity estimate vs exact showdown equity | `./target/release/review raise-wars` (heads-up postflop decisions that committed the pot, estimate vs exact equity against the shown hand, by raises before, street, estimate and villain bet size; the river, deep-pot, overbet and size-scaled overbet call fits with their held-out gates; 0158, 0242) |
-| Opponent recency study | `./target/release/review opponent-adapt` (replays every stored hand and scores later opponent decisions from all-time vs recency-weighted tallies at several half-lives; 0168) |
-| Replay big decisions | `./target/release/review replay 20` (recorded inputs; exit 1 unless every one is bit-identical), `review replay id=123`, `review replay 50 --current` (what today's promoted parameters would do in the same spots: the champion's knobs on the record's own budget and prices — its self-calibration, range and live fits — so the only thing that varies is the knob set; the footer names the basis; 0359) |
-| Calibration at the decision margin | `./target/release/review margins [DAYS] [CATEGORY...]` (residual by predicted-EV bin before and after the live self-calibration correction; `*` = off at 95%; 0222) |
-| Opponent timing tells | `./target/release/review timing-tells` (timed opponent actions by context, and the shown strength behind fast, typical and slow postflop aggression against each actor's typical time; the live `think_exp`; 0234) |
-| Opponent river sizing | `./target/release/review sizing-tells` (heterogeneity study: bet size vs shown strength, pool and per opponent), `review sizing-fit` (the learner's per-opponent tell fit at several priors, not stored; 0223) |
-| Stored-hand digests | `./target/release/review verify-digests [FILE]` (recompute every hand's content digest and optionally a file's SHA-256; exit 1 on any mismatch; 0222) |
-| State-hash mismatches | `./target/release/review state-hash [N]` (diagnosed mismatches, newest first: STALE replay vs DIVERGED with the field census; the full snapshot is kept in the incident table; 0265) |
-| Autonomy watchdog | `./target/release/review autonomy` (learner, analyst, fold calibration, backups and the experiment poller: `ok` or `STALE` with age and limit; exit 1 if any is stale). The fleet head runs the same check every 10 minutes and logs `autonomy: …` once when a loop stops and once when it recovers (0222, 0327) |
+| Fold-prediction calibration by street | `./target/release/review fold-cal` (the learner's fit, printed, not stored) |
+| Equity estimate vs exact showdown equity | `./target/release/review raise-wars` (heads-up postflop decisions that committed the pot, estimate vs exact equity against the shown hand, by raises before, street, estimate and villain bet size; the river, deep-pot, overbet and size-scaled overbet call fits with their held-out gates) |
+| Opponent recency study | `./target/release/review opponent-adapt` (replays every stored hand and scores later opponent decisions from all-time vs recency-weighted tallies at several half-lives) |
+| Replay big decisions | `./target/release/review replay 20` (recorded inputs; exit 1 unless every one is bit-identical), `review replay id=123`, `review replay 50 --current` (what today's promoted parameters would do in the same spots: the champion's knobs on the record's own budget and prices — its self-calibration, range and live fits — so the only thing that varies is the knob set; the footer names the basis) |
+| Calibration at the decision margin | `./target/release/review margins [DAYS] [CATEGORY...]` (residual by predicted-EV bin before and after the live self-calibration correction; `*` = off at 95%) |
+| Opponent timing tells | `./target/release/review timing-tells` (timed opponent actions by context, and the shown strength behind fast, typical and slow postflop aggression against each actor's typical time; the live `think_exp`) |
+| Opponent river sizing | `./target/release/review sizing-tells` (heterogeneity study: bet size vs shown strength, pool and per opponent), `review sizing-fit` (the learner's per-opponent tell fit at several priors, not stored) |
+| Stored-hand digests | `./target/release/review verify-digests [FILE]` (recompute every hand's content digest and optionally a file's SHA-256; exit 1 on any mismatch) |
+| State-hash mismatches | `./target/release/review state-hash [N]` (diagnosed mismatches, newest first: STALE replay vs DIVERGED with the field census; the full snapshot is kept in the incident table) |
+| Autonomy watchdog | `./target/release/review autonomy` (learner, analyst, fold calibration, backups and the experiment poller: `ok` or `STALE` with age and limit; exit 1 if any is stale). The fleet head runs the same check every 10 minutes and logs `autonomy: …` once when a loop stops and once when it recovers |
 | Every review command | `./target/release/review help` |
 | Logs | `artifacts/logs/svanbot10.log`, `artifacts/logs/learner.log`, `artifacts/logs/monitor.log` |
-| Results monitor (0104) | started and stopped with the fleet by `scripts/start.sh`/`stop.sh` (by hand: `python3 scripts/monitor.py --big-loss-bb 250`). Read-only: 30-minute SUMMARY (per bot, the opponents at our worst and best tables, toughest all-time by the same chip flow) and OPPONENTS (new names, most-played opponents with style, VPIP/PFR and our net with them at the table — a table result shared by everyone dealt in, not a head-to-head attribution), BIGWIN/BIGLOSS (≥ 250 bb), NEMESIS (an opponent beating us in chips moved between us and them in champion hands — the experiment arms' treatment hands are out, as in the bot's own ledger — at 95% family-wise across every opponent tested, 0221, 0361), STALL, ERROR. `--once` prints one pass |
-| Query the live database by hand | Always read-only: `sqlite3 "file:artifacts/svanbot10.db?mode=ro"` (or `-readonly`). A read-write session that holds a transaction blocks the fleet's writes past its 10 s busy timeout, which loses hands and stalls turns. Failed hand inserts are now retried every 30 s, but a stalled write still delays the frame loop (0152) |
-| Who held the write lock (0322) | Every take of the write connection is timed: a hold or a wait of ≥ 1 s logs a WARN naming the site that took it — `write connection held 12.3 s at crates/apps/bot/src/…:123 (artifacts/svanbot10.db); pid 4567`, with `— long enough to fail every other writer` once the hold passes the 10 s `busy_timeout`, and `waited 12.3 s for the write connection at …` when the hold was elsewhere. So the first `database is locked` after a stall names a file:line instead of leaving it to guesswork; thresholds and wording are in `crates/libs/store/src/store/slow.rs` |
-| Figures the store could not answer (0326) | A bot's snapshot figures always carry `stale` and `error` beside them: a failed results read serves the last good reading (never zeros) and names the failure, and with no previous reading serves the panel's shape zeroed and flagged. `monitor.replays.recorded` is `null` with a reason rather than `0` when `replay_stats` fails. The store warning behind both is logged at most once a minute (`snapshot_warn`), since every panel asks on every poll |
-| A funding decision never invents a balance (0324) | `/season/me` is read for a join or a top-up through `balance_from` (`crates/apps/bot/src/client/rest.rs`): this read when it carries a balance, else the last payload on record, else nothing — in which case the join is deferred and the top-up is skipped, each with a log line, and the 600 s top-up cooldown is stamped only once a decision was actually made |
+| Results monitor | started and stopped with the fleet by `scripts/start.sh`/`stop.sh` (by hand: `python3 scripts/monitor.py --big-loss-bb 250`). Read-only: 30-minute SUMMARY (per bot, the opponents at our worst and best tables, toughest all-time by the same chip flow) and OPPONENTS (new names, most-played opponents with style, VPIP/PFR and our net with them at the table — a table result shared by everyone dealt in, not a head-to-head attribution), BIGWIN/BIGLOSS (≥ 250 bb), NEMESIS (an opponent beating us in chips moved between us and them in champion hands — the experiment arms' treatment hands are out, as in the bot's own ledger — at 95% family-wise across every opponent tested), STALL, ERROR. `--once` prints one pass |
+| Query the live database by hand | Always read-only: `sqlite3 "file:artifacts/svanbot10.db?mode=ro"` (or `-readonly`). A read-write session that holds a transaction blocks the fleet's writes past its 10 s busy timeout, which loses hands and stalls turns. Failed hand inserts are now retried every 30 s, but a stalled write still delays the frame loop |
+| Who held the write lock | Every take of the write connection is timed: a hold or a wait of ≥ 1 s logs a WARN naming the site that took it — `write connection held 12.3 s at crates/apps/bot/src/…:123 (artifacts/svanbot10.db); pid 4567`, with `— long enough to fail every other writer` once the hold passes the 10 s `busy_timeout`, and `waited 12.3 s for the write connection at …` when the hold was elsewhere. So the first `database is locked` after a stall names a file:line instead of leaving it to guesswork; thresholds and wording are in `crates/libs/store/src/store/slow.rs` |
+| Figures the store could not answer | A bot's snapshot figures always carry `stale` and `error` beside them: a failed results read serves the last good reading (never zeros) and names the failure, and with no previous reading serves the panel's shape zeroed and flagged. `monitor.replays.recorded` is `null` with a reason rather than `0` when `replay_stats` fails. The store warning behind both is logged at most once a minute (`snapshot_warn`), since every panel asks on every poll |
+| A funding decision never invents a balance | `/season/me` is read for a join or a top-up through `balance_from` (`crates/apps/bot/src/client/rest.rs`): this read when it carries a balance, else the last payload on record, else nothing — in which case the join is deferred and the top-up is skipped, each with a log line, and the 600 s top-up cooldown is stamped only once a decision was actually made |
 | A/B against the live pool | `sqlite3 -readonly artifacts/svanbot10.db "select value from kv where key='models.v1'" > /tmp/m.json`, then `SIM_MODELS=/tmp/m.json SIM_A='<params>' SIM_B='<params>' ./target/release/sim paired 32 1500` (~30 s with the fleet playing; `SIM_STACK_BB`, `SIM_SEED`). The current champion is `params.v1` in the same table |
-| Where a setting's value came from | The startup log names every numeric setting and the value in force after clamping (`settings: SVANBOT_BUY_IN 5000, ...`), so an operator never has to read `.env` and the dashboard side by side (0250) |
+| Where a setting's value came from | The startup log names every numeric setting and the value in force after clamping (`settings: SVANBOT_BUY_IN 5000, ...`), so an operator never has to read `.env` and the dashboard side by side |
 | Are we losing *right now* | `./target/release/review recent [BOT] [N]` — the last N hands: net and all-in EV per hand with 95% intervals, the luck in chips, and the current streak. The season aggregate cannot answer it (a wide interval around a big positive number hides a bad afternoon in both directions), and the session net in `status` resets at every hot swap, so a dashboard figure right after a swap is a handful of hands, not a trend |
-| The fleet's own findings | The Autonomy panel's **WHAT THE FLEET FOUND** block, and `findings.v1` in the store. Every 30 minutes the head re-runs the instruments: the deep re-solve's per-decision loss by street and action (P0, over 0.02 bb/decision across 500+; since 0355 every row also names how much of the class it saw — the count of decisions in the window — so a class too rare to read is not mistaken for a clean one, and the analyst's filter is rendered from `worth_auditing`'s own constants, so a class the filter never reaches prints `never queued` with its pot distribution against the 50 bb bar), the nemesis test (P1, over champion hands: the experiment arms' treatment hands are out of the ledger, 0361), **style drift** (P1, 0332: the share of hands whose first preflop decision was each action, the last day against the six before, flagged at 5 points and 5 standard errors; a several-fold drop in first-in raising after a calibration-rule change can go unnoticed for a day), and categories whose price is off (P2, a *measurement* — 0269's rule is that a residual is not a loss: the number is realized minus the **uncorrected** predicted EV, over every settled decision, which is the population self-calibration is fitted from and not the audit's big spots; 0346). A new P0 finding is filed as a ticket by the fleet itself, labelled `found-by-fleet`, and **that ticket closes itself** when the class stops reproducing; at most three per pass. A question the scan could not measure is named, so an empty scan is not mistaken for a clean bill (0273) |
-| Where we actually lose chips | `./target/release/review audit-by [DAYS] [REPLAY_VERSION]` — the analyst's deep re-solve by street, by the action we took, and by the category the bot priced (the last by joining the audit to the decision record). This is the *decision* cost *given the prices live play used*: the deep re-solve takes the record's own parameters with the self-calibration corrections in them, so a pricing error the correction has absorbed cannot appear in the gap, and the rows are the analyst's big spots (pot >= 50 bb, a call of at least a quarter of the pot and 12.5 bb, or any all-in), never every decision. `review margins` is the *pricing* residual on every settled decision, and the two disagree: a mispriced action we were right to take costs nothing (0269, 0281, 0346). A row's best-candidate column is a modal candidate, not a preference: most costed disagreements are another *size* of the action we took rather than a different action, so the table prints that split beside it (0346). A gap is only comparable across records that carry the same inputs, so every verdict stores the replay version it graded (0316): the header always states the mix (`version not recorded` rows are pre-column ones and are excluded by any filter), and `<days> 3` reads the records that carry the per-opponent corrections live play used |
-| Did a promotion start behaving differently? | `./target/release/review drift` — the analyst's post-promotion row (`analyst.drift`, 0128): today's champion's knobs re-solved at the newest big-spot replays' **own recorded prices** (the record's self-calibration, range and live fits) give the share of big-spot actions that flip and the mean/max deep gap in bb. It is the same price basis and budget as the `audit-by` gaps above, differing only in the policy graded — the champion's knobs here, the record's there (0366; before that the re-solve ran on `params.v1` alone, which carries no live fits, so the flip rate over-attributed disagreement to the champion; 0357, 0358). The row names the basis tag, the budget, the population (replay ids, window, version mix, rows the version filter dropped) and where the prices came from, and the check re-measures rather than keeping a row whose tag is missing or older, so 0120's "grows well past 4%" reading can never be taken from a number measured on another basis — a row written before 0366 carries no tag at all and prints as due for a re-check |
-| Where the chips go against one opponent | `./target/release/review rival NAME... [since=DATE]` — the chips that moved between us and them (flow, 0221) and our whole net at their tables, each raw and with all-in luck removed, with 95% intervals and the hands a win would need to be proven; the flow split by how it ended, street, pot type, position and who raised last preflop; the biggest confrontations; and how we answer their flop c-bet against every other raiser's, by what we held. Use a `since=` window: all five of the biggest pots against the heaviest rival were played before banking (0204) capped stacks (0317) |
-| Is each component worth anything? | `./target/release/review wiring [N]` re-runs the newest N recorded big decisions with each live component switched off in turn and reports, per component, the share of decisions that move and the EV they give up per decision under the full model — plus how many records replay exactly as recorded. It stores the report the dashboard's **Wiring table** panel reads (`wiring.v1`); the analyst refreshes it daily, and only while the audit queue is empty, so live audits always win (0316). Below it, **self-calibration's reach over every decision of the last 24 h**: per street, the share whose best action changes when each candidate's recorded bias is removed. The big decisions above barely see it, yet it decides the majority of preflop choices, mostly fold to call (0332) |
-| Six-max benchmark (0279) | `./target/release/bench6 4000` plays the champion against itself or `SIM_B='{...}' bench6 4000` against a challenger over **identical deals at a six-max table**, against a frozen archetype pool (station, maniac, nit, tag, lag) — no store, no live population, so the same command measures the same thing on any machine in any season. Reports bb/100 per arm, the paired difference with its 95% interval, and the breakdown **by position** and by how each hand ended, which is the only measurement that can see a seat (0277) and a hands-up number cannot. Runs in seconds. The level printed is that pool with default parameters, not the live fleet: read the difference, not the level |
-| Learner pacing | Two independent jobs: evidence refreshes run at the dashboard Autonomy panel's new-hands limit; champion search runs after each cooldown during season days 1–3, then at the same hand limit. Separate watermarks prevent unchanged evidence being refitted for every early search. Missing season state uses the late-season rule; search never waits for more hands than the dashboard limit. The panel shows the next job, hands left, season day and reason. Settings live in `learner.settings` and override `.env`; defaults are `LEARNER_MIN_NEW_HANDS=500`, 60-minute cooldown, no backoff and 6 h maximum search idle. `LEARNER_THREADS` is overridden by the dashboard compute profile (0187). Start champion search now with "Start next search early" (`POST /api/training/command {"command":"start"}`, picked up within 10 s). The +1 bb/100 fresh-deal promotion gate is unchanged (0244) |
-| Experiment mode | Dashboard → Learning → Experiment mode; `./target/release/review experiment` (stored mode, targets with live hands and their verdicts) and `review experiment TARGET` (estimate, gate, every hand with arm, decision ids and replay ids; 0291) |
-| Learner rejection ledger | `./target/release/review ledger` (which search transitions are barred as decided-dead and which are still accumulating evidence, for the live champion and evidence watermark; 0285) |
+| The fleet's own findings | The Autonomy panel's **WHAT THE FLEET FOUND** block, and `findings.v1` in the store. Every 30 minutes the head re-runs the instruments: the deep re-solve's per-decision loss by street and action (P0, over 0.02 bb/decision across 500+; every row also names how much of the class it saw — the count of decisions in the window — so a class too rare to read is not mistaken for a clean one, and the analyst's filter is rendered from `worth_auditing`'s own constants, so a class the filter never reaches prints `never queued` with its pot distribution against the 50 bb bar), the nemesis test (P1, over champion hands: the experiment arms' treatment hands are out of the ledger), **style drift** (P1: the share of hands whose first preflop decision was each action, the last day against the six before, flagged at 5 points and 5 standard errors; a several-fold drop in first-in raising after a calibration-rule change can go unnoticed for a day), and categories whose price is off (P2, a *measurement* — the rule is that a residual is not a loss: the number is realized minus the **uncorrected** predicted EV, over every settled decision, which is the population self-calibration is fitted from and not the audit's big spots). A new P0 finding is filed as a ticket by the fleet itself, labelled `found-by-fleet`, and **that ticket closes itself** when the class stops reproducing; at most three per pass. A question the scan could not measure is named, so an empty scan is not mistaken for a clean bill |
+| Where we actually lose chips | `./target/release/review audit-by [DAYS] [REPLAY_VERSION]` — the analyst's deep re-solve by street, by the action we took, and by the category the bot priced (the last by joining the audit to the decision record). This is the *decision* cost *given the prices live play used*: the deep re-solve takes the record's own parameters with the self-calibration corrections in them, so a pricing error the correction has absorbed cannot appear in the gap, and the rows are the analyst's big spots (pot >= 50 bb, a call of at least a quarter of the pot and 12.5 bb, or any all-in), never every decision. `review margins` is the *pricing* residual on every settled decision, and the two disagree: a mispriced action we were right to take costs nothing. A row's best-candidate column is a modal candidate, not a preference: most costed disagreements are another *size* of the action we took rather than a different action, so the table prints that split beside it. A gap is only comparable across records that carry the same inputs, so every verdict stores the replay version it graded: the header always states the mix (`version not recorded` rows are pre-column ones and are excluded by any filter), and `<days> 3` reads the records that carry the per-opponent corrections live play used |
+| Did a promotion start behaving differently? | `./target/release/review drift` — the analyst's post-promotion row (`analyst.drift`): today's champion's knobs re-solved at the newest big-spot replays' **own recorded prices** (the record's self-calibration, range and live fits) give the share of big-spot actions that flip and the mean/max deep gap in bb. It is the same price basis and budget as the `audit-by` gaps above, differing only in the policy graded — the champion's knobs here, the record's there (before that the re-solve ran on `params.v1` alone, which carries no live fits, so the flip rate over-attributed disagreement to the champion). The row names the basis tag, the budget, the population (replay ids, window, version mix, rows the version filter dropped) and where the prices came from, and the check re-measures rather than keeping a row whose tag is missing or older, so the "grows well past 4%" reading can never be taken from a number measured on another basis — a row written by an older build carries no tag at all and prints as due for a re-check |
+| Where the chips go against one opponent | `./target/release/review rival NAME... [since=DATE]` — the chips that moved between us and them (flow) and our whole net at their tables, each raw and with all-in luck removed, with 95% intervals and the hands a win would need to be proven; the flow split by how it ended, street, pot type, position and who raised last preflop; the biggest confrontations; and how we answer their flop c-bet against every other raiser's, by what we held. Use a `since=` window: all five of the biggest pots against the heaviest rival were played before banking capped stacks |
+| Is each component worth anything? | `./target/release/review wiring [N]` re-runs the newest N recorded big decisions with each live component switched off in turn and reports, per component, the share of decisions that move and the EV they give up per decision under the full model — plus how many records replay exactly as recorded. It stores the report the dashboard's **Wiring table** panel reads (`wiring.v1`); the analyst refreshes it daily, and only while the audit queue is empty, so live audits always win. Below it, **self-calibration's reach over every decision of the last 24 h**: per street, the share whose best action changes when each candidate's recorded bias is removed. The big decisions above barely see it, yet it decides the majority of preflop choices, mostly fold to call |
+| Six-max benchmark | `./target/release/bench6 4000` plays the champion against itself or `SIM_B='{...}' bench6 4000` against a challenger over **identical deals at a six-max table**, against a frozen archetype pool (station, maniac, nit, tag, lag) — no store, no live population, so the same command measures the same thing on any machine in any season. Reports bb/100 per arm, the paired difference with its 95% interval, and the breakdown **by position** and by how each hand ended, which is the only measurement that can see a seat and a hands-up number cannot. Runs in seconds. The level printed is that pool with default parameters, not the live fleet: read the difference, not the level |
+| Learner pacing | Two independent jobs: evidence refreshes run at the dashboard Autonomy panel's new-hands limit; champion search runs after each cooldown during season days 1–3, then at the same hand limit. Separate watermarks prevent unchanged evidence being refitted for every early search. Missing season state uses the late-season rule; search never waits for more hands than the dashboard limit. The panel shows the next job, hands left, season day and reason. Settings live in `learner.settings` and override `.env`; defaults are `LEARNER_MIN_NEW_HANDS=500`, 60-minute cooldown, no backoff and 6 h maximum search idle. `LEARNER_THREADS` is overridden by the dashboard compute profile. Start champion search now with "Start next search early" (`POST /api/training/command {"command":"start"}`, picked up within 10 s). The +1 bb/100 fresh-deal promotion gate is unchanged |
+| Experiment mode | Dashboard → Learning → Experiment mode; `./target/release/review experiment` (stored mode, targets with live hands and their verdicts) and `review experiment TARGET` (estimate, gate, every hand with arm, decision ids and replay ids) |
+| Learner rejection ledger | `./target/release/review ledger` (which search transitions are barred as decided-dead and which are still accumulating evidence, for the live champion and evidence watermark) |
 
 ## Build and test
 
 ```
-scripts/check.sh full                                  # anti-regression gate: rustfmt, clippy -D warnings, cargo-deny, workspace tests, tsc (~20 s after a one-file edit; each step timed, over 120 s warned, 0334)
+scripts/check.sh full                                  # anti-regression gate: rustfmt, clippy -D warnings, cargo-deny, workspace tests, tsc (~20 s after a one-file edit; each step timed, over 120 s warned)
 scripts/check.sh deep                                  # the same with property/fuzz tests at 100k cases
 scripts/release.sh                                     # what the fleet runs (never plain cargo build into target/release: it would swap in untested)
-python3 scripts/test.py                                # every workspace test, built with the gate profile and run in parallel (0226)
+python3 scripts/test.py                                # every workspace test, built with the gate profile and run in parallel
 python3 scripts/test.py -p sv10-policy -- decide       # one crate, tests whose name contains "decide"
 CARGO_TARGET_DIR=target/dev cargo test --profile gate -p sv10-core --test characterization   # the golden snapshot alone
 CARGO_TARGET_DIR=target/dev cargo clippy --release --workspace --all-targets   # zero warnings (workspace lints)
@@ -65,10 +74,10 @@ cd web && npm run build                                # tsc 7 (strict, noUnused
 cd web && npx playwright test                          # browser tests against scripts/web-test-server.sh
 ```
 
-The release profile has no LTO (256 codegen units, incremental; 0302): thin LTO re-optimized the whole
+The release profile has no LTO (256 codegen units, incremental): thin LTO re-optimized the whole
 program once per binary, 110 of the 135 s of a one-file release, and the reference `sim paired 48 1200`
 runs 32 s either way with bit-identical results. Tests build with the `gate` profile: the release
-settings with `sv10-bot` at opt-level 1 (0303: its one-file test rebuild 27 s → 6 s, the suite no slower;
+settings with `sv10-bot` at opt-level 1 (its one-file test rebuild 27 s → 6 s, the suite no slower;
 every other crate, including the golden snapshot's poker math, stays at opt-level 3). Compilers use
 all 8 threads at idle CPU priority (`nice 19` + `SCHED_IDLE`); live decision p95 during a release stayed
 at 301 ms (381 ms the hour before). Measured 2026-09-27 on the i7-4770K: one-file release 8 m 36 s →
@@ -81,9 +90,9 @@ shipped binaries carry the commit id and build in `target/stage`) and runs them 
 Toolchain: Rust 1.98.1 pinned in `rust-toolchain.toml`, Node 26, React 19.3, Vite 8, TypeScript 7.
 `scripts/web-test-server.sh` runs the dev `sv10-bot` in a throwaway root on port 5099. It uses a fake
 key, keeps the bots stopped and points every endpoint at a closed local port, so the tests never touch
-openpoker.ai or the live databases. 72 browser tests across 12 spec files, all passing (0082).
+openpoker.ai or the live databases. 72 browser tests across 12 spec files, all passing.
 
-Portable and offline builds (0064):
+Portable and offline builds:
 
 ```
 scripts/portable.sh        # x86-64-v2 + v3 binaries, scripts, dashboard, docs -> target/dist/*.tar.gz (32 MB, needs glibc >= MANIFEST)
@@ -104,27 +113,30 @@ scan (refuses `.env` files and staged lines containing any `.env` value), and wh
 rustfmt, clippy `-D warnings`, the golden snapshot and the property tests; tsc when `web/src` is staged.
 `release.sh` runs `check.sh lint` (rustfmt, clippy, cargo-deny) alongside its builds.
 
-Property and fuzz tests (0110) print a seed on failure; `SV10_PROP_CASES` scales them:
+Property and fuzz tests print a seed on failure; `SV10_PROP_CASES` scales them:
 `crates/apps/core/tests/properties.rs` (engine chip conservation and zero-sum settlement; policy decisions
 legal and finite from random reachable states), `sv10-venue` `corrupted_frame_streams_never_panic`
 (random corruptions of a captured frame stream through the live dispatch and turn situations),
 `sv10-bot` `legalize_only_returns_offered_actions`. Dependency policy: `deny.toml` (permissive
 licenses, crates.io only, no wildcards).
 
-## Benchmarks (pause the learner first: `pkill -STOP -f target/release/learner`, resume with `-CONT`)
+## Benchmarks
+
+Pause the learner first, so it does not compete for the CPU: `pkill -STOP -f target/release/learner`,
+and resume it with `-CONT` afterwards.
 
 | Benchmark | Command | 2026-09-15 reference (i7-4770K, fleet stopped) |
 |---|---|---|
 | Micro | `./target/release/probe --bench` (the native build) | eval 24 ns; decide 3-way flop 0.98 ms; cold flop strengths 2.40 ms |
 | Instruction levels | `probe --bench` from `target/dist-v3/release` and `target/dist-v2/release` | best of 3 with the fleet running: native eval 24.0 ns / decide 0.93 ms / cold flop 11.50 ms; v3 23.9 / 0.94 / 11.64; v2 24.7 / 0.96 / 12.04; paired sim identical on all three |
-| Sampler (0069) | `sim paired 24 1000`, learner paused, 5 interleaved runs | median 14.46 → 13.68 s after the guided branch-free combo sampler; −2.41 bb/100 unchanged; MLP predict 2.1 µs in `probe --bench` |
-| Continuation (0070) | same as above | median 13.39 → 11.79 s after per-rung preflop combo scores and presorted order; result unchanged |
+| Sampler | `sim paired 24 1000`, learner paused, 5 interleaved runs | median 14.46 → 13.68 s after the guided branch-free combo sampler; −2.41 bb/100 unchanged; MLP predict 2.1 µs in `probe --bench` |
+| Continuation | same as above | median 13.39 → 11.79 s after per-rung preflop combo scores and presorted order; result unchanged |
 | Tables path (2026-09-16) | `sim paired 8 400` with the live pool, run from outside the repo | 30 s → 2 s: `tables_dir` now falls back to the executable's ancestors, where it used to silently recompute board strengths |
-| Paired throughput | `SIM_B='{"call_margin":0.005}' ./target/release/sim paired 12 600` | 4 s with tables (−1.13 bb/100, 95% −9.40..+7.15 since exact heads-up river deals, 0165, 2026-09-23; −0.20, −7.83..+7.43 after the 0123 chance correction; before it +1.02, −7.78..+9.81); result must be identical across speed-only changes |
+| Paired throughput | `SIM_B='{"call_margin":0.005}' ./target/release/sim paired 12 600` | 4 s with tables (−1.13 bb/100, 95% −9.40..+7.15 since exact heads-up river deals, 2026-09-23; −0.20, −7.83..+7.43 after the chance correction; before it +1.02, −7.78..+9.81); result must be identical across speed-only changes |
 | Cold start | `./target/release/probe --bench` (first lines) | preflop class table and top-range ladder 0 ms (compiled in; were 278 + 265 ms of 8 threads per process), hardware detect 2 ms; `probe` run 0.53 → 0.03 s |
 | Board tables | `./target/release/tables build` / `tables check` | 31 s build; flop 9.3 MB, turn 87.3 MB in `artifacts/tables` |
 
-### Samples per second (`bench`, 0335)
+### Samples per second (`bench`)
 
 `bench [learner|live|micro|all] [--repeat N] [--profile] [--allocs] [--threads N]` measures the work
 the fleet does in one process, each suite printing one JSON line per repeat with a checksum, so a
@@ -150,9 +162,9 @@ blocked on this host (`perf_event_paranoid` 3, no root); `--profile` samples pro
 
 Conditions: the fleet playing, the learner **running** for `learner`/`micro` and **paused** for `live`
 (the latency suite is the runbook convention), ten paired repeats, medians. The reference column is
-the build before the 0336 deals/sampler pass; `artifacts/bench-fixture.json` is the frozen workload.
+the build before the deals/sampler pass; `artifacts/bench-fixture.json` is the frozen workload.
 
-| Suite | Metric | Reference | After 0336 | Paired ratio (95%) |
+| Suite | Metric | Reference | After | Paired ratio (95%) |
 |---|---|---|---|---|
 | learner | table runs / CPU-s | 0.850 | 0.924 | **1.089** (1.084–1.094) |
 | learner | table runs / s | 4.51 | 4.94 | **1.079** (1.012–1.145) |
@@ -183,11 +195,11 @@ is significant, so the effect is real and the interval is contention noise. The 
 
 | Task | Command / action |
 |---|---|
-| Manual backup | automatic hourly into `artifacts/backups/` (sealed with `.sha256`; `VACUUM INTO` on its own read-only connection, so bots never wait on it, 0229); the newest `SVANBOT_HOURLY_BACKUPS` (default 3, or 2 when mirrored; ~580 MB each) and `SVANBOT_DAILY_BACKUPS` (default 1) dailies are kept on the SSD, and anything older is in the nightly archive on the second disk; an hourly copy to that disk (`<archive>/hourly/`, verified against its seal) is **off by default**: set `SVANBOT_MIRROR_HOURLY_BACKUPS=24` to turn it on, which also drops the SSD to 2 hourlies; older points live in the nightly archive (`archive list`) (0216) |
+| Manual backup | automatic hourly into `artifacts/backups/` (sealed with `.sha256`; `VACUUM INTO` on its own read-only connection, so bots never wait on it); the newest `SVANBOT_HOURLY_BACKUPS` (default 3, or 2 when mirrored; ~580 MB each) and `SVANBOT_DAILY_BACKUPS` (default 1) dailies are kept on the SSD, and anything older is in the nightly archive on the second disk; an hourly copy to that disk (`<archive>/hourly/`, verified against its seal) is **off by default**: set `SVANBOT_MIRROR_HOURLY_BACKUPS=24` to turn it on, which also drops the SSD to 2 hourlies; older points live in the nightly archive (`archive list`) |
 | Verify a backup | `sha256sum -c <(echo "$(cat F.sha256)  F")` and `sqlite3 F 'pragma quick_check'` |
-| Second-disk mirror fails (0292) | The copy is checked under its temporary name *before* it takes the real one, so a rejection leaves the hour's previous copy in place and removes only this attempt's `.tmp` pair; leftovers from a run killed by a hot swap are cleared at the next mirror. The failure is loud and non-fatal: `error!` in `artifacts/logs/svanbot10.log`, a `fleet` error (newest one printed by `scripts/status.sh`), and `training.storage.mirror` = `{state: failed, dir, error}` on the dashboard. The message names the failing check (page-cache drop, read-back, hash vs seal, structural); `Structure needs cleaning (os error 117)` is the kernel's EUCLEAN — the second disk needs `fsck` with it unmounted, which is an operator action |
+| Second-disk mirror fails | The copy is checked under its temporary name *before* it takes the real one, so a rejection leaves the hour's previous copy in place and removes only this attempt's `.tmp` pair; leftovers from a run killed by a hot swap are cleared at the next mirror. The failure is loud and non-fatal: `error!` in `artifacts/logs/svanbot10.log`, a `fleet` error (newest one printed by `scripts/status.sh`), and `training.storage.mirror` = `{state: failed, dir, error}` on the dashboard. The message names the failing check (page-cache drop, read-back, hash vs seal, structural); `Structure needs cleaning (os error 117)` is the kernel's EUCLEAN — the second disk needs `fsck` with it unmounted, which is an operator action |
 | Restore | automatic on startup when a database fails its check; manual: stop, copy a sealed backup over `artifacts/svanbot10.db`, start |
-| Compressed columns (0229) | automatic: new decision details, replay/audit records and history exports are stored packed, and the fleet packs older rows in the background (then VACUUMs `history.db`). `./target/release/review storage` shows rows still text, free pages and the last pass; `review decisions BOT HAND` and `review export HAND` print the JSON (`sqlite3` shows blobs). `./target/release/archive compact [--dir DIR] [--vacuum-main]` packs everything now (`--vacuum-main` only with the fleet stopped; it checks no hand rowid moved); `archive unpack` (fleet stopped) converts back to text before installing a build from before 0229 |
+| Compressed columns | automatic: new decision details, replay/audit records and history exports are stored packed, and the fleet packs older rows in the background (then VACUUMs `history.db`). `./target/release/review storage` shows rows still text, free pages and the last pass; `review decisions BOT HAND` and `review export HAND` print the JSON (`sqlite3` shows blobs). `./target/release/archive compact [--dir DIR] [--vacuum-main]` packs everything now (`--vacuum-main` only with the fleet stopped; it checks no hand rowid moved); `archive unpack` (fleet stopped) converts back to text before installing a build that predates the packed columns |
 | Archive (second disk) | `svanbot10-archive.timer` runs `./target/release/archive run` at 04:30 into `SVANBOT_ARCHIVE_DIR` (`.env`; here `/backup-disk/svanbot10`, default `artifacts/archive`): weekly full, else a daily differential; the month's archive; keeps 14 daily / 8 weekly / 12 monthly. Install with `scripts/archive-timer.sh` |
 | Inspect archives | `./target/release/archive list`; `archive verify --deep` (all) or `archive verify weekly/2026-W38` |
 | Restore from the archive | `./target/release/archive restore daily/YYYY-MM-DD --to /tmp/restore` (never into `artifacts/`); then `scripts/stop.sh`, copy `svanbot10.db` and `history.db` over `artifacts/` (remove their `-wal`/`-shm`), `scripts/start.sh`. The code: `git clone /tmp/restore/repo.bundle` from a weekly or monthly |
@@ -195,18 +207,18 @@ is significant, so the effect is real and the interval is contention noise. The 
 | Quarantined files | `artifacts/quarantine/` (damaged databases moved aside, never deleted automatically) |
 | Import a PHH tree / measure a source | `./target/release/ingest phh <dir> <source> --dry-run`; `SVANBOT10_ROOT=<copy of artifacts parent> ./target/release/ingest neural-ab <source> 3` |
 | Import archived frames | `./target/release/ingest archive <dir> --dry-run`, then without `--dry-run` (idempotent, resumable) |
-| Refit range model | `./target/release/calibrate 20000` (`CALIBRATE_CORPUS=1` to measure the corpus; `CALIBRATE_START=live CALIBRATE_FREEZE=a,b` starts from the live fitted set with fields held, a dry run for shape-term A/B tests; `CALIBRATE_LINES=1` reports range calibration per postflop line type; every fit logs the held-out likelihood split by the shown player's largest bet — under 1.5x, 1.5–4x, 4x+ pot — so a size term shows where it helps, 0235) |
+| Refit range model | `./target/release/calibrate 20000` (`CALIBRATE_CORPUS=1` to measure the corpus; `CALIBRATE_START=live CALIBRATE_FREEZE=a,b` starts from the live fitted set with fields held, a dry run for shape-term A/B tests; `CALIBRATE_LINES=1` reports range calibration per postflop line type; every fit logs the held-out likelihood split by the shown player's largest bet — under 1.5x, 1.5–4x, 4x+ pot — so a size term shows where it helps) |
 
-## Cleanliness (0116)
+## Cleanliness
 
 | Task | Command |
 |---|---|
 | Report | `scripts/clean.sh`: unknown entries in `artifacts/` (a copied `.env` is named, never removed: it holds the keys), non-rotation files in `artifacts/backups/`, untracked files, oldest rotated logs, superseded build artifacts, leaked test and release scratch dirs, session screenshots, disk |
-| Apply safe actions | `scripts/clean.sh --apply` (also after every nightly archive): remove a whole build profile no project command uses (`target/dev/debug`, made only by a bare `cargo build`/`cargo test`; 5.7 GB on 2026-09-27) once a day passes without a write to it, and build variants nothing has read for two days (`scripts/prune-builds.py`; cargo never deletes a replaced `<crate>-<hash>`, and one profile held 18 copies of the bot crate — the first run freed 10.6 GB of 21), `target/tmp` and `target/udeps`, `sv10-*` scratch dirs in `$TMPDIR` and `target/.web-stage-*` older than an hour (`/tmp` is RAM: 11,033 leaked test dirs held 2.4 GB), screenshots in `artifacts/` older than a day; prune worktrees, zstd the oldest rotated log, drop `target/dev` under 10 GB free. Every build-artifact removal waits for the guard that skips it while cargo or rustc runs, and a run that leaves `target/dev` alone because of it says so in the log (0360). Never touches databases, backups, tables, `.env` files or `target/release`. `scripts/test.py` gives each run its own `TMPDIR` and removes it, so test runs no longer leak (0329) |
+| Apply safe actions | `scripts/clean.sh --apply` (also after every nightly archive): remove a whole build profile no project command uses (`target/dev/debug`, made only by a bare `cargo build`/`cargo test`; 5.7 GB on 2026-09-27) once a day passes without a write to it, and build variants nothing has read for two days (`scripts/prune-builds.py`; cargo never deletes a replaced `<crate>-<hash>`, and one profile held 18 copies of the bot crate — the first run freed 10.6 GB of 21), `target/tmp` and `target/udeps`, `sv10-*` scratch dirs in `$TMPDIR` and `target/.web-stage-*` older than an hour (`/tmp` is RAM: 11,033 leaked test dirs held 2.4 GB), screenshots in `artifacts/` older than a day; prune worktrees, zstd the oldest rotated log, drop `target/dev` under 10 GB free. Every build-artifact removal waits for the guard that skips it while cargo or rustc runs, and a run that leaves `target/dev` alone because of it says so in the log. Never touches databases, backups, tables, `.env` files or `target/release`. `scripts/test.py` gives each run its own `TMPDIR` and removes it, so test runs no longer leak |
 | Unused dependencies | `RUSTFLAGS="-C target-cpu=native -W unused-crate-dependencies" CARGO_TARGET_DIR=target/udeps cargo check --release --workspace --lib` (bins and tests may still need a flagged crate: verify with `--all-targets`) |
 | One-off archives | `/backup-disk/svanbot10/one-off/<date>-<what>.tar.zst` with `.MANIFEST.txt` and `.sha256` for anything that does not belong in the nightly archive |
 
-## Linux settings (0115)
+## Linux settings
 
 | Setting | Where | Why |
 |---|---|---|
@@ -215,8 +227,8 @@ is significant, so the effect is real and the interval is contention noise. The 
 | Pressure (PSI) | `scripts/status.sh` last line | re-tune only if cpu some avg60 > ~20% or io full > ~10% sustained |
 | THP `always`, swappiness 5, schedutil, mq-deadline | system defaults, left as is | measured sufficient; sched_ext is not in the Debian kernel |
 
-**Host checklist (0232, verified; the dashboard's System view shows each item as the Host check
-panel, 0241):**
+**Host checklist (verified; the dashboard's System view shows each item as the Host check
+panel):**
 
 1. Microcode: `sudo apt install intel-microcode` (enable `non-free-firmware` in the APT sources), then
    reboot; `grep -m1 microcode /proc/cpuinfo` should show `0x28` on the i7-4770K. No BIOS flash is
@@ -224,9 +236,9 @@ panel, 0241):**
 2. SSD TRIM: `systemctl is-enabled fstrim.timer`; if not, `sudo systemctl enable --now fstrim.timer`
    (the Kingston A400 is DRAM-less).
 3. Archive disk: `SVANBOT_ARCHIVE_DIR=/backup-disk/svanbot10` in `.env`, so the nightly archives go to the HDD
-   (0229; the hourly backup mirror is off by default).
+   (the hourly backup mirror is off by default).
 4. Leave alone: THP `always`, intel_pstate, SQLite `synchronous=FULL` on the live database, and swap
-   as the host already has it configured (0039).
+   as the host already has it configured.
 5. Optional: the Radeon HD 5870 has no compute use (no Vulkan or ROCm for TeraScale 2). Removing it
    and using the i7's HD 4600 outputs saves roughly 20–30 W at idle.
 
@@ -238,7 +250,7 @@ panel, 0241):**
 | Corrupt the newest backup too | that backup skipped (hash mismatch), an older one restored | Same test (a rotted newer backup is skipped) |
 | No backup at all | file quarantined, database starts empty | Every build: `damaged_database_without_backup_is_quarantined_and_starts_empty` |
 | Kill `ingest` mid-run, re-run | resumes from the batch watermark, no duplicates (`verify_corpus` 0 mismatches) | 2026-09-15 on a scratch root: killed after batch 1 (1,000 rows, watermark 1000); re-run added 9,000, 10,000 distinct rows, 0 mismatches |
-| Hot-swap release while seated | fleet exits 75 when no bot is mid-turn, supervisor restarts at once, seats resync (a hand in progress at that moment is saved and settled by the new process from its resync replay; 0315); learner swaps between steps (0334) | Run live: every bot connected again within the server's 120 s grace window |
+| Hot-swap release while seated | fleet exits 75 when no bot is mid-turn, supervisor restarts at once, seats resync (a hand in progress at that moment is saved and settled by the new process from its resync replay); learner swaps between steps | Run live: every bot connected again within the server's 120 s grace window |
 | Restore the monthly archive into a scratch dir | the databases rebuilt, hashes and row counts verified, `repo.bundle` clones | Run by hand into a scratch dir: `archive restore monthly/YYYY-MM` completed with every hash and row count verified and the bundle cloned; daily differentials: every build, `sv10-store` test `weekly_daily_monthly_restore_and_prune` |
 | Revoke a bot key | that bot stops with `auth_failed` (mode `error`), no reconnect loop; other bots continue | Not run (needs a real key revoked); code path `SessionEnd::Fatal` |
 | Seated, traffic but no hands for 10 min | watchdog logs a warning, leaves, re-queues | Not run deliberately (needs a stuck live table); code in `client::mod` |
@@ -261,7 +273,7 @@ Before lint or build, the release script resolves the latest installed identity 
 `artifacts/release-snapshots/<commit>/`. The snapshot contains every regular executable in
 `target/release`, the complete `web/dist` tree, the installed-commit marker, and `SHA256SUMS`; it
 becomes visible only after every copy and hash check succeeds. Only the newest `SV10_KEEP_SNAPSHOTS`
-(default 5, ~1.3 GB) are kept (older ones archived on 2026-09-24 are in `/backup-disk/svanbot10/release-snapshots`): each new snapshot prunes the oldest, never itself (0215; 26 had piled up
+(default 5, ~1.3 GB) are kept (older ones archived on 2026-09-24 are in `/backup-disk/svanbot10/release-snapshots`): each new snapshot prunes the oldest, never itself (26 had piled up
 when the disk filled on 2026-09-24). An existing snapshot is verified and
 kept, never overwritten. On the one-time transition from legacy two-field `--version` output, the
 marker is adopted only when the latest valid release record, the inode of a running installed bot,
@@ -274,7 +286,7 @@ at once on 75 (5 s under supervisors started before this change); bots reconnect
 before models update, so a swap loses nothing that startup replay and history import cannot
 restore. Drill: `grep -n "hot swap\|swapping" artifacts/logs/svanbot10.log` after a release.
 
-### Dashboard updates (0132, 0236, 0239)
+### Dashboard updates
 
 The Releases & updates widget replaces SSH for routine updates: the installed commit (from
 `releases.log`), the live build (`/api/health`), what the update branch on GitHub holds (checked every
@@ -287,12 +299,12 @@ the time left and the bots still playing, then the hot swap per process; a reloa
 run up again. On failure it names the stage; the fleet keeps playing the installed build and the
 checkout returns to it.
 
-**Roll back to a saved build** (0239, superseding 0132's "terminal only"): every update snapshots the
+**Roll back to a saved build**: every update snapshots the
 build it replaces; the widget lists them, and a confirmed **Roll back** runs `scripts/update.sh
 --rollback <commit>` → `scripts/rollback.sh <commit>` — the same hash-verified, atomic restore as the
 terminal, with the same lock and progress bar, and play continues. Rolling back never moves the
-checkout, so the next Update offers the newer commits again. A build from before 0229 cannot read
-the packed columns: the widget marks it "reads only uncompressed data" and `rollback.sh` refuses it
+checkout, so the next Update offers the newer commits again. A build that predates the packed columns cannot read
+them: the widget marks it "reads only uncompressed data" and `rollback.sh` refuses it
 (it compares the build's `DATA_FORMAT` with `artifacts/data-format`); to go back that far, stop the
 fleet, run `./target/release/archive unpack`, then roll back.
 
@@ -329,12 +341,12 @@ commit. This restores code and the dashboard only. If SQLite integrity failed, s
 the separately verified `archive restore` procedure; never combine database restoration with a live
 code rollback.
 
-## Split fleet (0128, off by default)
+## Split fleet (off by default)
 
 `SVANBOT_FLEET=split` (in `.env`, the environment wins; it has been run live and rolled back to `all`, because the dashboard sees workers only through 5 s heartbeats and gets none of their realtime events) makes `scripts/start.sh` run a head process plus one worker per bot from `.env`
 instead of the single all-in-one fleet. The head serves the dashboard (worker bots appear with
 `remote: true`), runs every background task and owns the canonical models; workers play, write
-hand rows, heartbeat every 5 s and obey operator commands relayed through `bot.want.<name>`. Workers also play with everything live (0167): the params watcher (promotions, fold and river-jam shifts, response and range models), their own season clock, self-calibration applied locally (only the head writes the table), and the head's opponent-model checkpoint reloaded within 30 s of each save. `scripts/restart-bot.sh` restarts the head and every worker.
+hand rows, heartbeat every 5 s and obey operator commands relayed through `bot.want.<name>`. Workers also play with everything live: the params watcher (promotions, fold and river-jam shifts, response and range models), their own season clock, self-calibration applied locally (only the head writes the table), and the head's opponent-model checkpoint reloaded within 30 s of each save. `scripts/restart-bot.sh` restarts the head and every worker.
 Switching modes, like any fleet restart, is an operator `scripts/stop.sh` + `scripts/start.sh`
 (the permission classifier blocks agent restarts of the live fleet). Rollback is the same two
 commands without the env var. Hot-swap releases work per process: each watches the binary inode

@@ -11,6 +11,11 @@ Generated-by: <tool>/<model>
 
 ## Motivation
 
+Closes #
+
+<!-- Put the issue number after `Closes #` so the issue closes when this merges; delete the
+     line if there is no issue. -->
+
 <!-- The problem, and how you know it is one: the failing test, the measurement, the log line, the
      issue this closes. A change with no motivation is a change nobody can review. -->
 

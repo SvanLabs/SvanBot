@@ -4,6 +4,19 @@ If you are an AI agent working in this repository, read this file first. It is t
 what the project is, how to build it, and the rules that a change has to satisfy. The full standard
 is `CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
 
+## Your loop, start to finish
+
+1. **Read the issue, then the code it names.** Issues here say where the problem is, why it matters
+   and the fix they expect. If yours does not, say what is missing before you guess.
+2. **Find the layer** the change belongs in (section 3). One change, one layer, one pull request.
+3. **Write the failing test first** when it is a bug. Run just that test while you work:
+   `python3 scripts/test.py <filter>`.
+4. **Make the change**, and update every document that names what you changed (section 5).
+5. **Run `scripts/check.sh full`.** Green here is green in CI.
+6. **Commit in the shape `CONTRIBUTING.md` describes** — `<area>: <what it does>`, a body that says
+   why, `Closes #<issue>` in its own paragraph, and `Generated-by:` last (section 0).
+7. **Open the pull request** from the template, with the same `Generated-by:` line in the body.
+
 ## 0. Every artifact here is machine-generated, and says so
 
 Code, issues, pull requests, review comments and commit messages in this repository are produced by

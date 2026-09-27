@@ -1,5 +1,9 @@
 # Dashboard API contract
 
+> **Read this when** you touch the dashboard API or anything under `web/`.
+> **Code:** `crates/apps/bot/src/api`, `web/src` (the contract is `web/src/types.ts`).
+> **Related:** [`docs/GUIDE.md`](GUIDE.md) section 10 for the panels as an operator sees them. · [All docs](README.md)
+
 The dashboard is an operator surface. It reports observed state and does not treat rank, score movement, or short-run results as proof that the poker strategy improved.
 
 ## Season leaderboard
@@ -25,7 +29,7 @@ Missing, malformed, or not-yet-measurable values remain JSON `null`; they are ne
 
 The server caches refresh attempts for 60 seconds. A failed refresh does not advance movement history or `updated`; it preserves the last successful entries and season while setting `stale:true`. An initial failure returns an empty entry list with `updated:null`.
 
-## Errors and stale data (0222)
+## Errors and stale data
 
 - A request the server cannot answer returns a non-2xx status with `{"detail": "<reason>"}`: 404 for an
   unknown bot slot, hand or player, 500 when the store cannot be read or the handler failed, 401 without
@@ -35,26 +39,26 @@ The server caches refresh attempts for 60 seconds. A failed refresh does not adv
   keeps the last good answer, reports the latest error and its age, and panels render `StaleNote`
   ("Update failed (...); showing data from HH:MM") while polls fail.
 - Shared formatting lives in `web/src/format.ts` (`fmt`, `sgn`, `pct`, `SUITS`).
-- Views (0237): a tab bar (Live, Opponents, Learning, Results, System, All; `widgets.tsx` `VIEWS`)
+- Views: a tab bar (Live, Opponents, Learning, Results, System, All; `widgets.tsx` `VIEWS`)
   shows a subset of the widget board in the user's own arrangement; the page opens on Live
   (2,507 px tall on a 1440-wide screen against 6,743 for All), the choice is remembered in the
   browser, arrow keys move between tabs, and "Arrange widgets" always shows the whole board. Views that
   leave a column empty get their own grid template; at phone width everything stacks.
-- Web modules (0222): `main.tsx` holds the app shell and routing; `ui.tsx` the shared primitives
+- Web modules: `main.tsx` holds the app shell and routing; `ui.tsx` the shared primitives
   (formatters, seat read, table themes, card, panel, empty state); `table.tsx` the live table, TV mode
   and decision strip; `training.tsx` the season, performance and learner panels; `panels.tsx` replay,
   the starting-hand guide and the opponent profile. Each opponent seat's `read` carries `size_tell`
-  when a per-opponent river sizing tell is installed (0223), shown in the seat tooltip.
+  when a per-opponent river sizing tell is installed, shown in the seat tooltip.
 
-## Per-opponent reads (`GET /api/intel`, 0222)
+## Per-opponent reads (`GET /api/intel`)
 
 `{fits: [{id: "fold"|"response"|"sizing", title, reads, stored, active, evidence: {gain_mnats,
 half_width_mnats, n} | null, installed}], corrected_opponents, opponents: [{name, hands, fold_offset,
-response_ratio, size_tell}]}`: the three per-opponent fits (0214, 0210, 0223) with the held-out evidence
+response_ratio, size_tell}]}`: the three per-opponent fits with the held-out evidence
 of the stored fit and how many opponents each corrects in live play right now, and the 25 most-observed
 opponents with any correction. A store read error answers 500. Panel: `web/src/intel.tsx`.
 
-## Releases and one-click updates (0236)
+## Releases and one-click updates
 
 - `GET /api/releases`: `installed` (commit, time, subject from `artifacts/releases.log`), `head`,
   `behind` (commits an update would install: `installed..<remote>/<branch>` once the branch has been
@@ -77,7 +81,7 @@ opponents with any correction. A store read error answers 500. Panel: `web/src/i
   (`artifacts/release-timings.json`), else defaults for the i7-4770K. The swap is confirmed by each
   process reporting its build: this process (`fleet`), the learner and analyst status, worker heartbeats.
 - `GET /api/releases/log`: the 64 KB tail of `artifacts/release.log` (kept for tools).
-- `GET /api/host` (0241): `{checks: [{key, label, value, status: ok|warn|info, advice}], checked_at}` —
+- `GET /api/host`: `{checks: [{key, label, value, status: ok|warn|info, advice}], checked_at}` —
   CPU and AVX2, microcode (judged against 0x28 on the i7-4770K only), frequency scaling, transparent
   huge pages, memory and swap, free space on the databases' disk and the archive disk (or a warning
   when the archive shares the SSD), `fstrim.timer`, kernel. Read fresh per request from `/proc`,

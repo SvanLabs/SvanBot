@@ -1,5 +1,9 @@
 # SPEC — openpoker.ai protocol as implemented
 
+> **Read this when** you touch the WebSocket client or the tracker.
+> **Code:** `crates/apps/bot/src/client`, `crates/libs/venue`.
+> **Related:** [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for where the protocol sits in the decision path. · [All docs](README.md)
+
 The WebSocket V2 protocol as `sv10-bot` (`crates/apps/bot/src/client/`) and `sv10-venue`
 (`crates/libs/venue/src/tracker/`, `statehash.rs`) implement it, checked against
 `https://docs.openpoker.ai/llms-full.txt` **revision 2026-09-02**. The spec controls; re-fetch it
@@ -14,7 +18,7 @@ before protocol work and update this file when either side changes.
    with the pair we last sent is skipped, while the same token may be reused by a different hand.
    Within one hand, a sequenced authority older than the newest sent turn is stale. A rejected action
    reopens its turn. An action the writer could not queue is not recorded as sent, persisted as a
-   decision/audit, or retained for calibration; reconnect then resyncs the turn (0089, 0090).
+   decision/audit, or retained for calibration; reconnect then resyncs the turn.
 3. Raise `amount` is the raise-to total, clamped into `[min, max]`; a raise at `max` is sent as
    `all_in` when offered. Calls and checks send no amount.
 4. Branch on `code` (in `error` and `action_rejected`), never on `message`/`reason`.
@@ -48,7 +52,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 | Cold: `GET /api/me/active-game` first; if playing, resync with `last_table_seq: 0`; else `join_lobby` once | Before each session the client calls `/me/active-game`; a returned table is resynced from 0 |
 | `already_seated` race: use its `table_id`/`seat`, stop joining, resync | Uses `table_id` (or `details.table_id`, or `/me/active-game`) and resyncs from 0 |
 | `resync_response`: apply `replayed_events` in order, then install `snapshot`; an acting player's snapshot carries `hero.turn_token` | `apply_event` for replayed events, then the snapshot; a token in the snapshot re-enables acting before the original deadline |
-| Recovery loop guard: only a *player* `resync_response` ends recovery; `role: "spectator"` means the seat is gone (past the 120 s window) | A spectator resync lets the table go and rejoins the lobby (`recover::seat_gone`, 0245); before, the bot installed the snapshot and waited for turns that never came |
+| Recovery loop guard: only a *player* `resync_response` ends recovery; `role: "spectator"` means the seat is gone (past the 120 s window) | A spectator resync lets the table go and rejoins the lobby (`recover::seat_gone`); before, the bot installed the snapshot and waited for turns that never came |
 
 ## Client → server
 
@@ -83,7 +87,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 | `chips_skimmed` | `excess`, `new_stack`, `new_balance` | Logged (cap disabled in production) |
 | `player_joined` / `player_left` | `seat`, `name`, `stack` / `reason` | `player_joined` ignored (the next `table_state` carries the seat); our own `player_left` resets the tracker and ends a leave or top-up |
 | `table_closed` | `reason` | Rejoin the lobby |
-| `season_ended` | `season_number`, `next_season_number` | Rejoin the lobby (auto-registers); season rollover checks in 0029/0076 |
+| `season_ended` | `season_number`, `next_season_number` | Rejoin the lobby (auto-registers) and run the season-rollover checks |
 | `error` | `code`, `message` | `auth_failed` fatal; `already_seated` resync; `already_in_lobby` ignored; `not_at_table` clean exit after an intended leave; `insufficient_funds`, `not_registered_for_season`, `rate_limited`, `flood_warning`, `flood_kick` logged; `rate_limited` with "Too many connection attempts for this play pool" (undocumented; seen 2026-09-22) ends the session and reconnects with a 5 s → 60 s doubling backoff |
 
 ## Envelope and state hash
@@ -94,7 +98,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 - `state_hash` (`statehash::verify`): drop top-level `ts`, `table_seq`, `hand_seq`, `state_hash`;
   compact JSON with sorted keys and `ensure_ascii` escaping; SHA-256; `sha256:` prefix. Matched
   5,248/5,248 archived frames; counts shown per bot on the dashboard.
-- `ts` (observed on every server frame; the timing tells rely on it, 0234): RFC 3339 with
+- `ts` (observed on every server frame; the timing tells rely on it): RFC 3339 with
   microseconds, e.g. `2026-09-14T09:46:52.751076+00:00`, parsed by the tracker's own
   `rfc3339_ms`. A frame without a readable `ts` records no think time. Excluded from the state hash
   as above.
@@ -117,7 +121,7 @@ Action 45 s in public play (auto-fold, or auto-check when fold is illegal; a dis
 it); reconnect 120 s; 3 consecutive missed hands removes the player. Our decisions are fast,
 with an 8 s hard cap (over stored decisions: median 1.4 ms, mean 2.9 ms).
 
-Observed pacing, not stated in the spec (0234, from `ts` on live frames):
+Observed pacing, not stated in the spec (from `ts` on live frames):
 - an action that follows another action is broadcast about 3.0 s after it;
 - the first actor after new community cards shows 10–20 ms.
 
@@ -127,10 +131,10 @@ the calibrate gate.
 
 ## Deviations and open items
 
-- Auto-rebuy is on (0088). It only credits the fixed 1,500 chips to the off-table balance when a
+- Auto-rebuy is on. It only credits the fixed 1,500 chips to the off-table balance when a
   bust leaves it under the 1,000 minimum; buy-in size (`join_lobby`) and top-ups stay ours. Observed
   live: one bust was refilled with no REST call, while a later one got `auto_rebuy_scheduled` as our
   REST rebuy raced it into `429 Rebuy on cooldown` — the two paths share one cooldown, hence the
   deferral. REST remains the fallback if the scheduled rebuy has not landed 30 s after its due time.
-- `action_rejected` with a recoverable code (`stale_turn_token`, `stale_hand_action`, `invalid_action`, `not_your_turn`, `no_hand_in_progress`) triggers a resync, at most 3 per hand (0163). Private `your_turn` messages are never replayed and the 45 s deadline keeps running, so the snapshot's restored token is the only way to act again. The protocol codes (`missing_action_id`, `action_id_conflict`, `legacy_action_protocol`) are logged as errors and never resynced. Spec re-read 2026-09-23: the 45 s action deadline starts when the server sends `your_turn` and is never extended.
+- `action_rejected` with a recoverable code (`stale_turn_token`, `stale_hand_action`, `invalid_action`, `not_your_turn`, `no_hand_in_progress`) triggers a resync, at most 3 per hand. Private `your_turn` messages are never replayed and the 45 s deadline keeps running, so the snapshot's restored token is the only way to act again. The protocol codes (`missing_action_id`, `action_id_conflict`, `legacy_action_protocol`) are logged as errors and never resynced. Spec re-read 2026-09-23: the 45 s action deadline starts when the server sends `your_turn` and is never extended.
 - Idle `waiting_reason` values in `table_state` are not surfaced on the dashboard (non-fatal by spec).

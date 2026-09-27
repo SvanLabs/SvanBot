@@ -1,16 +1,24 @@
 # Release process
 
-A release is a tagged commit on `main`, the built binaries attached to it, and a signed record of
-which commit and which workflow produced them. This document is the process; `scripts/check.sh` is
-the gate that decides whether a commit is releasable at all.
+> **Read this when** you are tagging a version. **Before this:** the gate is green on the exact
+> commit (`scripts/check.sh full`). **Related:** [`CHANGELOG.md`](../CHANGELOG.md). · [All docs](README.md)
+
+A release is a tagged commit on `main` that the gate passed, with a changelog entry and release
+notes. This document is the process; `scripts/check.sh` is the gate that decides whether a commit
+is releasable at all.
 
 ## What ships
 
+Today a release is **the tagged source**. There is no release workflow yet, so no binaries are
+attached and nothing is attested: an operator builds from the tag (the README's Quick start), and
+`scripts/release.sh` bakes the commit into the binary so the running build can say where it came
+from.
+
 | Artifact | Produced by | Verified by |
 |---|---|---|
-| `sv10-bot`, `learner`, `analyst` | the release workflow, cross-built | `gh attestation verify <file> --repo SvanLabs/SvanBot` |
+| The tagged source | `git tag -a` on a commit the gate passed | the green CI run on that commit |
 | `THIRD-PARTY-NOTICES.md` | `python3 scripts/notices.py` | `python3 scripts/notices.py --check` (part of the gate) |
-| SBOM (CycloneDX 1.5) | `python3 scripts/notices.py --sbom target/sbom.cdx.json` | attached to the release |
+| SBOM (CycloneDX 1.5) | `python3 scripts/notices.py --sbom target/sbom.cdx.json` | attached to the release by hand, when wanted |
 | Build identity | `scripts/release.sh`, which bakes the commit into `sv10_bot::BUILD_COMMIT` | `curl 127.0.0.1:5000/api/health` reports it |
 
 The build identity is the one worth explaining. A running bot answers with the commit it was built
@@ -34,32 +42,34 @@ Two things the gate cannot check for you:
 ## Cutting the release
 
 1. Confirm the gate: `scripts/check.sh full`, on a clean checkout of the commit.
-2. Update `CHANGELOG.md` and commit it. The release notes are generated from the merged pull
-   requests, so the changelog entry is for readers who never open GitHub.
-3. Tag: `git tag -a v10.0.0 -m "v10.0.0"` and push the tag. The tag triggers the release workflow.
-4. The workflow builds the binaries, attests them, and creates the release **as a draft**.
+2. Move the `[Unreleased]` entries in `CHANGELOG.md` under a dated heading for the new version,
+   and merge that as a pull request. The release notes are generated from the merged pull requests,
+   so the changelog entry is for readers who never open GitHub.
+3. Tag the merge commit and push the tag:
+   `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
+4. Create the release **as a draft** with generated notes:
+   `gh release create vX.Y.Z --draft --generate-notes --title "SvanBot vX.Y.Z"`.
 5. Read the draft notes. `.github/release.yml` categorises merged pull requests into the note
    sections; anything that landed without a label falls outside every category, so check nothing
-   important is missing before publishing.
-6. Publish the draft. An immutable release pins its tag and refuses later changes to its assets, so
-   this is the point after which a mistake means a new version rather than an edit.
+   important is missing. Add the `Generated-by:` line naming the system that wrote the notes.
+6. Publish the draft. From here a mistake means a new version rather than an edit.
 
-## Verifying a download
+## Verifying a release
 
-Nobody should run a binary from this project on trust — the same reasoning as the warning in
-`README.md` applies to the artifacts as much as to the source. From a machine with `gh`:
-
-```
-gh attestation verify sv10-bot --repo SvanLabs/SvanBot
-```
-
-That checks the binary against the workflow run that built it. To check the tag itself:
+Nobody should run code from this project on trust — the warning in `README.md` applies to a release
+as much as to `main`. There are no binaries to verify yet, so verification is of the source: check
+that the CI run on the tagged commit is green, then build it yourself.
 
 ```
-gh release verify v10.0.0 --repo SvanLabs/SvanBot
+gh run list --repo SvanLabs/SvanBot --commit "$(git rev-list -n1 vX.Y.Z)"
 ```
 
 ## Status
+
+- **No release workflow yet.** A workflow that cross-builds `sv10-bot`, `learner` and `analyst` on
+  a tag and attests them (`actions/attest-build-provenance`) would let a download be checked with
+  `gh attestation verify`. Until it exists, a release is source only, and this document does not
+  claim otherwise.
 
 - **Not on crates.io.** Every crate sets `publish = false`. The libraries under `crates/libs/` are
   written to be publishable — no path dependencies outside the workspace, no private registry — so
