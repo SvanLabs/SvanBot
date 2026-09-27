@@ -7,7 +7,7 @@ t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
 fail() { echo "update test: $*" >&2; exit 1; }
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
-unset SV10_RELEASE_LOCK_FD SV10_RELEASE_ROOT SV10_UPDATE_RUN SV10_PROGRESS_DIR
+unset SV10_RELEASE_LOCK_FD SV10_RELEASE_ROOT SV10_UPDATE_RUN SV10_PROGRESS_DIR SVANBOT_ADOPT_UPSTREAM
 
 git init -q --bare --initial-branch=main "$t/origin.git"
 git clone -q "$t/origin.git" "$t/dev" 2>/dev/null
@@ -91,4 +91,54 @@ git -C "$box" remote set-url origin "$t/origin.git"
 if (cd "$box" && bash scripts/update.sh --rollback 'x; rm -rf /' >/dev/null 2>&1); then fail "a malformed rollback commit was accepted"; fi
 if (cd "$box" && bash scripts/update.sh --rollback deadbee >/dev/null 2>&1); then fail "a rollback without a snapshot succeeded"; fi
 [[ "$(state)" == "failed - restore:failed" ]] || fail "progress after a failed rollback: $(state)"
+
+# 9. A checkout that shares no history with the update branch — a fleet cloned from a private tree,
+# pointed at the repository that tree publishes to. Without the opt-in it is refused like any other
+# checkout ahead of its branch; with it, the checkout moves onto the branch, the runtime state it
+# holds outside git is kept, the tracked files the branch does not have are reported and dropped, and
+# the head it left is kept under a ref so nothing it had is only in the reflog.
+git init -q --bare --initial-branch=main "$t/other.git"
+git clone -q "$t/other.git" "$t/spun" 2>/dev/null
+mkdir -p "$t/spun/scripts" "$t/spun/crates"
+cp "$repo/scripts/update.sh" "$repo/scripts/progress.py" "$repo/scripts/rollback.sh" "$t/spun/scripts/"
+echo 'fn other() {}' > "$t/spun/crates/other.rs"
+echo 'notes that exist only here' > "$t/spun/private-notes.txt"
+git -C "$t/spun" add -A && git -C "$t/spun" commit -qm other
+git -C "$t/spun" -c push.negotiate=false push -q origin HEAD:main
+git clone -q "$t/other.git" "$t/box2"
+spun_head=$(git -C "$t/box2" rev-parse HEAD)
+mkdir -p "$t/box2/artifacts" && echo '{"live":true}' > "$t/box2/artifacts/live-state.json"
+git -C "$t/box2" remote set-url origin "$t/origin.git"
+
+if (cd "$t/box2" && SV10_RELEASE_SCRIPT="$t/release-ok.sh" bash scripts/update.sh >/dev/null 2>&1); then
+  fail "an unrelated checkout was adopted without the opt-in"
+fi
+[ "$(git -C "$t/box2" rev-parse HEAD)" = "$spun_head" ] || fail "a refused adoption moved the checkout"
+grep -q "unrelated history" "$t/box2/artifacts/release-progress.json" || fail "no reason given for the adoption refusal"
+
+# The move is git's own fast-forward, so its guards apply to it: a tracked file with uncommitted edits
+# that the move would delete stops the adoption, where a hard reset would have thrown the edit away.
+echo 'an uncommitted edit' >> "$t/box2/private-notes.txt"
+if (cd "$t/box2" && SVANBOT_ADOPT_UPSTREAM=1 SV10_RELEASE_SCRIPT="$t/release-ok.sh" bash scripts/update.sh >/dev/null 2>&1); then
+  fail "an adoption overwrote a tracked file with uncommitted edits"
+fi
+[ "$(git -C "$t/box2" rev-parse HEAD)" = "$spun_head" ] || fail "a refused adoption moved the checkout"
+[ -z "$(git -C "$t/box2" for-each-ref --format='%(refname)' refs/replace)" ] || fail "a refused adoption left a graft behind"
+git -C "$t/box2" checkout -q -- private-notes.txt
+
+(cd "$t/box2" && SVANBOT_ADOPT_UPSTREAM=1 SV10_RELEASE_SCRIPT="$t/release-ok.sh" bash scripts/update.sh >/dev/null) || fail "adoption with the opt-in failed"
+[ "$(git -C "$t/box2" rev-parse HEAD)" = "$(git -C "$t/dev" rev-parse HEAD)" ] || fail "adoption did not reach the update branch"
+[ -f "$t/box2/artifacts/live-state.json" ] || fail "adoption dropped runtime state that git does not track"
+[ ! -e "$t/box2/private-notes.txt" ] || fail "adoption kept a tracked file the branch does not have"
+[ ! -e "$t/box2/crates/other.rs" ] || fail "adoption kept a tracked file the branch does not have"
+[ -n "$(git -C "$t/box2" for-each-ref --format='%(refname)' refs/adopt)" ] || fail "the head the checkout left was not kept under a ref"
+git -C "$t/box2" merge-base --is-ancestor "$spun_head" "$(git -C "$t/box2" for-each-ref --format='%(refname)' refs/adopt | head -1)" || fail "the kept ref does not point at the head that was left"
+grep -q "recoverable from refs/adopt/" "$t/box2/artifacts/release.log" || fail "the log does not say where the dropped files went"
+
+# The point of adopting rather than merging: every update after it is an ordinary fast-forward.
+push f
+(cd "$t/box2" && SV10_RELEASE_SCRIPT="$t/release-ok.sh" bash scripts/update.sh >/dev/null) || fail "the update after an adoption failed"
+[ "$(git -C "$t/box2" rev-parse HEAD)" = "$(git -C "$t/dev" rev-parse HEAD)" ] || fail "the update after an adoption did not fast-forward"
+grep -q "fast-forwarded" "$t/box2/artifacts/release.log" || fail "the update after an adoption was not a fast-forward"
+
 echo "update tests: ok"

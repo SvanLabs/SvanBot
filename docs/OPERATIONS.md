@@ -20,7 +20,7 @@ All commands run from the repository root. Binaries live in `target/release/`.
 | Stop everything | `scripts/stop.sh [--hold 30m\|8h\|forever]`: the keepalive leaves the fleet down for the hold (default 30 min); `systemctl --user stop svanbot10` holds forever; `scripts/start.sh` clears it |
 | Keepalive | `scripts/keepalive.sh` restarts `svanbot10.service` when no supervisor runs, no hold is in force and no release holds the lock; decisions in `artifacts/logs/keepalive.log`, `KEEPALIVE_DRY=1` to check. Install once: `cp scripts/svanbot10.service scripts/svanbot10-keepalive.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now svanbot10-keepalive.timer` |
 | Rename a bot | Change its name in `.env` (`SVANBOT_MAIN_NAME` / `BOT_n_NAME`) and restart. Its season stays one record because each start links the names under the API key. For names used before that record existed, set `SVANBOT_ALIASES=New:Old[,New2:Old2]` once. The server export labels older hands with the new name, so fleet-check matches export rows by hand id |
-| Update from GitHub (one click) | Dashboard → Releases & updates → **Update**: fetches `origin/main` (`SVANBOT_UPDATE_BRANCH`, `SVANBOT_UPDATE_REMOTE`), fast-forwards this checkout, runs `scripts/release.sh`, and shows a progress bar (stages, time left, bots still playing, the hot swap). By hand: `scripts/update.sh`; `scripts/update.sh --check` only fetches and prints `<behind> <commit>`. It refuses uncommitted build inputs and local commits the branch lacks; a failed release restores the checkout, and play never stops. **First Update on an older install**: the installed build predates the fetch, so run `git pull` once (then click Update or run `scripts/release.sh`) |
+| Update from GitHub (one click) | Dashboard → Releases & updates → **Update**: fetches `origin/main` (`SVANBOT_UPDATE_BRANCH`, `SVANBOT_UPDATE_REMOTE`), fast-forwards this checkout, runs `scripts/release.sh`, and shows a progress bar (stages, time left, bots still playing, the hot swap). By hand: `scripts/update.sh`; `scripts/update.sh --check` only fetches and prints `<behind> <commit>`. It refuses uncommitted build inputs and local commits the branch lacks; a checkout whose history is unrelated to the branch is a different repository and moves onto it only with `SVANBOT_ADOPT_UPSTREAM=1` (see *Moving a checkout onto this repository*); a failed release restores the checkout, and play never stops. **First Update on an older install**: the installed build predates the fetch, so run `git pull` once (then click Update or run `scripts/release.sh`) |
 | Ship a new build without stopping play | `scripts/release.sh` (committed tree; lint, the test build and the release build side by side at idle CPU priority, then the tests; ~40 s for a one-file change, ~4 min cold; installs atomically; the fleet hot-swaps when no bot is mid-turn, the learner between steps (at most ~2 min); every stage prints its time and one over 120 s is a warning; history in `artifacts/releases.log`, progress in `artifacts/release-progress.json`) |
 | Restart only the fleet | `scripts/restart-bot.sh` |
 | Season boundary check | `scripts/season-check.sh before LABEL` shortly before a season ends, `scripts/season-check.sh after LABEL` about an hour into the next: carry-over (opponent models, champion lineage, response/range models, stored hands) and live state (every bot on the new season, playing, season hands reset); PASS/FAIL lines, exit 1 on failure, files in `artifacts/season-checks/` |
@@ -341,6 +341,72 @@ Confirm that the fleet returns without action rejections and that `/api/health` 
 commit. This restores code and the dashboard only. If SQLite integrity failed, stop services and use
 the separately verified `archive restore` procedure; never combine database restoration with a live
 code rollback.
+
+### Moving a checkout onto this repository
+
+**The one-time case this covers**: a fleet cloned from a private tree, moved onto the repository that
+tree publishes to. The two histories share no commit — the published repository is produced from the
+private one by a filtered export, which rewrites every hash — so `git merge-base` between the
+checkout's head and `origin/main` is empty. That is not a diverged checkout with commits worth
+keeping; it is a different repository, and the only way onto the branch is to put the checkout on it.
+
+`update.sh` cannot do it by fast-forward and must not do it by merge. A merge commit joining two
+unrelated histories has no ancestor relation to the update branch, so `--ff-only` would fail after it
+forever and the Update button would be dead for good.
+
+Git will still make the move through its ordinary fast-forward if it is told, for the length of one
+command, that the histories are related:
+`git replace --graft <the branch's root commit> <this checkout's head>` gives the branch's oldest
+commit a parent in this checkout, which makes that head an ancestor of the branch. `git merge --ff-only`
+then moves the tree exactly as it does on every other update, and the replace ref is deleted as soon as
+it has. Doing it that way rather than with a `reset --hard` buys two things: git's own guards apply to
+the move, so it **refuses** when uncommitted edits to a tracked file would be overwritten rather than
+discarding them, and what is left behind is an ordinary clone — nothing in `refs/replace`, no standing
+claim that the two histories are one.
+
+Adoption is destructive all the same — the working tree becomes the branch's tree — so it happens only
+when an operator said so in advance:
+
+```bash
+git remote set-url origin https://github.com/SvanLabs/SvanBot.git
+SVANBOT_ADOPT_UPSTREAM=1 scripts/update.sh    # or set it in .env, then press Update
+```
+
+`SVANBOT_ADOPT_UPSTREAM=1` is the whole permission, and it is read from the environment precisely
+because the dashboard starts the script — a button press cannot supply it, so the button alone can
+never adopt. Without it the run stops with `unrelated history: set SVANBOT_ADOPT_UPSTREAM=1 to move
+this checkout onto <branch>`, which is a different refusal from the `local commits not on <branch>`
+a merely diverged checkout gets; that one never rewrites anything, and it still never does.
+
+What the adoption keeps, in the order it matters:
+
+- **Everything git does not track.** `artifacts/` — the store, `release-snapshots/`, the hourly
+  backups, `bulk/`, the logs, `.env` — is untracked or ignored, and the fast-forward rewrites tracked
+  files only. This is why the checkout is adopted in place instead of cloned: the running fleet keeps
+  reading the store from the path it already has, with no copy of a live database to get wrong.
+- **Every commit the checkout had.** Before anything moves, its head is written to
+  `refs/adopt/before-upstream-<UTC stamp>`. `rollback.sh` resolves commits in this repository, so this
+  ref is what keeps the installed private build rollback-able once the tree it was built from is gone.
+- **A record of what was dropped.** Files tracked here and absent from the branch are counted and the
+  first 20 written to `artifacts/release.log`, all of them recoverable from that ref — for example
+  `git checkout refs/adopt/before-upstream-<stamp> -- .claude/` to bring back local skills the
+  published repository does not carry.
+
+It is refused while `scripts/rollback.sh --validate-source-clean` finds uncommitted build inputs, and
+again by git itself if a tracked file has uncommitted edits the move would overwrite — in both cases
+the checkout is left exactly as it was. A `release.sh` failure afterwards resets the checkout to the
+commit it started on — the same recovery every other update has, so the source on disk still matches
+the installed build. After one adoption, every later Update is the ordinary fast-forward on this
+branch. Verify it took:
+
+```bash
+git remote -v                                      # origin is this repository
+git log --oneline -1                               # a commit that exists on origin/main
+git for-each-ref --format='%(refname)' refs/adopt  # what this checkout used to be
+git for-each-ref --format='%(refname)' refs/replace # empty: no graft was left behind
+git status --porcelain                             # empty: the tree is the branch's tree
+scripts/update.sh --check                          # a normal count, not the whole branch's history
+```
 
 ## Split fleet (off by default)
 
