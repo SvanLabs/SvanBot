@@ -93,6 +93,12 @@ fi
 if [ "$staged_crates" = 1 ]; then
   step "rustfmt"
   cargo fmt --all --check >/dev/null || fail "rustfmt differs: run cargo fmt --all"
+  # A version stated in Cargo.toml and not in Cargo.lock is a working tree that every later build
+  # dirties: the release commit bumped sixteen members and the lock kept 10.0.0, so each `cargo` run
+  # rewrote it and each agent had to decide whether the change was theirs. `--locked` is the check -
+  # it fails when the lock would need updating for any reason, a version bump or a new dependency.
+  step "Cargo.lock matches the manifests"
+  cargo metadata --locked --format-version 1 >/dev/null 2>&1 || fail "Cargo.lock is out of date: run cargo update --workspace (or cargo update for a new dependency) and commit Cargo.lock"
   step "file sizes (CONTRIBUTING.md: 500-line limit, baseline may only shrink)"
   scripts/check-file-size.sh || fail "a Rust file is over 500 lines or an oversized file grew"
   step "clippy -D warnings"

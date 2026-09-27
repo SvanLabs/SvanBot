@@ -191,3 +191,12 @@
     `scripts/check-file-size.sh`, `cargo fmt --all --check`, `scripts/notices.py --check`,
     `cargo deny check` — each is seconds against the gate's minutes, and each fails on the sum of the
     batch rather than on any one change, so no individual ticket's author ever sees it coming.
+43. **A version stated in one place is stated in half of them.** The 10.0.1 release bumped sixteen
+    workspace members in `Cargo.toml` and left `Cargo.lock` at 10.0.0, and nothing said so: the gate
+    ran `cargo` steps that quietly rewrote the lock in the working tree and never compared it to
+    anything. Every build after that dirtied the tree, so every agent had to decide whether the
+    `Cargo.lock` diff was its own change or the repository's, and a `git checkout -- Cargo.lock`
+    before each commit became a habit nothing enforced. The lock is a second copy of a fact the
+    manifest already states, and a second copy drifts where no check reads it.
+    *Rule*: a fact stated in two files is checked in the gate — `cargo metadata --locked` compares
+    the lock to the manifests in under a second, and fails on a version bump or a dependency alike.
