@@ -1,0 +1,113 @@
+# The gate, on every pull request and every push to main.
+#
+# `scripts/check.sh full` here is the same command a contributor runs locally, so a red run in CI and
+# a red run at the desk are the same failure with the same fix. That is deliberate: a workflow that
+# ran a different set of checks would make "it passes locally" worthless.
+#
+# The jobs are split for time-to-first-answer, not for coverage. `web` finishes in about a minute, so
+# a change under `web/` gets its answer without waiting on a Rust build; `gate` runs everything,
+# including the parts `web` already covered. Duplicating a minute of TypeScript checking is cheaper
+# than teaching people to ignore a ten-minute wait.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only by default. Nothing here writes to the repository, and the one job that needs to reach
+# outside it — none, currently — would have to ask for the permission by name.
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Types
+        working-directory: web
+        run: npx tsc --noEmit
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: target/dev
+      CARGO_BUILD_JOBS: 4
+      CARGO_TERM_COLOR: always
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+    steps:
+      # Full history, because the gate's first step reads the commits this pull request adds and
+      # compares them against the base branch. `actions/checkout` fetches a single commit by default,
+      # which is enough for every other step here and not for that one.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      # `artifacts/tables` is cached beside the build: 96 MB of board strengths that `cloud-setup.sh`
+      # generates in about a minute, unchanged between runs, and expensive enough that paying for it
+      # on every pull request would be the slowest step here.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: |
+            target/dev
+            artifacts/tables
+      # cargo-deny, web/node_modules and the board-strength tables. The gate's notices check reads the
+      # installed npm packages, so it cannot run on a checkout that has never run `npm ci`.
+      - name: Setup (cargo-deny, web deps, tables)
+        run: bash scripts/cloud-setup.sh
+      - name: scripts/check.sh full
+        run: bash scripts/check.sh full
+      - name: Test log on failure
+        if: failure()
+        run: tail -200 target/dev/check-tests.log 2>/dev/null || true
+
+  # The one status check to require in branch protection.
+  #
+  # Requiring each job by name means every new job is unprotected until someone remembers to add it.
+  # Requiring this instead means a job added to `needs` below is covered the moment it exists, and a
+  # job that never ran fails the aggregate rather than passing quietly.
+  check:
+    name: check
+    if: always()
+    needs: [web, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded
+        run: |
+          failed=0
+          for result in "web=${{ needs.web.result }}" "gate=${{ needs.gate.result }}"; do
+            echo "$result"
+            case "$result" in
+              *=success) ;;
+              *) echo "::error::${result%%=*} did not succeed"; failed=1 ;;
+            esac
+          done
+          exit "$failed"

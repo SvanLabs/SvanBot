@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly SvanBot archive run
+
+[Timer]
+OnCalendar=*-*-* 04:30
+RandomizedDelaySec=10min
+# Runs at the next boot when the machine was off at 04:30.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

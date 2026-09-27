@@ -1,0 +1,96 @@
+[workspace]
+resolver = "3"
+# crates/deps: our own zero-dependency foundations (they replace third-party crates).
+# crates/libs: poker and data libraries (pure logic, persistence, protocol logic).
+# crates/apps: the programs (the live fleet and its tools, the core facade and simulation tools).
+members = ["crates/deps/*", "crates/libs/*", "crates/apps/*"]
+
+[workspace.package]
+edition = "2024"
+version = "10.0.0"
+publish = false
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/SvanLabs/SvanBot"
+rust-version = "1.98"
+
+# One source for every internal path and every third-party version; crates name them with
+# `x.workspace = true` (adding features where they need more).
+[workspace.dependencies]
+sv10-rng = { path = "crates/deps/rng", version = "10.0.0" }
+sv10-digest = { path = "crates/deps/digest", version = "10.0.0" }
+sv10-rt = { path = "crates/deps/rt", version = "10.0.0" }
+sv10-mmap = { path = "crates/deps/mmap", version = "10.0.0" }
+sv10-pack = { path = "crates/deps/pack", version = "10.0.0" }
+sv10-cards = { path = "crates/libs/cards", version = "10.0.0" }
+sv10-nn = { path = "crates/libs/nn", version = "10.0.0" }
+sv10-equity = { path = "crates/libs/equity", version = "10.0.0" }
+sv10-engine = { path = "crates/libs/engine", version = "10.0.0" }
+sv10-model = { path = "crates/libs/model", version = "10.0.0" }
+sv10-policy = { path = "crates/libs/policy", version = "10.0.0" }
+sv10-venue = { path = "crates/libs/venue", version = "10.0.0" }
+sv10-store = { path = "crates/libs/store", version = "10.0.0" }
+sv10-stats = { path = "crates/libs/stats", version = "10.0.0" }
+sv10-core = { path = "crates/apps/core", version = "10.0.0" }
+anyhow = "1.0.104"
+axum = "0.8.9"
+chrono = { version = "0.4.45", features = ["serde"] }
+futures-util = "0.3.34"
+libc = "0.2"
+parking_lot = "0.12.5"
+rayon = "1.12.0"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.1", features = ["full"] }
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+tower-http = { version = "0.7.1", features = ["fs", "cors"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# No placeholder code ships (0238): these fail clippy outright, and check.sh greps for markers.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+# Shipped binaries (0302): no LTO. Thin LTO ran once per binary over the whole program — eight
+# binaries, 110 of the 135 s of a one-file release — for no measured speed: the reference `sim paired
+# 48 1200` ran 32 s either way with bit-identical results. Incremental and 256 codegen units make a
+# one-file change recompile only what it touched.
+[profile.release]
+opt-level = 3
+lto = false
+codegen-units = 256
+incremental = true
+debug = 0
+
+# Profiling builds for `bench --profile` (0335): the release code with line tables and frame
+# pointers, so samples name inlined source lines and callers. Never shipped.
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.test]
+opt-level = 3
+
+# Test builds (0226, 0303): the release settings, except that the 23k-line `sv10-bot` crate compiles its
+# tests at opt-level 1 — its one-file test rebuild falls from 27 s to 6 s and the suite runs no slower
+# (3.7 s). Every other crate, including the poker math behind the golden snapshot and the property
+# tests, stays at opt-level 3, and optimization never changes a result (no fast-math).
+[profile.gate]
+inherits = "release"
+
+[profile.gate.package.sv10-bot]
+opt-level = 1

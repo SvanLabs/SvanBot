@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage questions (Discussions Q&A)
+    url: https://github.com/SvanLabs/SvanBot/discussions/categories/q-a
+    about: >-
+      How to configure, run or extend the fleet — setup, the dashboard, the learner, the store, the
+      scripts. A question asked as an issue will be moved here rather than answered there.
+  - name: Report a vulnerability (private)
+    url: https://github.com/SvanLabs/SvanBot/security/advisories/new
+    about: >-
+      A private advisory thread only the maintainers can read. Use it for anything involving a key
+      or a token, and say so in the report. Never a public issue. See SECURITY.md.

@@ -1,0 +1,56 @@
+[package]
+name = "sv10-bot"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Binaries without unit tests: no test harness to build and link (0226).
+[[bin]]
+name = "sv10-bot"
+path = "src/main.rs"
+test = false
+
+[[bin]]
+name = "archive"
+path = "src/bin/archive.rs"
+test = false
+
+[[bin]]
+name = "calibrate"
+path = "src/bin/calibrate.rs"
+test = false
+
+[[bin]]
+name = "ingest"
+path = "src/bin/ingest.rs"
+test = false
+
+[dependencies]
+sv10-core.workspace = true
+sv10-digest.workspace = true
+sv10-rng.workspace = true
+sv10-rt.workspace = true
+sv10-store.workspace = true
+sv10-stats.workspace = true
+sv10-venue.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+chrono.workspace = true
+futures-util.workspace = true
+parking_lot.workspace = true
+rayon.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

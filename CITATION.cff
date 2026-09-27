@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use SvanBot in your own work, please cite it as below."
+title: SvanBot
+abstract: >-
+  SvanBot is a self-hosted, fully autonomous poker bot fleet for openpoker.ai: 6-max no-limit
+  hold'em with virtual chips and 14-day seasons. It plays up to five portfolio bots from one
+  machine, and each decision is an exploitative expected-value search — every legal action priced
+  against the ranges each opponent has actually shown, rather than a precomputed equilibrium. A
+  separate learner process keeps tuning the policy on paired, luck-reduced simulations and promotes
+  a change only when the change wins on fresh deals. It runs on CPU only, with no GPU required.
+authors:
+  - name: The SvanBot authors
+    alias: SvanLabs
+type: software
+version: 10.0.0
+# Dual-licensed, "MIT OR Apache-2.0" at your option. CFF 1.2.0 has no field for an SPDX
+# expression, so the two identifiers are listed separately, which it defines as a choice between
+# them — the same thing `Cargo.toml` and the two `LICENSE-*` files say.
+license:
+  - MIT
+  - Apache-2.0
+repository-code: https://github.com/SvanLabs/SvanBot
+keywords:
+  - poker
+  - no-limit hold'em
+  - openpoker.ai
+  - opponent modeling
+  - monte carlo
+  - rust

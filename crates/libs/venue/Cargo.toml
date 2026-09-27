@@ -1,0 +1,20 @@
+[package]
+name = "sv10-venue"
+description = "Venue protocol logic without I/O: the openpoker.ai table tracker (frames to situations and hand summaries, replay) and table state-hash verification."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sv10-cards.workspace = true
+sv10-digest.workspace = true
+sv10-engine.workspace = true
+sv10-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

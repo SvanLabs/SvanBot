@@ -1,0 +1,25 @@
+[package]
+name = "sv10-model"
+description = "Opponent modelling: per-player statistics, hand histories, neural features, range reconstruction and its maximum-likelihood calibration."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sv10-cards.workspace = true
+sv10-engine.workspace = true
+sv10-equity.workspace = true
+sv10-nn.workspace = true
+sv10-rng.workspace = true
+sv10-stats.workspace = true
+rayon.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

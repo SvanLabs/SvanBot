@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<defs><radialGradient id="g" cx=".5" cy=".38" r=".7"><stop offset="0" stop-color="#2B2E38"/><stop offset="1" stop-color="#0E0F13"/></radialGradient>
+<pattern id="t" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="1.1" fill="#ffffff" opacity=".07"/></pattern></defs>
+<circle cx="256" cy="256" r="250" fill="url(#g)"/><circle cx="256" cy="256" r="250" fill="url(#t)"/>
+<circle cx="256" cy="256" r="236" fill="none" stroke="#E07A5F" stroke-width="10"/>
+<path d="M60 380 Q256 350 452 380" fill="none" stroke="#F6F4EE" stroke-width="3" opacity=".35"/>
+<g transform="translate(96 150) scale(1.6)">
+<path d="M30 96 Q34 76 60 72 Q100 62 140 74 Q166 82 160 100 Q150 118 100 120 Q55 121 38 109 Q28 102 30 96 Z" fill="#F6F4EE" stroke="#141417" stroke-width="3.2" stroke-linejoin="round"/>
+<path d="M31 95 L16 82 L37 88" fill="#F6F4EE" stroke="#141417" stroke-width="3" stroke-linejoin="round"/>
+<path d="M62 82 Q98 70 136 86 Q112 97 70 99" fill="none" stroke="#141417" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M143 80 C163 60 134 42 145 22" fill="none" stroke="#141417" stroke-width="17" stroke-linecap="round"/>
+<path d="M143 80 C163 60 134 42 145 22" fill="none" stroke="#F6F4EE" stroke-width="11.5" stroke-linecap="round"/>
+<circle cx="152" cy="20" r="10.5" fill="#F6F4EE" stroke="#141417" stroke-width="3"/>
+<path d="M159 16 L182 24 L160 27 Z" fill="#E07A5F" stroke="#141417" stroke-width="2.4" stroke-linejoin="round"/>
+<circle cx="161" cy="17.5" r="3.4" fill="#141417"/><circle cx="151" cy="17" r="2.3" fill="#141417"/>
+<path d="M150 11 Q146 1 153 -4 Q156 6 152 12 Z" fill="#141417" stroke="#E07A5F" stroke-width="2.2"/></g>
+<text x="256" y="452" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="56" fill="#E07A5F" stroke="#0E0F13" stroke-width="6" paint-order="stroke fill">SG</text>
+</svg>

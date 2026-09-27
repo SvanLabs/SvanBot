@@ -1,0 +1,8 @@
+[Unit]
+Description=Restart the SvanBot fleet when it is down without a hold (0145)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/svanbot10
+Environment=PATH=%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/srv/svanbot10/scripts/keepalive.sh

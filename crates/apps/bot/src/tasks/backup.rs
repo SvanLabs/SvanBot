@@ -1,0 +1,393 @@
+//! Hourly/daily backups, rotation, seals and mirrors (0256).
+
+use super::INTEGRITY_STATUS_KEY;
+use crate::MODELS_KEY;
+use crate::live::Shared;
+use anyhow::Result;
+
+/// Free-space guard: refuse to back up when the disk cannot hold three more copies.
+fn backup_space_available(shared: &Shared) -> bool {
+    // Never let backups fill the disk: require free space for three more copies.
+    let db_size = std::fs::metadata(shared.config.artifacts.join("svanbot10.db")).map(|m| m.len()).unwrap_or(0);
+    if let Some(free) = free_bytes(&shared.config.artifacts)
+        && free < db_size.saturating_mul(3).max(512 * 1024 * 1024)
+    {
+        tracing::warn!("skipping database backup: only {} MB free", free / 1_048_576);
+        return false;
+    }
+    true
+}
+
+/// Integrity of the live database, before any rotation: a failed structural check exits for
+/// restore (the supervisor's restart runs the startup check); digest mismatches are logged but
+/// never block the backup. Returns (hands digest-checked, mismatches).
+fn verify_live_database(shared: &Shared) -> (i64, i64) {
+    // Never rotate good backups out behind a copy of a damaged database: stop instead, and let the
+    // supervisor's restart run the startup check, which restores the newest verified backup.
+    if let Err(problem) = shared.store.quick_check() {
+        tracing::error!("live database failed its integrity check ({problem}); exiting for restore");
+        shared.log("fleet", "error", format!("database integrity check failed: {problem}; restarting to restore"));
+        std::process::exit(70);
+    }
+    let digests = shared.store.verify_hand_digests();
+    let (digest_checked, digest_bad) = match &digests {
+        Ok((n, bad)) => (*n as i64, bad.len() as i64),
+        Err(_) => (-1, -1),
+    };
+    match digests {
+        Ok((_, bad)) if !bad.is_empty() => {
+            tracing::error!("{} stored hands no longer match their digest: {:?}", bad.len(), &bad[..bad.len().min(5)]);
+            shared.log("fleet", "error", format!("{} stored hands failed their content digest", bad.len()));
+        }
+        Err(e) => tracing::warn!("hand digest verification failed to run: {e}"),
+        _ => {}
+    }
+    (digest_checked, digest_bad)
+}
+
+/// Drop rows the backup must not carry forward: queued audits past a day, old audit results,
+/// expired replay records and scan snapshots no longer being read.
+fn prune_backup_sources(shared: &Shared) {
+    // Queued audits are dropped after a day (the analyst was not running); results are kept
+    // `AUDIT_RESULT_DAYS`, which is also the longest window the findings scan measures a rare class
+    // over (0345) — shortening one without the other deletes that scan's evidence.
+    match shared.store.prune_audits(1, sv10_store::store::AUDIT_RESULT_DAYS) {
+        Ok(n) if n > 0 => tracing::info!("pruned {n} old decision audit rows"),
+        Err(e) => tracing::warn!("pruning decision audits failed: {e}"),
+        _ => {}
+    }
+    match shared.store.prune_replays(crate::replay::KEEP_DAYS) {
+        Ok(n) if n > 0 => tracing::info!("pruned {n} replay records older than {} days", crate::replay::KEEP_DAYS),
+        Err(e) => tracing::warn!("pruning replay records failed: {e}"),
+        _ => {}
+    }
+    // The scan's own inputs and outputs (0356) ride this backup: nothing else prunes them, and the
+    // retention is the store's own, asserted to cover the window it summarizes.
+    match shared.store.prune_scan_snapshots(sv10_store::store::SCAN_SNAPSHOT_DAYS) {
+        Ok(n) if n > 0 => tracing::info!("pruned {n} scan snapshots no scan has read for {} days", sv10_store::store::SCAN_SNAPSHOT_DAYS),
+        Err(e) => tracing::warn!("pruning scan snapshots failed: {e}"),
+        _ => {}
+    }
+}
+
+/// Sealed hourly copy of the live database; `None` (after a warning) when the copy or seal fails.
+fn write_hourly_backup(shared: &Shared, dir: &std::path::Path, now: &chrono::DateTime<chrono::Utc>) -> Option<std::path::PathBuf> {
+    let hourly = dir.join(format!("svanbot10-{}.db", now.format("%Y%m%d%H")));
+    if let Err(e) = shared.store.backup_to(&hourly).and_then(|_| sv10_store::integrity::seal_backup(&hourly)) {
+        tracing::warn!("database backup failed: {e}");
+        return None;
+    }
+    Some(hourly)
+}
+
+/// One daily copy per calendar day, taken from the hourly file.
+fn ensure_daily_backup(dir: &std::path::Path, hourly: &std::path::Path, now: &chrono::DateTime<chrono::Utc>) {
+    let daily = dir.join(format!("daily-svanbot10-{}.db", now.format("%Y%m%d")));
+    if !daily.exists() {
+        let copied = std::fs::copy(hourly, &daily).map_err(anyhow::Error::from).and_then(|_| sv10_store::integrity::seal_backup(&daily));
+        if let Err(e) = copied {
+            tracing::warn!("daily backup copy failed: {e}");
+        }
+    }
+}
+
+/// Hourly copies kept on the SSD (`SVANBOT_HOURLY_BACKUPS`, default 3, or 2 when the hourlies are
+/// mirrored to a second disk): at ~630 MB each that is under 2 GB, and anything older is covered by
+/// the nightly archive.
+pub(super) fn hourly_backups_kept(mirrored: bool) -> usize {
+    // Three on the SSD: about 1.7 GB, and anything older lives in the nightly archive on the
+    // second disk. With the opt-in mirror, two.
+    std::env::var("SVANBOT_HOURLY_BACKUPS").ok().and_then(|v| v.parse().ok()).unwrap_or(if mirrored { 2 } else { 3 }).clamp(2, 48)
+}
+
+/// Hourly copies kept on the second disk, or `None` for no mirror: the mirror is opt-in
+/// (`SVANBOT_MIRROR_HOURLY_BACKUPS=24` turns it on) and off by default. With it off the SSD keeps
+/// its few hourlies, and the nightly archive still puts daily, weekly and monthly copies on the
+/// second disk.
+pub(super) fn mirror_hourly_kept() -> Option<usize> {
+    mirror_setting(std::env::var("SVANBOT_MIRROR_HOURLY_BACKUPS").ok().as_deref())
+}
+
+/// [`mirror_hourly_kept`] over the setting's text: unset, empty, `0` or unreadable is off.
+pub(super) fn mirror_setting(value: Option<&str>) -> Option<usize> {
+    value.and_then(|v| v.trim().parse::<usize>().ok()).filter(|n| *n > 0).map(|n| n.clamp(2, 168))
+}
+
+/// Where hourly copies are mirrored (0229): `<archive dir>/hourly` when the archive directory is on
+/// another disk than `artifacts/` (here the 1 TB HDD), so the 120 GB SSD keeps two hourlies instead
+/// of six and a day of hourly points still exists.
+fn backup_mirror(shared: &Shared) -> Option<std::path::PathBuf> {
+    use std::os::unix::fs::MetadataExt;
+    let archive = &shared.config.archive_dir;
+    let (a, b) = (std::fs::metadata(archive).ok()?.dev(), std::fs::metadata(&shared.config.artifacts).ok()?.dev());
+    (a != b).then(|| archive.join("hourly"))
+}
+
+/// How the mirror step ended for the hour just written (0292). The status row the dashboard reads
+/// carries this, so a mirror that stops working shows up there instead of only in a log line.
+#[derive(Debug, Clone)]
+pub(super) enum Mirror {
+    /// The mirror is switched off (the default since 2026-09-27).
+    Off,
+    /// The archive directory is on the same disk as the database: nothing is mirrored (0229).
+    Absent,
+    /// The pair is on the second disk.
+    Copied,
+    /// Deliberately skipped: the second disk lacks room for three more copies and 1 GB.
+    NoRoom,
+    /// The mirror failed; the reason names the step that failed.
+    Failed(String),
+}
+
+impl Mirror {
+    fn json(&self, dir: Option<&std::path::Path>, at: i64) -> serde_json::Value {
+        let (state, error) = match self {
+            Mirror::Off => ("off", None),
+            Mirror::Absent => ("absent", None),
+            Mirror::Copied => ("ok", None),
+            Mirror::NoRoom => ("no_room", None),
+            Mirror::Failed(e) => ("failed", Some(e.as_str())),
+        };
+        serde_json::json!({"state": state, "at": at, "dir": dir.map(|d| d.display().to_string()), "error": error})
+    }
+}
+
+/// `path` plus its seal's extension, as `sv10_store::integrity` names sidecars.
+fn sidecar(path: &std::path::Path) -> std::path::PathBuf {
+    let mut s = path.as_os_str().to_owned();
+    s.push(".sha256");
+    std::path::PathBuf::from(s)
+}
+
+fn discard(paths: &[&std::path::Path]) {
+    for p in paths {
+        let _ = std::fs::remove_file(p);
+    }
+}
+
+/// Why a copied pair did not verify, check by check (0292). The single "does not match its seal"
+/// covers a failed read, a file of the wrong bytes and a structural problem alike; on a second disk
+/// that is failing (EUCLEAN, bad reads) the operator needs to know which one it was.
+fn mirror_rejection(db: &std::path::Path) -> String {
+    let seal = sidecar(db);
+    if let Err(e) = sv10_rt::evict_cache(db).and_then(|_| sv10_rt::evict_cache(&seal)) {
+        return format!("dropping the copy from the page cache failed: {e:#}");
+    }
+    let expected = match std::fs::read_to_string(&seal) {
+        Ok(s) => s,
+        Err(e) => return format!("reading the copy's seal {} failed: {e}", seal.display()),
+    };
+    match sv10_store::integrity::file_sha256(db) {
+        Err(e) => format!("reading the copy back failed: {e:#}"),
+        Ok(h) if h != expected.trim() => format!("the copy reads back as different bytes than its seal ({h} != {})", expected.trim()),
+        Ok(_) => match sv10_store::integrity::quick_check(db) {
+            Ok(()) => "every check passed when run by hand".to_string(),
+            Err(e) => format!("the copy's structural check failed: {e}"),
+        },
+    }
+}
+
+/// Remove temporary pairs a run that was killed mid-copy left behind: a hot swap exits the process
+/// where it stands, and `rotate_backups_keeping` only matches `*.db`, so nothing else collects them
+/// — half a gigabyte each on a disk that is 86% full (0292). This call is the only writer of the
+/// mirror's temporary names, so anything matching here is a leftover.
+fn clear_stale_temporaries(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for path in entries.flatten().map(|e| e.path()) {
+        let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) else { continue };
+        if !(name.starts_with('.') && (name.ends_with(".tmp") || name.ends_with(".tmp.sha256"))) {
+            continue;
+        }
+        let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        match std::fs::remove_file(&path) {
+            Ok(()) => tracing::warn!("removed leftover mirror temporary {} ({bytes} bytes)", path.display()),
+            Err(e) => tracing::warn!("could not remove leftover mirror temporary {}: {e}", path.display()),
+        }
+    }
+}
+
+/// Copy a sealed hourly backup (and its sidecar) into `mirror`, verified against the seal, then keep
+/// the newest `keep` there. Skipped when the mirror lacks room for three more copies and 1 GB.
+///
+/// The copy is checked under its temporary name, before either file takes the real one: a copy that
+/// does not verify never replaces the hour's previous good pair, and the mirror keeps only pairs
+/// that passed (0292). Failures name the step that failed and leave the mirror otherwise untouched.
+pub(super) fn mirror_backup(hourly: &std::path::Path, mirror: &std::path::Path, keep: usize) -> Result<bool> {
+    std::fs::create_dir_all(mirror)?;
+    clear_stale_temporaries(mirror);
+    let size = std::fs::metadata(hourly)?.len();
+    if sv10_rt::free_bytes(mirror).is_some_and(|free| free < size.saturating_mul(3) + (1 << 30)) {
+        tracing::warn!("hourly backup not mirrored: {} lacks room", mirror.display());
+        return Ok(false);
+    }
+    let name = hourly.file_name().ok_or_else(|| anyhow::anyhow!("backup path has no name"))?;
+    let (to, tmp) = (mirror.join(name), mirror.join(format!(".{}.tmp", name.to_string_lossy())));
+    let (side_to, side_tmp) = (sidecar(&to), sidecar(&tmp));
+    // Both files synced before they are named, and the check reads the disk, not the page cache:
+    // on a failing HDD the unsynced seals were verified from memory and read as zeros later (0308).
+    let copied = sv10_rt::copy_durable(hourly, &tmp)
+        .and_then(|_| sv10_rt::copy_durable(&sidecar(hourly), &side_tmp))
+        .map_err(|e| anyhow::anyhow!("copying {} to {} failed: {e:#}", hourly.display(), tmp.display()));
+    if let Err(e) = copied {
+        discard(&[&tmp, &side_tmp]);
+        return Err(e);
+    }
+    if !sv10_store::integrity::verify_backup_on_disk(&tmp) {
+        let why = mirror_rejection(&tmp);
+        discard(&[&tmp, &side_tmp]);
+        anyhow::bail!("mirrored copy of {} rejected before it took its name: {why}", name.to_string_lossy());
+    }
+    std::fs::rename(&tmp, &to)
+        .and_then(|_| std::fs::rename(&side_tmp, &side_to))
+        .map_err(|e| anyhow::anyhow!("naming the verified copy {} failed: {e}", to.display()))?;
+    sv10_rt::sync_dir(&to)?;
+    rotate_backups_keeping(mirror, keep, usize::MAX);
+    Ok(true)
+}
+
+/// Daily copies kept on the SSD (`SVANBOT_DAILY_BACKUPS`, default 1): the nightly archive keeps
+/// compressed daily, weekly and monthly copies on the HDD (`archive list`).
+pub(super) fn daily_backups_kept() -> usize {
+    // One on the SSD (2026-09-27): the nightly archive keeps the daily, weekly and monthly copies on the HDD.
+    std::env::var("SVANBOT_DAILY_BACKUPS").ok().and_then(|v| v.parse().ok()).unwrap_or(1usize).clamp(1, 30)
+}
+
+/// Keep the newest hourly and daily copies, removing each rotated file's sidecar with it.
+fn rotate_backups(dir: &std::path::Path, mirrored: bool) {
+    rotate_backups_keeping(dir, hourly_backups_kept(mirrored), daily_backups_kept());
+}
+
+pub(super) fn rotate_backups_keeping(dir: &std::path::Path, hourly: usize, daily: usize) {
+    for (prefix, keep) in [("svanbot10-", hourly), ("daily-svanbot10-", daily)] {
+        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+            .map(|d| {
+                d.filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| {
+                        p.extension().is_some_and(|x| x == "db")
+                            && p.file_name().map(|n| n.to_string_lossy().starts_with(prefix)).unwrap_or(false)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        files.sort();
+        while files.len() > keep {
+            let old = files.remove(0);
+            let _ = std::fs::remove_file(&old);
+            let mut side = old.into_os_string();
+            side.push(".sha256");
+            let _ = std::fs::remove_file(side);
+        }
+    }
+}
+
+/// Backups written before sealing existed get a sidecar once, if they pass the check.
+fn seal_unsealed_backups(dir: &std::path::Path) {
+    for old in std::fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok()).map(|e| e.path()) {
+        let mut side = old.clone().into_os_string();
+        side.push(".sha256");
+        if old.extension().is_some_and(|x| x == "db") && !std::path::Path::new(&side).exists() {
+            match sv10_store::integrity::quick_check(&old) {
+                Ok(()) => {
+                    if let Err(e) = sv10_store::integrity::seal_backup(&old) {
+                        tracing::warn!("backup {} passed its check but could not be sealed: {e}", old.display());
+                    }
+                }
+                Err(e) => tracing::warn!("unsealed backup {} fails its check: {e}", old.display()),
+            }
+        }
+    }
+}
+
+/// Dashboard status row: what was checked, what was written, and the newest sealed archive.
+pub(super) fn write_backup_status(
+    shared: &Shared,
+    now: &chrono::DateTime<chrono::Utc>,
+    hourly: &std::path::Path,
+    digest_checked: i64,
+    digest_bad: i64,
+    mirror: &Mirror,
+    mirror_dir: Option<&std::path::Path>,
+) {
+    let corpus = crate::history::open(shared).map(|db| db.corpus_counts()).unwrap_or_default();
+    let archive_latest = [sv10_store::archive::Kind::Daily, sv10_store::archive::Kind::Weekly]
+        .into_iter()
+        .filter_map(|k| sv10_store::archive::list(&shared.config.archive_dir, k).pop())
+        .filter_map(|n| sv10_store::archive::load_manifest(&shared.config.archive_dir.join(&n)).ok())
+        .max_by(|a, b| a.created_at.cmp(&b.created_at))
+        .map(|m| m.name);
+    let status = serde_json::json!({
+        "checked_at": now.timestamp(), "database_check": "ok", "digests_checked": digest_checked, "digest_mismatches": digest_bad,
+        "last_backup": hourly.file_name().map(|n| n.to_string_lossy().to_string()), "archive": shared.config.archive_dir.display().to_string(),
+        "archive_latest": archive_latest, "corpus": corpus.into_iter().collect::<std::collections::BTreeMap<_, _>>(),
+        // The second-disk copy of this hour, and why it is not there when it is not (0292).
+        "mirror": mirror.json(mirror_dir, now.timestamp()),
+        "tables": {"flop": sv10_core::tables::loaded(3).is_some(), "turn": sv10_core::tables::loaded(4).is_some()},
+    });
+    let _ = shared.store.put_kv(INTEGRITY_STATUS_KEY, &status.to_string());
+    match mirror {
+        // Loud and non-fatal: the failure is in the log and on the dashboard's storage row, but play
+        // and the SSD backups carry on (0292).
+        Mirror::Failed(why) => {
+            tracing::error!("database backed up to {}, but not mirrored: {why}", hourly.display());
+            shared.log("fleet", "error", format!("backup not mirrored to the second disk: {why}"));
+        }
+        _ => tracing::info!("database backed up to {}", hourly.display()),
+    }
+}
+
+/// Hourly consistent database backups: the newest hourlies and dailies on the SSD, a day of
+/// hourlies on the second disk when there is one.
+pub fn backup_database(shared: &Shared) {
+    let dir = shared.config.artifacts.join("backups");
+    let now = chrono::Utc::now();
+    if !backup_space_available(shared) {
+        return;
+    }
+    let (digest_checked, digest_bad) = verify_live_database(shared);
+    prune_backup_sources(shared);
+    let Some(hourly) = write_hourly_backup(shared, &dir, &now) else {
+        return;
+    };
+    ensure_daily_backup(&dir, &hourly, &now);
+    // A mirror that fails is loud (log, dashboard status) and never fatal: the SSD copy, the daily
+    // copies and the nightly archive still stand on their own (0292).
+    let keep = mirror_hourly_kept();
+    let mirror_dir = keep.and(backup_mirror(shared));
+    let mirror_step = match (keep, &mirror_dir) {
+        (None, _) => Mirror::Off,
+        (Some(_), None) => Mirror::Absent,
+        (Some(keep), Some(mirror)) => match mirror_backup(&hourly, mirror, keep) {
+            Ok(true) => Mirror::Copied,
+            Ok(false) => Mirror::NoRoom,
+            Err(e) => Mirror::Failed(format!("{e:#}")),
+        },
+    };
+    let mirrored = matches!(mirror_step, Mirror::Copied);
+    rotate_backups(&dir, mirrored);
+    seal_unsealed_backups(&dir);
+    write_backup_status(shared, &now, &hourly, digest_checked, digest_bad, &mirror_step, mirror_dir.as_deref());
+}
+
+/// Free bytes on the filesystem holding `path`.
+pub fn free_bytes(path: &std::path::Path) -> Option<u64> {
+    sv10_rt::free_bytes(path)
+}
+
+pub fn save_models(shared: &Shared) {
+    let json = {
+        let m = shared.models.read();
+        serde_json::to_string(&*m)
+    };
+    match json {
+        Ok(j) => {
+            if let Err(e) = shared.store.put_kv(MODELS_KEY, &j) {
+                tracing::warn!("saving models failed: {e}");
+            }
+        }
+        Err(e) => tracing::warn!("serializing models failed: {e}"),
+    }
+    // The state-hash tallies ride the same checkpoint (0301): they are the panel's only figure that
+    // must outlive the process, and this is the write that already runs every five minutes, at
+    // shutdown and before a hot swap.
+    crate::live::save_state_hash_totals(&shared.store, &shared.bots);
+}

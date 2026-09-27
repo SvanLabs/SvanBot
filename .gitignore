@@ -1,0 +1,18 @@
+/target/
+/artifacts/*
+!/artifacts/README.md
+/web/dist/
+/web/node_modules/
+/web/test-results/
+/web/playwright-report/
+.env
+/web/tsconfig.tsbuildinfo
+
+# Claude Code local state
+/.claude/scheduled_tasks.lock
+/.claude/settings.local.json
+.claude/worktrees/
+# Another agent harness's local state (its own worktrees and settings), same class as .claude/.
+/.openclaude/
+/vendor/
+__pycache__/

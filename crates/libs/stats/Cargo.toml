@@ -1,0 +1,16 @@
+[package]
+name = "sv10-stats"
+description = "Pure statistics for the learner, the analyses and the dashboard: running moments and intervals, the normal quantile and family-wise z, logistic helpers, golden-section search, decision grades and calibration at the margin."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,90 @@
+name: Task
+description: >-
+  A specific change, specified well enough that someone who has never read this code — or an agent
+  working on their own — can finish it without asking a question.
+title: "[Task]: "
+body:
+  - type: input
+    id: generated-by
+    attributes:
+      label: What generated this?
+      description: "The AI system that produced this report, as <tool>/<model>. See CONTRIBUTING.md section 0."
+      placeholder: claude-code/claude-opus-5
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: The files to touch
+      description: >-
+        Exact paths, one per line, and the layer they belong to (`crates/deps`, `crates/libs`,
+        `crates/apps`, `web`, `docs`, `scripts`). Name the file that must *not* be touched when
+        that matters. A task whose files are unknown is not yet a task.
+      placeholder: |
+        crates/libs/policy/src/decision.rs — the change itself
+        crates/apps/core/tests/characterization/core.json — only if the snapshot is allowed to move
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: The acceptance test
+      description: >-
+        The test that fails before the change and passes after, named as it will appear in the
+        tree, with the case it covers. For a behaviour change, say what the paired simulation
+        (`sim paired`) has to show as well — a unit test cannot decide a strategy question. For a
+        bug, say what the failing reproduction is.
+      placeholder: |
+        a_bot_that_rejoins_after_a_bust_is_seated_once (crates/apps/bot/src/...)
+        sim paired 12 600 reproduces the reference run exactly
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: The command that must pass
+      description: >-
+        The narrowest command that proves the change, and `scripts/check.sh full` before the pull
+        request. State it so the result can be pasted back into the thread.
+      placeholder: "python3 scripts/test.py <filter> && scripts/check.sh full"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: golden
+    attributes:
+      label: May the golden snapshot change?
+      description: >-
+        `crates/apps/core/tests/golden/core.json` is the determinism check. Regenerating it to make
+        a red test go green is a bug, not a fix, so the answer is part of the task.
+      options:
+        - "No — behaviour must be identical: the snapshot does not change"
+        - "Yes — the snapshot changes on purpose, and the diff must be explained line by line"
+        - "Unsure — the maintainer decides before work starts"
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: What must not change
+      description: >-
+        Optional, but it is usually the part that saves a round trip: interfaces other crates hold
+        you to, an invariant (`valid_actions`, `hand_id` and `turn_token` echoed, hand stored
+        before models updated), a knob that stays off by default, or a subsystem that is out of
+        scope for this task.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: >-
+        Optional. The issue or measurement this comes from, the document that explains the area,
+        the ticket identifier it traces to, and anything already tried that did not work.
+    validations:
+      required: false

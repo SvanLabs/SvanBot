@@ -1,0 +1,38 @@
+# How GitHub shapes the release notes from merged pull requests (`docs/RELEASE.md`, step 5).
+#
+# A pull request is listed under the first category whose labels it carries, in the order below, and
+# the last category takes everything else. That last category is the point of this file: without
+# it, a merged pull request that carries no label is left out of the notes altogether, silently.
+#
+# The labels used here are GitHub's defaults (`bug`, `enhancement`, `documentation`) plus a few this
+# project adds when it needs them. A label that does not exist on the repository never matches, and
+# its pull requests fall to the catch-all, so a typo here loses a heading and not a change.
+changelog:
+  exclude:
+    # Nothing is listed by default. Add this label to a pull request whose change is real but is
+    # not worth a line in the notes — a rebuild after a failed workflow, a rerun of a measurement.
+    labels:
+      - skip-changelog
+  categories:
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+    - title: Fixes
+      labels:
+        - bug
+        - fix
+    - title: Performance
+      labels:
+        - performance
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Internal
+      labels:
+        - internal
+        - dependencies
+        - ci
+    - title: Other changes
+      labels:
+        - "*"

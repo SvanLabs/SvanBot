@@ -1,0 +1,17 @@
+[Unit]
+Description=SvanBot archive: daily differential, weekly full, monthly archive to /backup-disk/svanbot10
+# Source of truth: scripts/svanbot10-archive.service (installed by scripts/archive-timer.sh).
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/svanbot10
+EnvironmentFile=-/srv/svanbot10/.env
+ExecStart=/srv/svanbot10/target/release/archive run
+# Safe housekeeping after the archive (0116): worktrees, scratch build dirs, rotated logs.
+ExecStartPost=/srv/svanbot10/scripts/clean.sh --apply
+Nice=15
+IOSchedulingClass=idle
+# A run is ~4 min (monthly recompression is the slow part); anything past 1 h is hung.
+TimeoutStartSec=3600
+# Never compete with live play for memory.
+OOMScoreAdjust=500

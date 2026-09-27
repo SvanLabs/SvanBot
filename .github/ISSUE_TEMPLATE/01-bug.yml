@@ -1,0 +1,97 @@
+name: Bug report
+description: >-
+  Something in the fleet, the learner, the analyst, the dashboard, the store or the gate is wrong,
+  and you can say how to see it.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: generated-by
+    attributes:
+      label: What generated this?
+      description: "The AI system that produced this report, as <tool>/<model>. See CONTRIBUTING.md section 0."
+      placeholder: claude-code/claude-opus-5
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Crate layer
+      description: >-
+        The answer decides what a fix may touch. `crates/deps` are the zero-dependency foundations,
+        `crates/libs` are the poker and data libraries (no network, no database, no clock),
+        `crates/apps` own all the I/O and hold the programs, `web` is the control room, `docs` and
+        `scripts` are the documents and the operator scripts. Pick `unsure` when you cannot tell
+        from the symptom, and say what you saw.
+      options:
+        - crates/deps
+        - crates/libs
+        - crates/apps
+        - web
+        - docs
+        - scripts
+        - unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: The exact command that reproduces it
+      description: >-
+        Copy the command and what it printed. The smallest one that shows the problem: a failing
+        test, a `sim` or `probe` run, a `review` invocation, a request to the dashboard API, a
+        reconnect. If it needs a database or a fixture, say which.
+      placeholder: |
+        $ scripts/check.sh full
+        ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: >-
+        The behaviour the code, the docs or the protocol says should happen, and where that is
+        written down (a document, a test, a spec, the server's `valid_actions`).
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: >-
+        The error text, the wrong number, the wrong action, the stuck process. Say whether it
+        repeats on every run or only sometimes, and whether the fleet was playing at the time.
+    validations:
+      required: true
+
+  - type: textarea
+    id: gate
+    attributes:
+      label: Gate output
+      description: >-
+        What the gate says about the commit you saw this on: `scripts/check.sh full`, or the
+        narrower command you ran. If the gate passes and the bug is still there, say that too — it
+        tells us the bug lives somewhere the gate cannot see. If you cannot run it, say why.
+      render: shell
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: class
+    attributes:
+      label: Does this belong to one of these classes?
+      description: Tick any that apply. Each one changes what a fix has to prove.
+      options:
+        - label: >-
+            This is a determinism / golden-snapshot issue: `crates/apps/core/tests/golden/core.json`
+            changed, or `SIM_B='{"call_margin":0.005}' sim paired 12 600` no longer reproduces
+            exactly on the same seed.
+        - label: >-
+            This is a performance issue: something that was fast is slow, or a claimed speed change
+            does not show up on the same machine against the previous commit.

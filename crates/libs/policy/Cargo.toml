@@ -1,0 +1,22 @@
+[package]
+name = "sv10-policy"
+description = "Decisions and evaluation: the exploitative EV policy, simulated agents and clone fitting, paired evaluation, hardware auto-tuning."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sv10-cards.workspace = true
+sv10-engine.workspace = true
+sv10-equity.workspace = true
+sv10-model.workspace = true
+sv10-nn.workspace = true
+sv10-rng.workspace = true
+rayon.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

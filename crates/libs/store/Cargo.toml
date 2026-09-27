@@ -1,0 +1,25 @@
+[package]
+name = "sv10-store"
+description = "Persistence: the SQLite store (hands, decisions, calibration, kv, events) and data integrity (checks, sealed backups, quarantine and restore, hand digests)."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sv10-digest.workspace = true
+sv10-pack.workspace = true
+sv10-rt.workspace = true
+sv10-model.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+parking_lot.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

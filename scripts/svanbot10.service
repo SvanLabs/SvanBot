@@ -1,0 +1,20 @@
+[Unit]
+Description=SvanBot poker fleet, learner and dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/srv/svanbot10
+Environment=PATH=%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/srv/svanbot10/scripts/start.sh
+ExecStop=/srv/svanbot10/scripts/stop.sh --hold forever
+# start.sh backgrounds its supervisors (they stay in this unit's cgroup); on stop, stop.sh ends
+# them cleanly first and systemd only cleans up whatever is left.
+KillMode=mixed
+TimeoutStopSec=60
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

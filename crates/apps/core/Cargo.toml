@@ -1,0 +1,45 @@
+[package]
+name = "sv10-core"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Binaries without unit tests: no test harness to build and link (0226).
+[[bin]]
+name = "probe"
+path = "src/bin/probe.rs"
+test = false
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench/main.rs"
+test = false
+
+[[bin]]
+name = "sim"
+path = "src/bin/sim.rs"
+test = false
+
+[[bin]]
+name = "tables"
+path = "src/bin/tables.rs"
+test = false
+
+[dependencies]
+sv10-cards.workspace = true
+sv10-engine.workspace = true
+sv10-equity.workspace = true
+sv10-model.workspace = true
+sv10-nn.workspace = true
+sv10-policy.workspace = true
+sv10-rng.workspace = true
+sv10-stats.workspace = true
+libc.workspace = true
+rayon.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

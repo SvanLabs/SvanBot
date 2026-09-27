@@ -1,0 +1,41 @@
+# The documents `scripts/docs-check.py` checks.
+#
+# This is data, not code: the check reads it and holds the logic, so adding or dropping a document
+# is a one-line change here rather than an edit to the script, and a reviewer reads the list itself
+# rather than a diff of code. One path per line; `#` comments and blank lines are ignored.
+#
+# A path listed here that does not exist is a problem, not a skip: that is what catches a document
+# deleted or renamed without the check following it. `AGENTS.md` is the engineering brief that a
+# contributor or an agent reads first; the rest are the user-facing documents, the specs and the
+# runbook.
+#
+# `docs/GUIDE.md` is the user guide: a document like any other here, and the dashboard's `/docs`
+# page imports it, so one file serves both a reader of the repository and a user of the control
+# room.
+#
+# The agent briefs and the `.claude/` workflow documents are listed too. They are read by people and
+# agents who will follow the commands in them, so they are live documents in exactly the sense this
+# check cares about: a renamed script that no one updated here sends the reader to a path that is
+# not there. Note that the check only recognises a backticked path carrying a `crates/`, `scripts/`,
+# `web/`, `docs/` or `.claude/` prefix — a bare `bench-ab.py` was invisible to it, which is how one
+# survived in `.claude/commands/measure.md` until it was found by hand.
+
+AGENTS.md
+CLAUDE.md
+.claude/commands/gate.md
+.claude/commands/golden.md
+.claude/commands/measure.md
+.claude/commands/new-file.md
+.claude/agents/reviewer.md
+.claude/agents/boundaries.md
+README.md
+CONTEXT.md
+docs/ARCHITECTURE.md
+docs/OPERATIONS.md
+docs/RELEASE.md
+docs/SPEC-protocol.md
+docs/SPEC-data.md
+docs/SPEC-learner.md
+docs/SPEC-dashboard.md
+docs/LESSONS.md
+docs/GUIDE.md

@@ -1,0 +1,9 @@
+[Unit]
+Description=SvanBot fleet keepalive every 5 minutes (0145)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

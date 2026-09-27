@@ -1,0 +1,9 @@
+# One owner for every path in this repository: the maintainers of SvanLabs/SvanBot.
+#
+# Deliberately one line. Review here is automated first (`scripts/check.sh`), and the owner entry
+# exists so that a pull request reaches the maintainer rather than to describe the tree.
+#
+# GitHub accepts a user or a team handle in this position (`@org/team-name`), and the team must
+# exist with write access to the repository — an unknown owner is ignored silently and no reviewer
+# is assigned.
+*       @SvanLabs/maintainers
