@@ -29,6 +29,8 @@
 > comments**. Every commit, issue and pull request carries a `Generated-by: <tool>/<model>` line
 > naming the system that produced it; `AGENTS.md` states the rule and
 > [`CONTRIBUTING.md`](CONTRIBUTING.md) §0 states what this project accepts.
+> [`AI-PROVENANCE.md`](AI-PROVENANCE.md) is the roster of systems on record, generated from those
+> trailers and checked by the gate — and it says there what such a roster does not prove.
 >
 > Changes pass the automated gate described below, but **no line-by-line human review is
 > guaranteed**. Read the code before relying on it, and treat results and claims in the docs as
@@ -401,6 +403,7 @@ Ground rules, each learned the hard way ([`docs/LESSONS.md`](docs/LESSONS.md) ha
 |---|---|
 | Point an AI agent at this repository | 🤖 [`llms.txt`](llms.txt) — the whole project in one page, written for a model to act on |
 | See every document and the question it answers | 🗺️ [`docs/README.md`](docs/README.md) — the documentation map |
+| See which AI systems are on record for this repository | 🏷️ [`AI-PROVENANCE.md`](AI-PROVENANCE.md) — the roster, generated from the commit trailers |
 | Run, update, back up or troubleshoot a fleet | 🧰 [`docs/OPERATIONS.md`](docs/OPERATIONS.md) |
 | Use the control room and understand what it shows | 📖 [`docs/GUIDE.md`](docs/GUIDE.md) — also the dashboard's `/docs` page |
 | Understand the processes, the crates and the decision path | 🏛️ [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |

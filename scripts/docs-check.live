@@ -23,6 +23,7 @@
 # survived in `.claude/commands/measure.md` until it was found by hand.
 
 AGENTS.md
+AI-PROVENANCE.md
 CLAUDE.md
 .claude/commands/gate.md
 .claude/commands/golden.md
