@@ -65,3 +65,7 @@ true, and a green check is not a claim about who wrote the code.
 
 `.claude/agents/` has two subagents worth delegating to: a reviewer that knows the two hard
 invariants and the crate layering, and a boundary checker for the layering rule on its own.
+
+`.claude/skills/` holds the procedures that are not one command: `verify-install` (which commit is
+the fleet actually playing, and does it match the checkout?) and `restore-store` (put runtime data
+back from an archive, without ever writing over a live `artifacts/`).
