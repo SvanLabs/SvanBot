@@ -37,11 +37,16 @@ to read them all: find what you are about to do, and read that path in order.
 [`AGENTS.md`](../AGENTS.md) first. [`CLAUDE.md`](../CLAUDE.md) if you are Claude Code: it names
 the three mistakes that are cheap to make and expensive to find. Then the issue you were given.
 
+If a user pointed you at this repository and asked for a running fleet rather than a change —
+[`llms.txt`](../llms.txt) is the short path: what to clone, what to run, and the six traps that
+otherwise cost the first hour.
+
 ## Every document
 
 | Document | Answers | Read it when |
 |---|---|---|
 | [`README.md`](../README.md) | What is this, and how do I start? | first |
+| [`llms.txt`](../llms.txt) | How do I get a fleet running, in one page? | your agent was pointed here and asked for a running fleet |
 | [`AGENTS.md`](../AGENTS.md) | What must an agent know before changing anything? | before any change |
 | [`CLAUDE.md`](../CLAUDE.md) | Which three mistakes bite hardest here? | you are Claude Code |
 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | How do I get a change merged, and what standard is it held to? | before your first pull request |

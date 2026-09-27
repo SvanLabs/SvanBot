@@ -54,7 +54,7 @@ Find the row that fits you. Each one is a short path, read in order, and says wh
 | 🎮 **Run a fleet** on your own machine | [Quick start](#-quick-start) → [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | the control room at `http://127.0.0.1:5000` shows your bots seated |
 | 🔍 **Understand how it plays** | [How a decision is made](#-how-a-decision-is-made) → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → [`docs/GUIDE.md`](docs/GUIDE.md) | you can follow one decision from the table state to the action sent |
 | 🛠️ **Make your first change** | [Your first pull request](#-your-first-pull-request) → [`CONTRIBUTING.md`](CONTRIBUTING.md) | CI is green on your pull request |
-| 🤖 **You are an AI agent** | [`AGENTS.md`](AGENTS.md), then the issue you were given | `scripts/check.sh full` passes and your pull request names you |
+| 🤖 **You are an AI agent** | [`llms.txt`](llms.txt) for the running-it-in-one-command path, then [`AGENTS.md`](AGENTS.md) and the issue you were given | `scripts/check.sh full` passes and your pull request names you |
 
 Not sure which one? The [documentation map](docs/README.md) lists every document with the question
 it answers.
@@ -399,6 +399,7 @@ Ground rules, each learned the hard way ([`docs/LESSONS.md`](docs/LESSONS.md) ha
 
 | You want to… | Read |
 |---|---|
+| Point an AI agent at this repository | 🤖 [`llms.txt`](llms.txt) — the whole project in one page, written for a model to act on |
 | See every document and the question it answers | 🗺️ [`docs/README.md`](docs/README.md) — the documentation map |
 | Run, update, back up or troubleshoot a fleet | 🧰 [`docs/OPERATIONS.md`](docs/OPERATIONS.md) |
 | Use the control room and understand what it shows | 📖 [`docs/GUIDE.md`](docs/GUIDE.md) — also the dashboard's `/docs` page |
