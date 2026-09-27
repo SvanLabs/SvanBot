@@ -252,10 +252,6 @@ pub async fn serve(shared: Arc<Shared>) -> Result<()> {
         .route("/api/releases/rollback", post(trigger_rollback))
         .route("/api/setup", get(get_setup).post(save_setup))
         .route("/api/setup/verify-key", post(verify_key))
-        // An extra static mount for a site the operator keeps beside the checkout, served under
-        // `/saga/` and readable from the dashboard (0194). Absent directory, absent page.
-        .route("/saga", get(|| async { axum::response::Redirect::permanent("/saga/") }))
-        .nest_service("/saga/", ServeDir::new(shared.config.root.join("saga").join("dist")))
         .fallback_service(ServeDir::new(&dist).not_found_service(ServeFile::new(dist.join("index.html"))))
         .layer(middleware::from_fn(cache_layer))
         .layer(middleware::from_fn_with_state(shared.clone(), auth_layer))
