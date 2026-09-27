@@ -1113,6 +1113,10 @@ test('a failed store read is named, not served as zeros (0326)', async ({ page }
 test('every panel explains itself when its information button is clicked (0306)', async ({ page }) => {
   // The info button renders panelHelp[title]; a panel with no entry silently shows an empty box.
   await page.goto('/');
+  // The board is not there the moment the document is: the first paint is a shell until `/health`
+  // has answered which listener served the page, and the panels mount with that answer (issue #335).
+  // Counting before it would count the shell's zero and call the board empty.
+  await expect(page.locator('.overview-stats')).toBeVisible();
   const buttons = page.getByRole('button', {name: /^About /});
   const count = await buttons.count();
   expect(count, 'the board has panels with information buttons').toBeGreaterThan(15);

@@ -202,6 +202,12 @@ function App() {
   }
   const filteredHands = hands.filter(hand => `${hand.hand_id} ${hand.hole.join(' ')} ${hand.board.join(' ')}`.toLowerCase().includes(query.toLowerCase()));
   const hero = bot?.seats.find(seat => seat.seat === bot.hero_seat);
+  // Until `/health` answers, nothing is rendered. Every panel below starts its timer when it mounts,
+  // so mounting them first — which is what `null` used to mean — had the public page ask its listener
+  // for six dashboard routes it does not serve, all of them 404s, before the answer that would have
+  // said "there are no panels here" arrived (issue #335). The shell holds that one round trip; a
+  // health probe that fails answers `undefined`, which is the dashboard, so this cannot be a dead end.
+  if(publicTv === null) return <div className="app boot"><span className="status-dot connecting"/>Connecting…</div>;
   // The public TV (`SVANBOT_TV_PORT`) renders the table view and nothing else: no header, no panels,
   // no login form, no hash routes. What a spectator can reach is what that listener serves.
   if(publicTv) return <div className="app"><TvMode bots={tvBots} theme={tableTheme} public/></div>;
