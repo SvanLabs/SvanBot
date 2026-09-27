@@ -93,34 +93,55 @@ export function LeakFinder() {
 interface RangeOpp { seat: number; name: string; position: string; grid: number[]; share: number[]; top: { hand: string; share: number }[]; equity: number; equity_se?: number; profile: { hands: number; vpip: number; pfr: number; confidence: number } }
 interface Ranges { available: boolean; hole?: string[]; board?: string[]; street?: string; pot?: number; to_call?: number; position?: string; equity_vs_all?: number | null; equity_vs_all_se?: number | null; samples?: number; opponents?: RangeOpp[]; range_model?: string }
 
-/** 13x13 heatmap: pairs on the diagonal, suited above, offsuit below. */
-function RangeGrid({ grid, share }: { grid: number[]; share: number[] }) {
+/** 13x13 heatmap: pairs on the diagonal, suited above, offsuit below. `names` is the engine's own
+ * class order from `/api/hand-classes`: it places every cell, so a label it does not name is called
+ * out rather than drawn as a measured zero. */
+function RangeGrid({ grid, share, names }: { grid: number[]; share: number[]; names: string[] }) {
   const max = Math.max(...grid, 1e-9);
   const cells: React.ReactNode[] = [];
   for (let r = 0; r < 13; r++) for (let c = 0; c < 13; c++) {
     const hi = RANKS[Math.min(r, c)], lo = RANKS[Math.max(r, c)];
     const label = r === c ? hi + lo : c > r ? `${hi}${lo}s` : `${hi}${lo}o`;
-    const idx = classIndex(label);
+    const idx = names.indexOf(label);
     const v = idx >= 0 ? grid[idx] / max : 0;
-    cells.push(<span key={label} title={`${label}: likelihood ${pct(v, 0)} of the most likely hand · ${pct(idx >= 0 ? share[idx] : 0, 1)} of the range`} style={{ background: `rgba(228,185,86,${0.08 + v * 0.85})`, color: v > 0.45 ? '#1b1c14' : '#b2b9ac' }}>{label}</span>);
+    const title = idx < 0
+      ? `${label}: the engine's class order does not name this hand`
+      : `${label}: likelihood ${pct(v, 0)} of the most likely hand · ${pct(share[idx], 1)} of the range`;
+    cells.push(<span key={label} title={title} style={{ background: `rgba(228,185,86,${0.08 + v * 0.85})`, color: v > 0.45 ? '#1b1c14' : '#b2b9ac' }}>{label}</span>);
   }
   return <div className="range-grid heat">{cells}</div>;
 }
 
-/** Grid index of a class label, using the engine's class order fetched from `/api/hand-classes`. */
+/** The engine's class order, fetched once from `/hand-classes` and shared by every mount. A failed
+ * fetch is deliberately not cached, so the next mount — or the grid's own retry — asks again. */
 let CLASS_NAMES: string[] | null = null;
-function classIndex(label: string): number {
-  return CLASS_NAMES ? CLASS_NAMES.indexOf(label) : -1;
-}
 
 export function RangeExplorer({ slot, decisionKey }: { slot?: number; decisionKey?: string }) {
   const [names, setNames] = useState<string[] | null>(CLASS_NAMES);
-  useEffect(() => { if (!CLASS_NAMES) request<string[]>('/hand-classes').then((v: string[]) => { CLASS_NAMES = v; setNames(v); }).catch(() => {}); }, []);
+  const [namesError, setNamesError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  // Without the engine's class order there is no grid to draw, so a failure is said out loud where
+  // the grid goes and offers a retry (LESSONS 24: a panel that has no live source must not read as
+  // a quiet empty one).
+  useEffect(() => {
+    if (CLASS_NAMES) return;
+    let alive = true;
+    setNamesError(null);
+    request<string[]>('/hand-classes')
+      .then((v: string[]) => { if (alive) { CLASS_NAMES = v; setNames(v); } })
+      .catch((e: unknown) => { if (alive) setNamesError(e instanceof Error ? e.message : String(e)); });
+    return () => { alive = false; };
+  }, [attempt]);
   const ranges = usePoll<Ranges>(slot == null ? null : `/bots/${slot}/ranges`, 20000, decisionKey);
   const { data } = ranges;
   const [pick, setPick] = useState(0);
   if (!data?.available || !data.opponents?.length) return <p className="footnote">Ranges appear after the bot's next decision against live opponents.</p>;
   const opp = data.opponents[Math.min(pick, data.opponents.length - 1)];
+  const grid = names
+    ? <RangeGrid grid={opp.grid} share={opp.share} names={names}/>
+    : namesError
+      ? <div className="error-banner" role="alert"><span>Range grid unavailable: the engine's hand classes did not load ({namesError}).</span><button className="button" onClick={() => setAttempt(n => n + 1)}>Retry</button></div>
+      : <p className="footnote" role="status">Loading the engine's hand classes…</p>;
   return <div className="lab">
     <StaleNote poll={ranges} />
     <div className="lab-summary">
@@ -129,7 +150,7 @@ export function RangeExplorer({ slot, decisionKey }: { slot?: number; decisionKe
       <div><label>RANGE MODEL</label><b className="small-b">{data.range_model}</b></div>
     </div>
     <div className="position-tabs lab-tabs">{data.opponents.map((o, i) => <button key={o.seat} className={i === pick ? 'active' : ''} onClick={() => setPick(i)}>{o.name.slice(0, 10)} · {o.position}</button>)}</div>
-    {names && <RangeGrid grid={opp.grid} share={opp.share} />}
+    {grid}
     <div className="lab-range-foot">
       <span>Our equity vs {opp.name}: <b>{pct(opp.equity, 1)}</b>{opp.equity_se != null ? <small> ± {(opp.equity_se * 196).toFixed(2)} pp</small> : null}</span>
       <span>Profile: {fmt(opp.profile.hands)} hands · VPIP {pct(opp.profile.vpip)} · PFR {pct(opp.profile.pfr)} · confidence {pct(opp.profile.confidence)}</span>

@@ -587,6 +587,33 @@ test('panels minimize to a bar and remember their state', async ({ page }) => {
   await expect(panel.locator('.range-grid')).toBeVisible();
 });
 
+test('a failed hand-class load is visible in the range explorer, and its retry draws the grid', async ({ page }) => {
+  // The engine's class order places every cell of the grid, so it fails once and then answers for real.
+  let asked = 0;
+  await page.route('**/api/hand-classes', route => { asked += 1; return asked === 1 ? route.fulfill({status: 503, json: {detail: 'range engine busy'}}) : route.continue(); });
+  await page.route('**/api/bots/0/ranges', route => route.fulfill({json: {
+    available: true, hole: ['As', 'Kd'], board: [], street: 'preflop', pot: 60, to_call: 20, position: 'BTN',
+    equity_vs_all: 0.62, equity_vs_all_se: 0.004, samples: 4000, range_model: 'reference model',
+    opponents: [{seat: 1, name: 'TestOpponent', position: 'BB', grid: Array(169).fill(1), share: Array(169).fill(1 / 169),
+      top: [{hand: 'AA', share: 0.2}], equity: 0.6, equity_se: 0.01, profile: {hands: 120, vpip: 0.31, pfr: 0.22, confidence: 0.8}}],
+  }}));
+  await page.goto('/');
+  const panel = page.locator('section.panel').filter({has: page.getByRole('heading', {name: 'Range explorer', exact: true})});
+  const failure = panel.getByRole('alert');
+  await expect(failure).toContainText('range engine busy');
+  // The failure is drawn in the panel, at the grid's place, and inside it rather than off the layout.
+  await expectInside(failure, panel);
+  // No grid is drawn from an order the engine has not confirmed.
+  await expect(panel.locator('.range-grid')).toHaveCount(0);
+  const before = asked;
+  await failure.getByRole('button', {name: 'Retry'}).click();
+  await expect(panel.locator('.range-grid > span')).toHaveCount(169);
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  expect(asked).toBeGreaterThan(before);
+  // Every cell is placed by the engine's order, so a drawn cell reports a share, not a stand-in zero.
+  await expect(panel.locator('.range-grid > span').first()).toHaveAttribute('title', /of the range/);
+});
+
 test('automatic training does not ask the operator to run a cycle', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Automatic improvement enabled')).toBeVisible();
