@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -66,6 +67,30 @@ def build(profile: str, packages: list[str], env: dict) -> list[tuple[str, str, 
         label = f"{name}" if kind == "lib" else f"{name} ({kind})"
         out.append((label, msg["executable"], Path(msg["manifest_path"]).parent))
     return out
+
+
+def exit_note(code: int) -> str:
+    """How a test binary ended, in words (#140)."""
+    if code < 0:
+        try:
+            return f"killed by {signal.Signals(-code).name}"
+        except ValueError:
+            return f"killed by signal {-code}"
+    return f"exit status {code}"
+
+
+def failure_report(label: str, out: str, code: int) -> str:
+    """The block printed for a test binary that did not exit 0 (#140).
+
+    A binary can end without printing anything: a signal it does not handle, or an exit before
+    its buffered stdout reaches the pipe. The block was printed empty, so a run that failed this
+    way said only that something went wrong — twice it cost a rerun to find out whether the diff
+    or the harness was at fault (249 tests of 564 ran, and 315 of the missing ones were one
+    binary's). Which is why the status is named here, and the silence is said out loud.
+    """
+    body = out.rstrip()
+    head = f"---- {label} ({exit_note(code)}) ----"
+    return f"{head}\n{body}\n" if body else f"{head}\n(no output: it ended before its first line)\n"
 
 
 def main() -> int:
@@ -127,15 +152,15 @@ def main() -> int:
                 failed += int(parts[5])
                 ignored += int(parts[7])
         if code != 0:
-            failures.append((label, out))
+            failures.append((label, out, code))
     try:
         target.mkdir(parents=True, exist_ok=True)
         rss_file.write_text(json.dumps(known, indent=0, sort_keys=True))
     except OSError:
         pass
 
-    for label, out in failures:
-        print(f"---- {label} ----\n{out.rstrip()}\n", file=sys.stderr)
+    for label, out, code in failures:
+        print(failure_report(label, out, code), file=sys.stderr)
     if not a.quiet or failures:
         slow = sorted(results, key=lambda r: -r[3])[: a.slowest]
         print("slowest: " + ", ".join(f"{r[0]} {r[3]:.1f}s" for r in slow))
