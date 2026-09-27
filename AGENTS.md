@@ -115,7 +115,8 @@ fresh-deal confirmation. Do not loosen that to make an experiment fit.
 - **`scripts/check.sh` runs `cargo fmt --check` and `clippy --workspace --all-targets --all-features
   -D warnings`.** Both must be clean.
 - **500 lines per Rust file**, enforced by `scripts/check-file-size.sh` against a baseline that may
-  only shrink. A file crossing it gets split, not exempted.
+  only shrink — a file that comes back under the limit leaves the list, and the check fails until
+  its line does. A file crossing it gets split, not exempted.
 - **Documents name only paths that exist.** `scripts/docs-check.py` checks every backticked
   repository path in the live documents, listed in `scripts/docs-check.live`. If you move a file,
   the documents that name it are part of the change.
