@@ -36,6 +36,16 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The action hides the SDK's output by default, which is how every run of this workflow
+          # came to fail in about 13 s saying only `is_error: true` (issue #338). The first run with
+          # this on named the cause: `"api_error_status": 429`, `"error": "rate_limit"`,
+          # `"result": "You've hit your session limit · resets 12:50am (UTC)"`. The review is not
+          # broken — the subscription behind the token is out of window, which is the operator's to
+          # change (a billed `ANTHROPIC_API_KEY`, a wider plan, or retiring the workflow), and this
+          # stays on until they do: a red check that says only that it failed is the whole of #338.
+          # Nothing private is printed — the job reads this public repository, and what it writes is
+          # the review it would have posted.
+          show_full_output: true
           # The SvanBot account, so the action authors commits and comments as SvanBot
           # rather than claude[bot]. The token is optional: unset, the action falls
           # back to the workflow token and nothing changes.
