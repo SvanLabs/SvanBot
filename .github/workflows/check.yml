@@ -48,7 +48,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Types
         working-directory: web
-        run: npx tsc --noEmit
+        # Both tsconfigs, via the same script scripts/check.sh runs: `tsc --noEmit` alone compiles
+        # `src` and stops, which left the Playwright specs unchecked.
+        run: npm run typecheck
       - name: Build
         working-directory: web
         run: npm run build

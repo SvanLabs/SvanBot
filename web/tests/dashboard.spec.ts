@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import type { Snapshot } from '../src/types';
 
 // Panel tests run on the full board (the All view); tests/views.spec.ts covers the views (0237).
 test.beforeEach(async ({ page }) => { await page.addInitScript(() => localStorage.setItem('svan-view', 'all')); });
@@ -6,8 +7,7 @@ test.beforeEach(async ({ page }) => { await page.addInitScript(() => localStorag
 // The sandboxed backend runs one dry-run bot (slot 0). Tests that need a fleet expand /api/state
 // to `size` bots (slots 0..size-1) built from the real snapshot, apply their own changes, and replace
 // the live event stream with a quiet open one so the real single-bot state never overwrites it.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fleet(page: Page, mutate?: (state: any) => void, size = 5) {
+async function fleet(page: Page, mutate?: (state: Snapshot) => void, size = 5) {
   await page.addInitScript(() => {
     window.EventSource = class QuietEventSource {
       onopen: ((event: Event) => void) | null = null;
@@ -17,11 +17,14 @@ async function fleet(page: Page, mutate?: (state: any) => void, size = 5) {
       close() {}
     } as unknown as typeof EventSource;
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let base: any;
+  // `/api/state` answers with the real snapshot shape (`src/types.ts`), which is the contract the
+  // mutate callbacks below are written against. `route.fetch().json()` is untyped, so naming the
+  // type once here is what lets the callbacks be checked.
+  let base: Snapshot | undefined;
   await page.route('**/api/state', async route => {
-    if (!base) base = await (await route.fetch()).json();
-    const state = structuredClone(base);
+    const fetched: Snapshot = base ?? await (await route.fetch()).json();
+    base = fetched;
+    const state = structuredClone(fetched);
     const bot = state.bots[0];
     state.bots = Array.from({length: size}, (_, slot) => ({...structuredClone(bot), slot, name: slot === 0 ? bot.name : `TestBot${slot + 1}`}));
     mutate?.(state);
