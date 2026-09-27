@@ -201,6 +201,37 @@ fn settlement_matrix_handles_three_tiers_main_tie_dead_money_odd_chip_and_refund
     assert_eq!(net.iter().sum::<i64>(), 0);
 }
 
+/// A pot no seat can win is void, and a void pot is returned to the seats that paid into it: every
+/// seat gets its own wagers back, so the hand moves no chips between players. Play cannot reach this
+/// state (the hand finishes at one live seat, `advance_if_needed`), so it is built directly; an
+/// ordered side pot with a seat that folded for free is still settled seat by seat.
+#[test]
+fn settlement_of_an_all_folded_pot_refunds_every_contributor() {
+    let runout = board(&["2c", "3d", "4h", "9s", "Kc"]);
+    let seats = vec![
+        Hand::seat_state(1_000, c2("5c", "6c")),
+        Hand::seat_state(1_000, c2("5d", "6d")),
+        Hand::seat_state(1_000, c2("Ah", "Ad")),
+        Hand::seat_state(1_000, c2("Qh", "Qd")),
+    ];
+    let mut h = Hand::with_cards(seats, runout, 0, 10, 20);
+    let invested = [20, 200, 0, 60];
+    for (seat, amount) in h.seats.iter_mut().zip(invested) {
+        seat.invested = amount;
+        seat.stack = seat.start_stack - amount;
+        seat.folded = true;
+    }
+
+    let payouts = h.settle(&runout);
+    assert_eq!(payouts, invested.to_vec());
+    assert_eq!(payouts.iter().sum::<i64>(), invested.iter().sum::<i64>(), "a void pot creates or destroys no chips");
+    let final_stacks: Vec<i64> = h.seats.iter().zip(&payouts).map(|(seat, payout)| seat.stack + payout).collect();
+    let net: Vec<i64> = final_stacks.iter().zip(&h.seats).map(|(stack, seat)| stack - seat.start_stack).collect();
+    assert_eq!(net, vec![0, 0, 0, 0]);
+    // No seats at all: no contributions, so nothing to pay and nothing to panic on.
+    assert!(split_pots(&[], &[], &[], 0).is_empty());
+}
+
 #[test]
 fn split_pot_and_all_in_runout() {
     let seats = vec![Hand::seat_state(500, c2("Ah", "2d")), Hand::seat_state(500, c2("Ac", "3d"))];
