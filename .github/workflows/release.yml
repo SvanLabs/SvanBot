@@ -15,7 +15,7 @@ on:
     paths: ["Dockerfile", ".dockerignore", "scripts/container-start.sh", ".github/workflows/release.yml"]
 
 env:
-  TAG: ${{ inputs.tag || github.ref_name }}
+  TAG: ${{ github.event_name == 'pull_request' && 'pr-check' || inputs.tag || github.ref_name }}
 
 jobs:
   bundle:
