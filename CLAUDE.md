@@ -49,6 +49,7 @@ true, and a green check is not a claim about who wrote the code.
 
 ## Where the rest of it is
 
+- `docs/README.md` — the map of every document, and which one answers which question.
 - `AGENTS.md` — the engineering brief: the layout, the two hard invariants, the style the gate
   enforces, and how a change is reviewed.
 - `docs/LESSONS.md` — why the rules are what they are, as mistakes this project already paid for.

@@ -5,6 +5,18 @@ Hold'em, virtual chips, 14-day seasons). It plays up to five portfolio bots at o
 opponent it meets, improves its own strategy in the background, and reports everything live in a
 web control room. It runs on CPU only.
 
+## Where to start
+
+| You want to… | Start with |
+|---|---|
+| Get a fleet running on a new machine | Section 1, Quick start, then section 13 when something looks wrong |
+| Understand what the control room is showing you | Section 10, The control room |
+| Understand how one decision is made | Sections 2 and 3, then sections 4 to 6 for the models and the learner |
+| Change a setting | Section 12, Configuration reference |
+| Change the code | Section 14, Development, and `CONTRIBUTING.md` in the repository, which walks a first pull request from issue to merge |
+
+Every section stands on its own, and the contents below are in reading order for a newcomer.
+
 ## Contents
 
 1. Quick start
@@ -300,7 +312,7 @@ input.
  it between hands      +1 bb/100 on new deals        identical (paired) deals
                               │ not settled
                               ▼
-      experiment mode: bots #4 and #5 play an unresolved challenger live (0291)
+      experiment mode: bots #4 and #5 play an unresolved challenger live
 ```
 
 Each cycle:
@@ -356,7 +368,7 @@ interval.
   (proven top finishers or solid tight-aggressive stats). With no soft opponent and mostly tough
   ones it leaves after the hand and rejoins the lobby (at most once every 20 minutes).
   **Head-to-head results** (the chips that moved between us and each opponent in the hands they
-  were dealt into, recomputed every 15 minutes; 0221) override style guesses: an opponent who
+  were dealt into, recomputed every 15 minutes) override style guesses: an opponent who
   beats us over 300+ hands at 95% confidence, corrected for the number of opponents tested, is
   always tough. `review` prints the table.
 - **Controls** — Start / Pause (finish the hand, then leave) / Stop from the dashboard.
@@ -390,7 +402,7 @@ Everything lives in `artifacts/svanbot10.db` (SQLite, WAL, `synchronous=FULL`).
 | `artifacts/history.db` `corpus` | Hands from other sources, tagged by source and sealed with a content digest (e.g. `openpoker-archive-frames`: full hands replayed from archived live frames) |
 | `hands.digest` | SHA-256 content digest of each stored hand, verified hourly |
 
-**Compressed storage (0229).** Decision details, replay and audit records, and the server's hand
+**Compressed storage.** Decision details, replay and audit records, and the server's hand
 exports and summaries are stored compressed with the bot's own DEFLATE codec. It takes the
 databases from 1.8 GB to 0.7 GB, and each backup is ~270 MB smaller. The bot packs older rows by
 itself in the background.
@@ -482,7 +494,7 @@ follows whatever instruction set the checkout's cargo configuration sets.
 `./target/release/probe --hardware` prints the profile; the dashboard settings show it too.
 Set `LEARNER_THREADS` to override the learner's thread count.
 
-**Compute profiles** (0187). The Live pulse's COMPUTE cell has four buttons:
+**Compute profiles**. The Live pulse's COMPUTE cell has four buttons:
 - **Quiet** leaves the PC free: live budget ×0.25, learner at a quarter of the threads, analyst on 1 thread.
 - **Balanced** uses about half the machine.
 - **Max** uses every core. It is the default.

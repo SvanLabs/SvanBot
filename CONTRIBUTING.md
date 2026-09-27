@@ -1,6 +1,97 @@
 # Contributing to SvanBot
 
-The coding standard for this workspace (0320). It is written for people and for AI agents working in
+This file has two parts. [**Your first pull request**](#your-first-pull-request) is the path from
+an issue to a merged change, and it is short. [**The standard**](#the-standard) below it is every
+rule a change is held to, with the enforced ones marked **MUST**.
+
+| | |
+|---|---|
+| 🚀 **Getting started** | [Your first pull request](#your-first-pull-request) · [Commit messages](#commit-messages) · [What gets a change refused](#what-gets-a-change-refused) |
+| 📏 **The standard** | [0 AI provenance](#0-ai-provenance-must) · [1 Verification](#1-verification-must) · [2 Formatting](#2-formatting-must) · [3 Linting](#3-linting) · [4 Naming and organization](#4-naming-and-organization) · [5 Error handling](#5-error-handling) · [6 Safety](#6-safety) · [7 Documentation](#7-documentation) · [8 Testing](#8-testing) · [9 Dependencies and performance](#9-dependencies-and-performance) · [10 Changes and review](#10-changes-and-review) · [11 CI](#11-ci) |
+
+## Your first pull request
+
+Every change here is made by an AI coding agent that you direct. You choose the goal and judge the
+result; the agent writes the code, the tests, the commits and the pull request.
+
+1. **Pick an issue.** The
+   [**good first issue**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+   and [**agent-friendly**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3Aagent-friendly)
+   labels mark issues that say where the problem is, why it matters and the fix they expect. Comment
+   on the one you take, so two agents do not race for it.
+2. **Fork, and make one branch per change**, named for it: `fix/split-pots-all-folded`,
+   `fix/localstorage-guard`.
+3. **Brief your agent.** Give it [`AGENTS.md`](AGENTS.md) and the issue. For a bug, ask for a
+   failing test first: a fix lands with a test that fails on the old code (section 8).
+4. **Iterate on the fast loop.** `python3 scripts/test.py <filter>` runs only the tests you touched,
+   in seconds, and `scripts/check.sh commit` is what the pre-commit hook runs.
+5. **Run the whole gate** before you push. It is the same command CI runs.
+
+   ```sh
+   scripts/check.sh full
+   ```
+
+6. **Open the pull request** from the template. Put `Generated-by: <tool>/<model>` in the body, as
+   well as in every commit footer, and `Closes #<issue>` so the issue closes when it merges.
+7. **Answer the review.** CI runs the gate on every pull request, and pull requests from this
+   repository's own branches also get an automatic Claude review. Fix what they find with new
+   commits rather than a force-push, so the conversation still points at the right lines.
+
+## Commit messages
+
+The history is read on GitHub more often than in a terminal, so every commit has the same shape:
+
+```
+<area>: <what the commit does, imperative, at most 72 characters>
+
+<Why the change was needed, and anything a reviewer should know. Wrapped
+at 72 columns.>
+
+Closes #<issue>
+
+Generated-by: <tool>/<model>
+```
+
+- **`<area>`** is where the change lives: a crate without its `sv10-` prefix (`venue`, `policy`,
+  `store`, `bot`), or `web`, `scripts`, `ci`, `docs`.
+- **The subject says what the commit does**, not what you did: `venue: reject non-ASCII hole cards
+  instead of panicking`, not `fixed bug`. No trailing period, no quotation marks, no issue number.
+- **`Closes #<issue>` gets its own paragraph.** A line that is not a trailer inside the trailer
+  block stops git reading the block as trailers at all, and `Generated-by:` disappears from
+  `git log --format=%(trailers)` and GitHub's commit view.
+- **The trailers come last**, one per line: `Generated-by:` and any `Co-Authored-By:` your tool adds.
+
+A complete one:
+
+```
+engine: return an empty payout when every seat folded
+
+split_pots unwrapped the best hand among the live seats, and a hand in
+which every seat folded has none, so replaying one from the store took
+the process down. Both empty cases now return the zero vector, and the
+all-folded hand is a test in settle.rs.
+
+Closes #4
+
+Generated-by: claude-code/claude-opus-5-5
+```
+
+## What gets a change refused
+
+These are the ones a reviewer refuses rather than fixes, because each is cheaper to get right than
+to argue about:
+
+- **No `Generated-by:`** in a commit footer or the pull request body (section 0).
+- **More than one change.** A bug fix and a rename are two pull requests (section 10).
+- **A regenerated golden snapshot** with a changed line nobody explained (`AGENTS.md` section 4).
+- **A behaviour change without a paired simulation**, or **a speed claim without a measurement**
+  taken on the same machine against the previous commit (sections 8 and 9).
+- **A test adjusted until it passes** when nobody understood why it failed. Say so in the pull
+  request instead.
+
+## The standard
+
+The coding standard for this workspace. It is written for people and for AI agents working in
 the code; both read files in pieces, so small, single-purpose files and explicit reasons in comments
 matter here more than usual.
 
@@ -12,7 +103,7 @@ The project in one line: a Rust 2024 workspace (MSRV 1.98, toolchain pinned to 1
 `rust-toolchain.toml`) of foundation crates (`crates/deps/`), poker and data libraries (`crates/libs/`)
 and programs (`crates/apps/`: `sv10-core` with the simulation tools, `sv10-bot` with the fleet, learner,
 analyst and CLI tools), plus a React dashboard (`web/`). Nothing is published (`publish = false`).
-Read `CLAUDE.md` and `docs/LESSONS.md` before a first change.
+Read `AGENTS.md` and `docs/LESSONS.md` before a first change.
 
 ## 0. AI provenance (MUST)
 
@@ -52,7 +143,7 @@ Before every commit that touches `crates/`:
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features            # or: python3 scripts/test.py (same tests, parallel)
-cargo doc --workspace --no-deps                  # clean once the 7 warnings listed in 0320 are fixed
+cargo doc --workspace --no-deps                  # 7 known warnings today; see section 11
 scripts/check-file-size.sh
 ```
 
@@ -92,10 +183,10 @@ unimplemented = "deny"
 Library crates add `#![warn(missing_docs)]` in `lib.rs`. Warnings are errors in the gate (`-D warnings`).
 
 - **MUST**: every `#[allow(...)]` / `#![allow(...)]` carries a comment on the same or the previous line
-  saying why it is safe (today 19 of 20 do; the exception is listed in 0320).
+  saying why it is safe (today 19 of 20 do).
 - **MUST**: no crate-wide or workspace-wide `allow` without that comment and a ticket reference.
 - *Recommended additions*, in order, each landing with its violations fixed in the same change (they
-  would fail the gate today; counts in 0320):
+  would fail the gate today):
   1. `clippy::allow_attributes_without_reason = "warn"` — move the reason comments into
      `#[allow(lint, reason = "...")]` (Rust ≥ 1.81), so the rule above is checked, not reviewed.
   2. `rust.missing_docs = "warn"` at workspace level (today per library crate; `sv10-bot` lacks it).
@@ -113,7 +204,7 @@ Library crates add `#![warn(missing_docs)]` in `lib.rs`. Warnings are errors in 
   do no network or database I/O (except the store and the named file mappings), apps own the I/O.
   Internal paths and third-party versions live once, in `[workspace.dependencies]`.
 - *Should*: one clear responsibility per module; split by responsibility, domain concept or
-  subsystem, and re-export deliberately so callers keep their paths (the pattern of 0256/0259).
+  subsystem, and re-export deliberately so callers keep their paths.
 - *Should*: keep public APIs deliberate: `pub(crate)` or `pub(super)` unless another crate needs it.
 
 ### File and function size
@@ -123,7 +214,7 @@ Because agents and reviewers read this code in pieces:
 - **MUST**: no Rust source file over **500 physical lines** (code, comments, blank lines and inline tests
   all count). `scripts/check-file-size.sh` enforces it. The 18 files over the limit when it was adopted
   are listed in `scripts/file-size-baseline.txt`: they may shrink, never grow, and each is a refactor
-  backlog item (0320).
+  backlog item.
 - *Should*: target **300** lines; past **400**, split before adding functionality.
 - Exceptions (file named here with the reason, or a comment at the top of the file): generated code,
   large test fixtures, and naturally cohesive units whose split would hurt clarity (for example a
@@ -132,7 +223,7 @@ Because agents and reviewers read this code in pieces:
 - *Should*: move a large inline `#[cfg(test)] mod tests` into a sibling `tests.rs`
   (`#[cfg(test)] mod tests;`), as `sv10-venue::tracker` does, before splitting production code.
 - *Should*: functions under **50** lines; a function over **100** lines needs a reason in review
-  (27 exceed it today, led by the learner's and review's `main`; see 0320).
+  (27 exceed it today, led by the learner's and review's `main`).
 
 ## 5. Error handling
 
@@ -149,7 +240,7 @@ Because agents and reviewers read this code in pieces:
   - Applications (`sv10-bot` binaries and modules, `sv10-core` bins) use `anyhow` with context.
   - Libraries whose callers branch on the failure define their own error enum with `Display` and
     `std::error::Error` by hand, as `sv10-pack::Error` does. **Not `thiserror`**: the foundation rule
-    (0225) replaces third-party crates with our own where the value is small, and a hand-written enum
+    replaces third-party crates with our own where the value is small, and a hand-written enum
     is a few lines. `sv10-store` currently returns `anyhow::Result`; converting it is a recommendation,
     not a requirement, because only the apps consume it.
   - Pure computation (`cards`, `equity`, `engine`, `policy`, `model`) should not fail: take validated
@@ -173,7 +264,7 @@ Because agents and reviewers read this code in pieces:
 - **MUST**: documentation changes with the code in the same commit: `docs/` (ARCHITECTURE, OPERATIONS,
   SPEC-*, LESSONS), `AGENTS.md` where it states a fact, and module docs. `scripts/docs-check.py` fails
   the gate when a doc names a path or command that does not exist.
-- *Should*: explain *why* non-obvious code exists, citing the ticket (`(0302)`) or lesson that forced it.
+- *Should*: explain *why* non-obvious code exists, citing the ticket (``) or lesson that forced it.
 - *Should*: examples (doc tests) for the important public APIs of `deps` and `libs` crates.
 
 ## 8. Testing
@@ -198,7 +289,7 @@ Because agents and reviewers read this code in pieces:
   numbers in the commit or ticket; document performance-sensitive decisions where they live.
 - *Should*: mind ownership and allocation on hot paths (the decision search, the learner's paired
   simulations); no lock held across `.await`; snapshot shared state instead of holding locks in
-  blocking work (0252).
+  blocking work.
 
 ## 10. Changes and review
 
@@ -228,7 +319,7 @@ Because agents and reviewers read this code in pieces:
 Three additions still worth making, all deliberately not done yet:
 
 - `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` as a step, once the 7 doc warnings are
-  fixed (0320). Until then it would only add a red job.
+  fixed. Until then it would only add a red job.
 - `scripts/check-file-size.sh --report` in the job summary, so files approaching the limit are visible.
 - An MSRV job (`cargo hack check --rust-version`). The `rust-version` fields say 1.98, which is what
   the workspace has always compiled on rather than a tested minimum; do not claim support for an older
