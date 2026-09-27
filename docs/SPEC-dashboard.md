@@ -125,6 +125,8 @@ view and nothing else:
 - Framing is the one header that differs from the dashboard's: `Content-Security-Policy:
   frame-ancestors *` instead of `X-Frame-Options: DENY`, because a public table view is meant to be
   embedded. The cache, `nosniff` and referrer rules are the dashboard's.
-- The client (`web/src/main.tsx`) probes `/api/health` before anything else and, when `public` is
-  true, asks for no session and renders `TvMode` with the commentary, the scouting-report buttons and
-  the exit link off (`web/src/table.tsx`).
+- The client (`web/src/main.tsx`) probes `/api/health` before anything else and renders nothing until
+  it answers: the panels below mount with their own timers, so a first paint that guessed would ask
+  this listener for routes it does not have. When `public` is true the client asks for no session and
+  renders `TvMode` with the commentary, the scouting-report buttons and the exit link off
+  (`web/src/table.tsx`).

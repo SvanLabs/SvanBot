@@ -364,3 +364,9 @@ body{background:radial-gradient(1200px 600px at 8% -10%,#e4b9561a,transparent 60
 @media(prefers-reduced-motion:reduce){.seat.folded:not(.hero) .seat-cards{display:none}.pot-chips{animation:none!important}}
 .player-name{display:inline;background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;text-align:inherit;text-decoration:underline dotted color-mix(in srgb,currentColor 45%,transparent);text-underline-offset:3px}.player-name:hover,.player-name:focus-visible{text-decoration-style:solid;color:var(--amber,#e4b956)}.player-name:focus-visible{outline:1px solid currentColor;outline-offset:2px;border-radius:2px}
 .dg-figure{margin:14px 0 18px}.dg{width:100%;height:auto;display:block;max-width:900px}.dg-node rect{fill:var(--panel);stroke:var(--line);stroke-width:1.2}.dg-core rect{stroke:var(--amber)}.dg-store rect{stroke:var(--mint)}.dg-out rect{stroke:var(--muted);stroke-dasharray:4 3}.dg-side rect{stroke:var(--line)}.dg-title{fill:var(--text);font:600 13px var(--display);letter-spacing:.6px}.dg-line{fill:var(--muted);font:10.5px var(--mono)}.dg-edge path{fill:none;stroke:var(--muted);stroke-width:1.3}.dg-tip{fill:var(--muted)}.dg-label{fill:var(--muted);font:10px var(--mono)}.dg-figure details{margin-top:6px}.dg-figure summary{cursor:pointer;color:var(--muted);font-size:12px}
+
+/* The first paint before `/health` has said which listener served the page (issue #335): a shell
+   rather than the dashboard, so no panel starts its timer against a listener that has no such route.
+   Centred and quiet — it is visible for one round trip, and on a listener that never answers it says
+   what is happening instead of showing a page whose numbers would be the wrong page's. */
+.boot{display:flex;align-items:center;justify-content:center;gap:9px;min-height:70vh;color:var(--muted);font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase}
