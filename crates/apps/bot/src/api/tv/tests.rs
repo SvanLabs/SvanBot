@@ -120,6 +120,16 @@ async fn the_tv_listener_serves_the_table_view_and_404s_every_other_api_route() 
     let (status, _, body) = ask(addr, "GET", "/api/tv").await;
     assert_eq!(status, 200, "{body}");
     assert!(body.contains("\"public\":true"), "the TV did not name itself public: {body}");
+    // The route applies the projection, not merely the function beside it: `table_json` carries
+    // `version`, `street`, `hole`, `season` and `last_error` unconditionally, so a `/api/tv` wired
+    // to the dashboard's own payload would be caught here and not only in the shape test.
+    let served: Value = serde_json::from_str(&body).expect("the TV serves JSON");
+    assert!(served["bots"].as_array().is_some_and(|b| !b.is_empty()), "the TV served no bots: {body}");
+    let mut offered = Vec::new();
+    key_paths(&served, &mut offered);
+    for key in NEVER_PUBLIC {
+        assert!(!offered.iter().any(|k| k == key), "`{key}` was served on the public TV: {body}");
+    }
     // The discriminator the dashboard branches on before it asks for a session: the TV must keep
     // answering its health this way, or a spectator gets a login form that cannot be satisfied.
     let (status, _, body) = ask(addr, "GET", "/api/health").await;

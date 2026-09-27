@@ -87,8 +87,10 @@ export function PokerTable({bot, theme, interactive = true}: {bot?: TableBot; th
       } : {};
       return <div key={index} className={`seat seat-${index} ${hero ? 'hero' : ''} ${acting ? 'acting' : ''} ${seat.folded ? 'folded' : ''} ${winner ? 'winner' : ''} ${allIn ? 'all-in' : ''}`}>
         {/* Kept mounted while folded (and mucked away by CSS): the cards have to exist for the fold
-            to animate, and the hero's own cards stay readable either way. */}
-        <div className="seat-cards" key={`${bot?.hand_id}-${seat.name}`}><Card small card={hero ? bot?.hole[0] : undefined}/><Card small card={hero ? bot?.hole[1] : undefined}/></div>
+            to animate. On the dashboard the hero's own cards stay readable either way; the public
+            TV's payload never carries `hole`, so there they are face down — a spectator's view of a
+            seat, which is what the projection is for. */}
+        <div className="seat-cards" key={`${bot?.hand_id}-${seat.name}`}><Card small card={hero ? bot?.hole?.[0] : undefined}/><Card small card={hero ? bot?.hole?.[1] : undefined}/></div>
         {winner && <span className="payout-chips" aria-hidden="true"><i/><i/><i/></span>}
         <div className={`seat-plate ${interactive ? 'scoutable' : ''}`} {...scout}>{winner && <span className="winner-shine" aria-hidden="true"/>}<span className="avatar">{acting && <span className="turn-ring" key={`${bot?.hand_id}-${bot?.street}-${bot?.pot}`} aria-hidden="true"/>}{seat.avatar_url ? <img className="avatar-img" src={seat.avatar_url} alt="" referrerPolicy="no-referrer" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }}/> : null}<span className="avatar-initials">{seat.name.slice(0,2).toUpperCase()}</span></span><div className="seat-info"><span className="seat-name">{seat.name}{hero && <em>YOU</em>}</span><b>{format(seat.stack)}</b><small>{blinds(seat.stack)} BB</small>{seat.read && <small className="seat-read" title={readTitle(seat.read)}>{readLine(seat.read)}</small>}</div></div>
         <span key={`${bot?.hand_id}-${seat.last_action}-${acting}-${winner}`} className="seat-action">{winner ? 'Winner' : seat.folded ? 'Folded' : acting ? 'To act' : seat.last_action?.replace('_',' ') || 'In hand'}</span>
