@@ -34,7 +34,7 @@ else
 fi
 mkdir -p artifacts/logs artifacts/backups
 
-say "Building (portable release binaries; scripts/portable.sh builds per-CPU-level bundles)"
+say "Building (optimized for this CPU via .cargo/config.toml target-cpu=native; scripts/portable.sh builds portable per-CPU-level bundles for other machines)"
 cargo build --release --workspace --bins
 
 say "Building the dashboard"
