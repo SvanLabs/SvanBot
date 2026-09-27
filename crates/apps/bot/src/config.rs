@@ -23,6 +23,12 @@ pub struct Config {
     pub bank_stack_bb: i64,
     pub web_host: String,
     pub web_port: u16,
+    /// The public TV listener (`SVANBOT_TV_PORT`, 0 = off): a second surface that serves the table
+    /// view and nothing else. Everything on it is unauthenticated, so its router carries only the
+    /// public projection of the live tables — no operator route, no POST, no hole card. Binding it
+    /// beyond loopback is what publishes it; `SVANBOT_TV_HOST` defaults to 127.0.0.1.
+    pub tv_host: String,
+    pub tv_port: u16,
     pub operator_token: Option<String>,
     pub dry_run: bool,
     pub artifacts: PathBuf,
@@ -77,11 +83,13 @@ const BANK_STACK_BB: Setting = Setting { key: "SVANBOT_BANK_STACK_BB", default: 
 const EXPORT_CAP: Setting = Setting { key: "SVANBOT_EXPORT_CAP", default: 20_000, min: 0, max: 10_000_000 };
 /// The dashboard's port.
 const WEB_PORT: Setting = Setting { key: "SVANBOT_WEB_PORT", default: 5_000, min: 1, max: 65_535 };
+/// The public TV listener's port (0 = no TV listener at all).
+const TV_PORT: Setting = Setting { key: "SVANBOT_TV_PORT", default: 0, min: 0, max: 65_535 };
 /// Bots to play: unset means every configured key, so the default is the most keys we read.
 const FLEET_SIZE: Setting = Setting { key: "SVANBOT_RUNTIME__FLEET_SIZE", default: 10, min: 1, max: 10 };
 
 /// Every numeric setting, so the gate can hold each one to the same rule.
-const SETTINGS: [Setting; 6] = [BUY_IN, SEEK_TOP_RANK, BANK_STACK_BB, EXPORT_CAP, WEB_PORT, FLEET_SIZE];
+const SETTINGS: [Setting; 7] = [BUY_IN, SEEK_TOP_RANK, BANK_STACK_BB, EXPORT_CAP, WEB_PORT, TV_PORT, FLEET_SIZE];
 
 /// Every numeric setting's value in force, read once. [`SETTINGS`] is the single list, so a setting
 /// cannot be added without a declared range and the test that holds it there.
@@ -132,6 +140,8 @@ impl Config {
             export_cap: n[EXPORT_CAP.key],
             web_host: var("SVANBOT_WEB__HOST").unwrap_or_else(|| "127.0.0.1".into()),
             web_port: n[WEB_PORT.key] as u16,
+            tv_host: var("SVANBOT_TV_HOST").unwrap_or_else(|| "127.0.0.1".into()),
+            tv_port: n[TV_PORT.key] as u16,
             operator_token: var("SVANBOT_WEB__OPERATOR_TOKEN"),
             dry_run: flag("SVANBOT_RUNTIME__DRY_RUN"),
             head: flag("SVANBOT_HEAD"),

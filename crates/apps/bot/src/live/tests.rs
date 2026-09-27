@@ -20,6 +20,8 @@ impl Shared {
             bank_stack_bb: 2_000,
             web_host: "127.0.0.1".into(),
             web_port: 0,
+            tv_host: "127.0.0.1".into(),
+            tv_port: 0,
             operator_token: None,
             dry_run: true,
             artifacts: dir.clone(),

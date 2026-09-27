@@ -28,6 +28,7 @@ CLAUDE.md
 .claude/commands/new-file.md
 .claude/agents/reviewer.md
 .claude/agents/boundaries.md
+.claude/skills/public-tv/SKILL.md
 README.md
 CONTRIBUTING.md
 CONTEXT.md

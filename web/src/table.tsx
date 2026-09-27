@@ -4,7 +4,7 @@ import { Spade, Users, Zap } from 'lucide-react';
 import { commentary, directorScore, nextShot } from './director';
 import { openPlayerCard } from './playercard';
 import { planSentence } from './fun';
-import type { Bot, Decision } from './types';
+import type { Bot, Decision, TableBot } from './types';
 import { format, percent, readLine, readTitle, Card } from './ui';
 import type { TableTheme } from './ui';
 import { PlayerName } from './playername';
@@ -34,7 +34,10 @@ function Chips({amount, className}: {amount: number; className?: string}) {
   </span>;
 }
 
-export function PokerTable({bot, theme}: {bot?: Bot; theme: TableTheme}) {
+/** `interactive: false` is the public TV: the seat plates stop being scouting-report buttons. The
+ *  scout view reads the operator's opponent profiles, and a spectator on the public listener has no
+ *  route to them — so the affordance is not offered rather than offered and refused. */
+export function PokerTable({bot, theme, interactive = true}: {bot?: TableBot; theme: TableTheme; interactive?: boolean}) {
   const seats = Array.from({length:6}, (_, index) => bot?.seats.find(seat => seat.seat === index));
   const occupied = seats.filter(seat => seat?.name).length;
   const bigBlind = bot?.big_blind || 20;
@@ -72,12 +75,22 @@ export function PokerTable({bot, theme}: {bot?: Bot; theme: TableTheme}) {
       if (!seat?.name) return <div key={index} className={`seat seat-${index} unoccupied`}><div className="seat-plate"><span className="avatar"><Users size={14}/></span><div className="seat-info"><span className="seat-name">Seat {index + 1}</span><small>Open</small></div></div></div>;
       const winner = !!seat.name && winners.includes(seat.name);
       const allIn = !seat.folded && seat.last_action === 'all_in';
+      // The scout view is the operator's own read on a player. On the public TV the plate is a
+      // label: the affordance is not offered, rather than offered and then refused by a 404.
+      const scout = interactive ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        title: hero ? `Our seat: ${seat.name}` : `Scouting report: ${seat.name}`,
+        'aria-label': `Open scout view: ${seat.name}`,
+        onClick: () => openPlayerCard(seat.name!),
+        onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlayerCard(seat.name!); } },
+      } : {};
       return <div key={index} className={`seat seat-${index} ${hero ? 'hero' : ''} ${acting ? 'acting' : ''} ${seat.folded ? 'folded' : ''} ${winner ? 'winner' : ''} ${allIn ? 'all-in' : ''}`}>
         {/* Kept mounted while folded (and mucked away by CSS): the cards have to exist for the fold
             to animate, and the hero's own cards stay readable either way. */}
         <div className="seat-cards" key={`${bot?.hand_id}-${seat.name}`}><Card small card={hero ? bot?.hole[0] : undefined}/><Card small card={hero ? bot?.hole[1] : undefined}/></div>
         {winner && <span className="payout-chips" aria-hidden="true"><i/><i/><i/></span>}
-        <div className="seat-plate scoutable" role="button" tabIndex={0} title={hero ? `Our seat: ${seat.name}` : `Scouting report: ${seat.name}`} aria-label={`Open scout view: ${seat.name}`} onClick={() => openPlayerCard(seat.name!)} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlayerCard(seat.name!); } }}>{winner && <span className="winner-shine" aria-hidden="true"/>}<span className="avatar">{acting && <span className="turn-ring" key={`${bot?.hand_id}-${bot?.street}-${bot?.pot}`} aria-hidden="true"/>}{seat.avatar_url ? <img className="avatar-img" src={seat.avatar_url} alt="" referrerPolicy="no-referrer" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }}/> : null}<span className="avatar-initials">{seat.name.slice(0,2).toUpperCase()}</span></span><div className="seat-info"><span className="seat-name">{seat.name}{hero && <em>YOU</em>}</span><b>{format(seat.stack)}</b><small>{blinds(seat.stack)} BB</small>{seat.read && <small className="seat-read" title={readTitle(seat.read)}>{readLine(seat.read)}</small>}</div></div>
+        <div className={`seat-plate ${interactive ? 'scoutable' : ''}`} {...scout}>{winner && <span className="winner-shine" aria-hidden="true"/>}<span className="avatar">{acting && <span className="turn-ring" key={`${bot?.hand_id}-${bot?.street}-${bot?.pot}`} aria-hidden="true"/>}{seat.avatar_url ? <img className="avatar-img" src={seat.avatar_url} alt="" referrerPolicy="no-referrer" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }}/> : null}<span className="avatar-initials">{seat.name.slice(0,2).toUpperCase()}</span></span><div className="seat-info"><span className="seat-name">{seat.name}{hero && <em>YOU</em>}</span><b>{format(seat.stack)}</b><small>{blinds(seat.stack)} BB</small>{seat.read && <small className="seat-read" title={readTitle(seat.read)}>{readLine(seat.read)}</small>}</div></div>
         <span key={`${bot?.hand_id}-${seat.last_action}-${acting}-${winner}`} className="seat-action">{winner ? 'Winner' : seat.folded ? 'Folded' : acting ? 'To act' : seat.last_action?.replace('_',' ') || 'In hand'}</span>
       </div>;
     })}
@@ -85,8 +98,13 @@ export function PokerTable({bot, theme}: {bot?: Bot; theme: TableTheme}) {
 }
 
 /** TV mode (0177): one full-screen table chosen by the auto-director, with play-by-play commentary
- * built from each decision's reason and equity. Presentation only. */
-export function TvMode({bots, theme}: {bots: Bot[]; theme: TableTheme}) {
+ * built from each decision's reason and equity. Presentation only.
+ *
+ * `public` is the same view on the unauthenticated listener (`SVANBOT_TV_PORT`), where the audience
+ * has no operator token. Three things change: the seat plates are not scouting-report buttons, there
+ * is no dashboard to exit back to, and the commentary stays empty — it is built from decision events
+ * carrying each decision's equity, and the public stream deliberately does not carry them. */
+export function TvMode({bots, theme, public: onPublicTv = false}: {bots: TableBot[]; theme: TableTheme; public?: boolean}) {
   const [slot, setSlot] = useState<number>();
   const since = useRef(Date.now());
   const [lines, setLines] = useState<{id:number;text:string}[]>([]);
@@ -111,9 +129,9 @@ export function TvMode({bots, theme}: {bots: Bot[]; theme: TableTheme}) {
   return <div className="tv-mode" role="region" aria-label="TV mode">
     <div className="tv-top"><span className="tv-live"><span className="status-dot"/>LIVE</span><b>{bot?.name ?? 'Waiting for a table'}</b>
       <span className="tv-meta">{bot ? `pot ${format(bot.pot)} · ${format((bot.pot || 0) / (bot.big_blind || 20), 0)} bb` : ''}</span>
-      <a className="text-button" href="#">Exit TV</a></div>
-    <div className="tv-stage" key={slot}><PokerTable bot={bot} theme={theme}/></div>
-    <ol className="tv-commentary" aria-live="polite">{lines.map((l, i) => <li key={l.id} className={i === 0 ? 'fresh' : ''}>{l.text}</li>)}</ol>
+      {!onPublicTv && <a className="text-button" href="#">Exit TV</a>}</div>
+    <div className="tv-stage" key={slot}><PokerTable bot={bot} theme={theme} interactive={!onPublicTv}/></div>
+    {!onPublicTv && <ol className="tv-commentary" aria-live="polite">{lines.map((l, i) => <li key={l.id} className={i === 0 ? 'fresh' : ''}>{l.text}</li>)}</ol>}
     <div className="tv-pip">{bots.filter(b => b.slot !== slot).map(b => <button key={b.slot} onClick={() => { setSlot(b.slot); since.current = Date.now(); }} className={directorScore(b) >= 1000 ? 'hot' : ''}>
       <span className={`status-dot ${b.connected ? '' : 'offline'}`}/>{b.name}<small>{b.hand_id ? `${format((b.pot || 0) / (b.big_blind || 20), 0)} bb` : 'idle'}</small></button>)}</div>
   </div>;

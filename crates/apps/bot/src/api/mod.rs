@@ -32,6 +32,7 @@ mod releases;
 mod setup;
 mod state;
 mod timeline;
+mod tv;
 mod wiring;
 
 use control::*;
@@ -208,7 +209,13 @@ async fn auth_layer(State(s): State<Arc<Shared>>, req: Request, next: Next) -> R
 pub async fn serve(shared: Arc<Shared>) -> Result<()> {
     let dist = shared.config.web_dist.clone();
     let app = Router::new()
-        .route("/api/health", get(|| async { Json(json!({"ok": true, "version": crate::VERSION, "commit": crate::BUILD_COMMIT})) }))
+        // `public` says which listener answered: false here, true on the TV (`tv::router`). The
+        // dashboard branches on it before it asks for a session, so a spectator on the public
+        // listener never sees a login form, and an operator never gets the table view by accident.
+        .route(
+            "/api/health",
+            get(|| async { Json(json!({"ok": true, "public": false, "version": crate::VERSION, "commit": crate::BUILD_COMMIT})) }),
+        )
         .route("/api/session", post(session))
         .route("/api/state", get(state))
         .route("/api/events", get(events))
@@ -259,6 +266,25 @@ pub async fn serve(shared: Arc<Shared>) -> Result<()> {
     let addr = format!("{}:{}", shared.config.web_host, shared.config.web_port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("dashboard on http://{addr}");
+    // The public TV (`SVANBOT_TV_PORT`, 0 = off): a second listener carrying the table view and
+    // nothing else, for an audience with no operator token (`tv`). Binding it beyond loopback is
+    // what publishes it. A failure to bind is logged, not fatal: the optional public surface must
+    // never take the control room down with it, and the log line is where an operator sees why.
+    if shared.config.tv_port != 0 {
+        let tv_addr = format!("{}:{}", shared.config.tv_host, shared.config.tv_port);
+        match tokio::net::TcpListener::bind(&tv_addr).await {
+            Ok(tv_listener) => {
+                tracing::info!("public TV on http://{tv_addr} (unauthenticated: table view only)");
+                let tv = tv::router(shared.clone(), &dist);
+                tokio::spawn(async move {
+                    if let Err(e) = axum::serve(tv_listener, tv).await {
+                        tracing::error!("public TV stopped: {e:#}");
+                    }
+                });
+            }
+            Err(e) => tracing::error!("public TV not started on {tv_addr}: {e}"),
+        }
+    }
     axum::serve(listener, app).await?;
     Ok(())
 }

@@ -534,6 +534,7 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Autonomy / Experiments | Learner state, neural model status, every evaluated challenger |
 | Highlights | Achievements, biggest wins, monster hands, bad beats — click to replay |
 | Activity log | Live events for the selected bot |
+| TV mode | One full-screen table chosen by the auto-director, with play-by-play commentary; the header's TV button (or `#tv`). The same view is what the public TV listener serves (`SVANBOT_TV_PORT`), with the commentary, the scouting-report buttons and the exit link off, because its audience has no operator token |
 | Docs | This documentation |
 | Bot setup (Settings → Open bot setup, or `#setup`) | Add, rename, reorder, switch off or remove bots, paste and check API keys, set the maximum buy-in and table seeking; saves to `.env` and restarts the fleet between turns |
 
@@ -569,7 +570,12 @@ operator token is configured.
 | GET | `/api/bots/{slot}/ranges` | Range explorer for the bot's last decision |
 | GET | `/api/hand-classes` | The 169 hand-class names in engine order |
 | GET | `/api/raw` | Internal live state (debugging) |
-| GET | `/api/health` | `{"ok": true, "version": "10.0.0", "commit": "…"}` |
+| GET | `/api/health` | `{"ok": true, "public": false, "version": "10.0.0", "commit": "…"}` — `public` says which listener answered |
+
+With `SVANBOT_TV_PORT` set, a second listener carries only `/api/health` (answering `"public": true`),
+`/api/tv`, `/api/tv/events` and the built page; every other `/api/` path answers **404** there, not
+401. See [`docs/SPEC-dashboard.md`](SPEC-dashboard.md) for the payload and
+[`docs/OPERATIONS.md`](OPERATIONS.md) for how to host it.
 
 ---
 
@@ -587,6 +593,7 @@ operator token is configured.
 | `SVANBOT_EXPORT_CAP` | 20000 | Deepest hand the server exports per bot for Free keys; Pro keys (`pro_tier`) are unlimited automatically, and every ended season backfills on its own — keys in `.env` are the only setup |
 | `SVANBOT_WEB__HOST` / `SVANBOT_WEB_PORT` | 127.0.0.1 / 5000 | Dashboard address |
 | `SVANBOT_WEB__OPERATOR_TOKEN` | — | Dashboard password |
+| `SVANBOT_TV_HOST` / `SVANBOT_TV_PORT` | 127.0.0.1 / 0 (off) | Public TV listener — an unauthenticated table view; binding beyond loopback publishes it. Bind loopback and reverse-proxy it |
 | `SVANBOT_RUNTIME__DRY_RUN` | false | `true` starts without connecting |
 | `SVANBOT_RUNTIME__FLEET_SIZE` | all keys | Limit how many bots run |
 | `SVANBOT_ONLY` | — | Comma-separated bot names to run |
@@ -609,6 +616,7 @@ operator token is configured.
 | Losing streak | Run `review all 10`; results swing hard at small samples — judge on thousands of hands |
 | Learner never promotes | Normal when the champion is already good; see Experiments for intervals |
 | Dashboard asks for a token | Use `SVANBOT_WEB__OPERATOR_TOKEN` from `.env` |
+| The public TV shows a login form, or a 401 | Wrong port: the TV answers 404 for a dashboard route, never 401. `curl -s <host>/api/health` must say `"public":true`; a 200 from `/api/state` means the dashboard itself was published (`docs/OPERATIONS.md`) |
 | Restore data | Stop, copy a file from `artifacts/backups/` to `artifacts/svanbot10.db`, start; older: `archive restore NAME --to DIR` then copy |
 | Why did a bot make that big call? | `review replay id=N` (or the newest 20) re-runs the recorded decision; the dashboard hand view shows the EVs |
 | Pressure / slowness | `scripts/status.sh` prints CPU/I-O/memory pressure; the learner yields automatically |
