@@ -258,6 +258,27 @@ fn expected_net_removes_all_in_luck_exactly() {
 }
 
 #[test]
+fn a_zero_runout_budget_samples_one_runout_and_never_nan() {
+    // Heads-up flop all-in, as above: the runout space is bigger than a sample, so this is the
+    // sampling path. A budget of zero runouts cannot be averaged into an expectation, so it means
+    // the cheapest sample there is, one runout, rather than no runouts and a division by zero (#6).
+    // One random runout still samples the same expectation, and the answer is finite per seat.
+    let (hero, villain) = (c2("Ah", "Kh"), c2("Qs", "Qd"));
+    let seats = vec![Hand::seat_state(1000, hero), Hand::seat_state(1000, villain)];
+    let mut h = Hand::with_cards(seats, board(&["2h", "7h", "Qc", "3s", "4d"]), 0, 10, 20);
+    h.apply(Action::Call).unwrap();
+    h.apply(Action::Check).unwrap();
+    h.apply(Action::Check).unwrap();
+    h.apply(Action::AllIn).unwrap();
+    h.apply(Action::Call).unwrap();
+    assert!(h.is_finished() && h.showdown());
+    let zero = h.expected_net(0, &mut SmallRng::seed_from_u64(11));
+    assert!(zero.iter().all(|v| v.is_finite()), "a seat came back NaN: {zero:?}");
+    assert_eq!(zero, h.expected_net(1, &mut SmallRng::seed_from_u64(11)), "zero runouts means one runout");
+    assert!(zero.iter().sum::<f64>().abs() < 1e-9, "the runout leaked chips: {zero:?}");
+}
+
+#[test]
 fn random_hands_conserve_chips() {
     let mut rng = SmallRng::seed_from_u64(99);
     for i in 0..20_000 {
