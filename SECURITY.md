@@ -47,7 +47,7 @@ why rotation, not analysis, is the response.
 
 | Version | Supported |
 |---|---|
-| 10.0.0, the newest tag on `main` | Yes |
+| 10.0.1, the newest tag on `main` | Yes |
 | Any older tag | No |
 | A fork or a locally modified tree | No |
 

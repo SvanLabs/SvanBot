@@ -10,6 +10,75 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Nothing yet. Merged changes land here and move under a version when a release is tagged
 (`docs/RELEASE.md`).
 
+## [10.0.1] - 2026-09-28
+
+Correctness fixes on paths the gate could not reach, the release and maintenance workflows that were
+configured but inert, and two build and dashboard corrections. Nothing here changes the decision
+path or the stored data, and the golden snapshot is unchanged.
+
+### Fixed
+
+- **A resumed hand panicked on a non-ASCII card pair** (#97). `resume_hand` sliced a saved `hole` by
+  byte offset behind a byte-length check, so a four-byte string holding a two-byte character sliced
+  a char boundary. The payload comes off the wire, so any hand being resumed could carry it; the
+  guard now requires ASCII as well as the length.
+- **A pot with no live seat panicked instead of being refunded** (#33). `split_pots` took the best
+  hand among the live seats without checking that there was one, so an all-folded pot reached
+  `max().unwrap()` on an empty list. Play cannot reach the state — the hand ends at one live seat —
+  but settlement and the luck adjustment of stored hands call it directly; it now refunds the seats
+  that paid in.
+- **A zero runout budget returned NaN equity** (#31). `expected_net` averaged the sampled runouts by
+  the count it took, and a budget of zero ran the loop no times: `0.0 / 0.0` for every seat. A zero
+  budget is now one runout.
+- **The combo-index sentinel was reported as an index** (#99). Slot 65535 marks a card pair that is
+  not a hand; `combo_index` returned it as one, so a caller indexing a 1,326-entry table read
+  whatever the allocation held, or panicked.
+- **A denied `localStorage` blanked the dashboard** (#30). Where the origin is opaque or site data
+  is blocked — a private window, a sandboxed iframe, a `file://` page — the accessor raises instead
+  of returning `null`, and the reads ran before the first paint under no error boundary, so the
+  throw unmounted the root and left a blank page. Every read is now guarded.
+- **A failed hand-class load left no trace** (#28). The range grid gated its main chart on a list
+  whose fetch threw its failure away, so a failed request deleted the panel's chart and looked
+  exactly like a bot with no range. The failure now surfaces in the grid.
+- **State hashes could disagree with the venue's on a float** (#34). The hash covers compact JSON
+  written by CPython's `repr`, and Rust's `{:e}` breaks a tie between two equally short spellings the
+  other way; about 1 in 4,600 frames diverged. The Rust side now spells floats as CPython does.
+- **The provenance gate never read the pull request body in CI** (#27). `scripts/check.sh` takes the
+  `--pr-body` branch when `SVANBOT_PR_BODY` names a file, and no step set it, so a description
+  without a `Generated-by:` line passed green while `AGENTS.md`, `CONTRIBUTING.md` and the pull
+  request template all said the gate read it.
+- **A `v*` tag that predates the Dockerfile failed the image build** (#26). It died inside
+  `build-push-action` reading a Dockerfile that does not exist at that tag, which reads like a broken
+  build rather than an old tag. The step is now skipped for a tag with no Dockerfile.
+
+### Changed
+
+- **A local build now matches the one that plays** (#24). This tree ships the `target-cpu=native`
+  `.cargo/config.toml` the working repository builds with, so a plain `cargo build --release` is
+  built the same way on whatever machine runs it. Portable and container builds are unaffected: both
+  set `RUSTFLAGS` explicitly, which replaces the file's.
+- **The dashboard's Playwright specs are type-checked** (#29). `web/tests`, `playwright.config.ts`
+  and `vite.config.ts` were outside every tsconfig, so the check CI runs compiled the app and
+  stopped. They are now covered by a second config that the `tsc` step runs alongside the app's.
+
+### Added
+
+- **Every release attaches binaries and publishes a container image** (#23). A `v*` tag attaches the
+  portable x86-64-v2/v3 bundle with its SHA-256 and an attestation, and pushes an attested image to
+  `ghcr.io/svanlabs/svanbot`. A pull request that touches the image builds it without pushing.
+- **New issues are triaged and answered** (#22). A workflow labels every opened issue and new
+  comment, answers it, closes duplicates, and adds `agent-friendly` when the issue is specified well
+  enough to be fixed unattended.
+- **The repository is maintained on a schedule** (#21). Twice a day the oldest open `agent-friendly`
+  issue is fixed on a branch, gated and opened as a pull request with auto-merge, so fixes land when
+  no session is open.
+
+### Removed
+
+- **The private saga's static mount** (#25). `/saga/` served an unrelated private project from a
+  directory that never exists in this tree; the route served nothing, and the name had no business
+  being public.
+
 ## [10.0.0] - 2026-09-27
 
 The first public release; `10.0.0` is the version in the workspace `Cargo.toml`. There are no
@@ -99,5 +168,6 @@ fix or remove.
   before use, and a failed read keeps what is already installed rather than falling back silently.
 - `cargo-deny` checks licences, bans, sources and advisories in the gate.
 
-[Unreleased]: https://github.com/SvanLabs/SvanBot/compare/v10.0.0...HEAD
+[Unreleased]: https://github.com/SvanLabs/SvanBot/compare/v10.0.1...HEAD
+[10.0.1]: https://github.com/SvanLabs/SvanBot/releases/tag/v10.0.1
 [10.0.0]: https://github.com/SvanLabs/SvanBot/releases/tag/v10.0.0
