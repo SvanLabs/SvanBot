@@ -1,0 +1,7 @@
+# The fleet only ever runs on the machine that built it: use its instruction set (POPCNT, LZCNT,
+# BMI2, AVX2 on the reference i7-4770K, whatever the actual build machine offers otherwise) for the
+# evaluator and equity hot loops. A build meant to run on a *different* machine overrides this —
+# scripts/portable.sh and the release Dockerfile both set RUSTFLAGS explicitly, which replaces this
+# file's setting rather than adding to it.
+[build]
+rustflags = ["-C", "target-cpu=native"]
