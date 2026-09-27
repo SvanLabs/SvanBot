@@ -13,10 +13,12 @@
 # page imports it, so one file serves both a reader of the repository and a user of the control
 # room.
 #
-# The agent briefs and the `.claude/` workflow documents are listed too. They are read by people and
-# agents who will follow the commands in them, so they are live documents in exactly the sense this
-# check cares about: a renamed script that no one updated here sends the reader to a path that is
-# not there. Note that the check only recognises a backticked path carrying a `crates/`, `scripts/`,
+# The agent briefs, `llms.txt` and the `.claude/` workflow documents are listed too. They are read by
+# people and agents who will follow the commands in them, so they are live documents in exactly the
+# sense this check cares about: a renamed script that no one updated here sends the reader to a path
+# that is not there. (`llms.txt` is the shortest of them and the one most likely to be followed
+# literally by an agent that has read nothing else, which is the reason to check it rather than
+# exempt it as a front-page file.) Note that the check only recognises a backticked path carrying a `crates/`, `scripts/`,
 # `web/`, `docs/` or `.claude/` prefix — a bare `bench-ab.py` was invisible to it, which is how one
 # survived in `.claude/commands/measure.md` until it was found by hand.
 
@@ -29,6 +31,9 @@ CLAUDE.md
 .claude/agents/reviewer.md
 .claude/agents/boundaries.md
 .claude/skills/public-tv/SKILL.md
+.claude/skills/restore-store/SKILL.md
+.claude/skills/verify-install/SKILL.md
+llms.txt
 README.md
 CONTRIBUTING.md
 CONTEXT.md
