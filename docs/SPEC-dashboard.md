@@ -38,7 +38,10 @@ The server caches refresh attempts for 60 seconds. A failed refresh does not adv
 - The web client goes through `web/src/api.tsx`: `request` throws the server's `detail`; `usePoll`
   keeps the last good answer, reports the latest error and its age, and panels render `StaleNote`
   ("Update failed (...); showing data from HH:MM") while polls fail.
-- Shared formatting lives in `web/src/format.ts` (`fmt`, `sgn`, `pct`, `SUITS`).
+- Shared formatting lives in `web/src/format.ts` (`fmt`, `sgn`, `pct`, `SUITS`). Every browser-storage
+  read goes through `readLocal` in `web/src/storage.ts`, which answers `null` where the accessor
+  raises instead of returning — a browser with site data blocked renders the dashboard without its
+  remembered preferences rather than not at all.
 - Views: a tab bar (Live, Opponents, Learning, Results, System, All; `widgets.tsx` `VIEWS`)
   shows a subset of the widget board in the user's own arrangement; the page opens on Live
   (2,507 px tall on a 1440-wide screen against 6,743 for All), the choice is remembered in the
