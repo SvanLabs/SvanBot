@@ -8,7 +8,7 @@
 **On this page:** [Processes](#processes) · [Crates](#crates) · [Decision path](#decision-path-live) ·
 [Concurrency](#concurrency) · [Season scope](#season-scope-in-the-dashboard) · [Invariants](#invariants)
 
-Version 10.0.0 (workspace `Cargo.toml` is the single version source). CPU-only, Rust 2024,
+Version 10.0.1 (workspace `Cargo.toml` is the single version source). CPU-only, Rust 2024,
 SQLite storage, React dashboard. User-facing guide: `docs/GUIDE.md` (served on the
 dashboard). Planning and decisions: the issue tracker, <https://github.com/SvanLabs/SvanBot/issues>.
 Specs: `SPEC-protocol.md`, `SPEC-data.md`, `SPEC-learner.md`; runbook `OPERATIONS.md`.

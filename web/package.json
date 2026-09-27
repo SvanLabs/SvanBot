@@ -1,7 +1,7 @@
 {
   "name": "svanbot-control-room",
   "license": "MIT OR Apache-2.0",
-  "version": "10.0.0",
+  "version": "10.0.1",
   "private": true,
   "type": "module",
   "scripts": {
