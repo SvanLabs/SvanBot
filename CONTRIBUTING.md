@@ -144,6 +144,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features            # or: python3 scripts/test.py (same tests, parallel)
 cargo doc --workspace --no-deps                  # 7 known warnings today; see section 11
+cargo metadata --locked --format-version 1       # Cargo.lock matches the manifests
 scripts/check-file-size.sh
 ```
 
@@ -309,9 +310,9 @@ Because agents and reviewers read this code in pieces:
   plus the web root's Node-side config files) and a production build, so a change under `web/` gets an
   answer in about a minute instead of waiting behind a Rust build.
 - **`gate`** — `scripts/check.sh full`, the same command you run locally. That is the whole gate in
-  one place: AI provenance, placeholder markers, rustfmt, the file-size check, clippy `-D warnings`,
-  cargo-deny, the third-party notices check, the tool tests, docs drift, the workspace tests and
-  `tsc`. It checks out the full history, because the provenance step reads the commits a pull request
+  one place: AI provenance, placeholder markers, rustfmt, the lockfile check, the file-size check,
+  clippy `-D warnings`, cargo-deny, the third-party notices check, the tool tests, docs drift, the
+  workspace tests and `tsc`. It checks out the full history, because the provenance step reads the commits a pull request
   adds against its base branch, and it writes the pull request description to a file and names it in
   `SVANBOT_PR_BODY`, so the same step reads the description too. On a push to `main` there is no
   description, the variable is not set, and the step checks the commits alone.
