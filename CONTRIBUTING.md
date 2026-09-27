@@ -311,7 +311,9 @@ Because agents and reviewers read this code in pieces:
   one place: AI provenance, placeholder markers, rustfmt, the file-size check, clippy `-D warnings`,
   cargo-deny, the third-party notices check, the tool tests, docs drift, the workspace tests and
   `tsc`. It checks out the full history, because the provenance step reads the commits a pull request
-  adds against its base branch.
+  adds against its base branch, and it writes the pull request description to a file and names it in
+  `SVANBOT_PR_BODY`, so the same step reads the description too. On a push to `main` there is no
+  description, the variable is not set, and the step checks the commits alone.
 - **`check`** — one aggregator that fails unless both jobs succeeded. It is the only status check
   branch protection requires, so a job added to the workflow is covered the moment it exists rather
   than the next time someone remembers to list it.
