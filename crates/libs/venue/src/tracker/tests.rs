@@ -11,8 +11,8 @@ fn frames() -> Vec<Value> {
         .collect()
 }
 
-/// The server reports river shoves with `amount: 0`; the chips must still be recorded, from the
-/// pot change or the stack the player had behind.
+/// The server reports river shoves with `amount: 0` (live hand c27d0070); the chips must still
+/// be recorded, from the pot change or the stack the player had behind.
 #[test]
 fn all_in_with_zero_amount_records_its_chips() {
     for (with_pot_after, stack_fields) in [(true, true), (false, false), (false, true)] {
@@ -20,11 +20,11 @@ fn all_in_with_zero_amount_records_its_chips() {
         t.reset_table();
         t.street = Some(Street::River);
         t.pot = 470;
-        t.seats.insert(1, SeatView { seat: 1, name: "villain".into(), stack: 100_000, in_hand: true, ..Default::default() });
+        t.seats.insert(1, SeatView { seat: 1, name: "silentflute".into(), stack: 906_631, in_hand: true, ..Default::default() });
         let mut m =
             json!({"type": "player_action", "seat": 1, "action": "all_in", "amount": 0, "street": "river", "pot_before": 470, "stack": 0});
         if with_pot_after {
-            m["pot_after"] = json!(100_470);
+            m["pot_after"] = json!(907_101);
         }
         if stack_fields {
             // Both already post-action, so their difference says nothing.
@@ -33,8 +33,8 @@ fn all_in_with_zero_amount_records_its_chips() {
         }
         t.player_action(&m);
         let r = t.history.last().unwrap();
-        assert_eq!((r.kind, r.to), (ActionKind::AllIn, 100_000), "pot_after {with_pot_after}, stack fields {stack_fields}");
-        assert_eq!(t.seats[&1].bet, 100_000);
+        assert_eq!((r.kind, r.to), (ActionKind::AllIn, 906_631), "pot_after {with_pot_after}, stack fields {stack_fields}");
+        assert_eq!(t.seats[&1].bet, 906_631);
     }
 }
 
@@ -93,14 +93,14 @@ fn replays_captured_hand() {
 
     let f = finished.expect("hand result");
     let streets: Vec<Street> = f.summary.history.iter().map(|r| r.street).collect();
-    // ZetaBot's preflop-closing call is labeled "flop" by the server; we must keep it preflop.
+    // aido's preflop-closing call is labeled "flop" by the server; we must keep it preflop.
     let calls: Vec<&ActionRecord> = f.summary.history.iter().filter(|r| r.seat == 5 && r.kind == ActionKind::Call).collect();
     assert_eq!(calls[0].street, Street::Preflop);
     assert!(streets.contains(&Street::River));
     assert_eq!(f.hero_net, Some(0));
     assert_eq!(f.board.len(), 5);
     assert_eq!(f.summary.players.len(), 6);
-    assert_eq!(f.winners, vec!["ZetaBot".to_string()]);
+    assert_eq!(f.winners, vec!["aido".to_string()]);
     let history_total: usize = f.summary.history.len();
     assert_eq!(history_total, 15);
 }

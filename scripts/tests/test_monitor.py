@@ -29,20 +29,20 @@ class StallWatch(unittest.TestCase):
 
 class Toughest(unittest.TestCase):
     def test_one_cooler_does_not_outrank_a_steady_loser(self):
-        # 2026-09-21: one -5,140 bb pot made ZetaBot "toughest" at -587 bb/100 although we
-        # won +40,915 in the other 515 hands with them (0209).
+        # 2026-09-24: one -5,255 bb pot made oj_carlton32 "toughest" at -604 bb/100 although we
+        # won +42,740 in the other 515 hands with them (0209).
         cooler, steady = mon.Tally(), mon.Tally()
-        cooler.add(-5140.0)
+        cooler.add(-5255.0)
         for _ in range(515):
             cooler.add(4.0)
         for _ in range(516):
             steady.add(-1.0)
-        worst = mon.toughest({"zeta": cooler, "grinder": steady}, 150)
-        self.assertEqual([p for _, p, _ in worst], ["grinder", "zeta"])
+        worst = mon.toughest({"oj": cooler, "grinder": steady}, 150)
+        self.assertEqual([p for _, p, _ in worst], ["grinder", "oj"])
         self.assertAlmostEqual(cooler.mean_without_biggest_loss(), 4.0)
         line = mon.format_toughest(worst)
         self.assertIn("grinder -100bb/100 (516)", line)
-        self.assertIn("zeta -597bb/100, +400 without its biggest pot (516)", line)
+        self.assertIn("oj -619bb/100, +400 without its biggest pot (516)", line)
 
     def test_a_single_hand_has_no_trimmed_mean(self):
         t = mon.Tally()
@@ -52,7 +52,7 @@ class Toughest(unittest.TestCase):
 
 # The live hand `sv10_core::flow`'s tests use: hero (seat 4) shoves with an amount-less AllIn record,
 # seat 5 raises to 4,629 and only 2,000 of it is called. Both implementations must agree on it.
-ALL_IN = json.loads(r'''{"players":[[0,"AlphaBot"],[1,"BetaBot"],[2,"GammaBot"],[3,"DeltaBot"],[4,"SurSvan"],[5,"EpsilonBot"]],"button":2,"bb":20,"history":[{"seat":5,"street":"Preflop","kind":"Raise","to":50,"pot_before":30,"to_call_before":20,"bet_before":0,"full_raise":true},{"seat":0,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":1,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":2,"street":"Preflop","kind":"Call","to":50,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":3,"street":"Preflop","kind":"Fold","to":0,"pot_before":130,"to_call_before":40,"bet_before":10,"full_raise":false},{"seat":4,"street":"Preflop","kind":"Call","to":50,"pot_before":130,"to_call_before":30,"bet_before":20,"full_raise":false},{"seat":4,"street":"Flop","kind":"AllIn","to":0,"pot_before":160,"to_call_before":0,"bet_before":0,"full_raise":false},{"seat":5,"street":"Flop","kind":"Raise","to":4629,"pot_before":2110,"to_call_before":1950,"bet_before":0,"full_raise":true},{"seat":2,"street":"Flop","kind":"Fold","to":0,"pot_before":6739,"to_call_before":4629,"bet_before":0,"full_raise":false}],"board":["5d","As","3s","6s","Th"],"shown":[[4,["Ts","Ac"]],[5,["Ah","5h"]]]}''')
+ALL_IN = json.loads(r'''{"players":[[0,"MissCard"],[1,"jonnaBee"],[2,"Bertabot"],[3,"RObert"],[4,"SurSvan"],[5,"POKER_STUDY_AI"]],"button":2,"bb":20,"history":[{"seat":5,"street":"Preflop","kind":"Raise","to":50,"pot_before":30,"to_call_before":20,"bet_before":0,"full_raise":true},{"seat":0,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":1,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":2,"street":"Preflop","kind":"Call","to":50,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":3,"street":"Preflop","kind":"Fold","to":0,"pot_before":130,"to_call_before":40,"bet_before":10,"full_raise":false},{"seat":4,"street":"Preflop","kind":"Call","to":50,"pot_before":130,"to_call_before":30,"bet_before":20,"full_raise":false},{"seat":4,"street":"Flop","kind":"AllIn","to":0,"pot_before":160,"to_call_before":0,"bet_before":0,"full_raise":false},{"seat":5,"street":"Flop","kind":"Raise","to":4629,"pot_before":2110,"to_call_before":1950,"bet_before":0,"full_raise":true},{"seat":2,"street":"Flop","kind":"Fold","to":0,"pot_before":6739,"to_call_before":4629,"bet_before":0,"full_raise":false}],"board":["5d","As","3s","6s","Th"],"shown":[[4,["Ts","Ac"]],[5,["Ah","5h"]]]}''')
 
 
 class ChipFlow(unittest.TestCase):
@@ -63,26 +63,26 @@ class ChipFlow(unittest.TestCase):
 
     def test_flow_charges_only_the_players_chips_moved_between(self):
         self.assertEqual(mon.flow_to_hero(ALL_IN, 4060, ["SurSvan"], 4), {0: 0, 1: 0, 2: 50, 3: 10, 5: 2000})
-        lost = mon.flow_to_hero(ALL_IN, 4060, ["EpsilonBot"], 4)
+        lost = mon.flow_to_hero(ALL_IN, 4060, ["POKER_STUDY_AI"], 4)
         self.assertEqual((lost[5], lost[2], lost[3]), (-2000, 0.0, 0.0))
-        split = mon.flow_to_hero(ALL_IN, 4060, ["SurSvan", "EpsilonBot"], 4)
+        split = mon.flow_to_hero(ALL_IN, 4060, ["SurSvan", "POKER_STUDY_AI"], 4)
         self.assertEqual((split[5], split[2], split[3]), (0.0, 25.0, 5.0))
 
     def test_the_folders_at_a_lost_pot_are_not_charged(self):
-        # 2026-09-23: ThetaBot read -508 bb/100 "dealt in" while IotaBot won our pots at its
+        # 2026-09-26: lionkingbig read -522 bb/100 "dealt in" while Bottelon2 won our pots at its
         # tables; flow charges only the winner.
         ledger = mon.defaultdict(mon.Tally)
-        self.assertTrue(mon.add_flows(ledger, {"SurSvan"}, "SurSvan", ALL_IN, 4060, "EpsilonBot"))
-        self.assertEqual(ledger["EpsilonBot"].s, -100.0)
-        self.assertEqual(ledger["GammaBot"].s, 0.0)
-        self.assertFalse(mon.add_flows(ledger, {"SurSvan"}, "SurSvan", ALL_IN, 4061, "EpsilonBot"))
+        self.assertTrue(mon.add_flows(ledger, {"SurSvan"}, "SurSvan", ALL_IN, 4060, "POKER_STUDY_AI"))
+        self.assertEqual(ledger["POKER_STUDY_AI"].s, -100.0)
+        self.assertEqual(ledger["Bertabot"].s, 0.0)
+        self.assertFalse(mon.add_flows(ledger, {"SurSvan"}, "SurSvan", ALL_IN, 4061, "POKER_STUDY_AI"))
 
     def test_the_window_charges_the_winner_not_the_whole_table(self):
         window = mon.defaultdict(float)
         ledger = mon.defaultdict(mon.Tally)
-        self.assertTrue(mon.add_flows(ledger, {"SurSvan"}, "SurSvan", ALL_IN, 4060, "EpsilonBot", window))
-        self.assertEqual(window["EpsilonBot"], -100.0)
-        self.assertEqual(window["GammaBot"], 0.0)
+        self.assertTrue(mon.add_flows(ledger, {"SurSvan"}, "SurSvan", ALL_IN, 4060, "POKER_STUDY_AI", window))
+        self.assertEqual(window["POKER_STUDY_AI"], -100.0)
+        self.assertEqual(window["Bertabot"], 0.0)
 
 
 class Nemesis(unittest.TestCase):

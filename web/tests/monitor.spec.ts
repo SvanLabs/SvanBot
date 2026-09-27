@@ -15,15 +15,15 @@ test('results monitor widget reports the monitor, pressure, replays and alerts h
   // With alerts and summaries served, they render with their kinds.
   await page.route('**/api/monitor', route => route.fulfill({ json: {
     monitor: { running: true, log_age_seconds: 60, started: null,
-      summary: { time: '12:00', kind: 'SUMMARY', text: '30m: 216 hands +27449 chips | SurSvan +13130/45 | we lost most to: AlphaBot -283bb' },
-      opponents: { time: '12:00', kind: 'OPPONENTS', text: '18 faced, 2 new: A, B | most played: AlphaBot (station VPIP 47/PFR 11, 380h, -283bb/40)' },
-      alerts: [{ time: '11:40', kind: 'BIGWIN', text: 'SurSvan +9000 chips (+450 bb)' }, { time: '11:10', kind: 'NEMESIS', text: 'AlphaBot beats us' }] },
+      summary: { time: '12:00', kind: 'SUMMARY', text: '30m: 216 hands +27449 chips | SurSvan +13130/45 | we lost most to: Glow -299bb' },
+      opponents: { time: '12:00', kind: 'OPPONENTS', text: '18 faced, 2 new: A, B | most played: Glow (station VPIP 52/PFR 9, 400h, -299bb/40)' },
+      alerts: [{ time: '11:40', kind: 'BIGWIN', text: 'SurSvan +9000 chips (+450 bb)' }, { time: '11:10', kind: 'NEMESIS', text: 'Glow beats us' }] },
     pressure: { cpu: 3.2, io: 0.4, memory: 0 }, replays: { recorded: 212, newest: null, keep_days: 14 },
     season_check: { result: 'season check season12: PASSED', failures: [] } } }));
   await page.reload();
   await expect(panel.getByText('Running')).toBeVisible();
   await expect(panel.getByText('BIGWIN')).toBeVisible();
-  await expect(panel.getByText(/most played: AlphaBot \(station/)).toBeVisible();
+  await expect(panel.getByText(/most played: Glow \(station/)).toBeVisible();
   await expect(panel.getByText('season check season12: PASSED')).toBeVisible();
 });
 

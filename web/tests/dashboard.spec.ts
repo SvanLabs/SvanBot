@@ -48,7 +48,7 @@ async function expectInside(child: Locator, parent: Locator, tolerance = 2) {
 }
 
 async function mockLeaderboard(page: Page) {
-  const names = ['AlphaBot', 'BetaBot', 'account2', 'account1', 'GammaBot', 'DeltaBot', 'SvanBotV7'];
+  const names = ['Quietflute', 'allInAmazonia', 'account2', 'account1', 'w1nner', 'bigbear', 'SvanBotV7'];
   await page.route('**/api/leaderboard', route => route.fulfill({json:{
     entries:names.map((name, index) => ({
       rank:index + 1, name, score:2_000_000 - index * 120_000, hands:10_000,
@@ -439,7 +439,7 @@ const signalDecision = {
   street: 'turn', hand_category: 'Pair', pot: 322, to_call: 90, pot_odds: 0.2194,
   reason: 'eq 0.27 vs 1 opp, raise ev 40 (best 74), they fold 2% — check  ev 74 · raise 90 ev 40 · raise 151 ev 6 · raise 219 ev -24 · raise 328 ev -90',
   equity: {value: 0.273, samples: 1_173_926, standard_error: 0.0004, exact: false},
-  opponent_models: [{name: 'EpsilonBot'}],
+  opponent_models: [{name: 'haZe'}],
   candidates: [
     {action: 'check', amount: null, ev: 74, equity_called: 0.2727, fold_prob: 0},
     {action: 'raise', amount: 90, ev: 40, equity_called: 0.2585, fold_prob: 0.0199},
@@ -908,33 +908,33 @@ test('clicking an opponent seat opens their scout view', async ({page}) => {
   // 0217/0296: a sporty scouting card with style, rates against the league and our record.
   await fleet(page, state => {
     Object.assign(state.bots[0], {connected:true, mode:'playing', hand_id:'h', street:'flop', pot:300, hero_seat:0, board:['9c','8h','3h'],
-      seats:[{seat:0, name:'TestBot', stack:2000, bet:0}, {seat:2, name:'GammaBot', stack:1800, bet:0, last_action:'check'}]});
+      seats:[{seat:0, name:'TestBot', stack:2000, bet:0}, {seat:2, name:'w1nner', stack:1800, bet:0, last_action:'check'}]});
   });
   const rates = {vpip:0.3, pfr:0.2, open_raise:0.2, limp:0.05, three_bet:0.09, call_open:0.2, fold_to_3bet:0.5, four_bet:0.05, fold_to_4bet:0.4, cbet:0.7,
     fold_to_cbet:0.5, wtsd:0.3, won_showdown:0.52, river_bluff:0.25, bet_first:[0.4,0.3,0.3], fold_vs_bet:[0.4,0.5,0.6], raise_vs_bet:[0.1,0.08,0.05], vpip_pos:[0.2,0.35,0.3], open_pos:[0.15,0.3,0.2]};
-  await page.route('**/api/players/GammaBot/card', route => route.fulfill({json:{
-    name:'GammaBot', avatar_url:null, style:'Loose-aggressive', advice:'Value bet thinner; they call down.', hands_observed:8210, confidence:0.99,
-    read:{...rates, vpip:0.47}, league:rates, corrections:{fold_offset:-0.64, response_ratio:null}, leaderboard:{rank:3, score:431902, hands:9187},
-    vs_us:{hands:8210, net:243180, ev_net:468420, bb100:148.1, confidence:271.5, ev_bb100:285.3, ev_confidence:213.6, won_pots:3061, lost_pots:2352,
-      biggest_win:{hand_id:'h-7wwwwwww', net:28000, pot:57000, bot:'Svanar'}, biggest_loss:{hand_id:'h-8lllllll', net:-98750, pot:198400, bot:'SurSvan'}, by_bot:[{bot:'Svanar', hands:1940, net:86000}],
-      form:['W','L','W','W','='], series:[{hand:1, net:0, ev:0},{hand:8210, net:243180, ev:468420}]},
+  await page.route('**/api/players/w1nner/card', route => route.fulfill({json:{
+    name:'w1nner', avatar_url:null, style:'Loose-aggressive', advice:'Value bet thinner; they call down.', hands_observed:8535, confidence:0.99,
+    read:{...rates, vpip:0.45}, league:rates, corrections:{fold_offset:-0.64, response_ratio:null}, leaderboard:{rank:3, score:448567, hands:9440},
+    vs_us:{hands:8535, net:259957, ev_net:499665, bb100:152.3, confidence:283.2, ev_bb100:292.7, ev_confidence:222.3, won_pots:3100, lost_pots:2400,
+      biggest_win:{hand_id:'h-7wwwwwww', net:30000, pot:61000, bot:'Svanar'}, biggest_loss:{hand_id:'h-8lllllll', net:-105098, pot:210226, bot:'SurSvan'}, by_bot:[{bot:'Svanar', hands:2000, net:90000}],
+      form:['W','L','W','W','='], series:[{hand:1, net:0, ev:0},{hand:8535, net:259957, ev:499665}]},
     // 0280: the head-to-head read, which can disagree in sign with the shared table result.
-    vs_seat:{hands:8210, bb_per_100:-402.0, low_95:-1524.6, high_95:-117.3, beats_us:true, we_beat:false},
+    vs_seat:{hands:8535, bb_per_100:-415.0, low_95:-1580.2, high_95:-120.4, beats_us:true, we_beat:false},
   }}));
   await page.goto('/');
-  await page.getByRole('button', {name:'Open scout view: GammaBot'}).first().click();
-  const card = page.getByRole('dialog', {name:'Scout view: GammaBot'});
-  await expect(card.getByRole('heading', {name:'GammaBot'})).toBeVisible();
-  await expect(card.getByText('#3 · 431,902 pts')).toBeVisible();
+  await page.getByRole('button', {name:'Open scout view: w1nner'}).first().click();
+  const card = page.getByRole('dialog', {name:'Scout view: w1nner'});
+  await expect(card.getByRole('heading', {name:'w1nner'})).toBeVisible();
+  await expect(card.getByText('#3 · 448,567 pts')).toBeVisible();
   // OUR EDGE is the chip flow attributed to their seat, not the table result the card used to show.
   await expect(card.locator('.pc-big').first()).toContainText('OUR EDGE');
-  await expect(card.locator('.pc-big').first()).toContainText('-402');
-  await expect(card.getByText(/vs their seat over 8,210 attributed hands · 95% -1,525\.\.-117/)).toBeVisible();
+  await expect(card.locator('.pc-big').first()).toContainText('-415');
+  await expect(card.getByText(/vs their seat over 8,535 attributed hands · 95% -1,580\.\.-120/)).toBeVisible();
   // 0296: the shared-table result tile is gone; the shared hands now show as counts, not a result.
-  await expect(card.getByText(/pots with them in · theirs from us · 8,210 hands they were dealt into/)).toBeVisible();
-  await expect(card.locator('.pc-big').nth(1)).toContainText('3,061–2,352');
+  await expect(card.getByText(/pots with them in · theirs from us · 8,535 hands they were dealt into/)).toBeVisible();
+  await expect(card.locator('.pc-big').nth(1)).toContainText('3,100–2,400');
   await expect(card.locator('.pc-pill')).toHaveCount(5);
-  await expect(card.locator('.pc-stat').first()).toContainText('47%');
+  await expect(card.locator('.pc-stat').first()).toContainText('45%');
   await expect(card.getByText(/fold to our bets less than the model predicts/)).toBeVisible();
   await expect(card.getByText(/BIGGEST HANDS/)).toBeVisible();
   await expect(card.locator('.pc-recent li')).toHaveCount(2);
@@ -1020,7 +1020,7 @@ test('per-opponent reads show each fit, its gate and the corrected opponents', a
       {id: 'sizing', title: 'River sizing tells', reads: 'How river bet size tracks strength', stored: true, active: false, evidence: {gain_mnats: 0.56, half_width_mnats: 1.82, n: 2378}, installed: 0},
     ],
     corrected_opponents: 140,
-    opponents: [{name: 'GammaBot', hands: 9880, fold_offset: -0.64, response_ratio: null, size_tell: null}],
+    opponents: [{name: 'w1nner', hands: 10031, fold_offset: -0.64, response_ratio: null, size_tell: null}],
   }}));
   await page.goto('/');
   const panel = page.locator('[data-widget="intel"]');

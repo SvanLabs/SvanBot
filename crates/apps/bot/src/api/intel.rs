@@ -107,11 +107,11 @@ mod tests {
     #[test]
     fn fits_report_their_evidence_and_live_install_counts() {
         let mut models = ModelStore {
-            fold_offsets: Arc::new([("villain0".to_string(), -0.64f32), ("fish".to_string(), 0.3)].into_iter().collect()),
-            size_tells: Arc::new([("villain0".to_string(), 0.4f32)].into_iter().collect()),
+            fold_offsets: Arc::new([("w1nner".to_string(), -0.64f32), ("fish".to_string(), 0.3)].into_iter().collect()),
+            size_tells: Arc::new([("w1nner".to_string(), 0.4f32)].into_iter().collect()),
             ..Default::default()
         };
-        models.players.insert("villain0".into(), PlayerStats { hands: 10_031.0, ..Default::default() });
+        models.players.insert("w1nner".into(), PlayerStats { hands: 10_031.0, ..Default::default() });
         models.players.insert("fish".into(), PlayerStats { hands: 200.0, ..Default::default() });
         let fold = json!({"gain": 0.00447, "half_width": 0.00124, "n": 23695, "active": true, "offsets": {}});
         let sizing = json!({"gain": 0.00056, "half_width": 0.00182, "n": 2378, "active": false, "tells": {}});
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(v["corrected_opponents"], 2);
         let rows = v["opponents"].as_array().unwrap();
         assert_eq!(rows.len(), 1, "truncated to `top`, most-observed first");
-        assert_eq!(rows[0]["name"], "villain0");
+        assert_eq!(rows[0]["name"], "w1nner");
         assert!((rows[0]["size_tell"].as_f64().unwrap() - 0.4).abs() < 1e-6);
         assert!(rows[0]["response_ratio"].is_null());
     }

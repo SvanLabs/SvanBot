@@ -226,7 +226,7 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
             debug_assert!(responder.stack_total > responder.bet || price.fold_prob == 0.0);
             cont_ranges.push((price.continue_prob, price.continue_range));
         }
-        // Preflop everyone-folds estimates ran about 2x reality on live raises; the live
+        // Preflop everyone-folds estimates ran about 2x reality on live raises (2026-09-23); the live
         // calibration shift pulls them back. Recorded per decision so refits never compound.
         if sit.street == Street::Preflop && params.preflop_fold_logit_shift != 0.0 {
             all_fold = shift_fold_logit(all_fold, params.preflop_fold_logit_shift);
@@ -426,8 +426,8 @@ pub fn villain_bet_to_pot(sit: &Situation) -> f64 {
 
 /// Equity a call is priced with: the raw estimate, lowered by the live-fitted shifts when calling an
 /// all-in on the river (0159), in a pot of at least [`DEEP_CALL_MIN_POT_BB`] or against an overbet of
-/// at least [`OVERBET_CALL_MIN_RATIO`] times the pot, the overbet shift growing with the bet's size
-/// when the size-scaled fit is installed (0233). The largest applicable shift is used,
+/// at least [`OVERBET_CALL_MIN_RATIO`] times the pot (2026-09-23), the overbet shift growing with the
+/// bet's size when the size-scaled fit is installed (0233). The largest applicable shift is used,
 /// never the sum, and the recorded estimate stays raw so refits never compound.
 pub fn call_equity(eq: f64, street: Street, facing_all_in: bool, pot_bb: f64, bet_to_pot: f64, params: &Params) -> f64 {
     if !facing_all_in {
@@ -558,7 +558,7 @@ mod tests {
         // Just under the threshold, and never below zero.
         assert_eq!(call_equity(0.6, Street::Turn, true, 499.0, 0.0, &p), 0.6);
         assert_eq!(call_equity(0.1, Street::Turn, true, 600.0, 0.0, &p), 0.0);
-        // A 180x-pot overbet (set vs nut straight): the overbet shift wins when larger.
+        // A 180x-pot overbet (2026-09-23, set vs nut straight): the overbet shift wins when larger.
         let o = Params { overbet_call_shift: 0.3, ..p.clone() };
         assert!((call_equity(0.685, Street::Turn, true, 10_000.0, 180.0, &o) - 0.385).abs() < 1e-12);
         assert!((call_equity(0.6, Street::Turn, true, 80.0, 1.2, &o) - 0.6).abs() < 1e-12, "a normal bet is not an overbet");

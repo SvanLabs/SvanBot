@@ -19,9 +19,8 @@ pub async fn blocking<T: Send + 'static>(name: &'static str, body: impl FnOnce()
     }
 }
 
-/// The longest any job may run on the live system: two minutes is already a long stall for a bot
-/// holding a seat at a table. Backups are the exception — they are bulk I/O and take as long as
-/// they take.
+/// The longest any job may run on the live system (operator, 2026-09-27: "nothing is worth more than
+/// 2 minutes on a live running system"; backups excepted, "that's nature").
 pub const JOB_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Jobs allowed past [`JOB_BUDGET`]: the backups.
