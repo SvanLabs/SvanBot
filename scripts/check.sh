@@ -113,13 +113,13 @@ case "$mode" in
     cargo deny check advisories 2>/dev/null || echo "   advisories failed or the RustSec database was unreachable; see: cargo deny check advisories"
     step "third-party notices current"
     python3 scripts/notices.py --check || fail "run scripts/notices.py and commit THIRD-PARTY-NOTICES.md"
-    step "tickets lint + tool tests (tickets, codec vs zlib, release/rollback, keepalive, update)"
+    step "tickets lint + tool tests (tickets, codec vs zlib, test runner, release/rollback, keepalive, update)"
     python3 scripts/tickets.py lint >/dev/null || { python3 scripts/tickets.py lint | tail -20 >&2; fail "tickets lint (scripts/tickets.py lint --fix fixes edges and types)"; }
     # The codec test builds a small example with cargo: while the full gate's test build holds the
     # build directory it would wait on that lock (57 s of an 85 s gate, 0334), so it runs after it.
     pack_test=scripts/tests/test_pack.py
     [ -z "$test_build_pid" ] || pack_test=
-    python3 -m unittest -q scripts/tests/test_tickets.py scripts/tests/test_fleet_check.py scripts/tests/test_monitor.py $pack_test scripts/tests/test_docs_check.py scripts/tests/test_progress.py scripts/tests/test_provenance.py 2>/dev/null || fail "ticket, fleet-check, codec, docs-check and provenance tool tests (python3 -m unittest scripts/tests/test_pack.py ...)"
+    python3 -m unittest -q scripts/tests/test_tickets.py scripts/tests/test_fleet_check.py scripts/tests/test_monitor.py $pack_test scripts/tests/test_docs_check.py scripts/tests/test_progress.py scripts/tests/test_provenance.py scripts/tests/test_test_runner.py 2>/dev/null || fail "ticket, fleet-check, codec, runner, docs-check and provenance tool tests (python3 -m unittest scripts/tests/test_pack.py ...)"
     step "docs name only paths and commands that exist"
     python3 scripts/docs-check.py 2>/dev/null || { python3 scripts/docs-check.py | head -20 >&2; fail "docs drift (scripts/docs-check.py)"; }
     bash scripts/tests/release-rollback.sh >/dev/null 2>&1 || fail "release/rollback tests (run bash scripts/tests/release-rollback.sh)"
