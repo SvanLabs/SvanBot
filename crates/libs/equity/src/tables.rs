@@ -58,7 +58,9 @@ fn combo_map() -> &'static Vec<[u16; NUM_COMBOS]> {
             .map(|p| {
                 let mut m = [0u16; NUM_COMBOS];
                 for (i, &(a, b)) in combos().cards.iter().enumerate() {
-                    m[i] = combo_index(permute(a, p), permute(b, p)) as u16;
+                    // `p` is a permutation of the four suits and `a != b`, so the permuted pair is
+                    // still two distinct cards and always has a combo.
+                    m[i] = combo_index(permute(a, p), permute(b, p)).expect("a relabelled combo is a combo") as u16;
                 }
                 m
             })

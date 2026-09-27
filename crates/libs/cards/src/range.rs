@@ -9,7 +9,8 @@ pub const NUM_COMBOS: usize = 1326;
 pub struct ComboTable {
     /// Combo index → its two cards (lower card index first).
     pub cards: [(Card, Card); NUM_COMBOS],
-    /// Card index pair (either order) → combo index; `u16::MAX` on the diagonal.
+    /// Card index pair (either order) → combo index; `u16::MAX` on the diagonal, which
+    /// [`combo_index`] reports as `None` instead of returning it as an index.
     pub index: [[u16; 52]; 52],
 }
 
@@ -50,10 +51,15 @@ pub fn combos() -> &'static ComboTable {
     &COMBOS
 }
 
-/// Combo index of two distinct cards, in either order.
+/// Combo index of two distinct cards, in either order; `None` when the pair is not a legal hand
+/// (the same card twice, or an index outside the 52-card deck). The table's `u16::MAX` diagonal is
+/// an encoding, not an index, so it can never come back as one.
 #[inline]
-pub fn combo_index(a: Card, b: Card) -> usize {
-    COMBOS.index[a.0 as usize][b.0 as usize] as usize
+pub fn combo_index(a: Card, b: Card) -> Option<usize> {
+    match *COMBOS.index.get(a.0 as usize)?.get(b.0 as usize)? {
+        u16::MAX => None,
+        i => Some(i as usize),
+    }
 }
 
 /// Card mask of combo `i`.
@@ -159,9 +165,30 @@ mod tests {
         let t = combos();
         for (i, &(a, b)) in t.cards.iter().enumerate() {
             assert!(a < b);
-            assert_eq!(combo_index(a, b), i);
-            assert_eq!(combo_index(b, a), i);
+            assert_eq!(combo_index(a, b), Some(i));
+            assert_eq!(combo_index(b, a), Some(i));
         }
+    }
+
+    /// Every slot the compile-time build never writes is `u16::MAX`, and `combo_index` must report
+    /// that encoding as `None` rather than hand 65535 to a caller that will index a 1326-entry
+    /// table with it.
+    #[test]
+    fn the_sentinel_never_comes_back_as_an_index() {
+        for c in 0..52u8 {
+            assert_eq!(combo_index(Card(c), Card(c)), None, "the diagonal, card {c}");
+        }
+        assert_eq!(combo_index(Card(0), Card(52)), None, "one card past the deck");
+        assert_eq!(combo_index(Card(255), Card(0)), None, "a byte that is not a card at all");
+    }
+
+    /// A pair that is a legal hand still resolves, so the rejection above is not the whole function.
+    #[test]
+    fn a_real_pair_still_has_an_index() {
+        let a = Card::parse("Ah").unwrap();
+        let b = Card::parse("Kd").unwrap();
+        assert_eq!(combo_index(a, b), combo_index(b, a));
+        assert!(combo_index(a, b).is_some_and(|i| i < NUM_COMBOS));
     }
 
     #[test]
