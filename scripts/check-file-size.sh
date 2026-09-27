@@ -3,11 +3,23 @@
 # file, 400 the point to consider splitting. Files over 500 when the rule was adopted are listed with
 # their size in scripts/file-size-baseline.txt: they may shrink but never grow, and a file leaves the
 # list once it is back under the limit. A new file over 500 lines fails.
-#   scripts/check-file-size.sh             check (exit 1 on a new or grown oversized file)
+#
+# The last of those is checked, not just stated (0390). An entry for a file that has come back under
+# the limit is not harmless: the entry is a *ceiling*, so it silently re-grants the lines the file
+# gave up — `learner.rs` sat at 380 lines with an entry of 931, and could have grown back to 930
+# without the gate saying anything. The fix is to delete the line, which is one line, so the check
+# asks for that rather than trusting someone to remember. Lowering an entry that is still needed is
+# allowed but never required: an edit people have to make on every shrink is an edit that conflicts
+# in every branch, and the size a file has today is not the size that matters here — the ceiling it
+# may not cross is.
+#
+# The tree it reads is `SV10_FILE_SIZE_ROOT` (default: this checkout), which exists so the rule has
+# tests to fail (`scripts/tests/file-size.sh`).
+#   scripts/check-file-size.sh             check (exit 1 on a new, grown or stale entry)
 #   scripts/check-file-size.sh --report    also list files over 400 lines
 #   scripts/check-file-size.sh --baseline  rewrite the baseline from today's files (operator decision only)
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "${SV10_FILE_SIZE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 max_lines=500
 warn_lines=400
 baseline=scripts/file-size-baseline.txt
@@ -30,6 +42,9 @@ while read -r path lines; do
       echo "ERROR: $path grew to $lines lines (baseline $allowed); oversized files may only shrink"
       failed=1
     fi
+  elif [ -n "$allowed" ]; then
+    echo "ERROR: $path has $lines lines and is listed in $baseline with $allowed: it is back under the $max_lines-line limit, so it has left the list — delete its line"
+    failed=1
   elif [ "$mode" = --report ] && [ "$lines" -gt "$warn_lines" ]; then
     echo "note: $path has $lines lines (over $warn_lines: consider splitting before adding more)"
   fi

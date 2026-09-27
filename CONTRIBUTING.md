@@ -221,9 +221,10 @@ Library crates add `#![warn(missing_docs)]` in `lib.rs`. Warnings are errors in 
 Because agents and reviewers read this code in pieces:
 
 - **MUST**: no Rust source file over **500 physical lines** (code, comments, blank lines and inline tests
-  all count). `scripts/check-file-size.sh` enforces it. The 18 files over the limit when it was adopted
+  all count). `scripts/check-file-size.sh` enforces it. The files over the limit when it was adopted
   are listed in `scripts/file-size-baseline.txt`: they may shrink, never grow, and each is a refactor
-  backlog item.
+  backlog item. A file that comes back under the limit leaves the list, and the check fails until its
+  line is deleted — an entry is a ceiling, so one left behind re-grants the lines the file gave up.
 - *Should*: target **300** lines; past **400**, split before adding functionality.
 - Exceptions (file named here with the reason, or a comment at the top of the file): generated code,
   large test fixtures, and naturally cohesive units whose split would hurt clarity (for example a

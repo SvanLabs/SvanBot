@@ -10,14 +10,15 @@ pieces, and a file that has to be read whole to be understood is one neither can
 ## Check where a file stands
 
 ```
-scripts/check-file-size.sh            # check: exits 1 on a new or grown oversized file
+scripts/check-file-size.sh            # check: exits 1 on a new, grown or no-longer-needed entry
 scripts/check-file-size.sh --report   # also list every file over 400 lines
 ```
 
 The check compares against `scripts/file-size-baseline.txt`, which lists the files that were already
 over the limit when the rule was adopted, with their size at that moment. **The baseline may only
 shrink.** An oversized file may get smaller, never larger, and it leaves the list once it is back
-under 500. A new file over 500 fails outright.
+under 500 — the check fails until its line is deleted, because the entry is a ceiling and one left
+behind re-grants the lines the file gave up. A new file over 500 fails outright.
 
 `scripts/check-file-size.sh --baseline` rewrites the baseline from the files on disk. That is an
 operator decision, not a fix: running it to clear a red check erases the record of which files are

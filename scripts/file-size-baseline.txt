@@ -2,9 +2,7 @@
 crates/apps/bot/src/api/insights.rs 740
 crates/apps/bot/src/api/releases.rs 657
 crates/apps/bot/src/api/state.rs 939
-crates/apps/bot/src/bin/learner.rs 931
 crates/apps/bot/src/bin/review.rs 546
-crates/apps/bot/src/experiment.rs 556
 crates/apps/bot/src/raisewar.rs 520
 crates/apps/bot/src/tasks.rs 822
 crates/deps/pack/src/deflate.rs 603
@@ -14,5 +12,4 @@ crates/libs/policy/src/policy/mod.rs 713
 crates/libs/policy/src/policy/responses.rs 572
 crates/libs/policy/src/sim.rs 524
 crates/libs/store/src/archive.rs 750
-crates/libs/store/src/packed.rs 533
 crates/libs/venue/src/tracker/mod.rs 533
