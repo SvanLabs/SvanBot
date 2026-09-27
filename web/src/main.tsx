@@ -31,6 +31,7 @@ import { scopeLabel, Performance, Autonomy, ExperimentCard, ExperimentModePanel,
 import { Replay, StartingHands } from './panels';
 import { IntelPanel } from './intel';
 import { TimelinePanel } from './timeline';
+import { readLocal } from './storage';
 
 /** openpoker.ai's per-table route is `/arena/<table id>` (operator, 2026-09-27). It supersedes 0298,
  *  which probed `/table/<id>` and `/tables` and concluded no per-table route existed: neither is the
@@ -54,7 +55,7 @@ function App() {
   useEffect(() => { const update = () => setHelpRoute(location.hash); window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update); }, []);
   useEffect(() => { if (helpRoute.startsWith("#help/")) document.getElementById(helpRoute.slice(6))?.scrollIntoView(); else if (helpRoute === "#help") window.scrollTo(0, 0); }, [helpRoute]);
   const [snapshot,setSnapshot] = useState<Snapshot>();
-  const [selected,setSelected] = useState(Number(localStorage.getItem('svan-slot') ?? '-1'));
+  const [selected,setSelected] = useState(Number(readLocal('svan-slot') ?? '-1'));
   const [connected,setConnected] = useState(false);
   const [error,setError] = useState('');
   const [loginRequired,setLoginRequired] = useState(false);
@@ -68,9 +69,9 @@ function App() {
   const [settings,setSettings] = useState(false);
   const [watchAll,setWatchAll] = useState(false);
   const [replay,setReplay] = useState<{hand:Hand;events:ReplayEvent[]}>();
-  const [compact,setCompact] = useState(localStorage.getItem('svan-compact') === 'true');
+  const [compact,setCompact] = useState(readLocal('svan-compact') === 'true');
   const [tableTheme,setTableTheme] = useState<TableTheme>(() => {
-    const saved = localStorage.getItem('svan-table-theme');
+    const saved = readLocal('svan-table-theme');
     return saved === 'felt' || saved === 'midnight' ? saved : 'arena';
   });
   const changeTheme = (theme: TableTheme) => { setTableTheme(theme); localStorage.setItem('svan-table-theme', theme); };

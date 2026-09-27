@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, EyeOff, Grip, Plus, RotateCcw } from 'lucide-react';
+import { readLocal } from './storage';
 
 export type Column = 'left' | 'center' | 'right';
 export type Layout = Record<Column, string[]> & { hidden: string[] };
@@ -11,8 +12,9 @@ const STORAGE_KEY = 'svan-layout:v1';
 /** Stored layout reconciled with the widgets that exist now: unknown ids are dropped, new widgets
  * land in their default column, so a release that adds or removes a panel never loses the layout. */
 export function loadLayout(defaults: Layout): Layout {
+  // The read itself cannot throw (storage.ts); the parse still can on a value that is not JSON.
   let stored: Partial<Layout> | undefined;
-  try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || undefined; } catch { stored = undefined; }
+  try { stored = JSON.parse(readLocal(STORAGE_KEY) || 'null') || undefined; } catch { stored = undefined; }
   if (!stored) return clone(defaults);
   const known = new Set([...COLUMNS.flatMap(c => defaults[c]), ...defaults.hidden]);
   const seen = new Set<string>();
@@ -83,11 +85,8 @@ export const VIEWS: { id: string; label: string; widgets: string[] | null }[] = 
 
 /** The remembered view, falling back to Live. */
 export function loadView(): string {
-  try {
-    const v = localStorage.getItem('svan-view');
-    if (v && VIEWS.some(view => view.id === v)) return v;
-  } catch { /* storage unavailable */ }
-  return 'live';
+  const v = readLocal('svan-view');
+  return v && VIEWS.some(view => view.id === v) ? v : 'live';
 }
 
 /** Tab bar for the dashboard views; `extra` names widgets the user placed that a view does not list. */

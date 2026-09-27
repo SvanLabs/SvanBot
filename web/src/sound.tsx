@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import { readLocal } from './storage';
 
 /** Table sounds (0181), synthesised with WebAudio so there are no asset files. Off by default; the
  * header toggle is remembered per browser. The selected bot's table plays card flicks, chips on bets
@@ -58,7 +59,7 @@ export const sounds = {
 };
 
 function stored(): boolean {
-  try { return localStorage.getItem(KEY) === 'on'; } catch { return false; }
+  return readLocal(KEY) === 'on';
 }
 
 interface LiveEvent { type: string; slot: number; action?: string; net?: number | null; bot?: string }
