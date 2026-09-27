@@ -56,6 +56,10 @@ markers=$(grep -rnwE "TO""DO|FIX""ME|X""XX|HA""CK" crates web/src scripts \
 # The range is the tip locally, so the pre-commit hook and a plain `check.sh` agree, and the branch
 # point in CI, so a pull request is checked over the commits it actually proposes. Both paths have to
 # exist: a contributor who is green locally and red on push learns the rule in the worst place.
+#
+# `report --check` is the other half: the trailers are also the roster in AI-PROVENANCE.md, and a system
+# that stamps its first commit must not slip in unrecorded. It compares the set of systems, not the
+# counts beside them, so an ordinary commit stays green (see scripts/provenance.py).
 step "ai provenance"
 provenance_range="${SVANBOT_PROVENANCE_RANGE:-HEAD}"
 if [ -z "${SVANBOT_PROVENANCE_RANGE:-}" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
@@ -69,6 +73,8 @@ else
   python3 scripts/provenance.py check "$provenance_range" \
     || fail "provenance: every commit must name its generating system (CONTRIBUTING.md section 0)"
 fi
+python3 scripts/provenance.py report --check \
+  || fail "provenance: AI-PROVENANCE.md is not the roster of systems on record (run scripts/provenance.py report)"
 
 staged_crates=1 staged_web=1
 if [ "$mode" = commit ]; then

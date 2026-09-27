@@ -128,10 +128,18 @@ that name no system, and `scripts/check.sh` runs it, so a commit or a pull reque
 does not merge. Merge commits are skipped — they carry no content of their own — and a commit whose
 author is already `<name>[bot]` is exempt, because the author field has already named it.
 
+`AI-PROVENANCE.md` is the roster of systems on record, read from the same trailers, and
+`scripts/provenance.py report --check` keeps it current — it fails when a system has commits that the
+document does not list, so a system's first commit is a red gate until the file is regenerated. It
+compares the set of systems and not the counts beside them: a count moves with every commit, and a
+document every pull request had to regenerate would be a document nobody regenerates.
+
 **What the gate enforces is declaration, not authorship.** A trailer is self-reported, and a
 determined person can add one to hand-written code. The rule makes the convention mandatory and
 visible; only review makes it true. A green check here is not a guarantee about who wrote the code,
-and it is not meant to be read as one.
+and it is not meant to be read as one — the roster says so at the top of the page as well, because a
+list of systems with commit counts beside it is exactly the shape of a document that invites the
+wrong reading.
 
 The engineering brief an agent works from is `AGENTS.md`; this file is the standard it is held to.
 

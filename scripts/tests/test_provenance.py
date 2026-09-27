@@ -147,6 +147,68 @@ class Provenance(unittest.TestCase):
             if old is not None:
                 os.environ["SVANBOT_GENERATED_BY"] = old
 
+    def run_report(self, *args: str) -> tuple[int, str]:
+        """The exit code and everything written, however it was streamed."""
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = pv.main(["report", *args])
+        return code, out.getvalue() + err.getvalue()
+
+    def roster(self) -> str:
+        return (self.root / "AI-PROVENANCE.md").read_text()
+
+    def test_report_lists_the_systems_on_record(self):
+        self.commit("one\n\nGenerated-by: claude-code/opus-5\n")
+        self.commit("two\n\nGenerated-by: claude-code/opus-5\n")
+        self.commit("three\n\nGenerated-by: claude-code/sonnet-5\n")
+        self.commit("four: names no system, which is not this command's business")
+        code, out = self.run_report()
+        self.assertEqual(code, 0, out)
+        systems = pv.roster_systems(self.roster())
+        self.assertEqual(systems, {"claude-code/opus-5", "claude-code/sonnet-5"})
+        self.assertIn("| claude-code/opus-5 | 2 |", self.roster())
+        self.assertIn("| claude-code/sonnet-5 | 1 |", self.roster())
+        # The document a run just wrote is the document the check wants.
+        self.assertEqual(self.run_report("--check"), (0, "provenance: AI-PROVENANCE.md lists the 2 system(s) in HEAD\n"))
+
+    def test_a_new_system_is_a_red_check(self):
+        self.commit("one\n\nGenerated-by: claude-code/opus-5\n")
+        self.run_report()
+        self.commit("two\n\nGenerated-by: claude-code/gpt-9\n")
+        code, out = self.run_report("--check")
+        self.assertEqual(code, 1)
+        self.assertIn("does not list claude-code/gpt-9", out)
+
+    def test_a_moved_count_does_not_fail_the_check(self):
+        # The property the whole design rests on: the check compares the set of systems, not the counts,
+        # so ordinary work on the repository does not have to regenerate the document — and does not
+        # conflict in every branch over it.
+        self.commit("one\n\nGenerated-by: claude-code/opus-5\n")
+        self.run_report()
+        before = self.roster()
+        self.commit("two\n\nGenerated-by: claude-code/opus-5\n")
+        code, out = self.run_report("--check")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.roster(), before, "the check rewrote the document")
+        # And regenerating by hand picks the count up.
+        self.run_report()
+        self.assertIn("| claude-code/opus-5 | 2 |", self.roster())
+
+    def test_a_documented_system_the_history_does_not_name_is_reported(self):
+        self.commit("one\n\nGenerated-by: claude-code/opus-5\n")
+        self.run_report()
+        (self.root / "AI-PROVENANCE.md").write_text(
+            self.roster().replace("| claude-code/opus-5 | 1 |", "| claude-code/opus-5 | 1 |\n| claude-code/opus-9 | 3 |"))
+        code, out = self.run_report("--check")
+        self.assertEqual(code, 1)
+        self.assertIn("lists claude-code/opus-9", out)
+
+    def test_a_missing_roster_is_a_red_check_not_a_crash(self):
+        self.commit("one\n\nGenerated-by: claude-code/opus-5\n")
+        code, out = self.run_report("--check")
+        self.assertEqual(code, 1)
+        self.assertIn("does not list claude-code/opus-5", out)
+
     def test_usage_without_a_command(self):
         for argv in ([], ["nonsense"]):
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):

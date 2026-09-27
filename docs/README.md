@@ -55,6 +55,7 @@ the three mistakes that are cheap to make and expensive to find. Then the issue 
 | [`docs/SPEC-learner.md`](SPEC-learner.md) | How does the learner search, and what must a change prove before it plays live? | you touch the learner or a promotion gate |
 | [`docs/SPEC-dashboard.md`](SPEC-dashboard.md) | What does each dashboard endpoint and panel promise? | you touch the API or `web/` |
 | [`docs/RELEASE.md`](RELEASE.md) | How is a version cut and verified? | you are tagging a release |
+| [`AI-PROVENANCE.md`](../AI-PROVENANCE.md) | Which AI systems are on record for this repository? | you want the provenance rule's evidence, not its statement |
 | [`SUPPORT.md`](../SUPPORT.md) | Where does my question go? | you are stuck |
 | [`SECURITY.md`](../SECURITY.md) | How do I report a vulnerability privately? | you found one — never in a public issue |
 
