@@ -21,7 +21,7 @@ import { PlayerCardHost, openPlayerCard } from './playercard';
 import { registerNames, SELECT_BOT_EVENT } from './playername';
 import { AccuracyPanel, QuizPage, WiringPanel } from './games';
 import { ActionTicker, BadgeRace, CalibrationPanel, FleetRace, HighlightsPanel, LivePulse, RivalsPanel, SeasonRace, StoriesPanel, WinToasts } from './fun';
-import type { Bot, Hand, Opponent, ReplayEvent, Snapshot } from './types';
+import type { Bot, Hand, Opponent, ReplayEvent, Snapshot, TableBot } from './types';
 import { format, signed, percent, suitMap, dotClass, ThemeToggle, api, Card, Panel, Empty } from './ui';
 import { time, TURN_DEADLINE_S } from './format';
 import type { TableTheme } from './ui';
@@ -55,6 +55,10 @@ function App() {
   useEffect(() => { const update = () => setHelpRoute(location.hash); window.addEventListener("hashchange", update); return () => window.removeEventListener("hashchange", update); }, []);
   useEffect(() => { if (helpRoute.startsWith("#help/")) document.getElementById(helpRoute.slice(6))?.scrollIntoView(); else if (helpRoute === "#help") window.scrollTo(0, 0); }, [helpRoute]);
   const [snapshot,setSnapshot] = useState<Snapshot>();
+  // null until the health probe below answers: which listener this page was served by decides
+  // whether there is an operator session at all (`SVANBOT_TV_PORT` vs `SVANBOT_WEB_PORT`).
+  const [publicTv,setPublicTv] = useState<boolean | null>(null);
+  const [tvBots,setTvBots] = useState<TableBot[]>([]);
   const [selected,setSelected] = useState(Number(readLocal('svan-slot') ?? '-1'));
   const [connected,setConnected] = useState(false);
   const [error,setError] = useState('');
@@ -103,6 +107,14 @@ function App() {
     let cancelled = false;
     const initialize = async () => {
       try {
+        // Which listener served this page? The public TV answers its own health with `public: true`
+        // and has no session route at all; the dashboard answers false. Asked first, so a spectator
+        // is never shown a login form that cannot be satisfied, and never posts a token to an
+        // endpoint that is not there.
+        const listener = await api<{public?: boolean}>('/health').catch(() => undefined);
+        if (cancelled) return;
+        setPublicTv(listener?.public === true);
+        if (listener?.public === true) return;
         await api('/session', {token: operatorToken});
         announceSession();
         setLoginRequired(false);
@@ -130,6 +142,21 @@ function App() {
     void initialize();
     return () => {cancelled = true;eventRef.current?.close();};
   }, [loginAttempt]);
+
+  // The public TV's whole feed: its table payload and its stream, the only two routes that listener
+  // serves. The browser reconnects a dropped EventSource on its own, and a table that stops moving
+  // is the staleness signal — there is no operator here to read a banner.
+  useEffect(() => {
+    if(publicTv !== true) return;
+    const upsert = (slot: number, next: TableBot) => setTvBots(previous => previous.some(b => b.slot === slot) ? previous.map(b => b.slot === slot ? next : b) : [...previous, next].sort((a,b) => a.slot - b.slot));
+    void api<{bots: TableBot[]}>('/tv').then(initial => initial.bots.forEach(b => upsert(b.slot, b))).catch(() => undefined);
+    const source = new EventSource('/api/tv/events');
+    source.addEventListener('table', event => {
+      const {slot, bot: live} = JSON.parse((event as MessageEvent).data) as {slot: number; bot: TableBot};
+      upsert(slot, live);
+    });
+    return () => source.close();
+  }, [publicTv]);
 
   useEffect(() => {
     if(!bot) return;
@@ -175,6 +202,9 @@ function App() {
   }
   const filteredHands = hands.filter(hand => `${hand.hand_id} ${hand.hole.join(' ')} ${hand.board.join(' ')}`.toLowerCase().includes(query.toLowerCase()));
   const hero = bot?.seats.find(seat => seat.seat === bot.hero_seat);
+  // The public TV (`SVANBOT_TV_PORT`) renders the table view and nothing else: no header, no panels,
+  // no login form, no hash routes. What a spectator can reach is what that listener serves.
+  if(publicTv) return <div className="app"><TvMode bots={tvBots} theme={tableTheme} public/></div>;
   return <div className={`app ${compact ? 'compact' : ''} `}>
     <WinToasts bots={snapshot?.bots || []}/>
     <PlayerCardHost bots={snapshot?.bots || []} onReplay={openReplayFor}/>

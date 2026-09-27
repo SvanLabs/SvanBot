@@ -7,7 +7,8 @@
 
 **On this page:** [Everyday](#everyday) · [Build and test](#build-and-test) · [Benchmarks](#benchmarks) ·
 [Data](#data) · [Cleanliness](#cleanliness) · [Linux settings](#linux-settings) ·
-[Fault drills](#fault-drills) · [Hot-swap releases](#hot-swap-releases) · [Split fleet](#split-fleet-off-by-default)
+[Fault drills](#fault-drills) · [Hot-swap releases](#hot-swap-releases) · [Split fleet](#split-fleet-off-by-default) ·
+[Public TV](#public-tv-off-by-default)
 
 All commands run from the repository root. Binaries live in `target/release/`.
 
@@ -353,3 +354,65 @@ commands without the env var. Hot-swap releases work per process: each watches t
 and exits 75 at its own no-mid-turn moment (workers never save models, so a worker swap cannot
 drop observations). Heartbeats older than 30 s show the slot as local-offline, never a dead
 worker's last state.
+
+## Public TV (off by default)
+
+`SVANBOT_TV_PORT` (default `0`) starts a second listener that serves the table view to an audience
+with no operator token; `SVANBOT_TV_HOST` (default `127.0.0.1`) is where it binds. Setting the port is
+what turns it on:
+
+```sh
+SVANBOT_TV_PORT=8788 scripts/start.sh
+```
+
+**What it carries:** the built page, `/api/health`, `/api/tv` (every bot's table, projected for a
+spectator) and `/api/tv/events` (the same tables pushed as they change). **What it answers instead:**
+404 to every other `/api/` path. No dashboard route is mounted on this listener at all, so
+`/api/state`, `/api/events`, every `POST` and every operator read are *absent* rather than
+unauthorized. `crates/apps/bot/src/api/tv/tests.rs` opens a socket and asserts exactly that, and the
+payload is an allow-list (`crates/apps/bot/src/api/tv.rs`): hole cards, the policy's decision and its
+version, the think clock, the per-seat opponent read and the operator's own figures are dropped, so a
+field added to the dashboard's table payload is absent here until somebody adds it on purpose.
+
+**The listener is the whole security boundary.** There is no token to lose, so binding it is
+publishing it: `0.0.0.0` puts a table view on the internet with nothing in front of it. For a public
+stream, leave the bind on loopback and put a TLS reverse proxy in front — which is also where a
+hostname, a certificate and a rate limit live:
+
+```
+# Caddyfile
+tv.example.com {
+    reverse_proxy 127.0.0.1:8788
+}
+```
+
+The dashboard's `SVANBOT_WEB__OPERATOR_TOKEN` does not apply to this listener in any way.
+
+**Check which listener you reached.** `/api/health` answers on both, and each names itself:
+
+```sh
+curl -s localhost:8788/api/health     # {"ok":true,"public":true,…}  ← the TV
+curl -s localhost:5000/api/health     # {"ok":true,"public":false,…} ← the dashboard
+```
+
+`public` is the only reliable discriminator. An unknown path outside `/api/` answers 200 with the
+built page on both listeners, so a status code from a browser says nothing about which one you hit;
+the web client probes `/api/health` first and renders the table view without a login prompt when
+`public` is true.
+
+**Verify one before pointing an audience at it:**
+
+```sh
+curl -s localhost:8788/api/health | grep -o '"public":true'
+curl -s localhost:8788/api/tv | head -c 300                          # tables; no "hole", no "decision"
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8788/api/state    # 404, never 401
+```
+
+A **401** from that last line means you pointed at the dashboard's port. A **200** means you published
+the dashboard itself: `/api/state` on the TV is not merely denied, it is not there.
+
+Three things the TV does not have, on purpose: no commentary (it is built from decision events
+carrying equity, and the public stream does not carry them), no scouting reports (a seat plate on the
+TV is a label, not a button — the read behind it is the model's opinion of a named person), and no
+exit link (there is nowhere to exit to). Setting the port back to `0` or unsetting it leaves the
+dashboard untouched.

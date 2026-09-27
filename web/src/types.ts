@@ -14,6 +14,17 @@ export interface SeasonScope { scoped: boolean; number: number | null; id: strin
  *  true` and `error` set — never zeros — so a bot at a table cannot read as one with 0 hands (0326). */
 export interface Metrics { hands: number; priced_hands: number; net_chips: number; bb100: number | null; confidence: number | null; season: SeasonScope; all_time: { hands: number; priced_hands: number; net_chips: number; bb100: number | null; confidence: number | null }; p95_ms: number | null; rejected: number; state_hash?: {ok:number;bad:number}; decisions: number; series: {hand:number;total:number;showdown:number;other:number;ev?:number}[]; ev_net_chips?: number; ev_bb100?: number | null; ev_confidence?: number | null; luck_chips?: number; stale?: boolean; error?: string | null }
 export interface Bot { slot: number; name: string; mode: string; status: string; connected: boolean; last_error: string | null; table_id: string | null; hand_id: string | null; board: string[]; hole: string[]; seats: Seat[]; hero_seat: number | null; dealer_seat: number | null; actor_seat: number | null; pot: number; big_blind: number; street: string; decision: Decision | null; version: string; metrics: Metrics; turn_started: number | null; turn: unknown; season: Record<string, number | string>; remote?: boolean; heartbeat_age_s?: number }
+/** What a table view may not expect from the table payload: the operator's own material.
+ *  `metrics` is not in the table payload at all, and the public TV's projection drops the rest on
+ *  purpose (`crates/apps/bot/src/api/tv.rs`) — the policy's working (`decision`, `version`), the
+ *  think clock (`turn`, `turn_started`), the bot's own cards (`hole`), the street, the season and
+ *  the last error. Optional rather than absent-so-far, because one listener really does omit them. */
+type OperatorOnly = 'metrics' | 'hole' | 'street' | 'decision' | 'version' | 'turn' | 'turn_started' | 'season' | 'last_error';
+
+/** A bot as the table payload carries it: everything a table view needs, and only what both
+ *  listeners send. The dashboard fills `hole` in and the public TV never does, so a table that
+ *  wants the hero's cards has to say what it draws when they are not there. */
+export type TableBot = Omit<Bot, OperatorOnly> & Partial<Pick<Bot, OperatorOnly>>;
 export interface EvaluationSummary { hands:number; mean_bb?:number|null; lower_95?:number|null; upper_95?:number|null }
 export interface PopulationSummary { id:string; opponent_count:number; evidence:number }
 export interface Experiment { id: string; status: string; ts: number; hands?: number; target?: number; knob?: string; old?: number; new?: number; mean_bb?: number; lower_95?: number; upper_95?: number; champion?: string; challenger?: string; candidate_kind?:string; rationale?:string; resumed?:boolean; terminal_reason?:string; population?:PopulationSummary; strata?:Record<'synthetic'|'observed',EvaluationSummary> }

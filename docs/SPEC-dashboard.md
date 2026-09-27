@@ -49,7 +49,7 @@ The server caches refresh attempts for 60 seconds. A failed refresh does not adv
   leave a column empty get their own grid template; at phone width everything stacks.
 - Web modules: `main.tsx` holds the app shell and routing; `ui.tsx` the shared primitives
   (formatters, seat read, table themes, card, panel, empty state); `table.tsx` the live table, TV mode
-  and decision strip; `training.tsx` the season, performance and learner panels; `panels.tsx` replay,
+  (the dashboard's and the public listener's) and decision strip; `training.tsx` the season, performance and learner panels; `panels.tsx` replay,
   the starting-hand guide and the opponent profile. Each opponent seat's `read` carries `size_tell`
   when a per-opponent river sizing tell is installed, shown in the seat tooltip.
 
@@ -92,3 +92,39 @@ opponents with any correction. A store read error answers 500. Panel: `web/src/i
   command. The System view's Host check panel polls it every 60 s. Nothing is ever changed.
 - Panel: `web/src/updates.tsx` (`UpdatesPanel`, `UpdateProgress`); browser tests
   `web/tests/updates.spec.ts`.
+
+## Public TV listener (off by default)
+
+`SVANBOT_TV_PORT` (default `0`, off; `SVANBOT_TV_HOST` defaults to `127.0.0.1`) starts a second
+listener whose audience has no operator token (`crates/apps/bot/src/api/tv.rs`). It carries the table
+view and nothing else:
+
+| Method | Path | Answers |
+|---|---|---|
+| GET | `/api/health` | `{"ok": true, "public": true, "version", "commit"}` — the discriminator the client branches on |
+| GET | `/api/tv` | `{"public": true, "bots": [<public table>, …]}`, the same shape as one entry of `/api/state`'s `bots` with the fields below removed |
+| GET | `/api/tv/events` | SSE `table` events: `{"slot": n, "bot": <public table>}`, throttled at `state::TABLE_EVERY` like the dashboard's |
+| any | `/api/{*rest}` | 404 `{"detail": "not on the public TV; the dashboard is elsewhere"}` |
+| GET | anything else | the built page and its assets |
+
+- The dashboard's own `/api/health` answers `{"ok": true, "public": false, …}`. It is the only
+  reliable discriminator between the two listeners: the fallback service answers an unknown path with
+  200 and the built `index.html` on both, so a status code says nothing.
+- A public table is an **allow-list** of the dashboard's table payload: `slot`, `name`, `mode`,
+  `status`, `connected`, `table_id`, `hand_id`, `board`, `seats`, `hero_seat`, `dealer_seat`,
+  `actor_seat`, `pot`, `big_blind`; each seat keeps `seat`, `name`, `stack`, `bet`, `folded`,
+  `status`, `last_action`, `avatar_url`. Absent by design: `hole` (a live hand shown to the opponents
+  it is played against), `decision` and `version` (the policy's working), `turn`/`turn_started` (the
+  think clock, which is a tell the project's own response model is fitted on), `last_error` and
+  `season` (operator internals), and the per-seat `read` (the model's opinion of a named person).
+  Unknown keys are dropped rather than passed through, so the dashboard's payload can grow without
+  widening this one.
+- The stream emits `table` events only: no `decision` (its equity is what the commentary is built
+  from), no `result` and no `state` snapshot, which carries the metrics, the logs and the training
+  state.
+- Framing is the one header that differs from the dashboard's: `Content-Security-Policy:
+  frame-ancestors *` instead of `X-Frame-Options: DENY`, because a public table view is meant to be
+  embedded. The cache, `nosniff` and referrer rules are the dashboard's.
+- The client (`web/src/main.tsx`) probes `/api/health` before anything else and, when `public` is
+  true, asks for no session and renders `TvMode` with the commentary, the scouting-report buttons and
+  the exit link off (`web/src/table.tsx`).

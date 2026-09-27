@@ -1,8 +1,8 @@
-import type { Bot } from './types';
+import type { TableBot } from './types';
 
 /** TV mode auto-director (0177): how interesting a live table is right now. Our bot to act beats an
  * all-in, which beats a big pot; empty or idle tables score below zero. */
-export function directorScore(b: Bot): number {
+export function directorScore(b: TableBot): number {
   if (!b.connected || !b.hand_id) return -1;
   const bb = b.big_blind || 20;
   let s = 0;
@@ -18,7 +18,7 @@ export const MIN_SHOT_MS = 8000;
 
 /** Which table to show: stay on `current` until it has been on screen `MIN_SHOT_MS` (or its hand
  * ended), then cut to the best table if it beats the current one clearly. */
-export function nextShot(bots: Bot[], current: number | undefined, shownFor: number): number | undefined {
+export function nextShot(bots: TableBot[], current: number | undefined, shownFor: number): number | undefined {
   const live = bots.map(b => ({ slot: b.slot, score: directorScore(b) })).filter(x => x.score >= 0);
   if (!live.length) return current ?? bots[0]?.slot;
   const best = live.reduce((a, b) => (b.score > a.score ? b : a));

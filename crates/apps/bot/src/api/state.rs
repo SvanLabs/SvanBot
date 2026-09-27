@@ -617,7 +617,7 @@ fn fleet_bot_json(s: &Shared, b: &BotLive) -> Value {
 }
 
 /// [`table_json`] with the split-fleet substitution of [`fleet_bot_json`].
-fn fleet_table_json(s: &Shared, b: &BotLive) -> Value {
+pub(super) fn fleet_table_json(s: &Shared, b: &BotLive) -> Value {
     fleet_view(s, b, table_json)
 }
 
@@ -851,8 +851,9 @@ pub(super) async fn events(State(s): State<Arc<Shared>>) -> Sse<impl futures_uti
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }
 
-/// Shortest gap between two `table` events for one bot.
-const TABLE_EVERY: Duration = Duration::from_millis(150);
+/// Shortest gap between two `table` events for one bot. The public TV throttles its own stream at
+/// the same rate: a spectator gets the same picture at the same cost as the dashboard.
+pub(super) const TABLE_EVERY: Duration = Duration::from_millis(150);
 /// Gap between full `state` snapshots on the realtime stream.
 const STATE_EVERY: Duration = Duration::from_secs(5);
 

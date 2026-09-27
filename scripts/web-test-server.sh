@@ -2,6 +2,10 @@
 # Sandboxed dashboard for the Playwright tests: the real sv10-bot API and web/dist on port 5099,
 # a throwaway artifacts directory, a fake bot key, bots stopped (dry run) and every network
 # endpoint pointed at a closed local port, so nothing reaches openpoker.ai or the live databases.
+#
+# The public TV (`SVANBOT_TV_PORT`, `SV10_TEST_TV_PORT` to move it) is bound beside the dashboard so
+# `web/tests/public-tv.spec.ts` renders the other listener; it is loopback-only like the dashboard,
+# and a port already in use costs only that listener — the fleet logs it and plays on.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 bin="${SV10_TEST_BIN:-$repo/target/dev/release/sv10-bot}"
@@ -21,6 +25,7 @@ env -i PATH="$PATH" HOME="$sandbox" SVANBOT10_ROOT="$sandbox" \
   SVANBOT_API_KEY=test-key SVANBOT_MAIN_NAME=TestBot SVANBOT_RUNTIME__DRY_RUN=true \
   SVANBOT_SERVER_URL=ws://127.0.0.1:9/ws SVANBOT_REST_BASE=http://127.0.0.1:9/api \
   SVANBOT_WEB__HOST=127.0.0.1 SVANBOT_WEB_PORT=5099 \
+  SVANBOT_TV_HOST=127.0.0.1 SVANBOT_TV_PORT="${SV10_TEST_TV_PORT:-8787}" \
   "$bin" &
 pid=$!
 trap 'kill $pid 2>/dev/null; wait $pid 2>/dev/null; rm -rf "$sandbox"' EXIT INT TERM
