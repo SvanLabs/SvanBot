@@ -228,6 +228,34 @@ fn write_str(out: &mut String, s: &str) {
     out.push('"');
 }
 
+/// The significant digits CPython's `repr` prints for `f`, where `mantissa` is the mantissa of the
+/// shortest round-trip scientific form `{:e}` gave it (`"1.25"`, `"1"`), which fixes how many
+/// digits there are.
+///
+/// Both languages print digits that round-trip, and both print as few as they can, so the count
+/// always agrees. Which digits they are does not always: `{:e}` promises the shortest that
+/// round-trips and, between two equally short candidates, takes the larger magnitude, while
+/// Python's `_Py_dg_dtoa` in mode 0 takes the nearer one and breaks the tie to even. Rendering at
+/// the same count through Rust's precision path names that nearer candidate — but it rounds to the
+/// nearest decimal *unconditionally*, and at a power of two the neighbour below is half an ulp away
+/// rather than a whole one, so its nearest can fall outside the window that rounds back to `f`.
+/// Python cannot print such a spelling, because `repr` always round-trips, so the render is taken
+/// only when it does and the `{:e}` digits stand otherwise.
+fn repr_digits(f: f64, mantissa: &str) -> String {
+    let shortest = digits_of(mantissa);
+    let nearest = format!("{:.*e}", shortest.len() - 1, f);
+    let nearest_digits = digits_of(&nearest);
+    if nearest_digits != shortest && nearest.parse::<f64>().is_ok_and(|x| x == f) {
+        return nearest_digits;
+    }
+    shortest
+}
+
+/// The digits of a scientific-form string: everything before the `e`, minus the sign and point.
+fn digits_of(sci: &str) -> String {
+    sci.split_once('e').map_or(sci, |(mantissa, _)| mantissa).chars().filter(char::is_ascii_digit).collect()
+}
+
 /// Python `float.__repr__`: shortest round-trip digits, positional for exponents -4..16,
 /// otherwise `d.ddde±XX`.
 fn write_float(out: &mut String, f: f64) {
@@ -245,7 +273,7 @@ fn write_float(out: &mut String, f: f64) {
     let (mantissa, exp) = sci.split_once('e').unwrap_or((&sci, "0"));
     let exp: i32 = exp.parse().unwrap_or(0);
     let (sign, mantissa) = mantissa.strip_prefix('-').map(|m| ("-", m)).unwrap_or(("", mantissa));
-    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    let digits = repr_digits(f, mantissa);
     out.push_str(sign);
     if (-4..16).contains(&exp) {
         if exp < 0 {
@@ -287,6 +315,28 @@ mod tests {
             canonical(&v),
             r#"{"a":"Sv\u00e4n \ud83d\ude00 \"q\" \\ \n\u0001\u007f","b":[1,-2,0.5,1e-05,100.0,1e+16,123456.789,-0.0001],"c":{"y":true,"z":null}}"#
         );
+    }
+
+    #[test]
+    fn canonical_float_spelling_matches_cpython_repr() {
+        // Fixture: hex bit pattern of a double, and the string CPython 3 `repr` prints for it —
+        // which is what `json.dumps(..., sort_keys=True, separators=(",", ":"))` writes, and so
+        // what the state hash covers. Its first block is every value of the sample where the
+        // spelling before the tie fix (`{:e}` digits untouched) disagreed with CPython.
+        let fixture = include_str!("../tests/fixtures/float_repr_cpython.txt");
+        assert!(
+            fixture.contains("c304cd7efd9ca4aa -731930604835989.2"),
+            "the fixture lost the block of values the old spelling got wrong, so this test no longer covers the tie"
+        );
+        let mut rows = 0;
+        for line in fixture.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
+            let (bits, expected) = line.split_once(' ').expect("fixture line is <bits> <repr>");
+            let f = f64::from_bits(u64::from_str_radix(bits, 16).expect("fixture bits are hex"));
+            let n = serde_json::Number::from_f64(f).expect("the fixture holds finite values");
+            assert_eq!(canonical(&Value::Number(n)), expected, "0x{bits}");
+            rows += 1;
+        }
+        assert!(rows > 1_500, "fixture shrank to {rows} rows");
     }
 
     #[test]

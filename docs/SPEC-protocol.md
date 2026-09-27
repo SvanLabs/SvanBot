@@ -97,7 +97,11 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
   hash failure or impossible state, never on a gap alone.
 - `state_hash` (`statehash::verify`): drop top-level `ts`, `table_seq`, `hand_seq`, `state_hash`;
   compact JSON with sorted keys and `ensure_ascii` escaping; SHA-256; `sha256:` prefix. Matched
-  5,248/5,248 archived frames; counts shown per bot on the dashboard.
+  5,248/5,248 archived frames; counts shown per bot on the dashboard. Floats are spelled as
+  Python's `repr` spells them — shortest round-trip digits, an exact tie broken to the even digit —
+  which is not what Rust's `{:e}` prints in a tie, so `write_float` re-renders at the same length
+  and keeps the render only where it round-trips: at a power of two the neighbour below is half an
+  ulp away, and `repr` always round-trips.
 - `ts` (observed on every server frame; the timing tells rely on it): RFC 3339 with
   microseconds, e.g. `2026-09-14T09:46:52.751076+00:00`, parsed by the tracker's own
   `rfc3339_ms`. A frame without a readable `ts` records no think time. Excluded from the state hash
