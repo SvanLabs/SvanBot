@@ -29,6 +29,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The findings panel states one explanation per family and tables the deep re-solve** (#321). The
+  panel printed the same paragraph thirty times — the filter, the floor and the interval in every row —
+  with the line saying none of it was measurable in the footnote. It now leads with the coverage (how
+  much of the window carries the live inputs the deep re-solve grades), states each family's filter and
+  threshold once above the rows it covers, and renders the classes as a table: class, n, bb per
+  decision, its 95% interval, the decisions in the window, and what the floor made of them — `P0 ·
+  filed`, `measured`, `not yet decidable`, `never queued`. A style shift and its counter-shift are one
+  finding per decision point (a call up and a raise down are one change in the mix, not two findings).
+  `findings.v1` carries `coverage`, `classes` and `legends`, and a ticket the loop files carries its
+  family's explanation, so it reads on its own.
 - **The updates panel keeps one run to a statement** (#320). Four things on the Releases card
   contradicted each other. The first was fixed in #351 (a finished run's `elapsed` is its duration,
   not the age of its record); the card now says when as well — `finished 4 min ago` — so the last run
@@ -40,7 +50,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the fleet keeps playing the installed build — advice an operator of a playing machine can act on,
   not a demand to commit. And the check's failure line is in operator terms ("GitHub could not be
   reached from this host — no network, or it is offline"), with the tool's own wording in the tooltip.
-
 - **The self-calibration bias column is a measurement on every row** (#318). One cell held three kinds
   of thing — a number when a correction was applied, `learning` while a spot was under `MIN_SAMPLES`,
   and `calibrated` when it was not — so a spot that had settled to no correction read as a badge, and

@@ -1,10 +1,10 @@
 /** Season, performance and learner panels: autonomy controls, cooldown, experiments, compute profile. */
 import React, { useState } from 'react';
 import { Cpu, FlaskConical, History, Layers, Play, ShieldCheck, Square } from 'lucide-react';
-import type { Bot, Experiment, ExperimentMode, Metrics, SearchFunnel, SeasonScope, Training } from './types';
+import type { Bot, ClassRow, Experiment, ExperimentMode, Finding, Metrics, SearchFunnel, SeasonScope, Training } from './types';
 import { usePoll, StaleNote } from './api';
 import { format, signed, percent, ago, api, Panel } from './ui';
-import { time } from './format';
+import { fmt, sgn, time } from './format';
 import { PlayerName } from './playername';
 
 export function scopeLabel(scope?: SeasonScope) {
@@ -71,20 +71,81 @@ export function CooldownSetting({training}: {training?:Training}) {
   </form>;
 }
 
+/** The explanation a family of findings shares (#321). The server states it once per family, keyed by
+ *  an id prefix (`decision`, `calibration`, `style-drift`), so forty rows do not repeat one paragraph;
+ *  the longest key that prefixes a finding's id is the family it belongs to. */
+function legendFor(legends: Record<string,string>, id: string): string {
+  let best = '';
+  for (const prefix of Object.keys(legends)) if (id.startsWith(prefix) && prefix.length > best.length) best = prefix;
+  return best ? legends[best] : '';
+}
+
+/** What the class table's state column says, in the reader's terms (#321). `thin` is the class the old
+ *  panel printed as a finding, above the line saying nothing could be decided. */
+const CLASS_STATE: Record<string,string> = { filed: 'P0 · filed', measured: 'measured', thin: 'not yet decidable', 'never queued': 'never queued' };
+
+/** The deep re-solve's classes as a table (#321): class, n, bb per decision, its interval and the
+ *  decisions in the window — the columns every row used to spell out in its own paragraph. */
+function ClassTable({classes, legend, findings}: {classes:ClassRow[]; legend:string; findings:Finding[]}) {
+  return <div className="class-table-wrap">
+    {legend && <p className="pc-note family-legend">{legend}</p>}
+    <table className="pc-table class-table">
+      <caption className="pc-note">Every class the deep re-solve measured, the losses first.</caption>
+      <thead><tr><th>Class</th><th>n</th><th>bb / decision</th><th>95%</th><th>Decisions in window</th><th/></tr></thead>
+      <tbody>{classes.map(c => {
+        const filed = findings.find(f => f.id === c.id);
+        return <tr key={c.id} className={`class-${c.state.replace(' ', '-')}`}>
+          <td>{c.label}</td>
+          <td>{format(c.n)}</td>
+          <td className={c.state === 'filed' ? 'negative' : ''}>{sgn(c.mean, 3, true)}</td>
+          <td>{c.lo == null ? '—' : `${fmt(c.lo, 3, true)}..${fmt(c.hi, 3, true)}`}</td>
+          <td>{c.decisions == null ? 'unknown' : `${format(c.decisions)}${c.decisions > 0 ? ` · ${percent(c.n / c.decisions)}` : ''}`}</td>
+          <td>{CLASS_STATE[c.state] ?? c.state}{filed?.ticket ? ` · ${filed.ticket}` : ''}</td>
+        </tr>;
+      })}</tbody>
+    </table>
+  </div>;
+}
+
 /** What the fleet found out about its own play (0273): the finding loop's own instruments, with
  * the evidence behind each and the ticket it filed. A finding that is a measurement says so — the
- * rule from 0269 is that a residual is not a loss, so only a decision cost is ever P0. */
+ * rule from 0269 is that a residual is not a loss, so only a decision cost is ever P0.
+ *
+ * #321: the panel states each family's explanation once instead of inside every row, and the
+ * decision-cost instrument is a table rather than a paragraph per class. The coverage line — how much
+ * of the window carries no usable evidence — leads, because it is the reason the rest says so little. */
 function FleetFindings({training}: {training?:Training}) {
   const scan = training?.findings;
   const findings = scan?.findings || [];
-  if (!findings.length && !scan?.unanswered?.length) return null;
+  const classes = scan?.classes || [];
+  const legends = scan?.legends || {};
+  const coverage = scan?.coverage || [];
+  const unanswered = scan?.unanswered || [];
+  // The table is that instrument's own rows: a measurement row per class said in prose what the table
+  // says in columns. A scan whose read failed serves no table, and those rows carry over from the last
+  // pass — so they are listed as before rather than dropped.
+  const rows = classes.length ? findings.filter(f => !f.id.startsWith('decision-')) : findings;
+  // Grouped by the explanation they share, so a family states it once above its rows.
+  const groups: {legend:string; items:Finding[]}[] = [];
+  for (const f of rows) {
+    const legend = legendFor(legends, f.id);
+    const group = groups.find(g => g.legend === legend);
+    if (group) group.items.push(f);
+    else groups.push({legend, items: [f]});
+  }
+  if (!findings.length && !classes.length && !coverage.length && !unanswered.length) return null;
   return <section className="pc-panel fleet-findings" aria-label="What the fleet found about its own play">
     <h3>WHAT THE FLEET FOUND</h3>
-    {findings.length === 0 && <p className="pc-note">Nothing above the floor: every decision class is under 0.02 bb per decision against the deep re-solve.</p>}
-    <ul>{findings.map(f => <li key={f.id} className={`finding-${f.severity.toLowerCase()}`}>
-      <b>{f.severity}</b><span>{f.title}</span><small>{f.evidence}{f.ticket ? ` · filed as ${f.ticket}` : ''}</small>
-    </li>)}</ul>
-    {!!scan?.unanswered?.length && <p className="pc-note">Could not measure: {scan.unanswered.join('; ')}</p>}
+    {coverage.length > 0 && <ul className="finding-coverage" role="status">{coverage.map((line, i) => <li key={i}>{line}</li>)}</ul>}
+    {!rows.length && !classes.length && <p className="pc-note">Nothing above the floor: every decision class is under 0.02 bb per decision against the deep re-solve.</p>}
+    {classes.length > 0 && <ClassTable classes={classes} legend={legendFor(legends, classes[0].id)} findings={findings}/>}
+    {groups.map(g => <React.Fragment key={g.legend || 'rest'}>
+      {g.legend && <p className="pc-note family-legend">{g.legend}</p>}
+      <ul>{g.items.map(f => <li key={f.id} className={`finding-${f.severity.toLowerCase()}`}>
+        <b>{f.severity}</b><span>{f.title}</span><small>{f.evidence}{f.ticket ? ` · filed as ${f.ticket}` : ''}</small>
+      </li>)}</ul>
+    </React.Fragment>)}
+    {unanswered.length > 0 && <p className="pc-note">Could not measure: {unanswered.join('; ')}</p>}
     <p className="pc-legend">The loop runs every 30 minutes, files a ticket for anything new and serious, and closes that ticket when the class stops reproducing.</p>
   </section>;
 }

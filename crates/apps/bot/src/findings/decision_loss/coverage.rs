@@ -239,12 +239,18 @@ mod tests {
         for want in [
             "never queued",
             "0 of 213 decisions in the preflop check class over the last 30 days",
-            "pot >= 50 bb, or a call of >= 12.5 bb that is at least 25% of the pot, or any all-in",
             "its 4 window verdicts, all graded before replay v3 and so not evidence",
             "median pot of 2.0 bb (max 3.0 bb)",
         ] {
             assert!(found[0].evidence.contains(want), "no {want:?} in {}", found[0].evidence);
         }
+        // The filter it never passes is the legend's (#321), stated once for every class, not repeated
+        // into a row: the row says what the class's pots were.
+        assert!(
+            decision_legend(AUDIT_MIN_POT_BB)
+                .contains("pot >= 50 bb, or a call of >= 12.5 bb that is at least 25% of the pot, or any all-in")
+        );
+        assert!(!found[0].evidence.contains("pot >= 50 bb"), "the same filter on every row is what #321 removed: {}", found[0].evidence);
     }
 
     /// 0355: a row that has a mean names the share of the class it saw and the filter the analyst is
@@ -258,12 +264,11 @@ mod tests {
         let cover = coverages(&classes, Some(&pops), &BTreeMap::new(), 12.5);
         let filed = decision_losses(&classes, &cover);
         assert_eq!(filed.len(), 1);
-        for want in [
-            "600 of 1500 decisions in the turn call class in the window (40.00%)",
-            "pot >= 12.5 bb, or a call of >= 3.125 bb that is at least 25% of the pot, or any all-in",
-        ] {
-            assert!(filed[0].evidence.contains(want), "no {want:?} in {}", filed[0].evidence);
-        }
+        assert!(filed[0].evidence.contains("600 of 1500 decisions in the turn call class in the window (40.00%)"), "{}", filed[0].evidence);
+        assert!(
+            decision_legend(12.5).contains("pot >= 12.5 bb, or a call of >= 3.125 bb that is at least 25% of the pot, or any all-in"),
+            "the legend names the floor the analyst is actually applying"
+        );
         assert!(measurements(&classes, &filed, &cover).is_empty(), "the filed class keeps its one P0 row");
     }
 
@@ -325,12 +330,7 @@ mod tests {
         let scan = crate::findings::scan(&store, &std::collections::HashMap::new(), 1_000.0);
         let finding = |id: &str| scan.findings.iter().find(|f| f.id == id).unwrap_or_else(|| panic!("no {id} in {:?}", scan.findings));
         let measured = finding("decision-measurement:turn:call");
-        for want in [
-            "40 of 200 decisions in the turn call class in the window (20.00%)",
-            "pot >= 50 bb, or a call of >= 12.5 bb that is at least 25% of the pot, or any all-in",
-        ] {
-            assert!(measured.evidence.contains(want), "no {want:?} in {}", measured.evidence);
-        }
+        assert!(measured.evidence.contains("40 of 200 decisions in the turn call class in the window (20.00%)"), "{}", measured.evidence);
         let never = finding("decision-measurement:preflop:check");
         assert_eq!(never.severity, "P2");
         assert!(never.title.contains("never queued"), "{}", never.title);
@@ -340,7 +340,46 @@ mod tests {
             assert!(never.evidence.contains(want), "no {want:?} in {}", never.evidence);
         }
         assert_eq!(scan.sampled["decision-loss:preflop:check"], 0, "and a cleared row knows it was never measured");
+        // #321: the same classes are the panel's table, with the numbers the rows used to spell out and
+        // the state decided here, where the floor is.
+        let row =
+            |label: &str| scan.classes.iter().find(|r| r.label == label).unwrap_or_else(|| panic!("no {label} in {:?}", scan.classes));
+        assert_eq!((row("turn call").n, row("turn call").state.as_str(), row("turn call").decisions), (40, "thin", Some(200)));
+        assert_eq!(row("preflop check").state, "never queued");
+        assert!((row("turn call").mean - 0.03).abs() < 1e-9, "the rate the table prints is the one the verdicts measured");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #321: the table ranks the classes by what can be trusted of them. A class under the verdict floor
+    /// is marked `thin` even when its mean is the largest on the board — the row the old panel printed
+    /// above the line saying nothing could be decided.
+    #[test]
+    fn the_class_table_marks_what_is_not_decidable_yet() {
+        let spot = |street: &str, action: &str| ClassKey::Spot { street: street.into(), action: action.into() };
+        let classes = Classes::from([
+            (spot("turn", "raise"), ClassStat { n: 2_000, total: 200.0, sumsq: 20.0, big: 3, days: GAP_WINDOW_DAYS }),
+            (spot("turn", "call"), ClassStat { n: 600, total: 0.6, sumsq: 0.0006, big: 0, days: GAP_WINDOW_DAYS }),
+            (spot("river", "call"), ClassStat { n: 40, total: 8.0, sumsq: 6.4, big: 2, days: GAP_WINDOW_DAYS }),
+            (spot("preflop", "check"), ClassStat { n: 0, days: DECISION_LOSS_DAYS, ..Default::default() }),
+        ]);
+        let filed = decision_losses(&classes, &Coverages::new());
+        assert_eq!(filed.len(), 1, "only the class with a rate and a sample files");
+        let rows = class_rows(&classes, &filed, &Coverages::new());
+        assert_eq!(
+            rows.iter().map(|r| r.state.as_str()).collect::<Vec<_>>(),
+            ["filed", "measured", "thin", "never queued"],
+            "the reader meets them in the order they can be trusted: {rows:?}"
+        );
+        assert_eq!(rows[2].mean, 0.2, "the thin class's rate is the largest of the four and still not a finding");
+        assert_eq!(
+            (rows[0].id.as_str(), rows[0].label.as_str(), rows[0].n, rows[0].big, rows[0].decisions),
+            ("decision-loss:turn:raise", "turn raise", 2_000, 3, None),
+            "and a count nobody could read stays unknown, not zero"
+        );
+        assert!(rows[0].lo.is_some() && rows[0].hi.is_some(), "the interval the table prints beside the rate");
+        // One verdict has no spread: no interval is printed rather than a made-up one.
+        let single = Classes::from([(spot("flop", "fold"), ClassStat { n: 1, total: 3.0, sumsq: 9.0, big: 1, days: GAP_WINDOW_DAYS })]);
+        assert_eq!((class_rows(&single, &[], &Coverages::new())[0].lo, class_rows(&single, &[], &Coverages::new())[0].hi), (None, None));
     }
 
     /// One verdict straight into the verdict table, with the timestamp a test chooses: the queue path
