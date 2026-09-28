@@ -29,6 +29,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The hourly backup moves to the second disk instead of being copied and checked there** (#374).
+  The copy was written under a temporary name, its bytes read back against the seal, the page cache
+  dropped and only then renamed — and the second disk answers that dance with `EUCLEAN` ("structure
+  needs cleaning"), 22 times between 2026-09-26 11:32 and 2026-09-28 05:58, so the hour's copy never
+  landed. The sealed pair now goes straight to the name a restore reads, in one step, and the SSD
+  copy is removed after it: a failed move discards the partial file and leaves the SSD pair exactly
+  where it was, so the worst case is one hour without a copy on a disk that is already failing, never
+  a lost backup. This is the operator's call (2026-09-28): guard the hour on the SSD, not on the disk
+  the kernel is complaining about.
+
 - **The learner refreshes its evidence on the hands as they arrive** (#314). Every gate was
   denominated in hands, so the play rate decided how fast the models improved: on the live fleet the
   learner waited about two and a half hours between a 57 s refresh and a 468 s search, and the
