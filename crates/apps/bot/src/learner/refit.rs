@@ -56,14 +56,19 @@ pub fn step(ctx: &Ctx, run: &mut RefitRun) -> anyhow::Result<bool> {
         }
         status(
             ctx.store,
-            json!({"status": "training", "phase": format!("refreshing evidence-derived models: {}", STEPS[i as usize]), "automatic": true,
+            // `job` names what is running: a refresh now runs on nearly every hand (#314), and the
+            // panel must not report it as challenger validation.
+            json!({"status": "training", "job": "refit", "phase": format!("refreshing evidence-derived models: {}", STEPS[i as usize]), "automatic": true,
             "lineage": super::load_lineage(ctx.store), "progress": {"hands": i, "target": STEPS.len()}}),
         );
         let t = Instant::now();
         match i {
             0 => {
                 if range_model_due(ctx) {
-                    status(ctx.store, json!({"status": "training", "phase": "fitting the range model to showdowns", "automatic": true}));
+                    status(
+                        ctx.store,
+                        json!({"status": "training", "job": "refit", "phase": "fitting the range model to showdowns", "automatic": true}),
+                    );
                     refit_range_model(ctx);
                 }
             }

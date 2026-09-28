@@ -122,6 +122,10 @@ enum Flow {
 /// `None` when fewer than four opponents have enough hands (the caller waits and retries).
 pub fn begin(ctx: &Ctx, start_rowid: i64, started: f64, refit_rowid: i64) -> anyhow::Result<Option<SearchRun>> {
     let store = ctx.store;
+    // What the ledger and the target queue are scoped to is the evidence epoch, not the refresh
+    // watermark: refreshes run on the hands as they arrive (#314), and a scope that moved with each
+    // one would retire the search's memory of what it has already measured (0285).
+    let refit_rowid = crate::pacing::evidence_epoch(refit_rowid);
     let cycle = store.get_kv(crate::LEARNER_CYCLE_KEY).ok().flatten().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0) + 1;
     let _ = store.put_kv(crate::LEARNER_CYCLE_KEY, &cycle.to_string());
     // One evidence snapshot per search (0244): every step reads the same population.
