@@ -21,6 +21,7 @@ sv10-digest = { path = "crates/deps/digest", version = "10.0.1" }
 sv10-rt = { path = "crates/deps/rt", version = "10.0.1" }
 sv10-mmap = { path = "crates/deps/mmap", version = "10.0.1" }
 sv10-pack = { path = "crates/deps/pack", version = "10.0.1" }
+sv10-static = { path = "crates/deps/static", version = "10.0.1" }
 sv10-cards = { path = "crates/libs/cards", version = "10.0.1" }
 sv10-nn = { path = "crates/libs/nn", version = "10.0.1" }
 sv10-equity = { path = "crates/libs/equity", version = "10.0.1" }
@@ -44,7 +45,6 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["full"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
-tower-http = { version = "0.7.1", features = ["fs", "cors"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }
 

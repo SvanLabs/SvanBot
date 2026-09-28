@@ -29,6 +29,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The dashboard and the public TV serve their own static files** (#349). Both listeners served
+  `web/dist` through `tower-http`'s `ServeDir`/`ServeFile`, which was the only path in this workspace
+  to `mime_guess`. The replacement is `crates/deps/static` — which file a request path names under a
+  build directory (a `..` segment is refused before anything is joined) and the content type it is
+  served as — plus `api/assets.rs`, which reads it on the blocking pool the other dashboard handlers
+  use. `tower-http` and `mime_guess` leave the tree, and the third-party list drops from 155 crates
+  to 150: with them go `http-range-header`, `unicase` and `mime`, the scaffolding behind range
+  requests and conditional GETs. Neither is served: nothing here streams (fonts, one script, one
+  stylesheet) and nothing is fetched twice under one URL, so a `Range` header is ignored and an
+  unchanged file is sent again rather than answered `304`. The rest of the behaviour is the same on
+  purpose — the file, the page for a path that names no file (which is how `/training` and `/tv` boot
+  on a reload), and a 404 only when there is no page to serve.
+
 - **`Decision` no longer claims to be serializable** (#325). `Decision` derived `Serialize` with
   `#[serde(skip)]` on `action` — the field that says what to do — while nothing in the workspace ever
   serialized a `Decision`: the action crosses every boundary as protocol text (`DecisionView.action`,

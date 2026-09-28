@@ -19,11 +19,9 @@ use axum::{Json, Router};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap};
 use std::convert::Infallible;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
-use tower_http::services::{ServeDir, ServeFile};
 
 /// The keys of a bot's table payload a spectator may see. What is deliberately absent:
 ///
@@ -157,7 +155,7 @@ async fn headers_layer(req: Request, next: Next) -> Response {
 /// The public listener's whole surface: the table view, its stream, a health answer, the built page
 /// and its assets. The catch-all is what makes "public only" a property of the router rather than a
 /// promise about the routes above it.
-pub(super) fn router(shared: Arc<Shared>, dist: &Path) -> Router {
+pub(super) fn router(shared: Arc<Shared>) -> Router {
     Router::new()
         .route(
             "/api/health",
@@ -166,7 +164,7 @@ pub(super) fn router(shared: Arc<Shared>, dist: &Path) -> Router {
         .route("/api/tv", get(tv_state))
         .route("/api/tv/events", get(tv_events))
         .route("/api/{*rest}", any(not_found))
-        .fallback_service(ServeDir::new(dist).not_found_service(ServeFile::new(dist.join("index.html"))))
+        .fallback(get(super::assets::serve))
         .layer(middleware::from_fn(headers_layer))
         .with_state(shared)
 }

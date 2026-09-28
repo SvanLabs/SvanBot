@@ -98,7 +98,7 @@ matters more than the coverage when you are mid-change.
 `crates/` has three layers, and a change belongs in exactly one of them:
 
 - **`crates/deps/`** — our own replacements for third-party crates (`sv10-rng`, `sv10-digest`,
-  `sv10-rt`, `sv10-mmap`, `sv10-pack`). No third-party dependency except `libc`.
+  `sv10-rt`, `sv10-mmap`, `sv10-pack`, `sv10-static`). No third-party dependency except `libc`.
 - **`crates/libs/`** — poker and data libraries: `sv10-cards`, `sv10-equity`, `sv10-engine`,
   `sv10-nn`, `sv10-model`, `sv10-policy`, `sv10-stats`, `sv10-venue`, `sv10-store`.
 - **`crates/apps/`** — the programs: `sv10-bot` (the live fleet and dashboard API), `sv10-core`
