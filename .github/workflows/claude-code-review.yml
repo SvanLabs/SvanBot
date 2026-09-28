@@ -31,6 +31,14 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: SvanLabs app token
+        id: app-token
+        # Fork PRs get no secrets: fall back to the workflow token instead of failing.
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.SVANLABS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SVANLABS_APP_PRIVATE_KEY }}
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
@@ -46,12 +54,11 @@ jobs:
           # Nothing private is printed — the job reads this public repository, and what it writes is
           # the review it would have posted.
           show_full_output: true
-          # The SvanBot account, so the action authors commits and comments as SvanBot
-          # rather than claude[bot]. The token is optional: unset, the action falls
-          # back to the workflow token and nothing changes.
-          bot_id: "121799761"
-          bot_name: "SvanBot"
-          github_token: ${{ secrets.SVANBOT_PAT || github.token }}
+          # The SvanLabs GitHub App, so the action acts as svanlabs[bot] rather than
+          # claude[bot] or a person's account.
+          bot_id: "334763394"
+          bot_name: "svanlabs[bot]"
+          github_token: ${{ steps.app-token.outputs.token || github.token }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
