@@ -377,6 +377,8 @@ mod env_file_tests {
             })
             .count();
         assert_eq!(parsed.len(), expected);
-        assert!(parsed.iter().filter(|(k, _)| k.contains("API_KEY")).all(|(_, v)| !v.is_empty() && !v.contains('"')));
+        // A key left empty is the state setup.sh leaves `.env` in until the operator pastes one (#15);
+        // a quote surviving the parse is the mistake.
+        assert!(parsed.iter().filter(|(k, _)| k.contains("API_KEY")).all(|(_, v)| !v.contains('"')));
     }
 }
