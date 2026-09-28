@@ -21,7 +21,7 @@ fn spot(title: &str, holes: &[[&str; 2]], board: [&str; 5], button: usize, actio
     let mut rng = SmallRng::seed_from_u64(1);
     let d = decide(&sit, &ModelStore::default(), &Params::default(), &mut rng);
     println!(
-        "== {title}: hero {}{} board {:?} pot {} call {} -> {} {:?} (eq {:.2})",
+        "== {title}: hero {}{} board {:?} pot {} call {} -> {} {:?} (eq {})",
         sit.hole[0],
         sit.hole[1],
         sit.board.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
@@ -29,7 +29,7 @@ fn spot(title: &str, holes: &[[&str; 2]], board: [&str; 5], button: usize, actio
         sit.call_amount,
         d.action_name,
         d.amount,
-        d.equity
+        d.equity.map(|e| format!("{e:.2}")).unwrap_or_else(|| "--".into())
     );
     for c in &d.candidates {
         println!("   {:>6} {:>6?} ev {:>8.1} fold {:.2} eqc {:.2}", c.action, c.amount, c.ev, c.fold_prob, c.equity_called);

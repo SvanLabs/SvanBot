@@ -134,7 +134,10 @@ counts the share over the fleet's own decisions).
 3. `decide_with` first returns uncallable chips to their owner (`Situation::without_uncallable`),
    reconstructs each opponent's range (`oprange`), samples shared deals (live: `tuning.live_samples`,
    640x the learner's budget on a reference-speed machine, scaled down on slower ones (up to 1.6M samples, about 190 ms p50; previously 160x), dealt in one seeded chunk per logical core by `SharedDeals::new_parallel` (heads-up with a flop or later, when every opponent combo × board completion fits the budget, the deals are the exact enumeration instead, each weighted by its combo's range weight: the river always, the turn and flop live; zero sampling noise and faster) and
-   `equity_vs_ranges_parallel`; about 6 ms on the i7-4770K), and scores fold/call/check
+   `equity_vs_ranges_parallel`; about 6 ms on the i7-4770K). A draw that cannot score the deals it was
+   asked for reports no measurement rather than a mean of what it managed — the deal budget is the
+   caller's own bar — and the decision then refuses the spot: the safe action (check where the rules
+   allow it, fold otherwise) with no equity, instead of pricing candidates on a zero (#424). It scores fold/call/check
    and several raise sizes by EV with opponent response models (fold estimates and all-in call
    equities corrected by the installed live fits, `livefits::LiveFits` — against an overbet all-in the
    haircut grows with the shove's size, `slope × (1 + ln(r / 1.5))` capped at 0.40; the response network's

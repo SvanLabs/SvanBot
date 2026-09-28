@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use sv10_cards::range::Range;
 use sv10_engine::engine::{Action, Street};
 use sv10_engine::situation::Situation;
-use sv10_equity::equity::{SharedDeals, equity_vs_ranges_parallel};
+use sv10_equity::equity::SharedDeals;
 use sv10_model::model::defaults;
 use sv10_model::model::{ModelStore, Profile, aggressive};
 use sv10_model::oprange::{
@@ -16,6 +16,7 @@ use sv10_model::oprange::{
 };
 use sv10_rng::{Rng, RngExt};
 
+mod measure;
 mod params;
 mod responses;
 pub use params::Params;
@@ -74,8 +75,9 @@ pub struct Decision {
     pub action_name: String,
     /// Raise-to total for raises.
     pub amount: Option<i64>,
-    /// Hero's equity against the estimated ranges.
-    pub equity: f64,
+    /// Hero's equity against the estimated ranges; `None` when the deal draw could not measure it
+    /// and no option could be priced (#424).
+    pub equity: Option<f64>,
     /// Share of the final pot hero must put in to call.
     pub pot_odds: f64,
     /// Every option considered, with its EV.
@@ -131,15 +133,11 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
         (0..responders.len()).collect()
     };
     let all_ranges: Vec<&Range> = responders.iter().map(|r| r.range).collect();
-    let deals = (params.reuse_deals && !responders.is_empty())
-        .then(|| SharedDeals::new_parallel(sit.hole, &sit.board, &all_ranges, params.samples, params.deal_chunks, rng));
+    let deals = measure::shared_deals(sit, &all_ranges, params, rng);
     let base_subset: Vec<(usize, Option<&Range>)> = equity_seats.iter().map(|&i| (i, None)).collect();
-    let raw_eq = match deals.as_ref().and_then(|d| d.equity(&base_subset)) {
-        Some(e) => e,
-        None => {
-            let refs: Vec<&Range> = equity_seats.iter().map(|&i| responders[i].range).collect();
-            equity_vs_ranges_parallel(sit.hole, &sit.board, &refs, params.samples, params.deal_chunks, rng)
-        }
+    let base_refs: Vec<&Range> = equity_seats.iter().map(|&i| responders[i].range).collect();
+    let Some(raw_eq) = measure::measured_equity(deals.as_ref(), sit, params, &base_subset, &base_refs, params.samples, rng) else {
+        return measure::unmeasured(sit);
     };
     let eq = raw_eq * discount;
     let pot = sit.pot as f64;
@@ -192,12 +190,9 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
         let seats: Vec<usize> = all_in_idx.iter().map(|&i| responders[i].seat).collect();
         let (side, main) = sit.split_at_all_ins(&seats);
         let subset: Vec<(usize, Option<&Range>)> = all_in_idx.iter().map(|&i| (i, None)).collect();
-        let eq_all_in = match deals.as_ref().and_then(|d| d.equity(&subset)) {
-            Some(e) => e,
-            None => {
-                let refs: Vec<&Range> = all_in_idx.iter().map(|&i| responders[i].range).collect();
-                equity_vs_ranges_parallel(sit.hole, &sit.board, &refs, params.samples / 2, params.deal_chunks, rng)
-            }
+        let refs: Vec<&Range> = all_in_idx.iter().map(|&i| responders[i].range).collect();
+        let Some(eq_all_in) = measure::measured_equity(deals.as_ref(), sit, params, &subset, &refs, params.samples / 2, rng) else {
+            return measure::unmeasured(sit);
         };
         side + eq_all_in * main
     };
@@ -255,23 +250,24 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
         let mut eq_c = eq;
         // Equity against the continuing part of one or two responders' ranges: reweight the shared
         // deals when possible, otherwise sample afresh.
-        let vs_continuing = |callers: &[usize], rng: &mut R| -> f64 {
+        let vs_continuing = |callers: &[usize], rng: &mut R| -> Option<f64> {
             let idx: Vec<usize> = all_in_idx.iter().chain(callers).copied().collect();
             let subset: Vec<(usize, Option<&Range>)> = idx.iter().map(|&i| (i, Some(&cont_ranges[i].1))).collect();
-            if let Some(e) = deals.as_ref().and_then(|d| d.equity(&subset)) {
-                return e;
-            }
             let refs: Vec<&Range> = idx.iter().map(|&i| &cont_ranges[i].1).collect();
-            equity_vs_ranges_parallel(sit.hole, &sit.board, &refs, params.samples / 2, params.deal_chunks, rng)
+            measure::measured_equity(deals.as_ref(), sit, params, &subset, &refs, params.samples / 2, rng)
         };
         if let Some(&first) = order.first() {
-            let eq1 = vs_continuing(&[first], rng);
+            let Some(eq1) = vs_continuing(&[first], rng) else {
+                return measure::unmeasured(sit);
+            };
             let v1 = eq1 * (pot + add + costs[first]) * r - add;
             eq_c = eq1;
             called_value = v1;
             if order.len() >= 2 && p_one < 0.999 {
                 let second = order[1];
-                let eq2 = vs_continuing(&[first, second], rng);
+                let Some(eq2) = vs_continuing(&[first, second], rng) else {
+                    return measure::unmeasured(sit);
+                };
                 let v2 = eq2 * (pot + add + costs[first] + costs[second]) * r - add;
                 called_value = p_one * v1 + (1.0 - p_one) * v2;
                 eq_c = p_one * eq1 + (1.0 - p_one) * eq2;
@@ -331,7 +327,7 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
         action,
         action_name,
         amount: if matches!(action, Action::RaiseTo(_) | Action::AllIn) { chosen.amount } else { amount },
-        equity: eq,
+        equity: Some(eq),
         pot_odds,
         candidates: cands.into_iter().map(|(_, c)| c).collect(),
         reason,

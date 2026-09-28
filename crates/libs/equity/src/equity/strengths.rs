@@ -167,7 +167,12 @@ pub fn combo_strengths<R: Rng>(board: &[Card], samples_per_combo: usize, rng: &m
         .map(|&i| {
             let (a, b) = t.cards[i];
             let mut r = sv10_rng::rngs::SmallRng::seed_from_u64(base_seed ^ (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-            (i, equity_vs_ranges([a, b], board, &[&full], samples_per_combo, &mut r) as f32)
+            // One opponent on a full range accepts nearly every deal, so a short draw is a sampler
+            // bug rather than a combo to score as zero (#424): the strengths this returns are what
+            // the policy prices a hand with.
+            let eq =
+                equity_vs_ranges([a, b], board, &[&full], samples_per_combo, &mut r).expect("a per-combo strength draw fills its budget");
+            (i, eq as f32)
         })
         .collect();
     let mut out = vec![0f32; NUM_COMBOS];
@@ -197,7 +202,7 @@ mod tests {
     fn known_preflop_equities() {
         let mut rng = SmallRng::seed_from_u64(7);
         let full = Range::full();
-        let aa = equity_vs_ranges(two("Ah", "As"), &[], &[&full], 200_000, &mut rng);
+        let aa = equity_vs_ranges(two("Ah", "As"), &[], &[&full], 200_000, &mut rng).unwrap();
         assert!((aa - 0.852).abs() < 0.006, "AA vs random {aa}");
         let mut kk = Range::empty();
         for &(a, b) in combos().cards.iter() {
@@ -205,9 +210,9 @@ mod tests {
                 kk.w[sv10_cards::range::combo_index(a, b).expect("a table combo")] = 1.0;
             }
         }
-        let aa_kk = equity_vs_ranges(two("Ah", "As"), &[], &[&kk], 200_000, &mut rng);
+        let aa_kk = equity_vs_ranges(two("Ah", "As"), &[], &[&kk], 200_000, &mut rng).unwrap();
         assert!((aa_kk - 0.819).abs() < 0.008, "AA vs KK {aa_kk}");
-        let aa3 = equity_vs_ranges(two("Ah", "As"), &[], &[&full, &full], 200_000, &mut rng);
+        let aa3 = equity_vs_ranges(two("Ah", "As"), &[], &[&full, &full], 200_000, &mut rng).unwrap();
         assert!((aa3 - 0.735).abs() < 0.008, "AA vs 2 random {aa3}");
     }
 
@@ -219,7 +224,7 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(11);
         let deals = SharedDeals::new(hero, &board, &[&full, &full], 60_000, &mut rng);
         let both = deals.equity(&[(0, None), (1, None)]).unwrap();
-        let direct = equity_vs_ranges(hero, &board, &[&full, &full], 60_000, &mut rng);
+        let direct = equity_vs_ranges(hero, &board, &[&full, &full], 60_000, &mut rng).unwrap();
         assert!((both - direct).abs() < 0.01, "shared {both} direct {direct}");
         // Narrow the first opponent to pairs and broadways; reweighted equity must match a fresh run.
         let mut narrow = Range::empty();
@@ -229,7 +234,7 @@ mod tests {
             }
         }
         let reweighted = deals.equity(&[(0, Some(&narrow))]).unwrap();
-        let fresh = equity_vs_ranges(hero, &board, &[&narrow], 60_000, &mut rng);
+        let fresh = equity_vs_ranges(hero, &board, &[&narrow], 60_000, &mut rng).unwrap();
         assert!((reweighted - fresh).abs() < 0.015, "reweighted {reweighted} fresh {fresh}");
         // A range with no weight in the deals cannot be estimated.
         assert!(deals.equity(&[(0, Some(&Range::empty()))]).is_none());
@@ -361,7 +366,7 @@ mod tests {
             for hole in [two("Qh", "Jh"), two("7h", "6h"), two("2d", "2s")] {
                 let i = sv10_cards::range::combo_index(hole[0], hole[1]).expect("two named cards");
                 let eq = ((exact[i] - 0.55 * made[i]) / 0.45) as f64;
-                let mc = equity_vs_ranges(hole, &board, &[&full], 150_000, &mut rng);
+                let mc = equity_vs_ranges(hole, &board, &[&full], 150_000, &mut rng).unwrap();
                 assert!((eq - mc).abs() < 0.006, "board {b:?} hole {}{}: exact {eq} mc {mc}", hole[0], hole[1]);
             }
         }
@@ -374,7 +379,7 @@ mod tests {
         let full = Range::full();
         let exact = river_equity_exact(hero, &board, &full);
         let mut rng = SmallRng::seed_from_u64(3);
-        let mc = equity_vs_ranges(hero, &board, &[&full], 200_000, &mut rng);
+        let mc = equity_vs_ranges(hero, &board, &[&full], 200_000, &mut rng).unwrap();
         assert!((exact - mc).abs() < 0.005, "exact {exact} mc {mc}");
     }
 }

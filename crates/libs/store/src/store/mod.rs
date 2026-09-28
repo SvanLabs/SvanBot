@@ -345,7 +345,7 @@ mod tests {
             }
         }
         for i in 300..320 {
-            store.insert_decision("A", &format!("h{i}"), "flop", "raise", Some(40), 0.5, 100, 0, 3.0, &detail(i)).unwrap();
+            store.insert_decision("A", &format!("h{i}"), "flop", "raise", Some(40), Some(0.5), 100, 0, 3.0, &detail(i)).unwrap();
         }
         let snapshot = |store: &Store| {
             let ids: Vec<String> = (0..320).map(|i| format!("h{i}")).collect();

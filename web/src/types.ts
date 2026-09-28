@@ -1,4 +1,4 @@
-export interface Estimate { value: number; count?: number; samples?: number; standard_error?: number; exact?: boolean; lower?: number; upper?: number }
+export interface Estimate { value: number | null; count?: number; samples?: number; standard_error?: number; exact?: boolean; lower?: number; upper?: number }
 export interface Decision { effective_stack?: number | null; spr?: number | null; hand_category?: string | null; best_five?: string[]; opening_threshold?: number | null; preflop_score?: number | null; opening_position?: string | null; opponent_models?: OpponentModelInput[]; action: string; amount: number; reason: string; source: string; equity: Estimate | null; pot_odds?: number; version?: string; latency_ms?: number; street?: string; pot?: number; to_call?: number; candidates?: Candidate[] | null; experiment?: Record<string, unknown> }
 /** One option the policy priced for the live decision (the EV search's own table; `ev` is chips). */
 export interface Candidate { action: string; amount: number | null; ev: number; category?: string; bias?: number; equity_called?: number; fold_prob?: number }
