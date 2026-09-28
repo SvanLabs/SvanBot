@@ -28,6 +28,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Every Dependabot pull request carried a failed review check** (#375). GitHub withholds Actions
+  secrets from a workflow a bot triggered, so `CLAUDE_CODE_OAUTH_TOKEN` reached the review empty and
+  the run died on a credential it was never given. The check was red on every dependency bump and
+  said nothing about the bump. The review job is now skipped for a Dependabot-opened pull request;
+  the gate still checks the bump.
 - **A fleet set to `dev` could not install a release** (#365). The gate's update test builds a fixture
   whose origin has only `main`, and its list of ambient variables to clear missed the three settings
   `scripts/update.sh` reads for where it fetches from. With `SVANBOT_UPDATE_BRANCH=dev` exported — what

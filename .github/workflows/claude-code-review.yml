@@ -12,11 +12,18 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # A Dependabot pull request gets no Actions secrets: GitHub keeps them from a workflow the bot
+    # triggered, the same way it keeps them from a fork. `CLAUDE_CODE_OAUTH_TOKEN` is therefore empty
+    # in this job and the review fails on a credential it was never given — a red check on every
+    # dependency bump that says nothing about the bump, because the review never read it. The step
+    # below that fetches the app token already shows the shape: it carries `continue-on-error` for
+    # exactly this reason, and its log on a Dependabot run reads `The 'private-key' input must be set
+    # to a non-empty string` for a secret that is set on the repository.
+    #
+    # Skipping says that plainly, where a failure claims the review looked and found something. The
+    # bump is still gated: `check` runs on this pull request like any other. Re-enable it here if the
+    # credential is ever copied into the Dependabot secret store, which is a separate store.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
 
     runs-on: ubuntu-latest
     permissions:
