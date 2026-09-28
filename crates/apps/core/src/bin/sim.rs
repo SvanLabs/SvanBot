@@ -25,8 +25,7 @@ fn paired(args: &[String]) {
     let t0 = std::time::Instant::now();
     let r = match std::env::var("SIM_MODELS").ok() {
         Some(path) => {
-            let models: ModelStore =
-                serde_json::from_str(&std::fs::read_to_string(&path).expect("SIM_MODELS file")).expect("ModelStore JSON");
+            let models: ModelStore = load_models(&path);
             let opps = sv10_core::agents::live_pool(&models, 30.0, 16, seed);
             eprintln!("live pool: {} profile clones", opps.len());
             sv10_core::sim::paired_eval(&a, &b, &opps, &models, None, tables, hands, stack_bb, seed)
@@ -69,8 +68,7 @@ fn variance(args: &[String]) {
     let t0 = std::time::Instant::now();
     let v = match std::env::var("SIM_MODELS").ok() {
         Some(path) => {
-            let models: ModelStore =
-                serde_json::from_str(&std::fs::read_to_string(&path).expect("SIM_MODELS file")).expect("ModelStore JSON");
+            let models: ModelStore = load_models(&path);
             let opps = sv10_core::agents::live_pool(&models, 30.0, 16, seed);
             eprintln!("live pool: {} profile clones", opps.len());
             sv10_core::sim::paired_variance_split(&a, &b, &opps, &models, tables, hands, stack_bb, seed, salts, seats, learn)
@@ -95,6 +93,18 @@ fn variance(args: &[String]) {
         1.0 / v.hands_ratio().max(1e-9),
         t0.elapsed().as_secs_f64()
     );
+}
+
+/// `SIM_MODELS`, or a clean exit naming the file and what is wrong with it — not a panic.
+fn load_models(path: &str) -> ModelStore {
+    let text = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!("sim: SIM_MODELS={path}: {e}");
+        std::process::exit(2)
+    });
+    serde_json::from_str(&text).unwrap_or_else(|e| {
+        eprintln!("sim: SIM_MODELS={path} is not a ModelStore: {e}");
+        std::process::exit(2)
+    })
 }
 
 fn main() {
