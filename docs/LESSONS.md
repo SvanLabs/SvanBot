@@ -233,3 +233,18 @@
     commit, so it passes that guard while holding a file `dev` never had — and the script went on to
     ask GitHub for a pull request GitHub refuses. Ask the question you mean, of the thing that holds
     the answer: containment of *content* is `git rev-list --count dev --not main` being zero.
+
+46. **A wait charged to the thing that waited reads as slowness in it.** The 2026-09-28 05:02 release
+    reported a 498 s build stage, four times the budget, and the explanation written down was a cold
+    cache. It was not one: every crate in `target/stage` had compiled at 03:10, and cargo invoked *no
+    crate at all* across those eight minutes — a build that compiles nothing is not a slow build, it
+    is not a build. It was cargo's build lock. Anything else building in the same target directory
+    holds `release/.cargo-lock`, and the second cargo waits with one line, `Blocking waiting for file
+    lock on build directory`, for as long as the holder runs; a `--profile release` build elsewhere in
+    the tree was finishing as the release started. The line that named it was in
+    `target/stage/release-build.log`, which the next release truncates — so the number outlived its
+    reason, and the release after it, warm and unblocked, built in 20.6 s. *Rule*: the seconds spent
+    in a stage are charged to that stage, so a stage has to be able to name a wait — probe the build
+    lock non-blockingly and say it is held before waiting on it (`scripts/build-lock.sh`) — and keep
+    the log of a stage that went over budget, because the next run truncates the only record of why
+    it did.
