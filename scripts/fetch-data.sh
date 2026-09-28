@@ -3,15 +3,32 @@
 # source repository — databases, archives and screenshots are published as releases on a repository
 # the operator names in SVANBOT_DATA_REPO, and gh must be authenticated for that repository.
 # Default: the two live databases. `--all` also restores backups, release snapshots, tables/logs and
-# screenshots. Refuses while the fleet runs or when a database already exists, unless FORCE=1.
+# screenshots. `--derived` instead fetches the public derived set (aggregates + schema, #17) into
+# `artifacts/derived/` for analysis: it never touches the live databases and the fleet may run.
+# Refuses while the fleet runs or when a database already exists, unless FORCE=1.
 # Snapshots are made with sqlite `.backup` + zstd (see the release notes).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Named rather than defaulted: the repository holding the snapshots is the operator's, it is not
 # this one, and a wrong default here restores nothing while looking like it should.
 repo="${SVANBOT_DATA_REPO:?set SVANBOT_DATA_REPO to the owner/repo holding the data-* releases}"
-all=0
+all=0 derived=0
 [ "${1:-}" = "--all" ] && all=1
+[ "${1:-}" = "--derived" ] && derived=1
+
+if [ "$derived" = 1 ]; then
+  tag=$(gh release list --repo "$repo" --limit 50 --json tagName --jq '.[].tagName' | grep '^data-' | sort | tail -1)
+  [ -n "$tag" ] || { echo "no data-* release on $repo" >&2; exit 1; }
+  echo "fetching derived set from $tag"
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  gh release download "$tag" --repo "$repo" --dir "$tmp" -p 'derived-*.tar.zst' -p 'SHA256SUMS*'
+  (cd "$tmp" && cat SHA256SUMS* | sha256sum --check --ignore-missing --quiet)
+  mkdir -p artifacts/derived
+  zstd -dc "$tmp"/derived-*.tar.zst | tar -C artifacts/derived -xf -
+  echo "derived set in artifacts/derived/ (aggregates + schema only; no databases touched)"
+  exit 0
+fi
 
 if [ -f artifacts/bot.pid ] && kill -0 "$(cat artifacts/bot.pid)" 2>/dev/null; then
   echo "the fleet is running (artifacts/bot.pid); stop it first" >&2

@@ -9,6 +9,10 @@
 //! - `archive restore NAME --to DIR` — rebuild `svanbot10.db` and `history.db` (and
 //!   `repo.bundle`) in DIR, verified. Never writes into `artifacts/`: stop the fleet and copy the
 //!   restored files in by hand (docs/OPERATIONS.md, "Restore from the archive").
+//! - `archive export-derived --to DIR` — write the public derived set (`schema.sql`,
+//!   `aggregates.json`, `SHA256SUMS`) for a dated data release: counts, summaries and the table
+//!   definitions, scrubbed of keys, emails and home paths, failing closed on any hit. Never raw
+//!   opponent hands (#17).
 //!
 //! The databases' compressed columns (0229; `--dir DIR` works on a copy instead of `artifacts/`):
 //!
@@ -95,6 +99,25 @@ fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+        Some("export-derived") => {
+            let Some(to) = args.iter().position(|a| a == "--to").and_then(|i| args.get(i + 1)).map(PathBuf::from) else {
+                bail!("usage: archive export-derived --to DIR")
+            };
+            let to = if to.is_absolute() { to } else { std::env::current_dir()?.join(to) };
+            // Secrets are compared, never printed: a scrub hit names the violation class, not the value.
+            let dotenv = std::fs::read_to_string(root.join(".env")).unwrap_or_default();
+            let secrets = sv10_bot::derived::SecretSet::from_dotenv(&dotenv);
+            let home = std::env::var("HOME").unwrap_or_default();
+            for p in sv10_bot::derived::export_derived(
+                &root.join("artifacts/svanbot10.db"),
+                &root.join("artifacts/history.db"),
+                &to,
+                &secrets,
+                &home,
+            )? {
+                println!("exported {}", p.display());
+            }
+        }
         Some("restore") => {
             let Some(name) = args.get(1) else { bail!("usage: archive restore NAME --to DIR") };
             let Some(to) = args.iter().position(|a| a == "--to").and_then(|i| args.get(i + 1)).map(PathBuf::from) else {
@@ -154,7 +177,7 @@ fn main() -> Result<()> {
             );
         }
         _ => bail!(
-            "usage: archive run | list | verify [NAME] [--deep] | restore NAME --to DIR | compact [--dir DIR] [--vacuum-main] | unpack [--dir DIR]"
+            "usage: archive run | list | verify [NAME] [--deep] | restore NAME --to DIR | export-derived --to DIR | compact [--dir DIR] [--vacuum-main] | unpack [--dir DIR]"
         ),
     }
     Ok(())

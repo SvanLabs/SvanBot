@@ -4,6 +4,7 @@ pub mod badges;
 pub mod client;
 pub mod compaction;
 pub mod config;
+pub mod derived;
 pub mod experiment;
 pub mod findings;
 pub mod foldcal;
