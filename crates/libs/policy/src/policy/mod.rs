@@ -3,7 +3,6 @@
 //! chips, and pick the best (mixing only between near-equal options).
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use sv10_cards::range::Range;
 use sv10_engine::engine::{Action, Street};
 use sv10_engine::situation::Situation;
@@ -385,11 +384,6 @@ fn check_lookahead(
     let call = eq_bet * (pot + 2.0 * bet) * r - bet - params.call_margin * (pot + bet);
     let through = eq * pot * realize(sit.street, ip, eq, params.realize_weight);
     Some(p_check * through + p_bet * call.max(0.0))
-}
-
-/// Profiles for every opponent in the situation (for telemetry).
-pub fn opponent_profiles(sit: &Situation, models: &ModelStore) -> HashMap<String, Profile> {
-    sit.live_opponents().map(|p| (p.name.clone(), models.profile(&p.name))).collect()
 }
 
 /// Pot (big blinds, before our call) from which [`Params::deep_call_shift`] applies to a call of an all-in.

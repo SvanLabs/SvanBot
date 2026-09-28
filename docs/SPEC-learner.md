@@ -174,7 +174,7 @@ next process resumes the stored run.
    board. Every rate is redrawn each cycle (seed `7000 + cycle`), logit-normal with the sampling error
    of that player's counts, with random open (2.25–3.5 bb) and bet (40–95% pot) sizes. The policy
    still models the clone by the real player's profile, so it is never an oracle. The archetype
-   `fit_clone` (4 rates only) is retired from the learner; `sim` keeps archetypes by default.
+   fit (4 rates only) was retired from the learner and removed; `sim` keeps archetypes by default.
 6. **Challengers** (`challengers`): one-knob perturbations of the champion (fold scale, initiative,
    open size, 3-bet sizes, raise-fold bonus, realization weight, call margin, jam ratio, raise risk,
    4-bet size, limper size, preflop fold scale, passive fold bonus, 3-bet call margin, preflop re-raise

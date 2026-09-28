@@ -16,8 +16,6 @@ use sv10_nn::nn::Sample;
 pub const N_FEATURES: usize = 38;
 /// Inputs of the [`ResponseFeatureSet::Incumbent37`] layout, still served for networks trained on it.
 pub const INCUMBENT_FEATURES: usize = 37;
-/// Response classes: 0 fold, 1 call or check, 2 bet or raise.
-pub const CLASSES: usize = 3; // 0 fold, 1 call/check, 2 bet/raise
 
 /// Versioned response-model layouts. Training uses the production layout ([`N_FEATURES`] inputs);
 /// inference picks the layout from each network's input width, so a stored network keeps working

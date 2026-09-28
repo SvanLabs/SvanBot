@@ -203,68 +203,6 @@ impl Agent for PolicyAgent {
     }
 }
 
-/// Observable rates a clone is calibrated to match.
-#[derive(Clone, Debug)]
-pub struct TargetRates {
-    /// Share of hands played preflop.
-    pub vpip: f64,
-    /// Share of hands raised preflop.
-    pub pfr: f64,
-    /// Bet-when-checked-to rate, averaged over streets.
-    pub bet_first: f64,
-    /// Fold-to-bet rate, averaged over streets.
-    pub fold_vs_bet: f64,
-}
-
-impl TargetRates {
-    /// Targets from a live player's shrunk profile.
-    pub fn from_profile(p: &sv10_model::model::Profile) -> TargetRates {
-        TargetRates {
-            vpip: p.vpip as f64,
-            pfr: p.pfr as f64,
-            bet_first: (p.bet_first.iter().sum::<f32>() / 3.0) as f64,
-            fold_vs_bet: (p.fold_vs_bet.iter().sum::<f32>() / 3.0) as f64,
-        }
-    }
-}
-
-/// Fit an archetype whose simulated behaviour matches `target`, by a few rounds
-/// of proportional correction on a table of six copies.
-pub fn fit_clone(name: &str, target: &TargetRates, seed: u64) -> Archetype {
-    let mut a = Archetype {
-        name: name.to_string(),
-        vpip: target.vpip.clamp(0.05, 0.95),
-        pfr: target.pfr.clamp(0.01, 0.9),
-        aggression: (target.bet_first * 1.3).clamp(0.05, 0.95),
-        bluff: (target.bet_first * 0.25).clamp(0.0, 0.5),
-        call_margin: ((target.fold_vs_bet - 0.40) * 0.8).clamp(-0.3, 0.3),
-        sizing: 0.66,
-    };
-    for round in 0..4 {
-        let mut agents: Vec<Box<dyn Agent>> =
-            (0..6).map(|i| Box::new(ArchetypeAgent { a: a.clone(), label: format!("c{i}") }) as Box<dyn Agent>).collect();
-        let mut obs = ModelStore::default();
-        crate::sim::run_table_observed(&mut agents, 700, 100, seed + round, Some(&mut obs));
-        let st = &obs.population;
-        let rate = |c: &sv10_model::model::Counter, fallback: f64| if c.opp > 20.0 { (c.hit / c.opp) as f64 } else { fallback };
-        let m_vpip = rate(&st.vpip, a.vpip);
-        let m_pfr = rate(&st.pfr, a.pfr);
-        let bf =
-            sv10_model::model::Counter { opp: st.bet_first.iter().map(|c| c.opp).sum(), hit: st.bet_first.iter().map(|c| c.hit).sum() };
-        let fb =
-            sv10_model::model::Counter { opp: st.fold_vs_bet.iter().map(|c| c.opp).sum(), hit: st.fold_vs_bet.iter().map(|c| c.hit).sum() };
-        let m_bet = rate(&bf, target.bet_first);
-        let m_fold = rate(&fb, target.fold_vs_bet);
-        a.vpip = (a.vpip * (target.vpip / m_vpip.max(0.02)).powf(0.8)).clamp(0.03, 0.98);
-        a.pfr = (a.pfr * (target.pfr / m_pfr.max(0.01)).powf(0.8)).clamp(0.005, 0.95);
-        a.pfr = a.pfr.min(a.vpip);
-        a.aggression = (a.aggression + (target.bet_first - m_bet) * 1.5).clamp(0.02, 0.98);
-        a.bluff = (a.aggression * 0.25).clamp(0.0, 0.5);
-        a.call_margin = (a.call_margin + (target.fold_vs_bet - m_fold) * 0.9).clamp(-0.45, 0.45);
-    }
-    a
-}
-
 /// A simulated opponent that plays a full learned [`Profile`](sv10_model::model::Profile): positional
 /// opens and limps, 3-bet / call / fold-to-3-bet / 4-bet / fold-to-4-bet, c-bets, per-street
 /// bet-first, size-aware folds, raises versus bets and the river bluff share. Hands are ranked
