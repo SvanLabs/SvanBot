@@ -49,6 +49,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A `main` carrying its own content promoted once `dev` moved on** (#387). The refusal to promote a
+  diverged `main` asked two questions — does `main` hold a non-merge commit `dev` lacks, and has
+  `dev` no commit `main` lacks — and a conflict resolved on `main`'s side inside a *merge* commit was
+  invisible to both as soon as `dev` moved on: the first counts non-merge commits only, and the second
+  is then the ordinary, healthy shape. The promotion went through as a real merge that kept `main`'s
+  resolution on `main`'s side alone, where `dev` can never reach it, and left the two trees different
+  however green `dev` was. Both guards are one now: `main`'s tree against the tree of the merge base of
+  the two lines — `dev`'s content at the point they last agreed. A promotion merge holds exactly that
+  tree, which is what makes the healthy shapes pass, and anything `main` carries of its own makes them
+  differ whichever commit holds it. The refusal still names which shape it found. Found by building
+  the state on purpose, not by an incident.
 - **A cancelled `check` on `dev` parked `main`, and nothing retried the promotion** (#404).
   `promote.yml`'s job was gated on the finished run's conclusion being `success`, which read as "a red
   `dev` promotes nothing" and was never the thing doing that work: the guard is the `check` status the
