@@ -589,7 +589,8 @@ With `SVANBOT_TV_PORT` set, a second listener carries only `/api/health` (answer
 | `SVANBOT_REST_BASE` | `https://api.openpoker.ai/api` | REST endpoint |
 | `SVANBOT_BUY_IN` | 5000 | Maximum buy-in (1,000–5,000) |
 | `SVANBOT_SEEK_TOP_RANK` | 30 | Prefer tables with a current-season top-N bot (0 disables) |
-| `SVANBOT_BANK_STACK_BB` | 2000 | Bank winnings: at this table stack (big blinds), leave after the hand and rejoin with a fresh buy-in (0 disables). The score counts on- and off-table chips alike, and past a certain depth a bigger table stack only enlarges the per-hand swing, so banking bounds it |
+| `SVANBOT_BANK_STACK_BB` | 1000 | Bank winnings: at this table stack (big blinds), leave after the hand and rejoin with a fresh buy-in (0 disables). Banking early builds the balance while it is small |
+| `SVANBOT_BANK_UNTIL_CHIPS` | 500000 | Stop banking once the bot's total chips (off-table balance plus table stack) reach this (0 = no ceiling): a bot that far ahead keeps a deep stack on the table for the big hands |
 | `SVANBOT_EXPORT_CAP` | 20000 | Deepest hand the server exports per bot for Free keys; Pro keys (`pro_tier`) are unlimited automatically, and every ended season backfills on its own — keys in `.env` are the only setup |
 | `SVANBOT_WEB__HOST` / `SVANBOT_WEB_PORT` | 127.0.0.1 / 5000 | Dashboard address |
 | `SVANBOT_WEB__OPERATOR_TOKEN` | — | Dashboard password |

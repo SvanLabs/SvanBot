@@ -18,6 +18,7 @@ impl Shared {
             max_buy_in: 5000,
             seek_top_rank: 30,
             bank_stack_bb: 2_000,
+            bank_until_chips: 500_000,
             web_host: "127.0.0.1".into(),
             web_port: 0,
             tv_host: "127.0.0.1".into(),
