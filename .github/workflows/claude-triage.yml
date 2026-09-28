@@ -47,8 +47,12 @@ jobs:
 
             - Add labels that exist in the repository (`gh label list`): a kind (bug, enhancement,
               documentation, question) and an area (area:crates, area:web, area:ci, area:docs).
-            - If it states where the problem is and what the fix should be, add `agent-friendly`:
-              the scheduled maintainer will fix it. If details are missing, ask for exactly those.
+            - Give it exactly one readiness label, so no issue is left unrouted:
+              `agent-friendly` if it states where the problem is and what the fix should be (the
+              scheduled maintainer will fix it); `blocked-on-decision` if it is well diagnosed but
+              ends in a choice between designs, or needs a live measurement or an operator's call
+              first (say in one comment which decision is needed); otherwise `needs-triage`, and ask
+              for exactly the details that are missing.
             - A usage question: answer it from the docs, briefly.
             - A duplicate: say which issue and close it as duplicate.
             - Reply once, politely and concretely, and end the reply with the line

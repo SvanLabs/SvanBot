@@ -1,0 +1,27 @@
+# Dependency updates, grouped and capped so they arrive as a few reviewable pull requests rather than
+# one per crate. Dependabot's commits are authored `dependabot[bot]`, which the provenance gate exempts
+# (scripts/provenance.py). A Cargo.lock change also moves THIRD-PARTY-NOTICES.md: if the notices check
+# is red on one of these, `python3 scripts/notices.py` regenerates it.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: monthly }
+    open-pull-requests-limit: 2
+    labels: [area:crates]
+    groups:
+      rust-dependencies: { patterns: ["*"] }
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: monthly }
+    open-pull-requests-limit: 2
+    labels: [area:web]
+    groups:
+      web-dependencies: { patterns: ["*"] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    open-pull-requests-limit: 2
+    labels: [area:ci]
+    groups:
+      actions: { patterns: ["*"] }

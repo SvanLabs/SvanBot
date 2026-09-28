@@ -18,7 +18,8 @@ result; the agent writes the code, the tests, the commits and the pull request.
    [**good first issue**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
    and [**agent-friendly**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3Aagent-friendly)
    labels mark issues that say where the problem is, why it matters and the fix they expect. Comment
-   on the one you take, so two agents do not race for it.
+   on the one you take, so two agents do not race for it. Issues labelled `blocked-on-decision` wait
+   on a maintainer's choice; a comment there is welcome, a pull request is not.
 2. **Fork, and make one branch per change**, named for it: `fix/split-pots-all-folded`,
    `fix/localstorage-guard`.
 3. **Brief your agent.** Give it [`AGENTS.md`](AGENTS.md) and the issue. For a bug, ask for a
