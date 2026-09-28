@@ -161,4 +161,28 @@ if ! out=$(run ""); then fail "a promotion merge commit on main was refused: $ou
 grep -q "commit(s) on \`dev\` that \`main\` does not have" "$t/state/body" ||
   fail "the body does not list the commits: $(cat "$t/state/body")"
 
+# 9. `main` holds what `dev` holds — the state a promotion leaves — and the two tips are different
+#    commits. That is what makes the check a tree comparison and not an id one: by id this state reads
+#    as "not current" on every run forever, so the script opened a promotion pull request with an empty
+#    commit list in it (the empty list counted as one line) every time nothing had moved.
+reset
+# A fresh GitHub, as a run after the last promotion has merged finds it: the previous run's pull
+# request is closed, so a script that does not recognise this state opens a new one rather than
+# reusing it, and the mutation is the thing the test is looking for.
+rm -f "$t/state/pr" "$t/state/armed"
+git -C "$t/gen" fetch -q origin
+git -C "$t/gen" checkout -q -B main origin/main
+git -C "$t/gen" merge -q --no-ff --no-edit -m "Merge pull request #380 from SvanLabs/dev" origin/dev
+git -C "$t/gen" -c push.negotiate=false push -q origin main
+git -C "$t/gen" checkout -q dev
+git -C "$t/work" fetch -q origin
+if [ "$(git -C "$t/work" rev-parse origin/main)" = "$(git -C "$t/work" rev-parse origin/dev)" ]; then
+  fail "the fixture did not reproduce the real shape: the two tips are the same commit"
+fi
+[ -z "$(git -C "$t/work" diff origin/main origin/dev)" ] ||
+  fail "the fixture did not reproduce the real shape: the two trees differ"
+out=$(run "") || fail "a main holding what dev holds failed: $out"
+[ -z "$(mutations)" ] || fail "an already-current main changed something: $(mutations)"
+case "$out" in *"already holds what dev holds"*) ;; *) fail "an already-current main was not recognised: $out";; esac
+
 echo "promote tests: ok"

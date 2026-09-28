@@ -21,10 +21,12 @@ GitHub merges it when the gate passes on it — a pull request's merge ref is re
 to its head, so that one pull request always tests the head `dev` has now. A red `dev` promotes
 nothing, because the workflow only fires on a green run, and a `main` that carries a commit of its
 own — a non-merge commit `dev` does not have, which is what a squash promotion or a commit pushed
-straight to `main` leaves behind — is refused by name rather than merged. The promotion merge commits
-themselves are not that: they live on `main` alone by construction, so `main` stops being an ancestor
-of `dev` the moment it has been promoted once, and a check phrased that way would refuse every
-promotion after the first.
+straight to `main` leaves behind — is refused by name rather than merged. A `main` that already holds
+what `dev` holds promotes nothing and opens no pull request, and that test is the two **trees**, not
+the two commit ids: a promotion is a merge commit, so it makes the ids permanently different however
+identical what they hold. The promotion merge commits themselves are not the refusal's business:
+they live on `main` alone by construction, so `main` stops being an ancestor of `dev` the moment it
+has been promoted once, and a check phrased that way would refuse every promotion after the first.
 
 The same thing by hand, which is also the retry after a failure:
 
