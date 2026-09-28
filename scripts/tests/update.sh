@@ -8,6 +8,10 @@ trap 'rm -rf "$t"' EXIT
 fail() { echo "update test: $*" >&2; exit 1; }
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 unset SV10_RELEASE_LOCK_FD SV10_RELEASE_ROOT SV10_UPDATE_RUN SV10_PROGRESS_DIR SVANBOT_ADOPT_UPSTREAM
+# The fixture's origin has only `main`, so an ambient update branch, remote or fetch timeout left in
+# the environment would point update.sh somewhere the fixture does not have (#365). These are the
+# operator's fleet settings, and the fleet that runs this gate is configured with them.
+unset SVANBOT_UPDATE_BRANCH SVANBOT_UPDATE_REMOTE SVANBOT_UPDATE_FETCH_TIMEOUT
 
 git init -q --bare --initial-branch=main "$t/origin.git"
 git clone -q "$t/origin.git" "$t/dev" 2>/dev/null
