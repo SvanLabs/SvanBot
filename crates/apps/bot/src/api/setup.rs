@@ -106,6 +106,7 @@ pub(super) async fn save_setup(State(s): State<Arc<Shared>>, headers: HeaderMap,
     let refs: Vec<(&str, Option<&str>)> = updates.iter().map(|(k, v)| (k.as_str(), v.as_deref())).collect();
     let updated = sv10_rt::update_env_text(&text, &refs);
     if !text.is_empty() {
+        // Unchecked on purpose: if the directory cannot be made, the write below fails and reports it (issue #326).
         let _ = std::fs::create_dir_all(&s.config.artifacts);
         if let Err(e) = sv10_rt::write_private_atomic(&s.config.artifacts.join(".env.previous"), &text) {
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"detail": format!("Could not keep the previous .env: {e}")})))
