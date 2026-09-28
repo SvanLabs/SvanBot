@@ -42,6 +42,9 @@ say "Dashboard dependencies"
 say "Building, testing and installing (optimized for this CPU via .cargo/config.toml target-cpu=native; scripts/portable.sh builds portable per-CPU-level bundles for other machines)"
 scripts/release.sh
 
+say "Systemd units (start on boot)"
+scripts/units.sh --setup
+
 say "Hardware profile (the bot applies this automatically at every start)"
 ./target/release/probe --hardware
 

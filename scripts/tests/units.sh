@@ -97,4 +97,28 @@ DEST="$t/here" "$units" --print svanbot10.service | cmp -s - <(DEST="$t/print" "
   || fail "--print and the installed file disagree"
 "$units" --print no-such.service > /dev/null 2>&1 && fail "--print accepted a unit that does not exist"
 
+# 8. --setup (#463): where a user systemd instance answers, the units are installed and the service
+#    plus the timers are enabled; where none answers, nothing fails and the output says how to
+#    enable by hand. systemctl is a fake on PATH that logs its calls.
+mkdir -p "$t/fakebin"
+cat > "$t/fakebin/systemctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$SYSLOG"
+if [ "$1 $2" = "--user daemon-reload" ] && [ -n "${NO_SYSTEMD:-}" ]; then exit 1; fi
+exit 0
+EOF
+chmod +x "$t/fakebin/systemctl"
+export SYSLOG="$t/syscalls.log"
+: > "$SYSLOG"
+PATH="$t/fakebin:$PATH" DEST="$t/setup" "$units" --setup > "$t/setup.log" || fail "--setup failed where systemd answers"
+grep -q 'enable.*svanbot10.service.*svanbot10-keepalive.timer.*svanbot10-archive.timer.*svanbot10-clean.timer' "$SYSLOG" \
+  || fail "--setup did not enable the service and the timers:"$'\n'"$(cat "$SYSLOG")"
+grep -qi 'enabl' "$t/setup.log" || fail "--setup did not say what it enabled"
+[ -f "$t/setup/svanbot10.service" ] || fail "--setup did not install the units"
+: > "$SYSLOG"
+PATH="$t/fakebin:$PATH" DEST="$t/setup-skip" NO_SYSTEMD=1 "$units" --setup > "$t/setup-skip.log" \
+  || fail "--setup failed where no systemd answers"
+grep -q 'enable' "$SYSLOG" && fail "--setup called enable with no systemd instance"
+grep -qi 'no systemd' "$t/setup-skip.log" || fail "--setup did not say it was skipping:"$'\n'"$(cat "$t/setup-skip.log")"
+
 echo "units tests: ok"

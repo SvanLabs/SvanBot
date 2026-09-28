@@ -10,11 +10,15 @@
 #   scripts/units.sh              render every unit and install it, then reload systemd
 #   scripts/units.sh --check      name any unit that is missing or was rendered for another checkout
 #   scripts/units.sh --print U    write one rendered unit to stdout (U as named in scripts/)
+#   scripts/units.sh --setup      render, install, and enable the service and the timers for boot
+#                                 where a user systemd instance answers; where none does, install
+#                                 and say how to enable by hand. scripts/setup.sh runs this after a
+#                                 successful release, so a fresh install starts on boot.
 #
 # DEST overrides where units are written (default $XDG_CONFIG_HOME/systemd/user, else
-# ~/.config/systemd/user). Enabling stays an operator decision: scripts/archive-timer.sh enables the
-# archive and cleanup timers, and `systemctl --user enable svanbot10.service` is the autostart row in
-# docs/OPERATIONS.md.
+# ~/.config/systemd/user). Enabling outside `--setup` stays an operator decision:
+# scripts/archive-timer.sh enables the archive and cleanup timers, and
+# `systemctl --user enable svanbot10.service` is the autostart row in docs/OPERATIONS.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$(pwd -P)
@@ -73,6 +77,7 @@ render() {
 mode=install
 case "${1:-}" in
   --check) mode=check ;;
+  --setup) mode=setup ;;
   --print)
     [ -n "${2:-}" ] || fail "--print needs a unit name, e.g. --print svanbot10.service"
     [ -f "scripts/$2" ] || fail "no such unit template: scripts/$2"
@@ -80,7 +85,7 @@ case "${1:-}" in
     exit 0
     ;;
   "") ;;
-  *) fail "unknown argument $1 (--check | --print UNIT)" ;;
+  *) fail "unknown argument $1 (--check | --setup | --print UNIT)" ;;
 esac
 
 if [ "$mode" = check ]; then
@@ -123,4 +128,19 @@ elif systemctl --user daemon-reload 2>/dev/null; then
   echo "systemd reloaded. Enable what you want: systemctl --user enable --now svanbot10.service"
 else
   echo "No user systemd instance here; units written, reload skipped."
+fi
+
+if [ "$mode" = setup ]; then
+  # Boot persistence for a fresh install (#463): the fleet service plus the keepalive, archive and
+  # cleanup timers. The probe and the enable are guarded, so a box without systemd gets one honest
+  # line and a zero exit rather than a failed setup; enabling is idempotent, so re-running setup or
+  # scripts/archive-timer.sh settles any partial state.
+  boot_units=(svanbot10.service svanbot10-keepalive.timer svanbot10-archive.timer svanbot10-clean.timer)
+  if systemctl --user daemon-reload >/dev/null 2>&1 \
+  && systemctl --user enable "${boot_units[@]}" >/dev/null 2>&1; then
+    printf 'units enabled for boot: %s\n' "${boot_units[*]}"
+  else
+    printf 'No systemd user instance here; units rendered but not enabled.\n'
+    printf 'Where systemd exists, enable them: systemctl --user enable --now %s\n' "${boot_units[*]}"
+  fi
 fi
