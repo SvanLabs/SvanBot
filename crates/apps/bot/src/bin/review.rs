@@ -153,7 +153,11 @@ fn main() -> Result<()> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(&path, serde_json::to_string_pretty(&snap)?)?;
+        // Atomic and durable, not `fs::write` (#323): `season-compare` reads two of these back, and a
+        // report that says "written" has to mean the disk holds the whole file — a run killed
+        // mid-write, or a disk that drops the write, otherwise leaves a snapshot that compares as
+        // zeros under a name the operator trusts.
+        sv10_rt::write_atomic(&path, &serde_json::to_string_pretty(&snap)?)?;
         println!("season snapshot written to {}", path.display());
         return Ok(());
     }

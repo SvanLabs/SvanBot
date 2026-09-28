@@ -115,15 +115,30 @@ pub fn update_env_text(text: &str, updates: &[(&str, Option<&str>)]) -> String {
 /// Replace a private file (such as `.env`) atomically: write a mode-600 temporary in the same
 /// directory, fsync, then rename over `path`.
 pub fn write_private_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    write_atomic_mode(path, contents, Some(0o600))
+}
+
+/// Replace `path` atomically and durably: write a temporary in the same directory, fsync it, rename
+/// it over `path`, then fsync the directory. Meaningful for a file a later step verifies or reads
+/// back (issue #323): a plain `fs::write` reports success from the page cache, so a write the disk
+/// dropped is discovered when the file is read for real, and an interrupted one leaves half a file
+/// under the name a reader trusts.
+pub fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    write_atomic_mode(path, contents, None)
+}
+
+fn write_atomic_mode(path: &Path, contents: &str, mode: Option<u32>) -> std::io::Result<()> {
     use std::io::Write;
     let tmp = path.with_extension("tmp-write");
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
     #[cfg(unix)]
-    {
+    if let Some(mode) = mode {
         use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
+        opts.mode(mode);
     }
+    #[cfg(not(unix))]
+    let _ = mode;
     let mut f = opts.open(&tmp)?;
     f.write_all(contents.as_bytes())?;
     f.sync_all()?;
@@ -236,6 +251,23 @@ mod durable_tests {
         evict_cache(&b).unwrap();
         assert_eq!(std::fs::read(&b).unwrap(), std::fs::read(&a).unwrap());
         assert!(sync_file(&dir.join("missing")).is_err(), "a missing file is an error, never a silent pass");
+    }
+
+    #[test]
+    fn an_atomic_write_leaves_the_whole_new_file_and_no_temporary() {
+        // #323: the snapshot a `review season-snapshot` run reports as written is read back by
+        // `season-compare` later, so what the report claims has to be what the disk holds.
+        let dir = std::env::temp_dir().join(format!("sv10-rt-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("snapshot.json");
+        write_atomic(&path, "{\"first\":1}").unwrap();
+        write_atomic(&path, "{\"second\":2}").unwrap();
+        evict_cache(&path).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"second\":2}");
+        let left: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(left, vec!["snapshot.json".to_string()], "the temporary is renamed, not left beside it");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
