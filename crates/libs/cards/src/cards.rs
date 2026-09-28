@@ -61,20 +61,6 @@ pub fn mask_of(cards: &[Card]) -> CardMask {
     cards.iter().fold(0, |m, c| m | c.bit())
 }
 
-/// The cards in `mask`, lowest card index first.
-pub fn cards_in(mask: CardMask) -> impl Iterator<Item = Card> {
-    let mut m = mask;
-    std::iter::from_fn(move || {
-        if m == 0 {
-            None
-        } else {
-            let i = m.trailing_zeros() as u8;
-            m &= m - 1;
-            Some(Card(i))
-        }
-    })
-}
-
 impl serde::Serialize for Card {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.to_string())
@@ -101,16 +87,5 @@ mod tests {
         assert_eq!(Card::parse("Ah"), Some(Card::new(12, 2)));
         assert_eq!(Card::parse("2c"), Some(Card::new(0, 0)));
         assert_eq!(Card::parse("??"), None);
-    }
-
-    #[test]
-    fn mask_iteration() {
-        let cs = parse_cards(&["Ah", "Kd", "2c"]).unwrap();
-        let m = mask_of(&cs);
-        let mut back: Vec<Card> = cards_in(m).collect();
-        back.sort();
-        let mut cs2 = cs.clone();
-        cs2.sort();
-        assert_eq!(back, cs2);
     }
 }
