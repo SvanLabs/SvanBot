@@ -79,6 +79,34 @@ fn bots(s: &Shared) -> Value {
     Value::Array(s.bots.iter().map(|b| public_table(&state::fleet_table_json(s, &b.read()))).collect())
 }
 
+/// One projection per (slot, tick), shared by every TV connection (#334): the first connection
+/// whose slot is due projects on the blocking pool and caches the string; the rest read the entry
+/// while it is fresher than [`state::TABLE_EVERY`]. A spectator's table is at most one tick staler
+/// than a dedicated projection, and ten connections watching one busy table pay for one projection
+/// per tick instead of ten. Concurrent races project twice and the last write wins — idempotent,
+/// and bounded by the seat count.
+async fn project_shared(s: &Arc<Shared>, slot: usize) -> Option<String> {
+    let now = Instant::now();
+    if let Some(data) =
+        s.tv_cache.lock().get(&slot).filter(|(at, _)| now.duration_since(*at) < state::TABLE_EVERY).map(|(_, data)| data.clone())
+    {
+        return Some(data);
+    }
+    let shared = s.clone();
+    off_runtime(move || {
+        let data = shared
+            .bots
+            .get(slot)
+            .map(|b| json!({"slot": slot, "bot": public_table(&state::fleet_table_json(&shared, &b.read()))}).to_string());
+        if let Some(ref data) = data {
+            shared.tv_cache.lock().insert(slot, (Instant::now(), data.clone()));
+        }
+        data
+    })
+    .await
+    .ok()?
+}
+
 async fn tv_state(State(s): State<Arc<Shared>>) -> Response {
     off_runtime(move || Json(json!({"public": true, "bots": bots(&s)}))).await.into_response()
 }
@@ -104,15 +132,9 @@ async fn tv_events(State(s): State<Arc<Shared>>) -> Sse<impl futures_util::Strea
                 st.dirty.remove(&slot);
                 st.sent.insert(slot, now);
                 let shared = st.s.clone();
-                let data = off_runtime(move || {
-                    shared
-                        .bots
-                        .get(slot)
-                        .map(|b| json!({"slot": slot, "bot": public_table(&state::fleet_table_json(&shared, &b.read()))}).to_string())
-                })
-                .await;
+                let data = project_shared(&shared, slot).await;
                 match data {
-                    Ok(Some(d)) => return Some((Ok(Event::default().event("table").data(d)), st)),
+                    Some(d) => return Some((Ok(Event::default().event("table").data(d)), st)),
                     _ => continue,
                 }
             }

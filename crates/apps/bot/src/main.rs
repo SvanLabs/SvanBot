@@ -121,6 +121,7 @@ async fn main() -> Result<()> {
         aliases: RwLock::new(aliases),
         experiment: RwLock::new(Default::default()),
         resumable: Mutex::new(resumable),
+        tv_cache: Default::default(),
     });
 
     // Every numeric setting and the value in force after clamping, once (0250).

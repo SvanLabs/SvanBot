@@ -62,6 +62,7 @@ impl Shared {
             champion_version: RwLock::new("test".into()),
             experiment: RwLock::new(Default::default()),
             resumable: Default::default(),
+            tv_cache: Default::default(),
         })
     }
 }
