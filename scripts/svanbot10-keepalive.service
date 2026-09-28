@@ -1,8 +1,11 @@
+# Template, not an installable unit: scripts/units.sh fills @SVANBOT_ROOT@ in with the checkout it
+# is run from and writes the result into ~/.config/systemd/user/. Copying this file by hand installs
+# a unit that points at nothing.
 [Unit]
 Description=Restart the SvanBot fleet when it is down without a hold (0145)
 
 [Service]
 Type=oneshot
-WorkingDirectory=/srv/svanbot10
+WorkingDirectory=@SVANBOT_ROOT@
 Environment=PATH=%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/srv/svanbot10/scripts/keepalive.sh
+ExecStart="@SVANBOT_ROOT@/scripts/keepalive.sh"

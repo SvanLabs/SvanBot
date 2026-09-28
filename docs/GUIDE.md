@@ -461,9 +461,11 @@ multiplayer poker", *Science* 365 (2019), as converted by the
 Computer Poker Research Group; code MIT, dataset CC-BY-4.0,
 [doi:10.5281/zenodo.17136841](https://doi.org/10.5281/zenodo.17136841)).
 
-**Autostart** — `scripts/svanbot10.service` is installed as a systemd user unit
-(`systemctl --user status svanbot10`); with user linger enabled the fleet, learner and dashboard
-start at boot. Inside a run, crashed processes are restarted by the supervisors.
+**Autostart** — `scripts/units.sh` renders `scripts/svanbot10.service` for your checkout and installs
+it as a systemd user unit (`systemctl --user status svanbot10`); with user linger enabled the fleet,
+learner and dashboard start at boot. The units in the repository name no fixed directory, so an
+install under any home directory works and moving one is a re-render. Inside a run, crashed processes
+are restarted by the supervisors.
 
 ---
 
