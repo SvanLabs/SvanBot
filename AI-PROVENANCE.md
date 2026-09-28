@@ -23,9 +23,10 @@ is a red gate until someone regenerates the file.
 
 | System | Commits | First | Last |
 |---|---|---|---|
-| claude-code/claude-opus-5-5 | 7 | 2026-09-27 | 2026-09-27 |
-| claude-code/claude-sonnet-5 | 2 | 2026-09-27 | 2026-09-27 |
-| claude-code/deepseek-flash | 16 | 2026-09-27 | 2026-09-28 |
+| claude-code/claude-opus-5-5 | 15 | 2026-09-27 | 2026-09-28 |
+| claude-code/claude-sonnet-5 | 3 | 2026-09-27 | 2026-09-28 |
+| claude-code/deepseek-flash | 40 | 2026-09-27 | 2026-09-28 |
+| claude-code/claude-opus-5 | 1 | 2026-09-28 | 2026-09-28 |
 
 ## Regenerating
 

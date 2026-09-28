@@ -1,12 +1,14 @@
+# Template, not an installable unit: scripts/units.sh fills @SVANBOT_ROOT@ in with the checkout it
+# is run from and writes the result into ~/.config/systemd/user/ (scripts/archive-timer.sh renders
+# it and enables the timer). Copying this file by hand installs a unit that points at nothing.
 [Unit]
-Description=SvanBot archive: daily differential, weekly full, monthly archive to /backup-disk/svanbot10
-# Source of truth: scripts/svanbot10-archive.service (installed by scripts/archive-timer.sh).
+Description=SvanBot archive: daily differential, weekly full, monthly archive into SVANBOT_ARCHIVE_DIR
 
 [Service]
 Type=oneshot
-WorkingDirectory=/srv/svanbot10
-EnvironmentFile=-/srv/svanbot10/.env
-ExecStart=/srv/svanbot10/target/release/archive run
+WorkingDirectory=@SVANBOT_ROOT@
+EnvironmentFile=-@SVANBOT_ROOT@/.env
+ExecStart="@SVANBOT_ROOT@/target/release/archive" run
 Nice=15
 IOSchedulingClass=idle
 # A run is ~4 min (monthly recompression is the slow part); anything past 1 h is hung.

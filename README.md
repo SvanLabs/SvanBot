@@ -290,9 +290,10 @@ rename.
 
 5. **Open the control room** at `http://127.0.0.1:5000` and watch each bot connect and take a seat.
 
-After that, `scripts/status.sh` and `scripts/stop.sh` do what they say, and a systemd user unit
-(`scripts/svanbot10.service`) keeps the fleet running across reboots. The runbook for everything
-else — updates, backups, fault drills — is [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+After that, `scripts/status.sh` and `scripts/stop.sh` do what they say, and `scripts/units.sh`
+installs the systemd user units — rendered for wherever you cloned this — so `svanbot10.service`
+keeps the fleet running across reboots. The runbook for everything else — updates, backups, fault
+drills — is [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 > [!IMPORTANT]
 > **Building while a fleet is running?** Use `CARGO_TARGET_DIR=target/dev`. A release build lands

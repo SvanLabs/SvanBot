@@ -1,11 +1,14 @@
+# Template, not an installable unit: scripts/units.sh fills @SVANBOT_ROOT@ in with the checkout it
+# is run from and writes the result into ~/.config/systemd/user/ (scripts/archive-timer.sh renders
+# it and enables the timer). Copying this file by hand installs a unit that points at nothing.
+#
+# Its own timer, not a step after the archive: a failing archive used to stop cleanup with it.
 [Unit]
 Description=SvanBot cleanup: superseded builds, scratch dirs and old logs (scripts/clean.sh --apply)
-# Source of truth: scripts/svanbot10-clean.service (installed by scripts/archive-timer.sh).
-# Its own timer, not a step after the archive: a failing archive used to stop cleanup with it.
 
 [Service]
 Type=oneshot
-WorkingDirectory=/srv/svanbot10
-ExecStart=/srv/svanbot10/scripts/clean.sh --apply
+WorkingDirectory=@SVANBOT_ROOT@
+ExecStart="@SVANBOT_ROOT@/scripts/clean.sh" --apply
 Nice=15
 IOSchedulingClass=idle

@@ -1,3 +1,6 @@
+# Template, not an installable unit: scripts/units.sh fills @SVANBOT_ROOT@ in with the checkout it
+# is run from and writes the result into ~/.config/systemd/user/. Copying this file by hand installs
+# a unit that points at nothing.
 [Unit]
 Description=SvanBot poker fleet, learner and dashboard
 After=network-online.target
@@ -6,10 +9,10 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/srv/svanbot10
+WorkingDirectory=@SVANBOT_ROOT@
 Environment=PATH=%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/srv/svanbot10/scripts/start.sh
-ExecStop=/srv/svanbot10/scripts/stop.sh --hold forever
+ExecStart="@SVANBOT_ROOT@/scripts/start.sh"
+ExecStop="@SVANBOT_ROOT@/scripts/stop.sh" --hold forever
 # start.sh backgrounds its supervisors (they stay in this unit's cgroup); on stop, stop.sh ends
 # them cleanly first and systemd only cleans up whatever is left.
 KillMode=mixed
