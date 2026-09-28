@@ -54,7 +54,7 @@ rest of section 3 legible, and it is why section 6 refuses a solver for now.
 
 ### 3.2 The river errors have mechanical explanations
 
-Three ceilings, all verified:
+Four ceilings, all verified:
 
 - **The raise is banned outright.** `crates/libs/policy/src/policy/mod.rs:199`:
 
@@ -75,7 +75,7 @@ Three ceilings, all verified:
   `.map(|x| if x as f64 >= max_to as f64 * 0.7 { max_to } else { x })`, so any target within 70% of
   the maximum legal raise becomes a jam.
 
-- **The check branch cannot raise.** `crates/libs/policy/src/policy/mod.rs:362` computes exactly two
+- **The check branch cannot raise.** `crates/libs/policy/src/policy/mod.rs:360` computes exactly two
   outcomes with a hard-coded `let size = 0.66`; there is no raise term, so checking can never be
   valued above calling. The champion also ships `check_lookahead: 0.0`, so it does not run live.
 
@@ -161,7 +161,8 @@ held build lock. The 519 s that the speed issue leads with was a cargo build loc
 `crates/libs/store/src/packed.rs:308` iterates `for (rowid, text) in &rows` where `rows` is already
 `&[(i64, String)]`. `cargo check -p sv10-store` fails with `E0277: &&[(i64, String)] is not an
 iterator`. The fix is one character. Until it is fixed the checkout cannot build and
-`scripts/update.sh` cannot install from it.
+`scripts/update.sh` cannot install from it. This was fixed as #458 before this document was
+committed; it is recorded here because it is what Phase 0 started from.
 
 ### 3.9 The portfolio is five copies of one policy
 
@@ -183,7 +184,7 @@ against `main` (they close #15 and #315). Delete the four local branches whose c
 `AGENTS.md` (including the false claim at line 33 that the reference fleet tracks `dev`),
 `CONTRIBUTING.md`, `docs/README.md`, `docs/RELEASE.md`, `docs/OPERATIONS.md`, `README.md`,
 `llms.txt`, `.env.example`, the push trigger in `.github/workflows/check.yml` and the two places in
-`scripts/update.sh` and `scripts/tests/update.sh` that hardcode the branch-line message. Post the
+`scripts/update.sh` that hardcode the branch-line message. Post the
 four decision comments on the blocked issues, relabel #347, #334 and #17 `agent-friendly`, give #319
 the readiness label it is missing, and close #18. Change the `main` ruleset to allow squash merges.
 

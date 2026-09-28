@@ -238,10 +238,12 @@ Expected: exactly two added files. If `crates/libs/store/src/packed.rs` appears,
 
 ```bash
 python3 scripts/docs-check.py && echo "docs-check ok"
-python3 scripts/check-file-size.sh
+bash scripts/check-file-size.sh
 ```
 
 Expected: `docs-check: 26 documents, 0 problem(s)`. The count is the list length and does not change — `docs/superpowers` is exempt.
+
+Note the interpreter: `scripts/docs-check.py` is Python and `scripts/check-file-size.sh` is bash. Running the second under `python3` dies with a `SyntaxError` at its line 21.
 
 - [ ] **Step 4: Commit and push**
 
@@ -298,7 +300,7 @@ One change, because `scripts/docs-check.py` couples them: deleting `scripts/prom
 
 **Files:**
 - Delete: `.github/workflows/promote.yml`, `scripts/promote.sh`, `scripts/tests/promote.sh`
-- Modify: `scripts/check.sh:150,165`; `.github/workflows/check.yml` (push trigger); `.github/workflows/close-linked-issues.yml:37-40`; `.github/workflows/claude-maintainer.yml:4-8,51,139,141-143`; `AGENTS.md:20-34`; `CONTRIBUTING.md:23-26`; `README.md:330-337`; `llms.txt:29-33,78-89`; `docs/RELEASE.md:12-43`; `docs/LESSONS.md:203-235`; `.env.example:40-43`; `scripts/update.sh:157-158`
+- Modify: `scripts/check.sh:150,165`; `.github/workflows/check.yml` (push trigger); `.github/workflows/close-linked-issues.yml:37-40`; `.github/workflows/claude-maintainer.yml:3-7,47-51,139,141-143`; `AGENTS.md:20-34`; `CONTRIBUTING.md:23-26`; `README.md:330-337,376-379`; `llms.txt:29-34,78-89`; `docs/RELEASE.md:10-46`; `docs/LESSONS.md:203-235`; `.env.example:40-43`; `scripts/update.sh:156-157`
 - **Not** modified, verified during prework: `docs/OPERATIONS.md` (no branch-model text), `docs/README.md` (branch-agnostic), `scripts/tests/update.sh` (its assertion is about the fixture's own branch, not the repository's)
 
 **Interfaces:**
@@ -418,6 +420,25 @@ with:
 
 Replace the paragraph spanning **lines 330-337**, from `The button fast-forwards the checkout onto **one branch**` through `installed build (#394).` Line 338 is blank and line 339 is `</details>`; leave both. The replacement keeps the `#394` sentence's meaning:
 
+Then make a **second** edit further down the same file. Lines **376-379** are a separate contribution-instructions paragraph that names the branch model too:
+
+```markdown
+2. **Fork, and make a branch off `dev`** named for the change — `fix/split-pots-all-folded`,
+   `docs/…`. Every pull request goes into `dev`, where work lands; `main` is the default branch and
+   the released line, and moves only when `dev` is promoted to it. **Open the pull request against
+   `dev`** — the base GitHub offers by default is `main`.
+```
+
+Replace those four lines with:
+
+```markdown
+2. **Fork, and make a short-lived branch off `main`** named for the change —
+   `fix/split-pots-all-folded`, `docs/…`. `main` is the default branch and the released line, and
+   every pull request goes into it, so the base needs no setting.
+```
+
+Both edits are in the first replacement below; here is that first one:
+
 ```markdown
 The button fast-forwards the checkout onto **one branch**: `SVANBOT_UPDATE_BRANCH`, `main` by
 default. `main` is the default branch and the released line, so a fresh `git clone` lands on it and
@@ -430,7 +451,7 @@ Leave the `SVANBOT_UPDATE_BRANCH` row of the configuration table (line 351) unch
 
 - [ ] **Step 8: Rewrite `llms.txt`**
 
-Replace lines 29-33 so they read:
+Replace lines 29-34 so they read:
 
 ```markdown
 The clone lands on `main`, the default branch and the released line. Every pull request targets
@@ -447,9 +468,9 @@ against, and where your pull request goes.
 
 - [ ] **Step 9: Rewrite the promotion section of `docs/RELEASE.md`**
 
-`docs/RELEASE.md` is 115 lines. Its section headed `## Promoting \`dev\` to \`main\`` runs from **line 12** to **line 43**, ending with the line `Tags are cut on \`main\`.` Everything in it — the merge-commit-never-squash reasoning, the auto-merge description, the hand-run `scripts/promote.sh` command block, and the sentence `The reference fleet tracks \`dev\` (\`SVANBOT_UPDATE_BRANCH=dev\`) rather than \`main\`, so every change is played before it is promoted.` — describes machinery that no longer exists.
+`docs/RELEASE.md` is 115 lines. Its section headed `## Promoting \`dev\` to \`main\`` runs from **line 10** to **line 46**: line 10 is `## Promoting \`dev\` to \`main\``, line 42 is the reference-fleet sentence, line 45 is `After it merges, every fleet following \`main\` installs it at its next Update (or \`scripts/update.sh\`).`, and line 46 is `Tags are cut on \`main\`.` Everything in it — the merge-commit-never-squash reasoning, the auto-merge description, the hand-run `scripts/promote.sh` command block, and the sentence `The reference fleet tracks \`dev\` (\`SVANBOT_UPDATE_BRANCH=dev\`) rather than \`main\`, so every change is played before it is promoted.` — describes machinery that no longer exists.
 
-Replace lines 12-43 in full with:
+Replace lines 10-46 in full with:
 
 ```markdown
 ## Cutting a version
@@ -459,12 +480,12 @@ their Update fetches from. `main` carries only what the gate passed, because the
 requires the `check` status on every pull request into it, and a change reaches live play at a
 fleet's next Update rather than at a promotion.
 
-To cut a version, tag the commit on `main` the gate passed. Tags are cut on `main`.
+To cut a version, tag the commit on `main` that the gate passed.
 ```
 
-Leave the `> **Read this when**` header above it (lines 1-10) and the `## What ships` section below it (line 45 onward) untouched. The header's `**Related:**` link and the "Before this" line stay true.
+Leave everything above line 10 and everything below line 46 untouched: the `> **Read this when**` header's `**Related:**` link and the "Before this" line stay true, and the `## What ships` section at line 48 still follows the blank line at 47.
 
-The sentence at line 43 that the replaced block ends with — `After it merges, every fleet following \`main\` installs it at its next Update (or \`scripts/update.sh\`).` — is inside the replaced range; its content is carried by the new paragraph's last clause.
+Two sentences further down are inside the replaced range and are carried over in meaning: line 45, `After it merges, every fleet following \`main\` installs it at its next Update (or \`scripts/update.sh\`).`, becomes the new first paragraph's "a fleet's next Update" clause, and line 46, `Tags are cut on \`main\`.`, becomes the section's closing tag sentence.
 
 Confirm nothing downstream still names the removed machinery:
 
@@ -506,7 +527,7 @@ The boundary is exact: entry 45's last line of prose is **line 235** (`the answe
 
 - [ ] **Step 12: Fix the two shell sites that hardcode the branch line**
 
-`scripts/update.sh:157-158` prints a hint that names the promoted line. Replace both `echo` lines with:
+`scripts/update.sh:156-157` prints a hint that names the promoted line. Replace both `echo` lines with:
 
 ```bash
   echo "update: this checkout is $ahead commit(s) ahead of $remote/$branch; nothing to install (set SVANBOT_UPDATE_BRANCH=$current in .env to follow it here instead)"
@@ -538,10 +559,28 @@ Three workflows check out `dev` by name. One is deleted in Step 2. The other two
           # kept because a fork can move its own default.
 ```
 
-**`.github/workflows/claude-maintainer.yml`** — four sites:
+**`.github/workflows/claude-maintainer.yml`** — five sites:
 
-1. Line 51: `ref: dev` becomes `ref: main`.
-2. The header comment, lines 4-8, currently reads *"fixes it on a branch cut from `dev`, runs the gate and opens a pull request into `dev` — the branch work lands on, which a scheduled run has to check out by name because the repository's default branch is `main`, the released line. Auto-merge is on, and the ruleset on `dev` and `main` requires the `check` job, so nothing lands unless the full gate is green."* Rewrite those five lines as:
+1. Lines 47-51. A comment above the same `ref: dev` reasons about promotion merges:
+
+```yaml
+          # The job works `dev`'s issues and opens its pull request into `dev`. A scheduled run checks
+          # out the default branch, which is `main` — the released line — so the branch to work is
+          # named here rather than inherited: a branch cut from `main` would carry `main`'s promotion
+          # merge commits into the pull request with it.
+          ref: dev
+```
+
+Replace all five lines with:
+
+```yaml
+          # A scheduled run checks out the repository default, which is `main` — the branch the job
+          # works and the branch its pull request targets, so this pin is belt and braces rather than
+          # a correction. The note that used to be here reasoned about promotion merges, which no
+          # longer exist.
+          ref: main
+```
+2. The header comment, lines 3-7, currently reads *"fixes it on a branch cut from `dev`, runs the gate and opens a pull request into `dev` — the branch work lands on, which a scheduled run has to check out by name because the repository's default branch is `main`, the released line. Auto-merge is on, and the ruleset on `dev` and `main` requires the `check` job, so nothing lands unless the full gate is green."* Rewrite those five lines as:
 
 ```markdown
 # Twice a day Claude takes the oldest open `agent-friendly` issue that no pull request closes yet,
@@ -721,19 +760,17 @@ These comments are public. Post them only when the operator has confirmed the wo
 
 ```bash
 gh issue comment 347 --body "$(cat <<'EOF'
-Decision: build the inert-until-armed `test-hooks` seam in `sv10-store`, not the `Write`-shaped
-trait generic. It is the smaller of the two designs the issue names, and the hook stays inert until
-a test arms it explicitly, so enabling it in a dev-dependency cannot change the ordinary build under
-feature unification.
+Decision: neither seam is built now. Piece 1, the log-capture helper, landed in #452 and unblocked
+every site that could already be made to fail. Piece 2 — a way for `sv10-bot` to force a store write
+to fail — is deferred until a call site actually needs it, because the smaller design is still
+machinery for three call sites that have not asked for it.
 
-Piece 1, the log-capture helper, landed in #452; this is the remainder.
+Leaving this open without a readiness label so the decision stays visible.
 
 Generated-by: claude-code/deepseek-flash
 EOF
 )"
 ```
-
-Then relabel: `gh issue edit 347 --remove-label blocked-on-decision --add-label agent-friendly`.
 
 - [ ] **Step 2: Post the decision that unblocks #334**
 
@@ -789,7 +826,7 @@ produce this panel's exact shape without any river bug:
 - `crates/libs/policy/src/policy/responses.rs` builds every postflop raise target from
   `params.bet_sizes` alone, which `crates/libs/policy/src/policy/params.rs:123` sets to
   `[0.33, 0.55, 0.8, 1.2]`; a non-jam raise above 1.2x pot is not expressible.
-- `crates/libs/policy/src/policy/mod.rs:340` computes the check branch from two outcomes only, with
+- `crates/libs/policy/src/policy/mod.rs:360` computes the check branch from two outcomes only, with
   a hard-coded 0.66 bet, and has no raise term.
 
 The analyst's deep re-solve prices a finer action set than live play can express, so some of the
@@ -822,6 +859,21 @@ gh issue list --state open --json number,labels --jq '.[] | "\(.number)\t\(.labe
 ```
 
 Expected: seven open issues, every one carrying a readiness label, and no `blocked-on-decision` among them except those deliberately left.
+
+- [ ] **Step 6b: Close #15**
+
+Its fix landed as #456, which made `scripts/setup.sh` build through `scripts/release.sh` instead of
+writing `target/release` directly.
+
+```bash
+gh issue close 15 --reason completed --comment "$(cat <<'EOF'
+Closed: `scripts/setup.sh` now builds through `scripts/release.sh`, so setup no longer writes
+`target/release` and no longer strands the next release (merged as #456).
+
+Generated-by: claude-code/deepseek-flash
+EOF
+)"
+```
 
 ---
 
@@ -1148,7 +1200,7 @@ Run after the plan is written, against the spec.
 | Fix the compile break | 1 |
 | Land #456, #457 | 2 |
 | Land the spec on `main` | 3 |
-| Delete `dev`'s machinery, rewrite docs, `check.yml` trigger, `update.sh`, `tests/update.sh` | 4 |
+| Delete `dev`'s machinery, rewrite docs, `check.yml` trigger, `update.sh` | 4 |
 | Delete `dev` branch and ruleset (admin) | 5 |
 | Decision comments, relabel #347/#334/#17, label #319, close #18 | 6 |
 | `verify-install` | 7 |
