@@ -27,7 +27,8 @@ cp "$repo/scripts/progress.py" "$repo/scripts/rollback.sh" "$t/spun/scripts/"
 echo 'echo "old update.sh: cannot adopt" >&2; exit 1' > "$t/spun/scripts/update.sh"
 echo 'fn private() {}' > "$t/spun/crates/a.rs"
 printf 'artifacts/\n.env\n' > "$t/spun/.gitignore"
-git -C "$t/spun" add -A && git -C "$t/spun" commit -qm private
+mkdir "$t/spun/artifacts" && echo 'what lives here' > "$t/spun/artifacts/README.md"
+git -C "$t/spun" add -A && git -C "$t/spun" add -f artifacts/README.md && git -C "$t/spun" commit -qm private
 git -C "$t/spun" branch side && git -C "$t/spun" -c push.negotiate=false push -q origin main side
 
 mkdir "$t/fleet"
@@ -45,7 +46,7 @@ cat > "$t/release-ok.sh" <<'EOF'
 #!/usr/bin/env bash
 set -e
 python3 scripts/progress.py stage install
-mkdir -p target/release && git rev-parse HEAD > target/release/.sv10-installed-commit
+mkdir -p target/release && git rev-parse --short HEAD > target/release/.sv10-installed-commit
 EOF
 chmod +x "$t/release-ok.sh"
 adopt() { (cd "$t/dev" && SV10_RELEASE_SCRIPT="$t/release-ok.sh" bash scripts/adopt-upstream.sh --dir "$box" "$@"); }
@@ -68,7 +69,7 @@ grep -q unscrubbed "$box/crates/a.rs" || fail "dry run reverted an edit"
 [ "$(git -C "$box" remote get-url origin)" = "$t/private.git" ] || fail "dry run re-pointed origin"
 
 # 3. The real run: onto the public branch, runtime state and .env untouched, old remote kept.
-adopt --backup "$t/backup" >/dev/null || fail "adoption failed"
+out=$(adopt --backup "$t/backup") || fail "adoption failed"
 [ "$(git -C "$box" rev-parse HEAD)" = "$(git -C "$t/dev" rev-parse HEAD)" ] || fail "did not reach the public branch"
 [ "$(sum "$box/.env")" = "$env_sum" ] || fail ".env changed"
 [ "$(sum "$box/artifacts/live-state.json")" = "$live_sum" ] || fail "artifacts/ changed"
@@ -79,7 +80,10 @@ adopt --backup "$t/backup" >/dev/null || fail "adoption failed"
 [ -z "$(git -C "$box" status --porcelain --untracked-files=no)" ] || fail "tracked tree not clean"
 [ -f "$box/untracked-notes.txt" ] || fail "an untracked file was removed"
 [ -z "$(find "$box/scripts" -name '.adopt-upstream-*')" ] || fail "the temporary update.sh was left behind"
-[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$(git -C "$box" rev-parse HEAD)" ] || fail "release did not run"
+[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$(git -C "$box" rev-parse --short HEAD)" ] || fail "release did not run"
+! grep -q "did not install" <<<"$out" || fail "a short installed hash was reported as a failed install"
+grep -A1 "the old head tracked" <<<"$out" | grep -q README.md || fail "a tracked artifacts/ file the move removed was not reported as such"
+! grep -q "lost these untracked" <<<"$out" || fail "a tracked artifacts/ file was reported as lost: $out"
 
 # 4. The backup restores what the move replaced: every ref, the edit, the .env.
 git clone -q "$t/backup/repo.bundle" "$t/restored" 2>/dev/null || fail "bundle does not clone"
@@ -89,7 +93,7 @@ grep -q unscrubbed "$t/backup/uncommitted.patch" || fail "the uncommitted edit i
 tar -xzf "$t/backup/worktree.tar.gz" -O crates/a.rs | grep -q unscrubbed || fail "worktree tar lacks the edited file"
 [ "$(sum "$t/backup/env")" = "$env_sum" ] || fail ".env not backed up"
 [ "$(stat -c %a "$t/backup")" = 700 ] || fail "backup directory is not private"
-[ ! -s "$t/backup/artifacts-missing.txt" ] || fail "reported missing artifacts: $(cat "$t/backup/artifacts-missing.txt")"
+[ "$(cat "$t/backup/artifacts-missing.txt")" = README.md ] || fail "missing artifacts: $(cat "$t/backup/artifacts-missing.txt")"
 
 # 5. A second run has nothing to adopt and says so, changing nothing.
 head=$(git -C "$box" rev-parse HEAD)
