@@ -27,7 +27,8 @@ is a red gate until someone regenerates the file.
 | claude-code/claude-sonnet-5 | 4 | 2026-09-27 | 2026-09-28 |
 | claude-code/deepseek-flash | 74 | 2026-09-27 | 2026-09-28 |
 | claude-code/claude-opus-5 | 2 | 2026-09-28 | 2026-09-28 |
-| claude-code/claude-sonnet-5-5 | 1 | 2026-09-28 | 2026-09-28 |
+| claude-code/claude-sonnet-5-5 | 2 | 2026-09-28 | 2026-09-28 |
+| opencode/muse-spark-1.3-free | 1 | 2026-09-28 | 2026-09-28 |
 
 ## Regenerating
 
