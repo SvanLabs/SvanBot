@@ -38,6 +38,7 @@ jobs:
           # claude[bot] or a person's account.
           bot_id: "334763394"
           bot_name: "svanlabs[bot]"
+          allowed_bots: "svanlabs"
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           allowed_non_write_users: "*"
           prompt: |
