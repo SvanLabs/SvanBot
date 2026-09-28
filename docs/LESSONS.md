@@ -209,7 +209,13 @@
     none of them ever built the shape a promotion leaves, and the suite graded the bug as the
     specification. *Rule*: a case that exists to prove a state is accepted asserts the fixture reached
     that state before it asserts what the code does with it — here, that `main` is *not* an ancestor of
-    `dev`, which is what makes it the state under test rather than another caught-up one.
+    `dev`, which is what makes it the state under test rather than another caught-up one. The same
+    file failed the same way from the other side: its stub `gh` answered `pr create` with a pull
+    request number for *any* request, where GitHub refuses one whose head has no commit the base
+    lacks. A double more capable than the thing it stands in for cannot fail the code under test, so
+    the suite could not tell a script that opens a valid promotion pull request from one that asks
+    for a pull request GitHub will reject — and it caught #381 only because an assertion happened to
+    look at the call instead of at the answer.
 
 45. **An identity comparison cannot answer a question about content.** The same script decided whether
     `main` was current with `[ "$main" = "$dev" ]`, the two tips' commit ids. A promotion is a merge
@@ -221,4 +227,9 @@
     changed no file, after every promotion that had already merged. *Rule*: name the state you are
     testing by the thing you actually mean — "these two hold the same thing" is a comparison of trees
     (`git diff --quiet`), not of ids — and count a list by what is in it (`grep -c .`), not by the
-    lines a `printf` chose to write.
+    lines a `printf` chose to write. The same script wears the mistake a second way: its guard against
+    a `main` carrying work of its own asks whether `main` has a *non-merge* commit `dev` lacks, which
+    is commit shape standing in for content. A conflict resolved on `main` is carried by a merge
+    commit, so it passes that guard while holding a file `dev` never had — and the script went on to
+    ask GitHub for a pull request GitHub refuses. Ask the question you mean, of the thing that holds
+    the answer: containment of *content* is `git rev-list --count dev --not main` being zero.
