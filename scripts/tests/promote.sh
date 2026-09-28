@@ -250,4 +250,49 @@ if run "" >/dev/null 2>"$t/err"; then fail "a main carrying its own content was 
 grep -q "content of its own" "$t/err" || fail "the refusal did not say why: $(cat "$t/err")"
 grep -q "both" "$t/err" || fail "the refusal did not name the file main carries: $(cat "$t/err")"
 
+# 11. The same state as 10, one push later: `main` still carries the resolution inside its merge, and
+#     `dev` has moved on since. Now both of the old guards pass — `dev` has a commit `main` lacks, so
+#     the count is nonzero, and the content sits in a merge, so the stray count is zero — and the
+#     script promoted (#387): a real merge that keeps `main`'s resolution on `main`'s side alone and
+#     leaves the two trees different for good, however green `dev` is. Unlike 10, GitHub does not
+#     refuse this pull request either, so the guard is the only thing standing between this state and
+#     a bad promotion, and its refusal is the whole of the evidence.
+reset
+rm -f "$t/state/pr" "$t/state/armed"
+git -C "$t/gen" fetch -q origin
+git -C "$t/gen" checkout -q dev
+echo seven > "$t/gen/j" && git -C "$t/gen" add -A && git -C "$t/gen" commit -qm seven
+git -C "$t/gen" -c push.negotiate=false push -q origin dev
+git -C "$t/work" fetch -q origin
+# The fixture asserts it built that shape before anything is said about the script: `dev` exactly one
+# commit ahead of `main`, no stray non-merge commit on `main`, two trees that differ, and a file
+# `main` holds that `dev` has never had. Any one of the four being wrong means this case would pass
+# without exercising the state it exists for.
+[ "$(git -C "$t/work" rev-list --count origin/dev --not origin/main)" = 1 ] ||
+  fail "the fixture did not reproduce the real shape: dev is not one commit ahead of main"
+[ "$(git -C "$t/work" rev-list --no-merges --count origin/main --not origin/dev)" = 0 ] ||
+  fail "the fixture did not reproduce the real shape: main carries a stray non-merge commit"
+[ -n "$(git -C "$t/work" diff origin/main origin/dev)" ] ||
+  fail "the fixture did not reproduce the real shape: the two trees are equal"
+git -C "$t/work" cat-file -e origin/main:both 2>/dev/null ||
+  fail "the fixture did not reproduce the real shape: main does not carry the resolved file"
+if git -C "$t/work" cat-file -e origin/dev:both 2>/dev/null; then
+  fail "the fixture did not reproduce the real shape: dev has the file main resolved on its own side"
+fi
+# And the half of this case that is about the fixture rather than the script: this is a pull request
+# GitHub accepts, so a red `promote` run is not what stops it.
+if (cd "$t/work" && PATH="$t/bin:$PATH" TEST_CALLS="$t/direct-calls" TEST_STATE="$t/state" \
+    TEST_GIT_DIR="$t/work" gh pr create --repo SvanLabs/SvanBot --base main --head dev \
+    --title t --body-file /dev/null) >/dev/null 2>"$t/err"; then
+  rm -f "$t/state/pr"
+else
+  fail "the stub refused a pull request GitHub accepts, so this case is not the real one: $(cat "$t/err")"
+fi
+if run "" >/dev/null 2>"$t/err"; then
+  fail "a main carrying its own content was promoted once dev had moved on"
+fi
+[ -z "$(mutations)" ] || fail "a main carrying its own content was sent to pr create: $(mutations)"
+grep -q "content of its own" "$t/err" || fail "the refusal did not say why: $(cat "$t/err")"
+grep -q "both" "$t/err" || fail "the refusal did not name the file main carries: $(cat "$t/err")"
+
 echo "promote tests: ok"

@@ -48,24 +48,34 @@ if git diff --quiet "$main" "$dev"; then
 fi
 
 # The promotion is a merge commit that changes no file, and that is only true while `main` carries
-# nothing of its own. The obvious test for that — is `main` an ancestor of `dev` — is wrong: a
-# promotion *is* a merge commit of `dev` into `main`, which lives on `main` and never on `dev`, so
-# after the first promotion `main` is not an ancestor of `dev` and never will be again. Asking that
-# question refuses every promotion after the first one, which is every promotion there will be.
+# nothing of its own. One question settles it: has `main` added anything since the two lines last
+# agreed?
 #
-# What holds instead: every commit on `main` that is not a merge is already on `dev`. The promotion
-# merge commits are the only thing `main` may carry alone. A squash promotion, or a commit pushed
-# straight to `main`, puts a non-merge commit there that `dev` does not have, and that is the state
-# this refuses: the two lines have diverged, and the next promotion is a real merge with a conflict,
-# which is a person's decision and not this script's.
-strays=$(git rev-list --no-merges --count "$main" --not "$dev")
-if [ "$strays" != 0 ]; then
-  echo "promote: main carries $strays commit(s) that dev does not (a squash promotion, or a commit" >&2
-  echo "promote: pushed straight to main), so the two lines have diverged and this is not a promotion" >&2
-  echo "promote: but a merge to resolve by hand; nothing changed. They are:" >&2
-  git log --no-merges --format='promote:   %h %s' "$main" --not "$dev" | head -5 >&2
+#   [ "$(git rev-parse "$main^{tree}")" = "$(git rev-parse "$(git merge-base "$main" "$dev")^{tree}")" ]
+#
+# A promotion merge holds `dev`'s tree exactly — that is what "changes no file" means — and that `dev`
+# is the next promotion's merge base, so a healthy `main` passes. Anything `main` carries that `dev`
+# does not makes the trees differ, and it does not matter which shape it takes or which commit holds
+# it: a non-merge commit `dev` lacks (a squash promotion, or a commit pushed straight to `main`), a
+# conflict resolved on `main`'s side inside a merge (#386), or that same resolution with `dev` moved
+# on since (#387). The commit-id answer would be wrong — the two tips are different commits forever
+# after the first promotion — and so is an ancestor test, which refuses every promotion after the
+# first, which is every promotion there will be.
+#
+# What reaches the refusal is that `main` holds content `dev`'s line never had, and only a person can
+# say whether it belongs on `dev` (a fix that never went there) or on the floor (a resolution that
+# should have gone the other way). The three messages below are that one refusal, split by shape, so
+# each names what is actually there.
+#
+# `git merge-base` answers nothing for two branches with no common history at all, which is what
+# replacing `main` with an unrelated line leaves. That is a divergence too, and it is refused here
+# rather than left to fail on a `^{tree}` of the empty string.
+base=$(git merge-base "$main" "$dev") || {
+  echo "promote: main and dev share no commit at all, so this is not a promotion but a replacement of" >&2
+  echo "promote: one line by another; nothing changed, and which of the two is the real one is a" >&2
+  echo "promote: person's to say." >&2
   exit 1
-fi
+}
 
 # `grep -c .` and not `wc -l`: `printf '%s\n' ""` is one empty line, so an empty list counts as 1 and
 # the pull request says "1 commit(s)" over nothing. The early return above makes that unreachable for
@@ -73,21 +83,36 @@ fi
 commits=$(git log --oneline --no-decorate "$dev" --not "$main")
 count=$(printf '%s' "$commits" | grep -c . || true)
 
-# Every commit on `dev` is already on `main`, and the two trees still differ. Then the difference is
-# `main`'s own: a merge commit that carries content `dev` never had, which is what resolving a
-# conflict on `main`'s side leaves behind. The guard above cannot see it, because the commit holding
-# that content is a merge and that guard counts non-merge commits only.
-#
-# There is nothing to promote here — `dev` has no commit `main` lacks — and GitHub refuses the pull
-# request outright, `No commits between main and dev` (createPullRequest), which is a red `promote`
-# run and no information. It is a divergence for a person: `main` holds something `dev` does not, and
-# only they know whether it belongs on `dev` (it is a fix that never went there) or on the floor
-# (it is a resolution that should have gone the other way).
-if [ "$count" = 0 ]; then
-  echo "promote: every commit on dev is already on main and the two trees still differ, so main" >&2
-  echo "promote: carries content of its own and this is not a promotion but a divergence to resolve" >&2
-  echo "promote: by hand; nothing changed. The two trees differ on:" >&2
-  git diff --name-only "$main" "$dev" | head -5 | sed 's/^/promote:   /' >&2
+if [ "$(git rev-parse "$main^{tree}")" != "$(git rev-parse "$base^{tree}")" ]; then
+  # A non-merge commit on `main` that `dev` does not have: a squash promotion, or a commit pushed
+  # straight to `main`. The two lines have diverged, and the next promotion is a real merge with a
+  # conflict to resolve, which is a person's decision and not this script's.
+  strays=$(git rev-list --no-merges --count "$main" --not "$dev")
+  if [ "$strays" != 0 ]; then
+    echo "promote: main carries $strays commit(s) that dev does not (a squash promotion, or a commit" >&2
+    echo "promote: pushed straight to main), so the two lines have diverged and this is not a promotion" >&2
+    echo "promote: but a merge to resolve by hand; nothing changed. They are:" >&2
+    git log --no-merges --format='promote:   %h %s' "$main" --not "$dev" | head -5 >&2
+    exit 1
+  fi
+
+  # No non-merge commit of `main`'s own, so the content is inside a merge: a conflict resolved on
+  # `main`'s side. Every commit on `dev` is already on `main` in the first shape — which is also the
+  # state GitHub refuses outright, `No commits between main and dev` (createPullRequest), a red
+  # `promote` run and no information — and `dev` has moved on since in the second, which is an
+  # ordinary-looking pull request whose merge keeps `main`'s content on `main`'s side alone.
+  if [ "$count" = 0 ]; then
+    echo "promote: every commit on dev is already on main and the two trees still differ, so main" >&2
+    echo "promote: carries content of its own and this is not a promotion but a divergence to resolve" >&2
+    echo "promote: by hand; nothing changed. The two trees differ on:" >&2
+    git diff --name-only "$main" "$dev" | head -5 | sed 's/^/promote:   /' >&2
+    exit 1
+  fi
+  echo "promote: main carries content of its own — a conflict resolved on main's side — and dev has" >&2
+  echo "promote: moved on since, so this is not a promotion: the merge would keep that content on" >&2
+  echo "promote: main's side alone, where dev never reaches it, and leave the two trees different" >&2
+  echo "promote: for good. Nothing changed. main added, since $(git rev-parse --short "$base"):" >&2
+  git diff --name-only "$base" "$main" | head -5 | sed 's/^/promote:   /' >&2
   exit 1
 fi
 
