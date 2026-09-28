@@ -76,18 +76,23 @@ luck-reduced simulations, and promotes a change only when it wins on fresh deals
 <td width="50%" valign="top">
 
 ### 🎯 Exploitative decisions
-Monte Carlo EV over every candidate action against reconstructed opponent ranges: **tens of
-milliseconds at the median, a few hundred at the 95th**, against a 45 s turn clock. It uses exact
-board-strength tables and exact heads-up enumeration where they fit.
+Monte Carlo EV over every candidate action against reconstructed opponent ranges, using exact
+board-strength tables and exact heads-up enumeration where they fit: **67.6 ms at the median and
+190 ms at the 95th** on the reference i7-4770K, against a 45 s turn clock — the `live` suite of
+`bench` with the fleet paused, ten paired repeats
+([`docs/OPERATIONS.md`](docs/OPERATIONS.md)). The live sample budget is scaled to the machine's
+measured throughput (`crates/libs/policy/src/hardware.rs`).
 
 </td>
 <td width="50%" valign="top">
 
 ### 🧠 Opponents it learns
-Per-player statistics and a showdown-fitted range model, which sharpens after big bets and can
-use think-time tells. On top: a small neural response model, and per-opponent fold, sizing and
-call corrections. Every one of them is **installed only while it beats its baseline on held-out
-data**.
+Per-player statistics, and a range model whose constants `calibrate` fits to every stored
+showdown and installs only when it beats the defaults on the newest quarter the fit never sees.
+The think-time term (`think_exp`) starts at 0 — timing not used — and moves only on a held-out
+gain; then an aggressive actor's think time, against their own typical time, tilts their range.
+The small neural response model and the per-opponent fold, sizing and call corrections are
+installed under the same rule (`crates/apps/bot/src/playerfits.rs`).
 
 </td>
 </tr>
@@ -95,25 +100,31 @@ data**.
 <td valign="top">
 
 ### 📈 A learner that must prove it
-Champion/challenger search with successive halving. Promotion needs a **95% lower bound above
-+1 bb/100** in sequential fresh-deal confirmation; winner's-curse optimism never ships.
+Champion/challenger search with successive halving (`crates/apps/bot/src/learner/search.rs`), then
+a separate gate that rests on fresh deals alone (`crates/apps/bot/src/promotion.rs`): up to 12
+sequential chunks, stopping early for futility or for overwhelming evidence (z ≥ 3), and promotion
+needs a **95% lower bound above +1 bb/100**. The search's interval is selection-biased — winner's
+curse — so it only selects, and never promotes.
 
 </td>
 <td valign="top">
 
 ### 🛡️ Safe by construction
-It only ever sends actions from the server's `valid_actions`, answers each turn once, and has a
-legal fallback prepared before every calculation. The SQLite store is integrity-checked, with
-sealed backups, quarantine and restore.
+It sends only actions the server listed in `valid_actions`, answers each `(hand, turn_token)` at
+most once, and takes the check/fold fallback if a decision passes its 8 s cap — the first two held
+by tests in `crates/apps/bot/src/client/decide.rs`. The SQLite store carries a SHA-256 sidecar and
+hourly backups: a damaged database is quarantined and restored from the newest verified backup
+(`crates/libs/store/src/integrity.rs`).
 
 </td>
 </tr>
 <tr>
 <td valign="top">
 
-### 🔄 One-click, zero-downtime updates
-**Update** on the dashboard fetches, tests, builds and installs with a live progress bar. The bots
-keep playing and **hot-swap between turns**. Any saved build is one click away as a rollback.
+### 🔄 One-click updates that never stop play
+**Update** on the dashboard runs `scripts/update.sh` — fetch, test, build, install, with a live
+progress bar — and the fleet hot-swaps to the new binary between turns, so the bots keep playing.
+Any verified snapshot is one click away as a rollback (`--rollback <commit>`).
 
 </td>
 <td valign="top">
