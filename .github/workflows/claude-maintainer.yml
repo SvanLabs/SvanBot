@@ -26,6 +26,21 @@ jobs:
       issues: write
       id-token: write
       actions: read
+    env:
+      # The same opt-out the `gate` job makes, for the same reason (#330): `.cargo/config.toml`
+      # compiles for the machine doing the compiling (`target-cpu=native`), and the cache below
+      # carries `target/dev` between runners. Runners are heterogeneous, so a test binary built on a host
+      # with a wider instruction set reaches one without it and dies with SIGILL — a red run whose log
+      # reads like a failed test. `RUSTFLAGS` replaces the config file's setting rather than adding to
+      # it, which is how `Dockerfile` and `scripts/portable.sh` opt out; cargo fingerprints it, so
+      # artifacts a previous runner cached under `native` are rebuilt rather than reused. The baseline
+      # is the one the release image ships, so this job compiles and runs what a release has.
+      RUSTFLAGS: -C target-cpu=x86-64-v2
+      # Where `scripts/check.sh` builds when nothing sets it (`check.sh:22`), and what CLAUDE.md tells a
+      # person running cargo by hand to name. Pinning it here puts every build in this job in the one
+      # directory the cache below holds — including the agent's own `cargo` calls, which would
+      # otherwise go to `target/` and be compiled again by the gate.
+      CARGO_TARGET_DIR: target/dev
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,6 +59,22 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+          # `scripts/check.sh` runs `tsc`, which needs `web/node_modules`, so the agent's first `npm ci`
+          # is on the path of every run. The cache is the download, not the install: the same file the
+          # `gate` job caches, and the same reason.
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The gate restores the same caches and this job had none (#363, item 4), so a twice-daily run
+      # paid a cold `npm ci` and a cold compile of the whole workspace before the agent did anything:
+      # `clippy -D warnings took 171 s` and the first `full took 227 s`, against `full took 121 s` warm
+      # in the same run. `target/dev` is named because it is where `check.sh` builds and what
+      # `CARGO_TARGET_DIR` above pins — rust-cache's default target directory is `target/`, which this
+      # job no longer writes to, so the cache would hold nothing.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-directories: |
+            target/dev
 
       - name: SvanLabs app token
         id: app-token
