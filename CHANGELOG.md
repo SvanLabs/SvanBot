@@ -49,6 +49,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A red gate named the suite it died in, not the test** (#408). `scripts/check.sh` ran the Python
+  tool tests and the eight shell suites with their output discarded — `unittest` writes its failures to
+  stderr and the suites write theirs to stdout — so the whole of the evidence was the suite's name.
+  On 2026-09-28 a push to `main` failed inside the tool tests (run 36387980518): the log holds the
+  `== tickets lint + tool tests` header and `Process completed with exit code 1`, the same tree passed
+  on `dev` two minutes earlier and passes locally on both trees, and which test failed is still
+  unknown. Each suite now runs with its output kept and the last 30 lines printed before the gate
+  reports, which is what the two steps above it already did for tickets lint and docs drift.
 - **Every Dependabot pull request carried a failed review check** (#375). GitHub withholds Actions
   secrets from a workflow a bot triggered, so `CLAUDE_CODE_OAUTH_TOKEN` reached the review empty and
   the run died on a credential it was never given. The check was red on every dependency bump and
