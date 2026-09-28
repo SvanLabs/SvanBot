@@ -44,7 +44,7 @@ export function UpdateProgress({ progress }: { progress: ReleaseProgress }) {
   const swapped = swap.fleet_done;
   const rollback = stages.length === 1 && stages[0].name === 'restore';
   const noun = rollback ? 'Rollback' : 'Update';
-  const title = state === 'running' ? (rollback ? 'Rolling back' : 'Updating') : state === 'failed' ? `${noun} failed` : state === 'installed' ? (swapped ? `${noun} complete` : 'Installed — swapping in') : 'No update running';
+  const title = state === 'running' ? (rollback ? 'Rolling back' : 'Updating') : state === 'failed' ? `${noun} failed` : state === 'installed' ? (swapped ? `${noun} complete` : 'Installed — swapping in') : state === 'current' ? 'Nothing to install' : 'No update running';
   const total = stages.length;
   const doneCount = stages.filter(s => s.state === 'done').length;
   return <section className={`update-progress ${state}`} aria-label="Update progress">
@@ -52,6 +52,8 @@ export function UpdateProgress({ progress }: { progress: ReleaseProgress }) {
       <strong>{title}</strong>
       <span className="mono">{state === 'running' ? `${percent.toFixed(0)}% · ${clock(progress.elapsed)} elapsed · about ${clock(progress.eta)} left` : state === 'installed' ? `${progress.from ?? '?'} → ${progress.commit ?? '?'} in ${clock(progress.elapsed)}` : state === 'failed' ? `stopped after ${clock(progress.elapsed)}` : ''}</span>
     </div>
+    {/* Nothing ran and nothing will: no bar, no stages, no hot swap — the message says why (#394). */}
+    {state !== 'current' && <>
     <div className="update-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label="Update progress">
       <div style={{ width: `${Math.max(2, percent)}%` }}/>
     </div>
@@ -67,7 +69,9 @@ export function UpdateProgress({ progress }: { progress: ReleaseProgress }) {
       <span className={progress.bots_playing > 0 ? 'positive' : 'amber'}>● {progress.bots_playing} of {progress.bots_total} bots playing{state === 'running' ? ' — play continues during the update' : ''}</span>
       {state === 'installed' && <span className="mono">fleet {swapped ? '✓' : '…'} {swap.fleet}{swap.learner ? ` · learner ${swap.learner === swap.target ? '✓' : 'next cycle'}` : ''}{swap.analyst ? ` · analyst ${swap.analyst === swap.target ? '✓' : 'next batch'}` : ''}{swap.workers.length ? ` · workers ${swap.workers.filter(w => w.commit === swap.target).length}/${swap.workers.length}` : ''}</span>}
     </div>
+    </>}
     {state === 'failed' && <p className="footnote negative">{failedStage ? `Failed at ${STAGE_LABEL[failedStage.name] ?? failedStage.name}. ` : ''}{progress.message ?? 'The update did not install.'} The fleet keeps playing the installed build.</p>}
+    {state === 'current' && <p className="footnote">{progress.message ?? 'This checkout is already ahead of the update branch.'} The fleet keeps playing the installed build.</p>}
     <button className="text-button" onClick={() => setShowLog(v => !v)} aria-expanded={showLog}>{showLog ? 'Hide' : 'Show'} log</button>
     {showLog && <div className="log-list update-log">{progress.log.map((l, i) => <div className="log-entry" key={i}><p className="mono">{l}</p></div>)}</div>}
   </section>;
@@ -177,7 +181,9 @@ export function UpdatesPanel() {
     if (group) group[1].push(entry);
     else groups.push([entry.group, [entry]]);
   }
-  const showProgress = progress && progress.state !== 'idle' && (active || progress.state === 'failed' || progress.state === 'installed');
+  // `current` sits with `failed` and `installed`: the run is over, so nothing polls it, but its
+  // message is the whole point of the state and has to stay on screen (#394).
+  const showProgress = progress && progress.state !== 'idle' && (active || progress.state === 'failed' || progress.state === 'installed' || progress.state === 'current');
   return <div className="updates-panel">
     {reloadPrompt && <div className="connection-banner" role="alert">The dashboard backend updated — <button className="text-button" onClick={() => window.location.reload()}>reload to match it</button>.</div>}
     <div className="health-list">
