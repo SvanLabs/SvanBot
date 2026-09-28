@@ -7,7 +7,7 @@
 #
 # `scripts/promote.sh` holds the logic and `scripts/tests/promote.sh` tests it; this runs it when
 # `check` finishes on `dev`. Everything that decides anything is in the script, including the refusal
-# to touch a `main` that is not an ancestor of `dev`.
+# to touch a `main` that carries a commit of its own.
 name: promote
 
 on:

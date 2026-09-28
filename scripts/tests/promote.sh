@@ -108,7 +108,7 @@ git -C "$t/gen" commit -qm hotfix && git -C "$t/gen" -c push.negotiate=false pus
 git -C "$t/gen" checkout -q dev
 git -C "$t/work" fetch -q origin
 if run "" >/dev/null 2>"$t/err"; then fail "a diverged main was promoted"; fi
-grep -q "not an ancestor" "$t/err" || fail "the refusal did not say why: $(cat "$t/err")"
+grep -q "that dev does not" "$t/err" || fail "the refusal did not say why: $(cat "$t/err")"
 [ -z "$(mutations)" ] || fail "a diverged main changed something: $(mutations)"
 
 # 6. `--check` reports and changes nothing. First heal the divergence test 5 left, then move `dev`
@@ -134,5 +134,31 @@ reset
 run "" >/dev/null || fail "the run without the override failed"
 grep -q "^repo view" "$t/calls" || fail "gh repo view was not consulted: $(calls)"
 grep -q "^pr list --repo SvanLabs/SvanBot " "$t/calls" || fail "the repository gh repo view named was not used: $(calls)"
+
+# 8. The shape every real promotion leaves, and the one case 1–7 never built: `main`'s tip is itself
+#    a merge commit of `dev`. Then `main` is *not* an ancestor of `dev` and never will be again, so a
+#    guard phrased as "main must be an ancestor of dev" refuses every promotion after the first —
+#    which is what #378 fixed. The fixture has to assert it reproduced that shape, or the test would
+#    pass on the very guard it exists to catch.
+reset
+# A fresh GitHub: no promotion pull request open, so this run has to open one and its body is test 8's.
+rm -f "$t/state/pr" "$t/state/armed"
+git -C "$t/gen" fetch -q origin
+git -C "$t/gen" checkout -q -B main origin/main
+git -C "$t/gen" merge -q --no-ff --no-edit -m "Merge pull request #373 from SvanLabs/dev" origin/dev
+git -C "$t/gen" -c push.negotiate=false push -q origin main
+# `main` is now that merge commit, and `dev` moves on by one — the state this repository was in when
+# promotion was first exercised for real.
+git -C "$t/gen" checkout -q dev
+echo five > "$t/gen/g" && git -C "$t/gen" add -A && git -C "$t/gen" commit -qm five
+git -C "$t/gen" -c push.negotiate=false push -q origin dev
+git -C "$t/work" fetch -q origin
+if git -C "$t/work" merge-base --is-ancestor origin/main origin/dev; then
+  fail "the fixture did not reproduce the real shape: main is still an ancestor of dev"
+fi
+if ! out=$(run ""); then fail "a promotion merge commit on main was refused: $out"; fi
+[ "$(armed)" = true ] || fail "auto-merge was not armed from the real main shape"
+grep -q "commit(s) on \`dev\` that \`main\` does not have" "$t/state/body" ||
+  fail "the body does not list the commits: $(cat "$t/state/body")"
 
 echo "promote tests: ok"
