@@ -71,6 +71,24 @@ fi
 commits=$(git log --oneline --no-decorate "$dev" --not "$main")
 count=$(printf '%s' "$commits" | grep -c . || true)
 
+# Every commit on `dev` is already on `main`, and the two trees still differ. Then the difference is
+# `main`'s own: a merge commit that carries content `dev` never had, which is what resolving a
+# conflict on `main`'s side leaves behind. The guard above cannot see it, because the commit holding
+# that content is a merge and that guard counts non-merge commits only.
+#
+# There is nothing to promote here — `dev` has no commit `main` lacks — and GitHub refuses the pull
+# request outright, `No commits between main and dev` (createPullRequest), which is a red `promote`
+# run and no information. It is a divergence for a person: `main` holds something `dev` does not, and
+# only they know whether it belongs on `dev` (it is a fix that never went there) or on the floor
+# (it is a resolution that should have gone the other way).
+if [ "$count" = 0 ]; then
+  echo "promote: every commit on dev is already on main and the two trees still differ, so main" >&2
+  echo "promote: carries content of its own and this is not a promotion but a divergence to resolve" >&2
+  echo "promote: by hand; nothing changed. The two trees differ on:" >&2
+  git diff --name-only "$main" "$dev" | head -5 | sed 's/^/promote:   /' >&2
+  exit 1
+fi
+
 # `// empty`, because `.[0].number` alone prints the four characters `null` for an empty list, which
 # everything below would read as a pull request number.
 open_pr() {
