@@ -117,10 +117,10 @@ jobs:
       # on every pull request would be the slowest step here.
       #
       # `target/dev` is deliberately not listed. The action caches `<repo>/target` whatever
-      # `CARGO_TARGET_DIR` says — the restore step prints the paths it uses, and that one is first —
-      # so naming it archived every build artifact twice.
+      # `CARGO_TARGET_DIR` says — the restore step prints the paths it uses, and `target/dev` sits
+      # inside that one — so naming it listed every build artifact twice.
       #
-      # `cache-workspace-crates` adds the ~20 workspace members the action drops by default, which the
+      # `cache-workspace-crates` adds the 17 workspace members the action drops by default, which the
       # gate rebuilt on every run. It applies on the save side only, and the action skips the save
       # when the restore was a full match, so this flag takes effect together with the path list above
       # or not at all: it is the list changing that gives the next save a new cache version.
