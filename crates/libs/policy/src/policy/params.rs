@@ -75,7 +75,7 @@ pub struct Params {
     /// Multiplier on the equity floor below which a raise is banned once the street has already been
     /// raised (0157's no-bluff-raise-wars guard): 1.0 is the shipped floor — 0.55 with two raises on a
     /// postflop street, 0.5 on the river after one. 0 frees the raise at any equity, which is the
-    /// river ceiling the Phase 3 strength work measures (`raise_allowed` in `mod.rs`).
+    /// river ceiling the Phase 3 strength work measures ([`Params::raise_allowed`]).
     pub raise_gate: f64,
     /// Weight of the image our own observed play gives the pricing (0321): the range opponents read
     /// us for (`ModelStore::hero_seen_view`) is built from the fleet's tallies for our seat instead
