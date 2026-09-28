@@ -3,6 +3,7 @@
 //! about [`run::STEP_TARGET_SECS`] of work, so nothing it does holds the machine for more than
 //! two minutes and a release waits at most one step.
 
+pub mod funnel;
 pub mod pool;
 pub mod refit;
 pub mod run;

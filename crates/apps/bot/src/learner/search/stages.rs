@@ -5,7 +5,7 @@ use std::time::Instant;
 use sv10_core::sim::{Arm, PairedResult, PairedSums, paired_sums_arms};
 
 use super::super::run::{Cand, Confirm, Halving, SearchRun, Stage, table_slice};
-use super::super::{now, publish_targets, push_experiment};
+use super::super::{funnel, now, publish_targets, push_experiment};
 use super::{Env, Flow};
 use crate::experiment::target::{self as experiment_target, Source, TARGETS_KEY, Target, TargetQueue};
 use crate::promotion::{self, CHUNK_SCALE, CONFIRM_CHUNKS, MIN_EDGE_BB, Verdict};
@@ -30,6 +30,7 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
             run.champion_version,
             run.refit_rowid
         );
+        funnel::note(store, funnel::BARRED, None, barred as u32);
     }
     // A challenger the experiment pair supported live (0291) goes straight to fresh-deal
     // confirmation: live evidence only prioritizes, the confirmation gate alone promotes.
@@ -61,6 +62,9 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
         }));
     }
     let keys: Vec<String> = e.proposals.iter().map(|(k, o, n, _)| transition_key(k, *o, *n)).collect();
+    // The denominator of the funnel: what the search was handed after the ledger's filter. The
+    // ledger bar above is the other half of what a cycle was offered.
+    funnel::note(store, funnel::PROPOSED, None, kept.len() as u32);
     let pool = kept
         .into_iter()
         .filter_map(|(knob, old, new, _, prior)| {
@@ -113,6 +117,32 @@ pub(super) fn halving(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f
     Ok(Flow::Played)
 }
 
+/// Why a round dropped a candidate for cause. The code is what the dashboard's funnel counts deaths
+/// by (#317); the message is what the log, the experiment card and the rationale say.
+#[derive(Clone, Copy)]
+enum Drop {
+    /// No simulated outcome differed between the two policies: the knob does nothing here.
+    NoEffect,
+    /// Some outcome differed, but the 95% upper bound was still below the +1 bb/100 bar.
+    BelowBar,
+}
+
+impl Drop {
+    fn code(self) -> &'static str {
+        match self {
+            Drop::NoEffect => "no-effect",
+            Drop::BelowBar => "below-bar",
+        }
+    }
+
+    fn message(self) -> &'static str {
+        match self {
+            Drop::NoEffect => "no simulated outcome changed",
+            Drop::BelowBar => "upper bound below +1 bb/100",
+        }
+    }
+}
+
 /// Drop, halve and double: the round's decisions, exactly as the one-piece search made them.
 fn judge_round(e: &Env, run: &mut SearchRun) -> Flow {
     let cycle = run.cycle;
@@ -127,9 +157,9 @@ fn judge_round(e: &Env, run: &mut SearchRun) -> Flow {
             None => this,
         };
         let reason = if r.differing == 0 {
-            Some("no simulated outcome changed")
+            Some(Drop::NoEffect)
         } else if r.upper_95() < MIN_EDGE_BB {
-            Some("upper bound below +1 bb/100")
+            Some(Drop::BelowBar)
         } else {
             None
         };
@@ -137,11 +167,13 @@ fn judge_round(e: &Env, run: &mut SearchRun) -> Flow {
         match reason {
             Some(why) => {
                 tracing::info!(
-                    "cycle {cycle} r{round}: drop {knob} {old:.3}->{new:.3}: {:+.2} bb/100 (95% {:+.2}..{:+.2}) — {why}",
+                    "cycle {cycle} r{round}: drop {knob} {old:.3}->{new:.3}: {:+.2} bb/100 (95% {:+.2}..{:+.2}) — {}",
                     r.mean_bb * 100.0,
                     r.lower_95() * 100.0,
-                    r.upper_95() * 100.0
+                    r.upper_95() * 100.0,
+                    why.message()
                 );
+                funnel::note(e.ctx.store, &format!("search/{}", why.code()), Some(knob), 1);
                 push_experiment(
                     e.ctx.store,
                     json!({
@@ -149,7 +181,8 @@ fn judge_round(e: &Env, run: &mut SearchRun) -> Flow {
                         "knob": knob, "old": (old * 1000.0).round() / 1000.0, "new": (new * 1000.0).round() / 1000.0,
                         "mean_bb": r.mean_bb, "lower_95": r.lower_95(), "upper_95": r.upper_95(),
                         "champion": run.champion_version, "challenger": format!("c{cycle}-{knob}-{new:.3}"), "candidate_kind": "parameter",
-                        "rationale": format!("Successive halving round {}: {why}. Paired simulation on identical deals against clones of the live pool, all-in luck removed.", round + 1),
+                        "stage": "search", "reason": why.code(),
+                        "rationale": format!("Successive halving round {}: {}. Paired simulation on identical deals against clones of the live pool, all-in luck removed.", round + 1, why.message()),
                         "population": {"id": run.population_id, "opponent_count": e.clones.len(), "evidence": run.evidence},
                         "strata": {"observed": {"hands": r.hands, "mean_bb": r.mean_bb, "lower_95": r.lower_95(), "upper_95": r.upper_95()}}
                     }),
@@ -168,6 +201,10 @@ fn judge_round(e: &Env, run: &mut SearchRun) -> Flow {
     let keep = if survivors.len() <= 1 { survivors.len() } else { survivors.len().div_ceil(2) };
     for c in survivors.drain(keep..) {
         tracing::info!("cycle {cycle} r{round}: halved out {} {:.3}->{:.3}: {:+.2} bb/100", c.knob, c.old, c.new, mean(&c) * 100.0);
+        // Not a death by a bar: this candidate was pushed out by the ranking, and stays in the
+        // ledger to be ranked again. Counted anyway — it is the stage most candidates end in, and
+        // the panel cannot say where the search spends its budget without it (#317).
+        funnel::note(e.ctx.store, funnel::HALVED_OUT, Some(&c.knob), 1);
         run.ledger_done.push((transition_key(&c.knob, c.old, c.new), c.prior.unwrap_or_default()));
     }
     tracing::info!("cycle {cycle} r{round}: {} of {before} candidates continue", survivors.len());

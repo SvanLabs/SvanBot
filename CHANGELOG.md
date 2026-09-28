@@ -36,6 +36,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   two caches now, and with them the gate's `RUSTFLAGS` baseline (#330): a cache carries `target/`
   between runners and `.cargo/config.toml` compiles for the host doing the compiling, so caching this
   job without that line would have brought back the SIGILL it was fixed for.
+
+- **The Experiments panel says why candidates die** (#317). Every entry the learner recorded was a
+  rejection, and the reason was a sentence inside `rationale`, so the panel could only show a wall of
+  `rejected`: whether the search is starved of candidates that move a decision, re-proposing what the
+  ledger already barred, or losing every survivor on fresh deals was not readable at all. Each
+  experiment now carries a `stage` and a `reason`, the learner counts outcomes by the hour in
+  `learner.search-funnel.v1` — including the halved-out stage, which recorded nothing before — and
+  the panel opens with the last 24 hours as counts by stage and by knob. `promotion::Verdict`'s
+  rejection carries a `Reason` enum rather than a string, so a branch that stops reporting why it
+  rejected no longer compiles.
 - **`main` is the repository's default branch** (#402). It was `dev`, so the front page and a fresh
   `git clone` showed the branch work lands on. `main` — the released line, promoted from a green
   `dev` — is what a visitor and a new install should land on. Work still lands on `dev` and every

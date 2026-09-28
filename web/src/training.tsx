@@ -1,7 +1,7 @@
 /** Season, performance and learner panels: autonomy controls, cooldown, experiments, compute profile. */
 import React, { useState } from 'react';
 import { Cpu, FlaskConical, History, Layers, Play, ShieldCheck, Square } from 'lucide-react';
-import type { Bot, Experiment, ExperimentMode, Metrics, SeasonScope, Training } from './types';
+import type { Bot, Experiment, ExperimentMode, Metrics, SearchFunnel, SeasonScope, Training } from './types';
 import { usePoll, StaleNote } from './api';
 import { format, signed, percent, ago, api, Panel } from './ui';
 import { time } from './format';
@@ -107,6 +107,20 @@ export function Autonomy({training, onCommand, busy}: {training?:Training;onComm
     <CooldownSetting training={training}/>
     <button className="button full" disabled={busy} onClick={() => onCommand(training?.status === 'idle' ? 'start' : 'stop')}>{training?.status === 'idle' ? <Play size={13}/> : <Square size={13}/>} {training?.status === 'idle' ? (training?.automatic ? 'Start next search early' : 'Run one search') : 'Cancel this job'}</button>
   </>;
+}
+
+/** The key the learner counts a death under, as a phrase: `search/no-effect` -> `search · no effect`. */
+const funnelLabel = (key:string) => key.replace('/', ' · ').replaceAll('-', ' ');
+
+/** Why candidates are dying, over the last day (#317). The experiment list below is capped at 40
+ * and holds only rejections, so on its own it reads as a wall of `rejected` whatever the search is
+ * actually doing; these are the counts the learner takes where each candidate dies. */
+export function SearchFunnel({funnel}: {funnel:SearchFunnel}) {
+  return <div className="funnel">
+    <div className="funnel-head"><span>Why candidates die · last {funnel.hours}h</span><b>{format(funnel.total)}</b></div>
+    <div className="funnel-chips">{funnel.outcomes.map(o=><span className={`funnel-chip ${o.key.split('/')[0]}`} key={o.key} title={o.key}>{funnelLabel(o.key)}<b>{format(o.count)}</b></span>)}</div>
+    {funnel.knobs.length > 0 && <div className="funnel-knobs">Knobs: {funnel.knobs.slice(0,6).map(k=>`${k.key.replaceAll('_',' ')} ${format(k.count)}`).join(' · ')}</div>}
+  </div>;
 }
 
 export function ExperimentCard({experiment}: {experiment:Experiment}) {
