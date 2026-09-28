@@ -116,6 +116,14 @@ pub struct StateHashMismatch {
     pub summary: String,
 }
 
+/// What one bot is doing, as the dashboard reads it.
+///
+/// The `#[serde(skip)]` fields below are runtime state and must not travel with this value: `Instant`
+/// timers that mean nothing in another process, per-connection turn tokens, the situation behind
+/// `last_decision` (behind `s.models`, not here), and the hand in progress. The two pieces that must
+/// outlive a process persist on their own keys — `open_hand` through [`OPEN_HANDS_KEY`] and
+/// `state_hash_lifetime` with the model checkpoint — so a reload takes them from the store, never
+/// from this struct's serialized form (0325).
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct BotLive {
     pub slot: usize,
