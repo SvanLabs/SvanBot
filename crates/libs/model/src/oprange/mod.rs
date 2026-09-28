@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
 use sv10_cards::cards::{Card, CardMask};
-use sv10_cards::range::{NUM_COMBOS, Range, combo_mask};
+use sv10_cards::range::{NUM_COMBOS, Range};
 use sv10_engine::engine::{ActionKind, ActionRecord, Street};
 use sv10_engine::situation::{Position, Situation};
 use sv10_equity::equity::combo_strengths;
@@ -503,16 +503,6 @@ pub fn continuing(range: &Range, strength: &[f32], keep: f32) -> Range {
     let mut r = range.clone();
     apply(&mut r, |i| soft_top(pct[i], keep) + 0.002);
     r
-}
-
-/// Cards no opponent can hold: hero's hole cards and the board.
-pub fn dead_mask(sit: &Situation) -> CardMask {
-    sit.hole[0].bit() | sit.hole[1].bit() | sit.board.iter().fold(0u64, |m, c| m | c.bit())
-}
-
-/// Whether combo `i` avoids every dead card.
-pub fn combo_live(i: usize, dead: CardMask) -> bool {
-    combo_mask(i) & dead == 0
 }
 
 #[cfg(test)]

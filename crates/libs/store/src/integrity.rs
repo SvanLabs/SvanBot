@@ -67,14 +67,6 @@ pub fn seal_backup(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// [`verify_backup`] against what the disk holds: the backup and its seal are evicted from the page
-/// cache first, so a write the disk dropped cannot pass by being read back from memory (0308:
-/// every seal in the HDD mirror had passed this check from cache and later read as zeros).
-pub fn verify_backup_on_disk(path: &Path) -> bool {
-    let evicted = sv10_rt::evict_cache(path).and_then(|_| sv10_rt::evict_cache(&sidecar(path)));
-    evicted.is_ok() && verify_backup(path)
-}
-
 /// A backup is trusted only if its sidecar hash matches (bit rot, partial copies) and it passes
 /// the structural check.
 pub fn verify_backup(path: &Path) -> bool {

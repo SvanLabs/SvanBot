@@ -84,17 +84,6 @@ impl Mmap {
         // bytes are immutable for the lifetime of `self` and in the target's (little) endianness.
         Some(unsafe { std::slice::from_raw_parts(self.ptr.add(offset) as *const f32, count) })
     }
-
-    /// Ask the kernel to back the mapping with huge pages where it can (`MADV_HUGEPAGE`; a hint:
-    /// file-backed huge pages need kernel support, and errors are ignored).
-    pub fn advise_huge_pages(&self) {
-        if self.len > 0 {
-            // SAFETY: advice on our own live mapping; it never changes the contents.
-            unsafe {
-                libc::madvise(self.ptr as *mut libc::c_void, self.len, libc::MADV_HUGEPAGE);
-            }
-        }
-    }
 }
 
 impl Drop for Mmap {
@@ -139,7 +128,6 @@ mod tests {
         assert!(m.f32s(9, 1).is_none(), "misaligned");
         assert!(m.f32s(8, 5).is_none(), "out of bounds");
         assert!(m.f32s(usize::MAX - 2, 1).is_none(), "overflow");
-        m.advise_huge_pages();
         std::fs::remove_file(&p).unwrap();
         // Unlinked while mapped: the mapping keeps the old inode.
         assert_eq!(m.bytes()[8..12], 1.5f32.to_le_bytes());
