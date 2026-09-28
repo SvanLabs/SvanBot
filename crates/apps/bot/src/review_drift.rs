@@ -234,7 +234,12 @@ pub fn drift_check(
             "flips": done.flips, "flip_rate": done.flips as f64 / done.n as f64, "mean_gap_bb": mean_gap,
             "max_gap_bb": done.gap_max, "samples": samples, "deal_chunks": threads,
             "fits": "rec.params (the recorded decision's own prices)", "population": done.population.json()});
-        let _ = store.put_kv(crate::ANALYST_DRIFT_KEY, &summary.to_string());
+        // A row that does not land is reported, but it is not lost work: `start_drift` reads the row
+        // back and starts the check again when the stored one is not this champion, so the next idle
+        // pass redoes it (issue #326).
+        if let Err(e) = store.put_kv(crate::ANALYST_DRIFT_KEY, &summary.to_string()) {
+            tracing::warn!("the drift row was not stored, so this check reruns on the next idle pass ({e})");
+        }
         tracing::info!(
             "drift [{DRIFT_BASIS}] vs champion {}: {}/{} big-spot actions flip, mean deep gap {mean_gap:.2} bb, \
              max {:.2} bb; {} at {samples} samples x {threads} chunks, the record's own prices",
