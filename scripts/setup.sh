@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# First-run setup for a new machine: checks toolchains, creates .env, builds everything
-# natively for this CPU, and prints the hardware profile the bot will tune itself to.
+# First-run setup for a new machine: checks toolchains, creates .env, builds, tests and installs
+# a release natively for this CPU, and prints the hardware profile the bot will tune itself to.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -34,14 +34,13 @@ else
 fi
 mkdir -p artifacts/logs artifacts/backups
 
-say "Building (optimized for this CPU via .cargo/config.toml target-cpu=native; scripts/portable.sh builds portable per-CPU-level bundles for other machines)"
-cargo build --release --workspace --bins
+say "Dashboard dependencies"
+(cd web && { [ -d node_modules ] || npm ci; })
 
-say "Building the dashboard"
-(cd web && { [ -d node_modules ] || npm ci; } && npm run build)
-
-say "Running tests"
-cargo test --release --workspace --quiet 2>&1 | tail -3
+# Only release.sh writes target/release and web/dist (LESSONS 31): a build made here had no commit
+# identity, so the first release after setup refused to overwrite it (#15).
+say "Building, testing and installing (optimized for this CPU via .cargo/config.toml target-cpu=native; scripts/portable.sh builds portable per-CPU-level bundles for other machines)"
+scripts/release.sh
 
 say "Hardware profile (the bot applies this automatically at every start)"
 ./target/release/probe --hardware
