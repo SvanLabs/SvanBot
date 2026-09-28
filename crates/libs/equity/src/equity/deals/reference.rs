@@ -1,7 +1,12 @@
 //! The shared-deals code as it stood before the samples/sec work (0335), frozen as the reference
 //! every optimization must reproduce bit for bit: same deals, same ranks, same equities.
+//!
+//! One thing is deliberately not frozen: [`ATTEMPTS_PER_SAMPLE`], the budget it spends before it
+//! gives up on a deal. That is the policy under test in `#383`, not part of what an optimization may
+//! change, and sharing the constant keeps the two loops comparable — a reference with a budget of its
+//! own would disagree with production the moment either one moved.
 
-use super::super::sampler::{ComboSampler, deal_random};
+use super::super::sampler::{ATTEMPTS_PER_SAMPLE, ComboSampler, deal_random};
 use sv10_cards::cards::{Card, CardMask};
 use sv10_cards::eval::eval;
 use sv10_cards::range::{NUM_COMBOS, Range, combo_mask};
@@ -115,7 +120,7 @@ impl Reference {
         let mut opp_rank = Vec::with_capacity(samples * k);
         let mut dealt = vec![0u16; k];
         let mut attempts = 0usize;
-        while hero_rank.len() < samples && attempts < samples * 20 {
+        while hero_rank.len() < samples && attempts < samples * ATTEMPTS_PER_SAMPLE {
             attempts += 1;
             let mut used = dead;
             let mut ok = true;
