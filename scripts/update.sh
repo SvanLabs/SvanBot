@@ -130,8 +130,8 @@ adopt_upstream() {
 # the guard below is about one of them:
 #
 #   - the commits are on a remote branch: the checkout is simply further along a line than the branch
-#     the Update button follows — moved onto `dev` while `.env` still names `main`, or already holding
-#     the promotion `main` is waiting for. Nothing is at risk and nothing needs installing: the branch
+#     the Update button follows — on another branch while `.env` still names that one, or already
+#     ahead of the branch line it follows. Nothing is at risk and nothing needs installing: the branch
 #     this install follows catches up on its own.
 #   - the commits are on no remote at all: unfinished work, which a move onto the branch would leave
 #     behind a branch tip. That is what "update by hand" was written for, and it still refuses.
@@ -153,8 +153,7 @@ ahead_updates() {
     progress fail fetch "local commits not on $remote/$branch"
     exit 1
   fi
-  echo "update: this checkout is $ahead commit(s) ahead of $remote/$branch, and every one of them is on $remote/${current:-none}; nothing to install"
-  echo "update: $remote/$branch catches up when that line is promoted — set SVANBOT_UPDATE_BRANCH=$current in .env to follow it here instead"
+  echo "update: this checkout is $ahead commit(s) ahead of $remote/$branch; nothing to install (set SVANBOT_UPDATE_BRANCH=$current in .env to follow it here instead)"
   progress current "this checkout is $ahead commit(s) ahead of $remote/$branch; nothing to install (follow it with SVANBOT_UPDATE_BRANCH=$current)"
   exit 0
 }

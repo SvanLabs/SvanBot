@@ -200,6 +200,11 @@
     manifest already states, and a second copy drifts where no check reads it.
     *Rule*: a fact stated in two files is checked in the gate — `cargo metadata --locked` compares
     the lock to the manifests in under a second, and fails on a version bump or a dependency alike.
+
+<!-- docs-check: off -->
+The entry below describes `scripts/promote.sh` and its tests, deleted on 2026-09-28 when the
+repository moved to trunk-based work on `main`. The lesson is about the mistake, not the script.
+
 44. **A fixture that models the wrong shape passes on the bug it exists to catch.** `scripts/promote.sh`
     refused a promotion when `main` was not an ancestor of `dev`. A promotion *is* a merge commit of
     `dev` into `main`, and a merge commit lives on `main` and never on `dev` — so `main` stops being an
@@ -216,6 +221,7 @@
     the suite could not tell a script that opens a valid promotion pull request from one that asks
     for a pull request GitHub will reject — and it caught #381 only because an assertion happened to
     look at the call instead of at the answer.
+<!-- docs-check: on -->
 
 45. **An identity comparison cannot answer a question about content.** The same script decided whether
     `main` was current with `[ "$main" = "$dev" ]`, the two tips' commit ids. A promotion is a merge

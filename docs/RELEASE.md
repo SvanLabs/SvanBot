@@ -7,43 +7,14 @@ A release is a tagged commit on `main` that the gate passed, with a changelog en
 notes. This document is the process; `scripts/check.sh` is the gate that decides whether a commit
 is releasable at all.
 
-## Promoting `dev` to `main`
+## Where work lands
 
-Work lands on `dev`. `main` is the released line: what everyone who installs SvanBot runs, and where
-their Update fetches from. It moves only by promotion — a pull request from `dev` into `main`, merged
-**with a merge commit**, never a squash, which would give `main` a commit `dev` does not have and
-make the next promotion a conflict to resolve by hand instead of a merge that changes no file.
-Because `main` takes a promotion only when the gate passes on it, `main` never carries a build that
-failed.
+Work lands on `main`. It is the released line: what everyone who installs SvanBot runs, and where
+their Update fetches from. `main` carries only what the gate passed, because the ruleset on it
+requires the `check` status on every pull request into it, and a change reaches live play at a
+fleet's next Update rather than at a promotion.
 
-**It happens by itself.** `.github/workflows/promote.yml` runs `scripts/promote.sh` whenever a `check`
-on `dev` finishes, whatever it concluded: the script opens and arms, and the ruleset on `main`
-requires the `check` status, so the pull request merges only when the gate passes on it. The script
-keeps one promotion pull request open with auto-merge armed, and GitHub merges it when the gate passes
-— a pull request's merge ref is recomputed on every push to its head, so that one pull request always
-tests the head `dev` has now. A red `dev` promotes nothing, because the check on that pull request
-fails. A `main` that carries content of its own — anything `dev`'s line never had, which is what a
-squash promotion, a commit pushed straight to `main`, or a conflict resolved on `main`'s side leaves
-behind, inside a merge commit or not — is refused by name rather than merged, and that is a person's
-to resolve: it is not something a promotion can undo. The test is one comparison, `main`'s tree
-against the tree of the merge base of the two lines, so `main` may carry promotion merges and nothing
-else. It is a tree comparison and not an id one, for the same reason the currency test is: a promotion
-is a merge commit, so it makes the ids permanently different however identical what they hold, and an
-ancestor test would refuse every promotion after the first. A `main` that already holds what `dev`
-holds promotes nothing and opens no pull request.
-
-The same thing by hand, which is also the retry after a failure:
-
-```sh
-scripts/promote.sh            # open or reuse the promotion pull request, arm auto-merge
-scripts/promote.sh --check    # print what it would do and change nothing
-```
-
-The reference fleet tracks `dev` (`SVANBOT_UPDATE_BRANCH=dev`) rather than `main`, so every change is
-played before it is promoted.
-
-After it merges, every fleet following `main` installs it at its next Update (or `scripts/update.sh`).
-Tags are cut on `main`.
+To cut a version, tag the commit on `main` that the gate passed.
 
 ## What ships
 

@@ -6,7 +6,7 @@
 
 **Six-max no-limit hold'em · virtual chips · 14-day seasons · Rust 🦀 + React ⚛️**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/SvanLabs/SvanBot/check.yml?branch=dev&label=CI&style=flat-square)](https://github.com/SvanLabs/SvanBot/actions/workflows/check.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/SvanLabs/SvanBot/check.yml?branch=main&label=CI&style=flat-square)](https://github.com/SvanLabs/SvanBot/actions/workflows/check.yml)
 ![Rust](https://img.shields.io/badge/rust-1.98.1-dea584?style=flat-square&logo=rust&logoColor=white)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-3b5b8c?style=flat-square)](#-license)
 ![Platform](https://img.shields.io/badge/platform-Linux%20x86--64-2f3b52?style=flat-square&logo=linux&logoColor=white)
@@ -327,14 +327,11 @@ flowchart LR
 A failed run changes nothing, and the checkout returns to where it was. **Roll back to a saved
 build** uses the same bar. `scripts/update.sh` does the same from a terminal.
 
-The button fast-forwards the checkout onto **one branch**: `SVANBOT_UPDATE_BRANCH`, `main` by default
-— the released line, which moves only when `dev` is promoted to it. `main` is the default branch, so
-a fresh `git clone` lands on the released line and keeps updating from it; an install that should
-follow development instead sets `SVANBOT_UPDATE_BRANCH=dev` in `.env` (the reference fleet does
-exactly that). A checkout that is ahead of that branch — sitting on `dev` while `.env` still names
-`main`, or already holding the promotion `main` is waiting for — has nothing to install, and Update
-says so instead of failing: nothing is built, nothing moves, and the fleet keeps playing the
-installed build (#394).
+The button fast-forwards the checkout onto **one branch**: `SVANBOT_UPDATE_BRANCH`, `main` by
+default. `main` is the default branch and the released line, so a fresh `git clone` lands on it and
+keeps updating from it, and every merge reaches live play at the next Update. An install that must
+not follow the released line — a staging box, a fork — sets `SVANBOT_UPDATE_BRANCH=<branch>` in
+`.env` to follow that branch instead.
 
 </details>
 
@@ -373,10 +370,9 @@ Directing the agent well is the contribution.
    Each one says where the problem is, why it matters, and the fix it expects. Issues labelled
    `blocked-on-decision` wait on a maintainer's choice first; the
    [board](https://github.com/orgs/SvanLabs/projects/1) shows every open issue by readiness.
-2. **Fork, and make a branch off `dev`** named for the change — `fix/split-pots-all-folded`,
-   `docs/…`. Every pull request goes into `dev`, where work lands; `main` is the default branch and
-   the released line, and moves only when `dev` is promoted to it. **Open the pull request against
-   `dev`** — the base GitHub offers by default is `main`.
+2. **Fork, and make a short-lived branch off `main`** named for the change —
+   `fix/split-pots-all-folded`, `docs/…`. `main` is the default branch and the released line, and
+   every pull request goes into it, so the base needs no setting.
 3. **Hand your agent [`AGENTS.md`](AGENTS.md) and the issue.** `AGENTS.md` is the brief: where
    code goes, the two hard invariants, and everything the gate enforces.
 4. **Run the gate** before you push. It is the same command CI runs, so a green run here is a green
