@@ -31,9 +31,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **`main` is the repository's default branch** (#402). It was `dev`, so the front page and a fresh
   `git clone` showed the branch work lands on. `main` — the released line, promoted from a green
-  `dev` — is what a visitor and a new install should land on. Work still lands on `dev`, every pull
-  request still goes into it, and `claude-maintainer.yml` checks `dev` out by name now that the
-  default branch is no longer the one it works.
+  `dev` — is what a visitor and a new install should land on. Work still lands on `dev` and every
+  pull request still goes into it; `README.md`, `CONTRIBUTING.md`, `AGENTS.md` and `llms.txt` now
+  name the base to use rather than the one GitHub offers. Three things followed the default branch
+  without saying so and are now explicit, because each of them crossing to `main` would put content
+  on the released line without passing through `dev`: Dependabot opens against `dev`
+  (`target-branch`), and `claude-maintainer.yml` and `promote.yml` check `dev` out by name — the
+  latter because GitHub runs a `workflow_run` workflow from the default branch, so `promote.sh` would
+  otherwise have to be promoted before it could promote.
 - **`main` keeps itself current** (#370). `main` is the released line — what everyone who installs
   SvanBot runs and updates from — and it moved only when someone remembered to open the promotion
   pull request, so it drifted: it was promoted once and was behind again within the hour.
