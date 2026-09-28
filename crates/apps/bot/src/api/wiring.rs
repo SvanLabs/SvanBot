@@ -62,6 +62,7 @@ mod tests {
                 share_pct: 2.0,
                 cost_bb: 0.5,
                 max_bb: 41.0,
+                installed: Some(180),
             }],
             calibration: vec![crate::review_wiring::CalibrationFlips {
                 street: "preflop".into(),
@@ -69,6 +70,7 @@ mod tests {
                 flipped: 6,
                 ..Default::default()
             }],
+            streets: vec![("preflop".into(), 6), ("flop".into(), 80), ("turn".into(), 64), ("river".into(), 50)],
         };
         let stored = serde_json::to_string(&report).unwrap();
         let fresh = wiring_json(Ok(Some(stored.clone())), 1_000.0 + 3_600.0);
