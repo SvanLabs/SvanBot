@@ -125,3 +125,21 @@ fn a_six_max_table_gets_every_sample_it_asked_for() {
         }
     }
 }
+
+/// The attempt budget is what decides whether a full-ring table gets a full sample: sparse ranges
+/// overlap, so the rejection loop spends far more attempts per accepted deal than a six-max table
+/// does. Against the previous budget of 20, this nine-handed configuration returned 2053 of 2500
+/// (#388 measured eight opponents at 1758 and ten at 299). Pinning it here is what stops the budget
+/// from going quietly back down.
+#[test]
+fn a_full_ring_table_gets_every_sample_it_asked_for() {
+    let samples = 2_500;
+    let mut meta = SmallRng::seed_from_u64(12_644);
+    let dealt = cards(&mut meta, 5);
+    let (hero, board) = ([dealt[0], dealt[1]], &dealt[2..]);
+    let ranges: Vec<Range> = (0..9).map(|_| range(&mut meta, 0.02)).collect();
+    let refs: Vec<&Range> = ranges.iter().collect();
+    let d = SharedDeals::new(hero, board, &refs, samples, &mut SmallRng::seed_from_u64(7));
+    assert_eq!(d.hero_rank.len(), samples, "a nine-handed deal returned {} of {samples}", d.hero_rank.len());
+    assert!(!d.is_exact(), "a nine-handed deal is never the exact enumeration");
+}

@@ -1,6 +1,6 @@
 //! Shared exact/Monte Carlo deals across candidates (0261).
 
-use super::sampler::{ComboSampler, deal_random};
+use super::sampler::{ATTEMPTS_PER_SAMPLE, ComboSampler, deal_random};
 use sv10_cards::cards::Card;
 use sv10_cards::eval::eval;
 use sv10_cards::range::{NUM_COMBOS, Range, combo_mask};
@@ -195,7 +195,7 @@ impl SharedDeals {
         ];
         let mut opp_memo = vec![UNSEEN; if missing == 0 { NUM_COMBOS } else { 0 }];
         let mut attempts = 0usize;
-        while hero_rank.len() < samples && attempts < samples * 20 {
+        while hero_rank.len() < samples && attempts < samples * ATTEMPTS_PER_SAMPLE {
             attempts += 1;
             let mut used = dead;
             let mut ok = true;
