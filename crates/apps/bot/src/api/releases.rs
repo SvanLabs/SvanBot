@@ -123,7 +123,9 @@ pub fn progress_view(progress: &Value, timings: &Value, now: f64) -> Value {
     }
     let percent = match state {
         "installed" => 100.0,
-        "idle" => 0.0,
+        // `current` is a run that installed nothing and did nothing (#394): the fetch it recorded is
+        // not a step towards an install, so the card must not read as one partly done.
+        "idle" | "current" => 0.0,
         _ if total > 0.0 => (done / total * 100.0).clamp(0.0, 99.0),
         _ => 0.0,
     };

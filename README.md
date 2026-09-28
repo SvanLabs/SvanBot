@@ -320,7 +320,10 @@ The button fast-forwards the checkout onto **one branch**: `SVANBOT_UPDATE_BRANC
 — the released line, which moves only when `dev` is promoted to it. `main` is the default branch, so
 a fresh `git clone` lands on the released line and keeps updating from it; an install that should
 follow development instead sets `SVANBOT_UPDATE_BRANCH=dev` in `.env` (the reference fleet does
-exactly that).
+exactly that). A checkout that is ahead of that branch — sitting on `dev` while `.env` still names
+`main`, or already holding the promotion `main` is waiting for — has nothing to install, and Update
+says so instead of failing: nothing is built, nothing moves, and the fleet keeps playing the
+installed build (#394).
 
 </details>
 

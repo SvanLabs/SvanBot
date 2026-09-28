@@ -63,7 +63,8 @@ export type StageState = 'pending' | 'running' | 'done' | 'failed';
 export interface ReleaseStage { name: string; state: StageState; seconds: number; expected: number }
 /** GET /api/releases/progress (0236): one update run, weighted by the last run's stage times. */
 export interface ReleaseProgress {
-  state: 'idle' | 'running' | 'failed' | 'installed';
+  /** `current`: nothing to install — the checkout is already ahead of the update branch (#394). */
+  state: 'idle' | 'running' | 'failed' | 'installed' | 'current';
   running: boolean;
   stages: ReleaseStage[];
   percent: number;
