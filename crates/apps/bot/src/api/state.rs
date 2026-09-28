@@ -24,6 +24,21 @@ fn learner_settings(store: &sv10_store::store::Store) -> Value {
         "min_new_hands": p.min_new_hands, "max_min_new_hands": crate::pacing::MAX_MIN_NEW_HANDS})
 }
 
+/// The knobs the learner searches, as the Champion profile needs them (#322): the bounds its bar is
+/// drawn against, the shipped default the bar marks as its reference, and the sentence under it.
+/// `crate::knobs` is the one definition — the panel used to carry a hand-typed copy that no change
+/// to the search ever reached.
+fn knob_catalogue() -> Vec<Value> {
+    let shipped = sv10_core::policy::Params::default();
+    crate::knobs::KNOBS
+        .iter()
+        .map(|k| {
+            json!({"key": k.key, "label": k.label, "min": k.min, "max": k.max, "decimals": k.decimals,
+                "default": k.get(&shipped), "description": k.description})
+        })
+        .collect()
+}
+
 fn response_model_labels(stored: &crate::StoredNet) -> (&'static str, &'static str, &'static str) {
     if crate::neural::response_net_is_eligible(stored) {
         ("available", "active: opponent response model", "in use")
@@ -413,22 +428,21 @@ pub fn training_json(s: &Shared) -> Value {
     let version = lineage.as_array().and_then(|l| l.last()).and_then(|v| v.as_str()).unwrap_or(POLICY_VERSION).to_string();
     let params = s.params.read().clone();
     let models = s.models.read();
+    // The knobs the learner searches, each with the bounds it searches within, the label and the
+    // sentence the profile prints (#322). The dashboard drew its own copy of this list, so a knob the
+    // search gained never appeared and a bound it widened left the panel measuring against the old
+    // one; it now renders whatever this says, and the values below are keyed by the same table.
+    let mut champion = json!({"version": version, "name": format!("svanbot10 EV policy · {version}"),
+        "hero_image": params.hero_image, "exact_strengths": params.exact_strengths, "bet_sizes": params.bet_sizes.len()});
+    for k in crate::knobs::KNOBS {
+        champion[k.key] = json!(k.get(&params));
+    }
     let mut t = json!({
         "status": "idle",
         "automatic": true,
         "can_rollback": false,
-        "champion": {"version": version, "name": format!("svanbot10 EV policy · {version}"),
-            "fold_scale": params.fold_scale, "initiative": params.initiative,
-            "open_bb": params.open_bb, "three_bet_oop": params.three_bet_oop,
-            "short_open_bb": params.short_open_bb, "preflop_jam_bb": params.preflop_jam_bb,
-            "realize_weight": params.realize_weight, "preflop_fold_scale": params.preflop_fold_scale,
-            "passive_fold_bonus": params.passive_fold_bonus, "three_bet_call_margin": params.three_bet_call_margin,
-            "call_margin": params.call_margin, "hero_image": params.hero_image, "exact_strengths": params.exact_strengths,
-            "raise_risk": params.raise_risk, "preflop_raise_risk": params.preflop_raise_risk, "limper_bb": params.limper_bb,
-            "jam_pot_ratio": params.jam_pot_ratio, "raise_fold_bonus": params.raise_fold_bonus,
-            // The 0.55-pot size is index 1 of the four-size set and index 2 of the seven-size set (0170).
-            "bet_size_scale": params.bet_sizes.get(if params.bet_sizes.len() == 7 { 2 } else { 1 }).copied().unwrap_or(0.55) / 0.55,
-            "bet_sizes": params.bet_sizes.len()},
+        "champion": champion,
+        "knobs": knob_catalogue(),
         "progress": {"hands": 0, "target": 10800},
         "experiments": experiments,
         // Why candidates have been dying, over the last day (#317): the experiment list is capped at

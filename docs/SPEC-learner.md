@@ -181,6 +181,9 @@ next process resumes the stored run.
    weight, profile response weight, check lookahead, bet-size scale). The last three
    ship at 0: live-pool A/Bs measured no gain at the defaults tried, so only the learner can turn them on.
    Steps alternate full and half size by cycle parity; every knob is clamped to a bounded range.
+   The knobs and their bounds are defined once, in `crates/apps/bot/src/knobs.rs`: `challengers` names
+   only the step it takes and the catalogue says where it stops, and the dashboard's Champion profile
+   draws each bar over the same range (#322), so widening a bound here moves the panel's track with it.
    A bound the champion sits on is a direction the gate never tests, so pinned bounds are widened
    (2026-09-22): `preflop_fold_scale` up to 1.8 (it was 1.3, where the champion sat; the gate
    still rejected 1.2), `realize_weight` down to 0.1 (three promotions have since walked the champion
