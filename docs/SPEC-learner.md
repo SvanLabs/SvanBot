@@ -227,8 +227,10 @@ next process resumes the stored run.
    experiment pair has returned `live-supported` for a target in the current scope, the next cycle
    skips the search and confirms that target on fresh deals: live evidence only prioritizes, the
    gate above alone promotes, and live results never combine with simulated ones.
-   Futility stops never raise the false-promotion rate. The z ≥ 3 interim boundary keeps the overall
-   one-sided error near 2.5%.
+   Futility stops never raise the false-promotion rate. An early promotion needs everything the final
+   look needs — the 95% lower bound on the edge above the bar — and in addition z ≥ `EARLY_Z`. The
+   overall one-sided error is that of a sequential design with the `CONFIRM_CHUNKS` looks, and it is
+   not the single-look figure.
    Promotion writes `params.v1`, appends `sv10-ev-<n>` to `learner.lineage` and records the
    experiment. The fleet hot-reloads the parameters and stamps the version on each decision. A
    failed confirmation is recorded as a rejected experiment.

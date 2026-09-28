@@ -7,7 +7,9 @@
 //! stalled. Confirmation now runs in chunks up to [`CONFIRM_CHUNKS`] with a Haybittle–Peto
 //! design. It stops early for futility (which never raises the false-promotion rate) or for
 //! overwhelming evidence (z ≥ [`EARLY_Z`]). Every promotion also requires the 95% lower bound to
-//! clear the minimum worthwhile edge, keeping the overall one-sided error close to nominal 2.5%.
+//! clear the minimum worthwhile edge. An early promotion needs that plus z ≥ [`EARLY_Z`], so the
+//! overall one-sided error is that of a sequential design with [`CONFIRM_CHUNKS`] looks rather than
+//! the error of a single look.
 
 use sv10_core::sim::PairedResult;
 
@@ -84,7 +86,12 @@ pub enum Verdict {
 
 /// Decide after `chunk` of [`CONFIRM_CHUNKS`] chunks (1-based) from the confirmation deals so far.
 pub fn verdict(r: &PairedResult, chunk: usize) -> Verdict {
-    let z = if r.se_bb > 0.0 { r.mean_bb / r.se_bb } else { 0.0 };
+    // Shifted by the bar: the interim boundary must measure evidence for a *worthwhile* edge, not
+    // for any positive one. Unshifted, `z >= EARLY_Z` is implied by `lower_95() >= MIN_EDGE_BB`
+    // whenever `se_bb <= MIN_EDGE_BB / (EARLY_Z - 1.96)` (0.009615 bb/hand), which is every
+    // candidate at this variance, so the clause never fired and the interim rule equalled the
+    // final one.
+    let z = if r.se_bb > 0.0 { (r.mean_bb - MIN_EDGE_BB) / r.se_bb } else { 0.0 };
     let clears_worthwhile_edge = r.lower_95() >= MIN_EDGE_BB;
     if chunk >= CONFIRM_CHUNKS {
         return if clears_worthwhile_edge { Verdict::Promote } else { Verdict::Reject(Reason::LowerBelowBar) };
@@ -136,9 +143,19 @@ mod tests {
     fn interim_looks_stop_for_futility_or_overwhelming_evidence_only() {
         assert_eq!(verdict(&res(-0.5, 2.0), 1), Verdict::Reject(Reason::NotAhead));
         assert_eq!(verdict(&res(0.2, 0.3), 2), Verdict::Reject(Reason::UpperBelowBar));
-        // Nominally significant (z = 2.5) at an interim look is not enough.
+        // Lower bound +1.08 bb/100 clears the bar, but the shifted z is (5.0 - 1.0) / 2.0 = 2.0:
+        // promising at an interim look, not the overwhelming evidence an early promotion needs.
         assert_eq!(verdict(&res(5.0, 2.0), 2), Verdict::Continue);
         assert_eq!(verdict(&res(9.0, 2.0), 1), Verdict::Promote);
+    }
+
+    #[test]
+    fn an_interim_promotion_needs_z_above_the_bar_not_z_above_zero() {
+        // +3.5 bb/100 at SE 1.0: lower bound +1.54 clears the +1 bar, and the UNshifted z is 3.5,
+        // which promoted. Shifting by the bar gives (3.5 - 1.0) / 1.0 = 2.5, below EARLY_Z.
+        // This is the case the old boundary let through and the reason it went unnoticed: every
+        // other interim test in this file has SE large enough that the bar term already bound.
+        assert_eq!(verdict(&res(3.5, 1.0), 2), Verdict::Continue);
     }
 
     #[test]
