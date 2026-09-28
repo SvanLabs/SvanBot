@@ -14,8 +14,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stack for the big hands. The settings are `SVANBOT_BANK_STACK_BB` and `SVANBOT_BANK_UNTIL_CHIPS`.
 - **`scripts/adopt-upstream.sh`** moves a fleet cloned from another repository onto this one in
   place, with a verified backup first (#352, #353, #354).
-- **A `dev` branch** (#362). Work lands on `dev`; `main` is what fleets install and moves only by
-  promotion (`docs/RELEASE.md`).
+- **A `dev` branch** (#362). Work lands on `dev`; `main` is the released line — what everyone who
+  installs SvanBot runs and updates from — and moves only by promotion (`docs/RELEASE.md`).
 - **Readiness labels and a board** (#358). Every open issue is `agent-friendly`,
   `blocked-on-decision` or `needs-triage`, and https://github.com/orgs/SvanLabs/projects/1 shows them.
   Dependabot opens grouped monthly updates.

@@ -20,7 +20,7 @@ All commands run from the repository root. Binaries live in `target/release/`.
 | Stop everything | `scripts/stop.sh [--hold 30m\|8h\|forever]`: the keepalive leaves the fleet down for the hold (default 30 min); `systemctl --user stop svanbot10` holds forever; `scripts/start.sh` clears it |
 | Keepalive | `scripts/keepalive.sh` restarts `svanbot10.service` when no supervisor runs, no hold is in force and no release holds the lock; decisions in `artifacts/logs/keepalive.log`, `KEEPALIVE_DRY=1` to check. Install once: `cp scripts/svanbot10.service scripts/svanbot10-keepalive.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now svanbot10-keepalive.timer` |
 | Rename a bot | Change its name in `.env` (`SVANBOT_MAIN_NAME` / `BOT_n_NAME`) and restart. Its season stays one record because each start links the names under the API key. For names used before that record existed, set `SVANBOT_ALIASES=New:Old[,New2:Old2]` once. The server export labels older hands with the new name, so fleet-check matches export rows by hand id |
-| Update from GitHub (one click) | Dashboard → Releases & updates → **Update**: fetches `origin/main` (`SVANBOT_UPDATE_BRANCH`, `SVANBOT_UPDATE_REMOTE`), fast-forwards this checkout, runs `scripts/release.sh`, and shows a progress bar (stages, time left, bots still playing, the hot swap). By hand: `scripts/update.sh`; `scripts/update.sh --check` only fetches and prints `<behind> <commit>`. It refuses uncommitted build inputs and local commits the branch lacks; a checkout whose history is unrelated to the branch is a different repository and moves onto it only with `SVANBOT_ADOPT_UPSTREAM=1` (see *Moving a checkout onto this repository*); a failed release restores the checkout, and play never stops. **First Update on an older install**: the installed build predates the fetch, so run `git pull` once (then click Update or run `scripts/release.sh`) |
+| Update from GitHub (one click) | Dashboard → Releases & updates → **Update**: fetches the update branch (`SVANBOT_UPDATE_BRANCH`, default `main`; `SVANBOT_UPDATE_REMOTE`, default `origin`), fast-forwards this checkout, runs `scripts/release.sh`, and shows a progress bar (stages, time left, bots still playing, the hot swap). By hand: `scripts/update.sh`; `scripts/update.sh --check` only fetches and prints `<behind> <commit>`. It refuses uncommitted build inputs and local commits the branch lacks; a checkout whose history is unrelated to the branch is a different repository and moves onto it only with `SVANBOT_ADOPT_UPSTREAM=1` (see *Moving a checkout onto this repository*); a failed release restores the checkout, and play never stops. **First Update on an older install**: the installed build predates the fetch, so run `git pull` once (then click Update or run `scripts/release.sh`) |
 | Ship a new build without stopping play | `scripts/release.sh` (committed tree; lint, the test build and the release build side by side at idle CPU priority, then the tests; ~40 s for a one-file change, ~4 min cold; installs atomically; the fleet hot-swaps when no bot is mid-turn, the learner between steps (at most ~2 min); every stage prints its time and one over 120 s is a warning; history in `artifacts/releases.log`, progress in `artifacts/release-progress.json`) |
 | Restart only the fleet | `scripts/restart-bot.sh` |
 | Season boundary check | `scripts/season-check.sh before LABEL` shortly before a season ends, `scripts/season-check.sh after LABEL` about an hour into the next: carry-over (opponent models, champion lineage, response/range models, stored hands) and live state (every bot on the new season, playing, season hands reset); PASS/FAIL lines, exit 1 on failure, files in `artifacts/season-checks/` |
@@ -347,7 +347,7 @@ code rollback.
 **The one-time case this covers**: a fleet cloned from a private tree, moved onto the repository that
 tree publishes to. The two histories share no commit — the published repository is produced from the
 private one by a filtered export, which rewrites every hash — so `git merge-base` between the
-checkout's head and `origin/main` is empty. That is not a diverged checkout with commits worth
+checkout's head and the update branch's tip is empty. That is not a diverged checkout with commits worth
 keeping; it is a different repository, and the only way onto the branch is to put the checkout on it.
 
 `update.sh` cannot do it by fast-forward and must not do it by merge. A merge commit joining two
@@ -420,7 +420,7 @@ that is already clean and already has a current `update.sh`. Verify it took:
 
 ```bash
 git remote -v                                      # origin is this repository
-git log --oneline -1                               # a commit that exists on origin/main
+git log --oneline -1                               # a commit that exists on the update branch
 git for-each-ref --format='%(refname)' refs/adopt  # what this checkout used to be
 git for-each-ref --format='%(refname)' refs/replace # empty: no graft was left behind
 git status --porcelain                             # empty: the tree is the branch's tree

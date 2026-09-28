@@ -20,10 +20,14 @@ is `CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
 ## Branches
 
 `dev` is the default branch and where all work lands: cut your branch from `dev` and open the pull
-request into `dev` (squash merge). `main` is what the fleet installs — `scripts/update.sh` fetches
-`origin/main` — and moves only when `dev` is promoted to it by a pull request from `dev` into `main`,
-merged with a merge commit so the two histories stay one. Never open a feature pull request into
-`main`.
+request into `dev` (squash merge). `main` is the released line — what everyone who installs SvanBot
+runs, and where their Update fetches from — and moves only when `dev` is promoted to it by a pull
+request from `dev` into `main`, merged with a merge commit so the two histories stay one. Promotion
+happens only when `dev` is green, so `main` never carries a build that failed. Never open a feature
+pull request into `main`.
+
+The reference fleet is the exception: it tracks `dev` (`SVANBOT_UPDATE_BRANCH=dev`), so every change
+is played before it is promoted.
 
 ## Which issue to take
 
