@@ -58,12 +58,12 @@ export function WiringPanel() {
   const rows = [...r.rows].sort((a, b) => b.cost_bb - a.cost_bb || b.changed - a.changed);
   return <div className="gr-panel wiring">
     <StaleNote poll={poll}/>
-    <p className={data.stale ? 'footnote amber' : 'footnote'}>Measured {age(data.age_secs)} ago on the newest {fmt(r.sample, 0, true)} recorded big decisions{data.stale ? ' — older than two days: the analyst has not re-measured it' : ''}.</p>
+    <p className={data.stale ? 'footnote amber' : 'footnote'}>Measured {age(data.age_secs)} ago on the newest {fmt(r.sample, 0, true)} recorded big decisions{r.streets?.length ? ` (${r.streets.map(([s, n]) => `${s} ${fmt(n, 0, true)}`).join(', ')})` : ''}{data.stale ? ' — older than two days: the analyst has not re-measured it' : ''}.</p>
     <table className="gr-table wiring-table">
       <thead><tr><th>COMPONENT SWITCHED OFF</th><th>MOVES</th><th title="EV the moved choice gives up under the full model, per decision in the sample">BB / DEC</th><th title="Largest single cost in the sample">MAX BB</th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.component} className={row.changed ? '' : 'wiring-idle'}>
         <td>{row.component}</td>
-        <td className="gr-acc">{row.changed ? `${fmt(row.share_pct, row.share_pct < 10 ? 1 : 0, true)}%` : 'none'}</td>
+        <td className="gr-acc" title={row.installed == null ? undefined : `on ${row.installed} of ${r.sample} spots`}>{row.changed ? `${fmt(row.share_pct, row.share_pct < 10 ? 1 : 0, true)}%` : row.installed === 0 ? 'not measured' : 'none'}</td>
         <td className="gr-acc">{fmt(row.cost_bb, 2, true)}</td>
         <td className="gr-acc">{row.max_bb ? fmt(row.max_bb, 1, true) : '—'}</td>
       </tr>)}</tbody>
@@ -81,7 +81,7 @@ export function WiringPanel() {
       </table>
     </>}
     <p className="footnote">{r.v3 ? `${fmt(r.v3_exact, 0, true)} of ${fmt(r.v3, 0, true)} records that carry the live inputs replay exactly as played` : 'No record in the sample carries the live inputs yet (replay v3)'} · {fmt(r.unstable, 0, true)} gave different answers on identical inputs · {fmt(r.chosen_not_best, 0, true)} chose below the best EV (mixing).</p>
-    <p className="footnote">“Moves”: decisions whose action or size changes with the component off. “bb / dec”: what that change gives up under the full model, same cards and samples — the component's value on these spots. The analyst re-measures daily when its audit queue is empty; <code>review wiring</code> runs it by hand.</p>
+    <p className="footnote">“Not measured”: no spot in the sample had the component to switch off (a preflop fit on big spots that are mostly postflop, say), which is not the same as moving none. “Moves”: decisions whose action or size changes with the component off. “bb / dec”: what that change gives up under the full model, same cards and samples — the component's value on these spots. The analyst re-measures daily when its audit queue is empty; <code>review wiring</code> runs it by hand.</p>
   </div>;
 }
 

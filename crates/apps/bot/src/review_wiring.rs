@@ -15,27 +15,61 @@ use sv10_store::store::Store;
 
 use crate::replay::{Corrections, ReplayRecord, identical, rerun};
 
-/// One way of switching a component off.
+/// One way of switching a component off, and whether a spot has the component to switch off (#315:
+/// "moves nothing" and "was not there to move anything" read the same without it).
 struct Variant {
     name: &'static str,
     apply: fn(&mut ReplayRecord, &mut Params, &mut Option<Mlp>),
+    installed: fn(&ReplayRecord, &Option<Mlp>) -> bool,
 }
 
 const VARIANTS: [Variant; 11] = [
-    Variant { name: "response network", apply: |_, _, nn| *nn = None },
-    Variant { name: "per-opponent response correction", apply: |r, _, _| r.corrections.values_mut().for_each(|c| c.response_ratio = None) },
-    Variant { name: "per-opponent fold offsets", apply: |r, _, _| r.corrections.values_mut().for_each(|c| c.fold_offset = None) },
-    Variant { name: "per-opponent river sizing tells", apply: |r, _, _| r.corrections.values_mut().for_each(|c| c.size_tell = None) },
-    Variant { name: "street fold calibration", apply: |_, p, _| p.fold_logit_shift = [0.0; 3] },
-    Variant { name: "preflop fold calibration", apply: |_, p, _| p.preflop_fold_logit_shift = 0.0 },
+    Variant { name: "response network", apply: |_, _, nn| *nn = None, installed: |_, nn| nn.is_some() },
+    Variant {
+        name: "per-opponent response correction",
+        apply: |r, _, _| r.corrections.values_mut().for_each(|c| c.response_ratio = None),
+        installed: |r, _| r.corrections.values().any(|c| c.response_ratio.is_some()),
+    },
+    Variant {
+        name: "per-opponent fold offsets",
+        apply: |r, _, _| r.corrections.values_mut().for_each(|c| c.fold_offset = None),
+        installed: |r, _| r.corrections.values().any(|c| c.fold_offset.is_some()),
+    },
+    Variant {
+        name: "per-opponent river sizing tells",
+        apply: |r, _, _| r.corrections.values_mut().for_each(|c| c.size_tell = None),
+        // A tell prices a river bet: on another street the fit is installed but has nothing to read.
+        installed: |r, _| r.situation.street.name() == "river" && r.corrections.values().any(|c| c.size_tell.is_some()),
+    },
+    Variant {
+        name: "street fold calibration",
+        apply: |_, p, _| p.fold_logit_shift = [0.0; 3],
+        // One shift per postflop street; a spot has only its own street's.
+        installed: |r, _| {
+            ["flop", "turn", "river"]
+                .iter()
+                .position(|s| *s == r.situation.street.name())
+                .is_some_and(|i| r.params.fold_logit_shift[i] != 0.0)
+        },
+    },
+    Variant {
+        name: "preflop fold calibration",
+        apply: |_, p, _| p.preflop_fold_logit_shift = 0.0,
+        installed: |r, _| r.situation.street.name() == "preflop" && r.params.preflop_fold_logit_shift != 0.0,
+    },
     Variant {
         name: "self-calibration EV corrections",
         apply: |_, p, _| {
             p.ev_bias.clear();
             p.ev_bias_pot_cap.clear();
         },
+        installed: |r, _| !r.params.ev_bias.is_empty(),
     },
-    Variant { name: "showdown-fitted range model", apply: |_, p, _| p.range = Default::default() },
+    Variant {
+        name: "showdown-fitted range model",
+        apply: |_, p, _| p.range = Default::default(),
+        installed: |r, _| r.params.range != Default::default(),
+    },
     Variant {
         name: "all-in call fits (river jam, deep pot, overbet)",
         apply: |_, p, _| {
@@ -44,9 +78,17 @@ const VARIANTS: [Variant; 11] = [
             p.overbet_call_shift = 0.0;
             p.overbet_call_slope = 0.0;
         },
+        installed: |r, _| {
+            let p = &r.params;
+            [p.river_jam_call_shift, p.deep_call_shift, p.overbet_call_shift, p.overbet_call_slope].iter().any(|x| *x != 0.0)
+        },
     },
-    Variant { name: "per-player stats (population only)", apply: |r, _, _| r.players.clear() },
-    Variant { name: "mixing (temperature 0: always the best EV)", apply: |_, p, _| p.temperature = 0.0 },
+    Variant { name: "per-player stats (population only)", apply: |r, _, _| r.players.clear(), installed: |r, _| !r.players.is_empty() },
+    Variant {
+        name: "mixing (temperature 0: always the best EV)",
+        apply: |_, p, _| p.temperature = 0.0,
+        installed: |r, _| r.params.temperature != 0.0,
+    },
 ];
 
 /// The full model's EV cost, in bb, of playing `variant`'s action instead of the full model's best.
@@ -102,6 +144,10 @@ pub struct Row {
     pub cost_bb: f64,
     /// Largest single cost in the sample, big blinds.
     pub max_bb: f64,
+    /// Decisions in the sample that had the component to switch off (#315). `None` in rows stored
+    /// before it was counted.
+    #[serde(default)]
+    pub installed: Option<usize>,
 }
 
 /// What the wiring measurement found, stored so the dashboard can show it ([`WIRING_KEY`]).
@@ -135,6 +181,10 @@ pub struct WiringReport {
     /// choices. Empty in rows stored before it was measured.
     #[serde(default)]
     pub calibration: Vec<CalibrationFlips>,
+    /// The sample's decisions per street, in play order (#315): the big spots are rarely preflop, which
+    /// is why a preflop component can read as moving nothing. Empty in rows stored before it.
+    #[serde(default)]
+    pub streets: Vec<(String, usize)>,
 }
 
 /// Hours of the decision log the calibration count reads.
@@ -272,8 +322,13 @@ pub fn measure(cases: Vec<(ReplayRecord, Option<Mlp>)>, fits: &crate::playerfits
                 share_pct: changed as f64 * 100.0 / n as f64,
                 cost_bb: measured.iter().map(|r| r.1).sum::<f64>() / n as f64,
                 max_bb: measured.iter().map(|r| r.1).fold(0.0, f64::max),
+                installed: Some(full.iter().filter(|(rec, nn, _)| (v.installed)(rec, nn)).count()),
             }
         })
+        .collect();
+    let streets = ["preflop", "flop", "turn", "river"]
+        .iter()
+        .map(|s| (s.to_string(), full.iter().filter(|(rec, _, _)| rec.situation.street.name() == *s).count()))
         .collect();
     WiringReport {
         at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64(),
@@ -287,6 +342,7 @@ pub fn measure(cases: Vec<(ReplayRecord, Option<Mlp>)>, fits: &crate::playerfits
         chosen_not_best,
         rows,
         calibration: Vec::new(),
+        streets,
     }
 }
 
@@ -386,12 +442,16 @@ fn print_report(r: &WiringReport) {
             _ => format!("{} of {} replay-v3 records (the ones that carry the live inputs) replay exactly as recorded", r.v3_exact, r.v3),
         }
     );
-    println!("{} of {} decisions picked a candidate below the best EV (the mixing temperature at work)\n", r.chosen_not_best, r.sample);
-    println!("{:<50} {:>9} {:>12} {:>12}", "component switched off", "changed", "cost bb/dec", "max bb");
+    println!("{} of {} decisions picked a candidate below the best EV (the mixing temperature at work)", r.chosen_not_best, r.sample);
+    let mix: Vec<String> = r.streets.iter().map(|(s, n)| format!("{s} {n}")).collect();
+    println!("sample by street: {}\n", mix.join(", "));
+    println!("{:<50} {:>7} {:>9} {:>12} {:>12}", "component switched off", "on", "changed", "cost bb/dec", "max bb");
     for row in &r.rows {
-        println!("{:<50} {:>5} {:>3.0}% {:>12.3} {:>12.1}", row.component, row.changed, row.share_pct, row.cost_bb, row.max_bb);
+        let on = row.installed.map_or("?".to_string(), |n| n.to_string());
+        println!("{:<50} {:>7} {:>5} {:>3.0}% {:>12.3} {:>12.1}", row.component, on, row.changed, row.share_pct, row.cost_bb, row.max_bb);
     }
-    println!("\n'changed': decisions whose action or size moves with the component off. 'cost': what the moved");
+    println!("\n'on': decisions that had the component to switch off — 'changed' 0 of 'on' 0 is not measured, not idle.");
+    println!("'changed': decisions whose action or size moves with the component off. 'cost': what the moved");
     println!("choice gives up under the full model (same seed, same samples) — the component's value on these spots.");
     println!(
         "\nself-calibration over every decision of the last {CALIBRATION_HOURS} h (best action with and without each candidate's bias):"
@@ -405,93 +465,4 @@ fn print_report(r: &WiringReport) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 0316: the dashboard's wiring panel reads this row, so its shape is a contract — and a sample
-    /// too small to mean anything never replaces a stored report.
-    #[test]
-    fn a_stored_report_round_trips_and_a_tiny_sample_is_not_stored() {
-        let dir = std::env::temp_dir().join(format!("sv10-wiring-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let store = Store::open(&dir.join("svanbot10.db")).unwrap();
-        // No replays recorded: nothing measurable, and nothing stored for the panel to show.
-        let empty = refresh(&store, 50).unwrap();
-        assert_eq!(empty.sample, 0);
-        assert_eq!(store.get_kv(WIRING_KEY).unwrap(), None, "an empty sample must not overwrite a stored table");
-        // Nothing stored is due; a fresh row is not; an old one is again.
-        assert!(due(&store, 1_000.0, 86_400.0), "no report yet");
-        store
-            .put_kv(
-                WIRING_KEY,
-                r#"{"at": 900.0, "sample": 200, "unstable": 0, "exact": 1, "exact_with_current": 1,
-            "carrying_corrections": 1, "v3": 1, "v3_exact": 1, "chosen_not_best": 0, "rows": []}"#,
-            )
-            .unwrap();
-        assert!(!due(&store, 1_000.0, 86_400.0), "measured 100 s ago");
-        assert!(due(&store, 90_000.0, 86_400.0), "measured a day ago");
-        store.put_kv(WIRING_KEY, "not json").unwrap();
-        assert!(due(&store, 1_000.0, 86_400.0), "an unreadable row must be replaced, not trusted");
-        // The row the panel parses: every figure survives JSON, and the components keep their order.
-        let report = WiringReport {
-            at: 1_790_000_000.0,
-            sample: 200,
-            unstable: 0,
-            exact: 131,
-            exact_with_current: 132,
-            carrying_corrections: 30,
-            v3: 30,
-            v3_exact: 30,
-            chosen_not_best: 1,
-            rows: VARIANTS
-                .iter()
-                .map(|v| Row { component: v.name.to_string(), changed: 3, share_pct: 1.5, cost_bb: 0.25, max_bb: 40.0 })
-                .collect(),
-            calibration: vec![CalibrationFlips {
-                street: "preflop".into(),
-                decisions: 3_227,
-                flipped: 1_794,
-                share_pct: 55.6,
-                main: "fold -> call".into(),
-                main_count: 1_030,
-            }],
-        };
-        store.put_kv(WIRING_KEY, &serde_json::to_string(&report).unwrap()).unwrap();
-        let back: WiringReport = serde_json::from_str(&store.get_kv(WIRING_KEY).unwrap().unwrap()).unwrap();
-        assert_eq!(back, report);
-        assert_eq!(back.rows.len(), VARIANTS.len());
-        assert_eq!(back.rows[0].component, VARIANTS[0].name, "the table prints in measurement order");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// 0332: self-calibration decided over half of all preflop choices while the big-decision table
-    /// showed it moving 0.7%. A decision counts as flipped when its best action differs with and without
-    /// the bias recorded on each candidate; sizes of one action are one family; one option is no choice.
-    #[test]
-    fn a_decision_counts_as_flipped_when_the_bias_decides_its_best_action() {
-        let d = |cands: &str| format!(r#"{{"candidates": [{cands}]}}"#);
-        let fold = r#"{"action": "fold", "ev": 0.0, "bias": 0.0}"#;
-        let rows = vec![
-            // Call −20 without its +50 bias, +30 with it: the bias turned a fold into a call.
-            ("preflop".to_string(), d(&format!(r#"{fold}, {{"action": "call", "ev": 30.0, "bias": 50.0}}"#))),
-            // Call is best either way.
-            ("preflop".to_string(), d(&format!(r#"{fold}, {{"action": "call", "ev": 80.0, "bias": 50.0}}"#))),
-            // Two raise sizes trade places under the bias: the same family, no flip.
-            (
-                "flop".to_string(),
-                d(
-                    r#"{"action": "raise", "ev": 10.0, "bias": 5.0}, {"action": "raise", "ev": 9.0, "bias": 0.0}, {"action": "check", "ev": 1.0}"#,
-                ),
-            ),
-            // One option is no choice at all, and an unreadable detail is skipped.
-            ("river".to_string(), d(fold)),
-            ("river".to_string(), "not json".to_string()),
-        ];
-        let f = calibration_flips(&rows);
-        assert_eq!(f.len(), 2, "streets with a choice only: {f:?}");
-        assert_eq!((f[0].street.as_str(), f[0].decisions, f[0].flipped, f[0].main.as_str()), ("preflop", 2, 1, "fold -> call"));
-        assert_eq!(f[0].share_pct, 50.0);
-        assert_eq!((f[1].street.as_str(), f[1].decisions, f[1].flipped), ("flop", 1, 0), "streets print in play order");
-    }
-}
+mod tests;
