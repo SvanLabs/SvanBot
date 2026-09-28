@@ -82,6 +82,10 @@ pub async fn refresh(shared: &Shared) -> Option<ReputationBook> {
                 };
                 let v = get_json(&http, &url).await;
                 if let (Some(v), true) = (&v, ended) {
+                    // Best-effort, and the one place in this file where that is the right answer: the
+                    // season has ended, so the cached leaderboard cannot change again, a miss costs one
+                    // re-fetch of the same fixed content, and the refresh holding the fresh value must
+                    // not fail over its copy (issue #326).
                     let _ = shared.store.put_kv(&cache_key, &v.to_string());
                 }
                 tokio::time::sleep(Duration::from_secs(3)).await;
@@ -133,6 +137,9 @@ pub async fn refresh(shared: &Shared) -> Option<ReputationBook> {
             book.by_name.insert(n.to_lowercase(), rep.clone());
         }
     }
-    let _ = shared.store.put_kv(KEY, &serde_json::to_string(&book).ok()?);
+    let json = serde_json::to_string(&book).ok()?;
+    if let Err(e) = shared.store.put_kv(KEY, &json) {
+        tracing::warn!("the reputation book was not stored, so the next start re-reads every season's leaderboard ({e})");
+    }
     Some(book)
 }

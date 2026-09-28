@@ -108,7 +108,11 @@ fn main() -> Result<()> {
             let status = json!({"running": true, "threads": threads, "samples": samples, "audited": done, "skipped": skipped,
                 "queued": summary.queued, "busy_share": busy_secs / (now() - started).max(1.0), "updated": now(),
                 "min_pot_bb": min_pot_bb, "commit": sv10_bot::BUILD_COMMIT});
-            let _ = store.put_kv(STATUS_KEY, &status.to_string());
+            // A status that does not land leaves the dashboard reading the previous one, or none at
+            // all, for a process that is working — reported rather than dropped (issue #326).
+            if let Err(e) = store.put_kv(STATUS_KEY, &status.to_string()) {
+                tracing::warn!("the analyst status was not published ({e})");
+            }
             last_status = now();
         }
         if jobs.is_empty() {

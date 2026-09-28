@@ -64,22 +64,30 @@ pub fn load_lineage(store: &Store) -> Vec<String> {
         .unwrap_or_else(|| vec!["sv10-ev-1".to_string()])
 }
 
-/// Publish the learner's status for the dashboard.
+/// Publish the learner's status for the dashboard. A write that does not land says so (issue #326):
+/// the update progress reads this key, and a status stuck on the previous run reports a swap that
+/// already happened as still in flight.
 pub fn status(store: &Store, mut v: Value) {
     // The build that wrote it: the dashboard's update progress confirms the learner's swap (0236).
     if let Some(o) = v.as_object_mut() {
         o.insert("commit".into(), Value::from(crate::BUILD_COMMIT));
     }
-    let _ = store.put_kv(crate::LEARNER_STATUS_KEY, &v.to_string());
+    if let Err(e) = store.put_kv(crate::LEARNER_STATUS_KEY, &v.to_string()) {
+        tracing::warn!("the learner status was not published ({e})");
+    }
 }
 
-/// Record an experiment for the dashboard (newest first, 40 kept).
+/// Record an experiment for the dashboard (newest first, 40 kept). The list is read back and
+/// rewritten whole, so a write that does not land loses this experiment rather than deferring it:
+/// the next call reads the list as it was before, and the entry is gone for good (issue #326).
 pub fn push_experiment(store: &Store, e: Value) {
     let mut list: Vec<Value> =
         store.get_kv(crate::LEARNER_EXPERIMENTS_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     list.insert(0, e);
     list.truncate(40);
-    let _ = store.put_kv(crate::LEARNER_EXPERIMENTS_KEY, &json!(list).to_string());
+    if let Err(e) = store.put_kv(crate::LEARNER_EXPERIMENTS_KEY, &json!(list).to_string()) {
+        tracing::warn!("an experiment did not reach the dashboard list ({e})");
+    }
 }
 
 /// Publish the experiment pair's target queue for this scope. Both step sizes of this champion's
