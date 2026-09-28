@@ -316,9 +316,10 @@ A failed run changes nothing, and the checkout returns to where it was. **Roll b
 build** uses the same bar. `scripts/update.sh` does the same from a terminal.
 
 The button fast-forwards the checkout onto **one branch**: `SVANBOT_UPDATE_BRANCH`, `main` by default
-— the released line, which moves only when `dev` is promoted to it. A fresh `git clone` lands on
-`dev`, the default branch where work lands, so an install that should follow development instead sets
-`SVANBOT_UPDATE_BRANCH=dev` in `.env` (the reference fleet does exactly that).
+— the released line, which moves only when `dev` is promoted to it. `main` is the default branch, so
+a fresh `git clone` lands on the released line and keeps updating from it; an install that should
+follow development instead sets `SVANBOT_UPDATE_BRANCH=dev` in `.env` (the reference fleet does
+exactly that).
 
 </details>
 
@@ -358,8 +359,9 @@ Directing the agent well is the contribution.
    `blocked-on-decision` wait on a maintainer's choice first; the
    [board](https://github.com/orgs/SvanLabs/projects/1) shows every open issue by readiness.
 2. **Fork, and make a branch off `dev`** named for the change — `fix/split-pots-all-folded`,
-   `docs/…`. `dev` is the default branch and every pull request goes into it; `main` is the released
-   line, and moves only when `dev` is promoted.
+   `docs/…`. Every pull request goes into `dev`, where work lands; `main` is the default branch and
+   the released line, and moves only when `dev` is promoted to it. **Open the pull request against
+   `dev`** — the base GitHub offers by default is `main`.
 3. **Hand your agent [`AGENTS.md`](AGENTS.md) and the issue.** `AGENTS.md` is the brief: where
    code goes, the two hard invariants, and everything the gate enforces.
 4. **Run the gate** before you push. It is the same command CI runs, so a green run here is a green
