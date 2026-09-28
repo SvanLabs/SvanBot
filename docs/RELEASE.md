@@ -19,9 +19,12 @@ Because promotion waits on a green `dev`, `main` never carries a build that fail
 finishes green on `dev`. The script keeps one promotion pull request open with auto-merge armed, and
 GitHub merges it when the gate passes on it — a pull request's merge ref is recomputed on every push
 to its head, so that one pull request always tests the head `dev` has now. A red `dev` promotes
-nothing, because the workflow only fires on a green run, and a `main` that is not an ancestor of
-`dev` — what a squash promotion, or a commit pushed straight to `main`, leaves behind — is refused by
-name rather than merged.
+nothing, because the workflow only fires on a green run, and a `main` that carries a commit of its
+own — a non-merge commit `dev` does not have, which is what a squash promotion or a commit pushed
+straight to `main` leaves behind — is refused by name rather than merged. The promotion merge commits
+themselves are not that: they live on `main` alone by construction, so `main` stops being an ancestor
+of `dev` the moment it has been promoted once, and a check phrased that way would refuse every
+promotion after the first.
 
 The same thing by hand, which is also the retry after a failure:
 

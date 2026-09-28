@@ -40,13 +40,23 @@ if [ "$main" = "$dev" ]; then
   exit 0
 fi
 
-# The promotion is a merge commit that changes no file, and that is only true while `main` is an
-# ancestor of `dev`. The moment the two lines have a commit the other does not — a squash promotion
-# would do it, and so would a commit pushed straight to `main` — the merge is a real merge with a
-# conflict, which is a person's decision and not this script's.
-if ! git merge-base --is-ancestor "$main" "$dev"; then
-  echo "promote: main is not an ancestor of dev, so the two lines have diverged and this is not a" >&2
-  echo "promote: promotion but a merge to resolve by hand; nothing changed" >&2
+# The promotion is a merge commit that changes no file, and that is only true while `main` carries
+# nothing of its own. The obvious test for that — is `main` an ancestor of `dev` — is wrong: a
+# promotion *is* a merge commit of `dev` into `main`, which lives on `main` and never on `dev`, so
+# after the first promotion `main` is not an ancestor of `dev` and never will be again. Asking that
+# question refuses every promotion after the first one, which is every promotion there will be.
+#
+# What holds instead: every commit on `main` that is not a merge is already on `dev`. The promotion
+# merge commits are the only thing `main` may carry alone. A squash promotion, or a commit pushed
+# straight to `main`, puts a non-merge commit there that `dev` does not have, and that is the state
+# this refuses: the two lines have diverged, and the next promotion is a real merge with a conflict,
+# which is a person's decision and not this script's.
+strays=$(git rev-list --no-merges --count "$main" --not "$dev")
+if [ "$strays" != 0 ]; then
+  echo "promote: main carries $strays commit(s) that dev does not (a squash promotion, or a commit" >&2
+  echo "promote: pushed straight to main), so the two lines have diverged and this is not a promotion" >&2
+  echo "promote: but a merge to resolve by hand; nothing changed. They are:" >&2
+  git log --no-merges --format='promote:   %h %s' "$main" --not "$dev" | head -5 >&2
   exit 1
 fi
 
