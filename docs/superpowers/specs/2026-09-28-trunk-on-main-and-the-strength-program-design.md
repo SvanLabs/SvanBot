@@ -283,6 +283,7 @@ ever issued on it again.
 |---|---|
 | #334 | Measure first, exactly as its own triage comment requires: open a stream against a busy table with `SVANBOT_TV_PORT` set and count the projections. Then choose the cache, the cap, or both on the number. |
 | #17 | Publish a dated release of derived aggregates and schema. **Never raw opponent hands** — narrower than the issue's own framing, which proposed a sealed copy of the live database. Confirm the scrub list before anything is published. |
+| #463 | Install and enable the systemd user units from `scripts/setup.sh` after a successful release, and say what it did. On a box with no systemd — a container, a CI runner, a machine with no user session — skip with one honest line rather than failing setup. Found by the audit that also produced 3.2's install facts: the fleet is supervised while its starting shell lives and unmanaged at boot. |
 | #347 | The `test-hooks` feature is **not** built. Piece 1 landed the log capture; the seam is deferred until a call site actually needs it. The issue is closed with that decision recorded and reopens if one does. |
 | #18 | Closed in Phase 0. |
 

@@ -496,7 +496,7 @@ against, and where your pull request goes.
 Replace lines 10-46 in full with:
 
 ```markdown
-## Cutting a version
+## Where work lands
 
 Work lands on `main`. It is the released line: what everyone who installs SvanBot runs, and where
 their Update fetches from. `main` carries only what the gate passed, because the ruleset on it
@@ -534,21 +534,21 @@ Expected: no edit. If you find a `dev`-branch or promotion-branch sentence that 
 
 **Only entry 44** quotes `scripts/promote.sh` (at line 204), and `docs/LESSONS.md` is in `scripts/docs-check.live`, so that backtick fails the check once the file is gone. Entry 45 does not quote it: its `dev` references sit inside backticks carrying no `crates/`/`scripts/`/`web/`/`docs/`/`.claude/` prefix, and `scripts/docs-check.py` matches only backticked paths with one of those prefixes — so entry 45 stays checked.
 
-Entry 44 is a historical record and must not be rewritten. Wrap entry 44 alone in the check's off-block, adding one line above it:
+Entry 44 is a historical record and must not be rewritten. Add these lines **above** entry 44, marker first:
 
 ```markdown
-The entry below describes the promotion script and its tests, deleted on 2026-09-28 when the
-repository moved to trunk-based work on `main`. The lesson is about the mistake, not the script.
 <!-- docs-check: off -->
+The entry below describes `scripts/promote.sh` and its tests, deleted on 2026-09-28 when the
+repository moved to trunk-based work on `main`. The lesson is about the mistake, not the script.
 ```
 
-and close it immediately after entry 44's last line with:
+The order is not cosmetic. `scripts/docs-check.py:94-99` sets its flag false when a line contains the off marker and then skips **that line and every line after it**, while everything before the marker is still scanned — so a note placed above the marker is read, and fails on the very path it exists to explain.
+
+Close the off-block immediately after entry 44's last line with:
 
 ```markdown
 <!-- docs-check: on -->
 ```
-
-Write that note without backticks around the script's name. It sits above the off marker, where the check still reads the line, and a backticked `scripts/…` path there is the same problem the off-block exists to solve.
 
 The boundary is exact: entry 44 opens at **line 203** and its last line of prose is **line 218** (`look at the call instead of at the answer.`). Line 219 is blank and line 220 begins entry 45. Close the off-block between lines 218 and 219 — before the blank line, not after it — so entry 45 is checked again. Verify by re-reading the boundary and running the check at Step 17.
 
@@ -635,13 +635,13 @@ becomes:
 
 That last edit matters as much as the branch change: `main`'s ruleset allows `merge` commits only, so `--squash` would arm auto-merge and then never fire.
 
-Then verify no workflow still names the branch or the wrong merge method:
+Then verify nothing under `.github/` still names the branch or the wrong merge method. Scan the whole tree, not `.github/workflows/` alone — that narrower grep prints no output and reads as complete while `.github/dependabot.yml` still names `dev`, which is exactly how it stayed invisible:
 
 ```bash
-grep -rn "ref: dev\|--base dev\|into \`dev\`\|--auto --squash" .github/workflows/
+grep -rn "ref: dev\|--base dev\|into \`dev\`\|--auto --squash\|target-branch: dev\|branch=dev" .github/
 ```
 
-Expected: no output.
+Expected: no output. The last two patterns are the ones Steps 15 and 16 remove.
 
 - [ ] **Step 14: Fix the `.env.example` comment**
 
@@ -1112,12 +1112,13 @@ EOF
 
 ---
 
-### Task 9: Correct the claimed error rate in the learner spec
+### Task 9: Correct the claimed error rate in the spec and in the code
 
-`docs/SPEC-learner.md:230` states a rate the code did not deliver. `docs/SPEC-learner.md` is a live document, so it may only name paths that exist, and it must not gain a number this project has not computed.
+Two places state a rate the gate did not deliver. `docs/SPEC-learner.md:230` is a live document, so it may only name paths that exist; and the module doc-comment at `crates/apps/bot/src/promotion.rs:10` ends `keeping the overall one-sided error close to nominal 2.5%.`, which is the same false claim — the `z >= EARLY_Z` clause was inert, so the interim rule equalled the final one. Neither may gain a number this project has not computed.
 
 **Files:**
 - Modify: `docs/SPEC-learner.md:230-231`
+- Modify: `crates/apps/bot/src/promotion.rs:10`
 
 **Interfaces:**
 - Consumes: Task 8's change.
@@ -1147,26 +1148,46 @@ Do **not** write a replacement percentage. The figure this investigation produce
 computation; until this project computes and reproduces its own, the document states the design and
 names the constant, which is checkable, rather than a rate that is not.
 
-- [ ] **Step 3: Run the docs checks**
+- [ ] **Step 3: Replace the module doc-comment's claim**
+
+`crates/apps/bot/src/promotion.rs:10` ends:
+
+```rust
+//! clear the minimum worthwhile edge, keeping the overall one-sided error close to nominal 2.5%.
+```
+
+Replace that line with:
+
+```rust
+//! clear the minimum worthwhile edge. The interim boundary is the 95% lower bound on the edge above
+//! the bar, so it fires only at the same evidence the final look needs; the overall one-sided error
+//! is that of a sequential design with [`CONFIRM_CHUNKS`] looks, and it is not the single-look 2.5%.
+```
+
+The same rule as Step 2 applies: state the design, name the constant, write no percentage this project has not computed. This is the same claim in the place a maintainer reads first, and correcting the spec while leaving the code would leave the two disagreeing.
+
+- [ ] **Step 4: Run the docs checks**
 
 ```bash
 python3 scripts/docs-check.py && echo "docs-check ok"
-grep -n "2.5%" docs/SPEC-learner.md || echo "no unbacked rate remains"
+grep -rn "2.5%" docs/SPEC-learner.md crates/apps/bot/src/promotion.rs || echo "no unbacked rate remains"
 ```
 
-Expected: `0 problem(s)`, and no `2.5%` left in the file.
+Expected: `0 problem(s)`, and no `2.5%` left in either file.
 
-- [ ] **Step 4: Commit as part of Task 8's pull request**
+- [ ] **Step 5: Commit as part of Task 8's pull request**
 
 ```bash
-git add docs/SPEC-learner.md
+git add docs/SPEC-learner.md crates/apps/bot/src/promotion.rs
 git commit -F - <<'EOF'
-docs: the learner spec stops claiming an error rate the gate does not deliver
+docs: the learner spec and the module stop claiming an error rate the gate does not deliver
 
 The z >= 3 interim clause was inert, so the one-sided error was never near
-2.5%. The text now states the design and names the constant rather than
-quoting a rate; this project has not computed its own figure and a borrowed
-one is what put the false claim here in the first place.
+2.5%. `docs/SPEC-learner.md` and the module doc-comment in
+`crates/apps/bot/src/promotion.rs` now state the design and name the
+constant rather than quoting a rate; this project has not computed its own
+figure and a borrowed one is what put the false claim there in the first
+place.
 
 Generated-by: claude-code/deepseek-flash
 Co-Authored-By: Claude Code <noreply@anthropic.com>
@@ -1346,7 +1367,7 @@ Run after the plan is written, against the spec.
 | Decision comments, relabel #334/#17, label #319, close #18, #347 and #15 | 6 |
 | `verify-install` | 7 |
 | `promotion.rs:87` shifted z + test pinning it | 8 |
-| Correct `docs/SPEC-learner.md:230` | 9 |
+| Correct `docs/SPEC-learner.md:230` and `crates/apps/bot/src/promotion.rs:10` | 9 |
 | Log the discarded confirmation evidence | 10 |
 | Change `main`'s ruleset to allow squash merges (SPEC:190) | 11 |
 | CI `cache-workspace-crates` and the duplicate `target/dev` path | **not in this plan** — Phase 2 of the spec |
