@@ -18,8 +18,8 @@ use std::time::{Duration, Instant};
 use sv10_core::cards::{Card, mask_of};
 use sv10_core::eval::{CATEGORY_NAMES, category, eval};
 use sv10_core::model::{Counter, HandSummary, PlayerStats};
-use tower_http::services::{ServeDir, ServeFile};
 
+mod assets;
 mod control;
 mod games;
 mod hands;
@@ -208,7 +208,6 @@ async fn auth_layer(State(s): State<Arc<Shared>>, req: Request, next: Next) -> R
 }
 
 pub async fn serve(shared: Arc<Shared>) -> Result<()> {
-    let dist = shared.config.web_dist.clone();
     let app = Router::new()
         // `public` says which listener answered: false here, true on the TV (`tv::router`). The
         // dashboard branches on it before it asks for a session, so a spectator on the public
@@ -260,7 +259,7 @@ pub async fn serve(shared: Arc<Shared>) -> Result<()> {
         .route("/api/releases/rollback", post(trigger_rollback))
         .route("/api/setup", get(get_setup).post(save_setup))
         .route("/api/setup/verify-key", post(verify_key))
-        .fallback_service(ServeDir::new(&dist).not_found_service(ServeFile::new(dist.join("index.html"))))
+        .fallback(get(assets::serve))
         .layer(middleware::from_fn(cache_layer))
         .layer(middleware::from_fn_with_state(shared.clone(), auth_layer))
         .with_state(shared.clone());
@@ -276,7 +275,7 @@ pub async fn serve(shared: Arc<Shared>) -> Result<()> {
         match tokio::net::TcpListener::bind(&tv_addr).await {
             Ok(tv_listener) => {
                 tracing::info!("public TV on http://{tv_addr} (unauthenticated: table view only)");
-                let tv = tv::router(shared.clone(), &dist);
+                let tv = tv::router(shared.clone());
                 tokio::spawn(async move {
                     if let Err(e) = axum::serve(tv_listener, tv).await {
                         tracing::error!("public TV stopped: {e:#}");

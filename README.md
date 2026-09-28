@@ -218,7 +218,7 @@ flowchart TB
 ```mermaid
 flowchart LR
   subgraph deps["crates/deps: own, zero-dependency"]
-    rng["sv10-rng"]; digest["sv10-digest"]; rt["sv10-rt"]; mmap["sv10-mmap"]; pack["sv10-pack"]
+    rng["sv10-rng"]; digest["sv10-digest"]; rt["sv10-rt"]; mmap["sv10-mmap"]; pack["sv10-pack"]; stat["sv10-static"]
   end
   subgraph libs["crates/libs: poker & data"]
     cards["sv10-cards"] --> equity["sv10-equity"]

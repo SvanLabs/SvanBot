@@ -110,7 +110,7 @@ async fn ask(addr: std::net::SocketAddr, method: &str, path: &str) -> (u16, Stri
 async fn the_tv_listener_serves_the_table_view_and_404s_every_other_api_route() {
     let s = Shared::for_test("tv-surface", &["A"]);
     std::fs::write(s.config.web_dist.join("index.html"), "<!doctype html><title>tv</title>").unwrap();
-    let app = router(s.clone(), &s.config.web_dist);
+    let app = router(s.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -158,4 +158,51 @@ async fn the_tv_listener_serves_the_table_view_and_404s_every_other_api_route() 
     let (_, head, _) = ask(addr, "GET", "/api/tv").await;
     assert!(head.contains("frame-ancestors *"), "the TV does not allow framing: {head}");
     assert!(!head.contains("x-frame-options: deny"), "the TV kept the dashboard's framing refusal: {head}");
+}
+
+/// The page and its assets both listeners serve, end to end on a real socket: the file the path
+/// names, the content type a browser runs it as, and the page for a path that names no file — which
+/// is how a reload of the page's own route (`/tv`, `/training`) boots the app instead of 404ing
+/// (#349). Traversal has its own tests on the resolution itself, with a file really sitting above
+/// the build directory to catch; here the point is that the router reaches that resolution at all.
+#[tokio::test]
+async fn the_page_and_its_assets_are_served_from_the_build_directory() {
+    let mut s = Shared::for_test("tv-static", &["A"]);
+    // The build directory, inside this test's own temp root, so a file one level *above* it can be
+    // written without touching anything the rest of the machine shares.
+    let build = s.config.web_dist.join("build");
+    Arc::get_mut(&mut s).expect("the test holds the only reference").config.web_dist = build.clone();
+    std::fs::create_dir_all(build.join("assets")).unwrap();
+    std::fs::write(build.join("index.html"), "<!doctype html><title>tv</title>").unwrap();
+    std::fs::write(build.join("assets/app-abc123.js"), "export const x = 1;\n").unwrap();
+    std::fs::write(build.parent().unwrap().join("secret.txt"), "not the page").unwrap();
+    let app = router(s.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let (status, head, body) = ask(addr, "GET", "/").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(head.contains("content-type: text/html; charset=utf-8"), "the page is not typed as HTML: {head}");
+    assert!(body.contains("<title>tv</title>"), "the page was not served: {body}");
+
+    let (status, head, body) = ask(addr, "GET", "/assets/app-abc123.js").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(head.contains("content-type: text/javascript; charset=utf-8"), "the script is not runnable: {head}");
+    assert!(head.contains("content-length: 20"), "the asset's length is not stated: {head}");
+    assert!(body.contains("export const x = 1;"), "the asset was not served: {body}");
+
+    // The page routes itself: no file behind the route, and the app still boots.
+    let (status, head, body) = ask(addr, "GET", "/tv").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(head.contains("content-type: text/html; charset=utf-8"), "{head}");
+    assert!(body.contains("<title>tv</title>"), "a page route did not boot the page: {body}");
+
+    // The file above the build directory is where a traversal would land; no answer may carry it.
+    for path in ["/../secret.txt", "/assets/../../secret.txt", "/./../secret.txt"] {
+        let (_, _, body) = ask(addr, "GET", path).await;
+        assert!(!body.contains("not the page"), "{path} served a file outside the build directory");
+    }
 }
