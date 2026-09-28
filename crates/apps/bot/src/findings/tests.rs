@@ -360,8 +360,10 @@ fn the_scan_tests_each_class_on_the_window_that_can_speak() {
     let pooled = finding("decision-loss:all_in");
     assert!(pooled.evidence.contains("1340 deep re-solves over 30 days"), "{}", pooled.evidence);
     assert_eq!(scan.sampled["decision-loss:all_in"], 1_340, "the pooled class is tested on the long window, not reported as unmeasured");
-    let note = scan.unanswered.iter().find(|u| u.starts_with("decision loss:")).expect("the excluded verdict is named");
+    // #321: the note leads the panel, so it is a coverage line and not one of the footnote's questions.
+    let note = scan.coverage.iter().find(|u| u.starts_with("1 of 2841")).expect("the excluded verdict is named");
     assert!(note.contains("1 of 2841 re-solves in the last 30 days"), "{note}");
+    assert!(scan.unanswered.iter().all(|u| !u.starts_with("decision loss:")), "and not in the footnote: {:?}", scan.unanswered);
     // 0344's note counts the window's comparable verdicts, not the class tallies — which would count
     // the pooled all-in family's 1,340 a second time — and names the largest street class.
     assert!(note.contains("2840 comparable verdicts") && note.contains("(largest turn:call, 1500)"), "{note}");
@@ -429,20 +431,30 @@ fn an_unanswered_question_is_named() {
     assert_eq!(merged["unanswered"].as_array().unwrap().len(), 1);
 }
 
-/// 0332: the 2026-09-26 shift (first-in raising 40% of hands to 3% within an hour) is a finding; the
-/// day-to-day wobble of a stable style is not, and neither is a thin window.
+/// #321: the two halves of the panel the issue is about. A family's explanation is stated once per
+/// scan instead of inside every row, and it resolves by the finding's own id — `decision-loss:` and
+/// `decision-measurement:` read the same one without either being named twice.
 #[test]
-fn a_preflop_style_shift_is_a_finding_and_ordinary_wobble_is_not() {
-    let w = |call: i64, raise: i64, fold: i64| vec![("call".to_string(), call), ("raise".to_string(), raise), ("fold".to_string(), fold)];
-    let shifted = style_drift(&w(11_900, 350, 250), &w(40_000, 26_000, 800));
-    let ids: Vec<&str> = shifted.iter().map(|f| f.id.as_str()).collect();
-    assert!(ids.contains(&"style-drift:preflop:raise") && ids.contains(&"style-drift:preflop:call"), "{ids:?}");
-    let raise = shifted.iter().find(|f| f.id == "style-drift:preflop:raise").unwrap();
-    assert_eq!(raise.severity, "P1", "a risk to look at, not a filed ticket");
-    assert!(raise.value < -30.0 && raise.title.contains("2.8%"), "{raise:?}");
-    // A stable style: 61/37/2 against 60/38/2 over thousands of hands.
-    assert!(style_drift(&w(7_320, 4_440, 240), &w(40_000, 25_300, 1_330)).is_empty());
-    // A large but thin shift is not evidence either way.
-    assert!(style_drift(&w(8, 1, 1), &w(40_000, 26_000, 800)).is_empty());
-    assert!(style_drift(&[], &w(40_000, 26_000, 800)).is_empty(), "nothing recent: nothing to compare");
+fn a_scan_states_one_explanation_per_family_and_the_rows_carry_their_numbers() {
+    let dir = std::env::temp_dir().join(format!("sv10-findings-legends-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let store = Store::open(&dir.join("svanbot10.db")).unwrap();
+    let scan = scan(&store, &std::collections::HashMap::new(), 1_000.0);
+    for key in ["decision", "calibration", "style-drift"] {
+        assert!(scan.legends.contains_key(key), "no {key} legend in {:?}", scan.legends.keys());
+    }
+    let decision = legend_for(&scan.legends, "decision-loss:turn:call").expect("the class rows find it");
+    assert_eq!(legend_for(&scan.legends, "decision-measurement:turn:call"), Some(decision), "both families share one");
+    assert!(decision.contains("0.02 bb per decision") && decision.contains("500 comparable verdicts"), "{decision}");
+    assert_eq!(legend_for(&scan.legends, "nemesis:Bully"), None, "a family with nothing shared states nothing");
+    // And a filed ticket carries the legend, because it has no panel above it to state it (#321).
+    let filed = scan.legends.clone();
+    let text = ticket_text(
+        &Finding::new("decision-loss:turn:call", "P0", "turn call costs", "600 deep re-solves".into(), 0.03, 0.0),
+        legend_for(&filed, "decision-loss:turn:call"),
+        1_000.0,
+    );
+    assert!(text.contains("the deep re-solve takes") && text.contains("0.02 bb per decision"), "{text}");
+    let _ = std::fs::remove_dir_all(&dir);
 }

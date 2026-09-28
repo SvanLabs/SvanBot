@@ -721,6 +721,65 @@ test('the Autonomy panel shows what the fleet found about its own play, with its
   await expect(panel.getByText(/Could not measure: decision loss/)).toBeVisible();
 });
 
+// #321: the panel used to print one paragraph per class — the filter, the floor and the interval said
+// again in thirty rows, with the line explaining why none of them could be decided in the footnote.
+test('the findings panel leads with its coverage, states each family once and tables the classes', async ({page}) => {
+  await fleet(page, state => {
+    state.training.findings = {
+      at: 1_700_000_000,
+      coverage: ['1 of 2,841 decisions in the window carry the live inputs (replay v3+): the deep re-solve cannot grade the rest'],
+      findings: [
+        {id:'style-drift:preflop', title:'first preflop action shifted: raise fell 24.8 points from 30.1% of hands to 5.3% in the last day', severity:'P1',
+         evidence:'1,204 hands in the last day against 6,842 in the six days before', value:-24.8, since:1_699_500_000, updated:1_700_000_000},
+        {id:'decision-loss:turn:raise', title:'turn raise costs 0.057 bb per decision', severity:'P0',
+         evidence:'6,643 settled decisions at every pot size', value:0.057, since:1_699_000_000, updated:1_700_000_000, ticket:'0281-turn-raise'},
+        {id:'calibration:flop:bet:big', title:'flop:bet:big realizes +2.4 bb over its uncorrected price', severity:'P2',
+         evidence:'826 settled decisions at every pot size', value:2.4, since:1_699_500_000, updated:1_700_000_000},
+        {id:'nemesis:Bully', title:'Bully takes 12.4 bb per 100 from us', severity:'P1',
+         evidence:'418 hands against us at +1.4 bb per hand', value:1.4, since:1_699_900_000, updated:1_700_000_000}],
+      classes: [
+        {id:'decision-loss:turn:raise', label:'turn raise', n:6643, days:8, total:9000, mean:0.057, lo:0.021, hi:0.093, big:376.2, decisions:12000, state:'filed'},
+        {id:'decision-measurement:turn:call', label:'turn call', n:80, days:8, total:400, mean:0.031, lo:-0.012, hi:0.074, big:2.5, decisions:200, state:'thin'},
+        {id:'decision-measurement:preflop:check', label:'preflop check', n:0, days:0, total:0, mean:0, lo:null, hi:null, big:0, decisions:null, state:'never queued'}],
+      legends: {
+        decision:'A class is one street and action family: a class files at 500 comparable verdicts and a 95% lower bound over 0.02 bb per decision.',
+        calibration:'A calibration row is the price correction the model already applies; a residual is a measurement, not a loss.',
+        'style-drift':'A style shift is the first preflop action over the last day against the six days before it; a shift and its counter-shift are one finding.'},
+      cleared: [], unanswered: [],
+    };
+  });
+  await page.goto('/');
+  const panel = page.getByLabel('What the fleet found about its own play');
+  // The reason the list says so little leads it, not the footnote...
+  const coverage = panel.locator('ul.finding-coverage');
+  await expect(coverage).toContainText('1 of 2,841 decisions in the window carry the live inputs');
+  // ...and it stands above the table it explains.
+  const table = panel.locator('.class-table');
+  expect((await box(coverage)).y).toBeLessThan((await box(table)).y);
+  // One explanation per family, stated once above the rows it covers.
+  const decisionLegend = panel.locator('.family-legend').first();
+  await expect(panel.getByText(/500 comparable verdicts and a 95% lower bound over 0.02 bb/)).toHaveCount(1);
+  expect((await box(decisionLegend)).y).toBeLessThan((await box(table)).y);
+  await expect(panel.getByText(/A calibration row is the price correction/)).toHaveCount(1);
+  await expect(panel.getByText(/a shift and its counter-shift are one finding/)).toHaveCount(1);
+  // The classes are a table, and the numbers the rows spelled out in prose are its columns.
+  const filed = table.locator('tr.class-filed');
+  await expect(filed).toContainText('turn raise');
+  await expect(filed.locator('td').nth(1)).toHaveText('6,643');
+  await expect(filed.locator('td').nth(2)).toHaveText('+0.057');
+  await expect(filed.locator('td').nth(3)).toHaveText('0.021..0.093');
+  await expect(filed.locator('td').nth(4)).toHaveText('12,000 · 55.4%');
+  await expect(filed.locator('td').nth(5)).toHaveText('P0 · filed · 0281-turn-raise');
+  // A class under the floor says so on its row instead of being listed as a finding.
+  await expect(table.locator('tr.class-thin')).toContainText('not yet decidable');
+  await expect(table.locator('tr.class-never-queued').locator('td').nth(4)).toHaveText('unknown');
+  await expect(panel.getByText('turn raise costs 0.057 bb per decision')).toHaveCount(0);
+  // The families the table does not cover are still listed, with their own explanations.
+  await expect(panel.getByText(/first preflop action shifted: raise fell 24\.8 points/)).toBeVisible();
+  await expect(panel.getByText('Bully takes 12.4 bb per 100 from us')).toBeVisible();
+  await expect(panel.getByText(/flop:bet:big realizes \+2\.4 bb/)).toBeVisible();
+});
+
 test('the Autonomy panel names stale loops instead of hiding them behind a healthy summary', async ({page}) => {
   await fleet(page, state => {
     state.training.stale_loops = [
