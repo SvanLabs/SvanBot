@@ -24,6 +24,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`main` keeps itself current** (#370). `main` is the released line — what everyone who installs
+  SvanBot runs and updates from — and it moved only when someone remembered to open the promotion
+  pull request, so it drifted: it was promoted once and was behind again within the hour.
+  `scripts/promote.sh` now keeps a promotion pull request open with auto-merge armed, and
+  `.github/workflows/promote.yml` runs it whenever `dev`'s gate goes green, so `main` follows green
+  `dev` by itself and never carries a build that failed.
 - The Claude workflows act as the SvanLabs GitHub App (`svanlabs[bot]`) (#355).
 
 ### Fixed
