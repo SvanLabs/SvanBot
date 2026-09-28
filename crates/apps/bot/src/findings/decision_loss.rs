@@ -222,10 +222,13 @@ pub fn tested_classes(short: &Classes, long: &Classes) -> Classes {
 /// window, the total given up, the 95% interval on the per-decision mean, and the tally of decisions
 /// that gave up at least [`BIG_GAP_BB`] — the number a reader acts on when the class is mostly zeros.
 ///
-/// 0355: it ends with the population the verdicts are drawn from and the filter that admits them, so a
-/// class's mean prints as the mean of the audited sub-population it is and not as the class's (lesson
-/// 39). A class with no deep re-solve at all has no mean to print and is left to [`measurements`]'
-/// `never queued` row.
+/// 0355: it ends with the population the verdicts are drawn from, so a class's mean prints as the mean
+/// of the audited sub-population it is and not as the class's (lesson 39). A class with no deep
+/// re-solve at all has no mean to print and is left to [`measurements`]' `never queued` row.
+///
+/// #321: the filter that admits the verdicts, and what it takes to file, are the same sentence for
+/// every class in the table — they live in [`decision_legend`] and are stated once per scan, where the
+/// rows used to repeat them word for word.
 pub fn class_evidence(key: &ClassKey, s: &ClassStat, cover: &Coverage) -> String {
     let interval = match s.interval() {
         Some((lo, hi)) => format!("95% {lo:.3}..{hi:.3}"),
@@ -243,19 +246,28 @@ pub fn class_evidence(key: &ClassKey, s: &ClassStat, cover: &Coverage) -> String
     )
 }
 
+/// The explanation every decision-loss row and the class table share (#321): what a class is, which
+/// decisions the deep re-solve takes at all, and what a class has to measure before it files. Rendered
+/// once above the table, and carried in full by the ticket a `P0` files, so the ticket is readable on
+/// its own without thirty copies of this on the panel.
+pub fn decision_legend(min_pot_bb: f64) -> String {
+    format!(
+        "A class is one street and action family; its verdicts are deep re-solves graded on records that carry the live inputs \
+         (replay v{LIVE_INPUTS_REPLAY_VERSION} or later), and the deep re-solve takes {}. A class files as a loss only when it has \
+         {GAP_MIN_DECISIONS} comparable verdicts and the 95% lower bound of its per-decision gap clears {GAP_BB_PER_DECISION} bb \
+         per decision; under that it is a measurement, not a leak (0269). `Decisions in window` is the class's whole population, \
+         counted over the same window its verdicts were tested on.",
+        audit_filter(min_pot_bb)
+    )
+}
+
 /// The population clause of a row that has a mean (0355): how much of the class the deep re-solve
-/// actually saw, out of the class's whole population in the same window, and the filter that decides
-/// which decisions it sees at all.
+/// actually saw, out of the class's whole population in the same window.
 fn coverage_text(key: &ClassKey, n: i64, cover: &Coverage) -> String {
-    let filter = audit_filter(cover.min_pot_bb);
     match cover.decisions {
-        None => format!("coverage unknown (the class's decision counts were unreadable); the deep re-solve takes {filter}"),
-        Some(0) => format!("no {} decisions recorded in the window; the deep re-solve takes {filter}", key.label()),
-        Some(d) => format!(
-            "{n} of {d} decisions in the {} class in the window ({:.2}%); the deep re-solve takes {filter}",
-            key.label(),
-            100.0 * n as f64 / d as f64
-        ),
+        None => "coverage unknown (the class's decision counts were unreadable)".to_string(),
+        Some(0) => format!("no {} decisions recorded in the window", key.label()),
+        Some(d) => format!("{n} of {d} decisions in the {} class in the window ({:.2}%)", key.label(), 100.0 * n as f64 / d as f64),
     }
 }
 
@@ -263,10 +275,9 @@ fn coverage_text(key: &ClassKey, n: i64, cover: &Coverage) -> String {
 /// the third state, which 0351 found `preflop:check` in — a class whose row used to print a near-zero
 /// mean, indistinguishable from a class that was measured and found clean.
 ///
-/// It names the state, the class's whole population and the filter it never passes, then the pot
-/// distribution that explains it: how big the class's spots are, against the pot bar the filter tests.
+/// It names the state and the class's whole population, then the pot distribution that explains it:
+/// how big the class's spots are, against the pot bar [`decision_legend`] states (0355, #321).
 fn never_queued_evidence(key: &ClassKey, s: &ClassStat, cover: &Coverage) -> String {
-    let filter = audit_filter(cover.min_pot_bb);
     let population = match cover.decisions {
         Some(d) => format!("0 of {d} decisions in the {} class over the last {} days", key.label(), s.days),
         None => format!("the {} class's decisions over the last {} days could not be counted", key.label(), s.days),
@@ -282,8 +293,7 @@ fn never_queued_evidence(key: &ClassKey, s: &ClassStat, cover: &Coverage) -> Str
         ),
     };
     format!(
-        "never queued: {population} carry a deep re-solve this instrument may use (replay v{LIVE_INPUTS_REPLAY_VERSION} or later), and the \
-         analyst's filter takes {filter}. {pots} [{}]",
+        "never queued: {population} carry a deep re-solve this instrument may use (replay v{LIVE_INPUTS_REPLAY_VERSION} or later). {pots} [{}]",
         key.label()
     )
 }
@@ -350,5 +360,89 @@ pub fn measurements(classes: &Classes, filed: &[Finding], cover: &Coverages) -> 
         })
         .collect();
     out.sort_by(|a, b| b.value.total_cmp(&a.value));
+    out
+}
+
+/// One class as a table row (#321): the class, what its window measured, and what that made it. The
+/// panel renders the table from these rather than out of the rows' evidence strings, and the state is
+/// decided here, where the floor is — the panel never has to guess whether a number was decidable.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct ClassRow {
+    /// The class's finding id (`decision-loss:turn:call`), the signature the ticket carries.
+    pub id: String,
+    /// How to name the class to a reader (`turn call`, `all_in, every street`).
+    pub label: String,
+    /// Comparable verdicts in the window the class was tested on.
+    pub n: i64,
+    /// The window those verdicts cover, days.
+    pub days: i64,
+    /// Big blinds given up over the window.
+    pub total: f64,
+    /// Big blinds given up per decision.
+    pub mean: f64,
+    /// The 95% interval on [`mean`](Self::mean), or `None` on a single verdict.
+    pub lo: Option<f64>,
+    /// The upper end of that interval.
+    pub hi: Option<f64>,
+    /// Verdicts that gave up at least [`BIG_GAP_BB`].
+    pub big: i64,
+    /// The class's decisions in the same window, `None` when the count could not be read.
+    pub decisions: Option<i64>,
+    /// What the row is: `filed` (a `P0` loss), `measured` (enough verdicts, nothing over the floor),
+    /// `thin` (under [`GAP_MIN_DECISIONS`], so not yet decidable) or `never queued` (no deep re-solve
+    /// at all, 0355).
+    pub state: String,
+}
+
+/// The classes the scan measured, as table rows (#321), ordered so the reader meets them in the order
+/// they can be trusted: the filed losses by size, then the measured classes, then the ones under the
+/// floor with the most evidence first, then the ones the deep re-solve never reached.
+pub fn class_rows(classes: &Classes, filed: &[Finding], cover: &Coverages) -> Vec<ClassRow> {
+    let state = |key: &ClassKey, s: &ClassStat| {
+        if s.n == 0 {
+            "never queued"
+        } else if filed.iter().any(|f| f.id == key.id()) {
+            "filed"
+        } else if s.n < GAP_MIN_DECISIONS {
+            "thin"
+        } else {
+            "measured"
+        }
+    };
+    let mut out: Vec<ClassRow> = classes
+        .iter()
+        .map(|(key, s)| {
+            let c = cover.get(key).copied().unwrap_or_default();
+            let interval = s.interval();
+            ClassRow {
+                id: key.id(),
+                label: key.label(),
+                n: s.n,
+                days: s.days,
+                total: s.total,
+                mean: s.mean(),
+                lo: interval.map(|(lo, _)| lo),
+                hi: interval.map(|(_, hi)| hi),
+                big: s.big,
+                decisions: c.decisions,
+                state: state(key, s).to_string(),
+            }
+        })
+        .collect();
+    let tier = |s: &str| match s {
+        "filed" => 0,
+        "measured" => 1,
+        "thin" => 2,
+        _ => 3,
+    };
+    out.sort_by(|a, b| {
+        tier(&a.state).cmp(&tier(&b.state)).then_with(|| match a.state.as_str() {
+            // Under the floor there is no rate to rank by, only how much was measured: a class with
+            // 499 verdicts is nearer to decidable than one with three, and ranking their means would
+            // read noise as signal — the panel this table replaces did exactly that.
+            "thin" | "never queued" => b.n.cmp(&a.n),
+            _ => b.mean.total_cmp(&a.mean),
+        })
+    });
     out
 }

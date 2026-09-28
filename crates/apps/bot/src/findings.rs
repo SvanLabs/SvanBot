@@ -30,6 +30,10 @@ pub use decision_loss::*;
 mod snapshot;
 pub use snapshot::*;
 
+/// Our own preflop mix against the six days before it (0332), re-exported for the same reason.
+mod style_drift;
+pub use style_drift::{DRIFT_POINTS, DRIFT_Z, style_drift, style_drift_legend};
+
 /// Store key holding the current findings.
 pub const FINDINGS_KEY: &str = "findings.v1";
 
@@ -82,6 +86,18 @@ pub struct Scan {
     pub findings: Vec<Finding>,
     /// The questions the scan could not answer (no samples yet), so an empty scan is not silent.
     pub unanswered: Vec<String>,
+    /// What the decision-cost instrument could not count, in the reader's terms (#321): how much of the
+    /// window's re-solves carry no live inputs, and how far the best comparable class is from the
+    /// floor. The panel leads with these — thirty class rows that cannot be decided are worth less than
+    /// the sentence saying why — while [`unanswered`](Self::unanswered) keeps the rest.
+    pub coverage: Vec<String>,
+    /// Every class the decision-cost instrument measured, as the panel's table (#321). Empty when the
+    /// instrument could not read, where the panel falls back to the findings list.
+    pub classes: Vec<ClassRow>,
+    /// The explanation a family of findings shares, keyed by an id prefix (`decision`, `calibration`,
+    /// `style-drift`). A row no longer carries it (#321), so the panel states it once above the family
+    /// and a filed ticket adds it back — see [`legend_for`].
+    pub legends: BTreeMap<String, String>,
     /// Comparable decisions behind each decision-loss class this scan measured, by finding id, so a
     /// finding that clears can say whether it was measured under the floor or no longer measured. The
     /// count is from the window the class was *tested* on (0345), so a class that was measured on the
@@ -130,48 +146,6 @@ pub fn nemesis(h2h: &std::collections::HashMap<String, HeadToHead>) -> Vec<Findi
         .collect()
 }
 
-/// Smallest change in a first-preflop-action share, in percentage points, that is a style drift.
-pub const DRIFT_POINTS: f64 = 5.0;
-/// Standard errors a drift must clear: both windows hold thousands of hands, so only a real shift passes.
-pub const DRIFT_Z: f64 = 5.0;
-
-/// The style-drift findings (0332): the share of hands whose first preflop decision was each action,
-/// the last day against the days before. On 2026-09-26 a self-calibration rule change took first-in
-/// raising from 40% of hands to 3% in an hour, and nothing noticed: a shift that size comes from a
-/// rule or parameter, not the cards. `P1`: a risk to look at, never a ticket on its own.
-pub fn style_drift(recent: &[(String, i64)], baseline: &[(String, i64)]) -> Vec<Finding> {
-    let total = |w: &[(String, i64)]| w.iter().map(|r| r.1).sum::<i64>().max(0) as f64;
-    let (nr, nb) = (total(recent), total(baseline));
-    if nr < 1.0 || nb < 1.0 {
-        return Vec::new();
-    }
-    let share = |w: &[(String, i64)], a: &str| w.iter().filter(|r| r.0 == a).map(|r| r.1).sum::<i64>() as f64;
-    let mut actions: Vec<&str> = recent.iter().chain(baseline).map(|r| r.0.as_str()).collect();
-    actions.sort_unstable();
-    actions.dedup();
-    actions
-        .into_iter()
-        .filter_map(|a| {
-            let (pr, pb) = (share(recent, a) / nr, share(baseline, a) / nb);
-            let pooled = (share(recent, a) + share(baseline, a)) / (nr + nb);
-            let se = (pooled * (1.0 - pooled) * (1.0 / nr + 1.0 / nb)).sqrt();
-            let points = (pr - pb) * 100.0;
-            (points.abs() >= DRIFT_POINTS && se > 0.0 && ((pr - pb) / se).abs() >= DRIFT_Z).then(|| {
-                Finding::new(
-                    &format!("style-drift:preflop:{a}"),
-                    "P1",
-                    &format!("first preflop action {a}: {:.1}% of hands in the last day, {:.1}% the six days before", pr * 100.0, pb * 100.0),
-                    format!(
-                        "{nr:.0} hands against {nb:.0}: a shift this size comes from a rule, parameter or calibration change, not the cards — check the releases, the champion and `review margins` (0332)"
-                    ),
-                    points,
-                    0.0,
-                )
-            })
-        })
-        .collect()
-}
-
 /// The calibration findings: a category's realized result against its *uncorrected* price, over
 /// every settled decision at every pot size (the pricing population, 0346). The fitted quantity:
 /// live play records each sample as `candidate.ev - candidate.bias`, so the residual is what
@@ -187,12 +161,22 @@ pub fn mispriced(calibration_off: &[(String, i64, f64)]) -> Vec<Finding> {
             &format!("calibration:{category}"),
             "P2",
             &format!("{category} realizes {residual:+.1} bb over its uncorrected price"),
-            format!("{n} settled decisions at every pot size — realized minus the uncorrected price, the residual self-calibration is fitted from, not the price live play corrects against; `review margins` reads it at the decision margin and `review wiring` counts the choices the correction decides. A measurement, not a loss: only the deep re-solve says a choice cost chips"),
+            format!("{n} settled decisions at every pot size"),
             *residual,
             0.0,
         ));
     }
     out
+}
+
+/// The explanation the calibration rows share (#321), stated once above them: what the residual is
+/// measured against, what reads it, and why it is a measurement and not a loss.
+pub fn calibration_legend() -> String {
+    "Realized minus the uncorrected price, the residual self-calibration is fitted from — not the \
+     price live play corrects against, and not the audit's big spots. `review margins` reads it at the \
+     decision margin and `review wiring` counts the choices the correction decides. A measurement, not \
+     a loss: only the deep re-solve says a choice cost chips (0269)."
+        .to_string()
 }
 
 /// Run every instrument over the store and return what the fleet found about itself.
@@ -202,6 +186,7 @@ pub fn mispriced(calibration_off: &[(String, i64, f64)]) -> Vec<Finding> {
 /// producing an empty finding list.
 pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, now: f64) -> Scan {
     let mut unanswered = Vec::new();
+    let mut coverage = Vec::new();
     let mut findings = Vec::new();
     let mut sampled = BTreeMap::new();
     let mut unreadable = Vec::new();
@@ -209,7 +194,11 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
     // calibration summary as it was read, both empty when their read failed — which is what happened,
     // and is what the row then says.
     let mut classes = Classes::new();
+    let mut rows_out: Vec<ClassRow> = Vec::new();
     let mut calibration_read: Vec<sv10_store::store::CalibrationRow> = Vec::new();
+    // The analyst's pot floor, read once: it is what the class table's legend names and what the
+    // coverage of every class is measured against.
+    let floor = analyst_floor(store);
 
     // The decision-cost instrument, on the verdicts whose records carry the live inputs (0316).
     //
@@ -229,7 +218,7 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
             let counts = |since: &str| store.decision_counts_since(since).ok();
             let populations = counts(&long_since).zip(counts(&short_since)).map(|(l, s)| Populations::new(&l, &s));
             if populations.is_none() {
-                unanswered.push("decision loss: the classes' decision counts were unreadable, so coverage is unknown this pass".into());
+                coverage.push("the classes' decision counts were unreadable, so coverage is unknown this pass".into());
             }
             // Classes the population holds and the verdicts do not (0351's `preflop:check`) are tested with
             // nothing measured, so they report `never queued` rather than taking no row at all.
@@ -237,7 +226,7 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
                 Some(p) => p.seeded(tested),
                 None => tested,
             };
-            let cover = coverages(&tested, populations.as_ref(), &class_pots(rows.iter()), analyst_floor(store));
+            let cover = coverages(&tested, populations.as_ref(), &class_pots(rows.iter()), floor);
             if excluded > 0 {
                 // Name the evidence that *is* comparable, and how far the best of it is from the floor
                 // (0344): the excluded count alone cannot tell a reader whether the instrument is about
@@ -249,8 +238,8 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
                     Some((ClassKey::Spot { street, action }, c)) => format!(" (largest {street}:{action}, {})", c.n),
                     _ => String::new(),
                 };
-                unanswered.push(format!(
-                    "decision loss: {excluded} of {} re-solves in the last {DECISION_LOSS_DAYS} days graded records without the live inputs \
+                coverage.push(format!(
+                    "{excluded} of {} re-solves in the last {DECISION_LOSS_DAYS} days graded records without the live inputs \
                      (before replay v{LIVE_INPUTS_REPLAY_VERSION}) and are not counted; {comparable} comparable verdicts \
                      against the {GAP_MIN_DECISIONS} a finding needs{largest}",
                     rows.len()
@@ -260,11 +249,12 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
             // tested and a class tested on the long window cannot read as unmeasured.
             sampled = tested.iter().map(|(key, c)| (key.id(), c.n)).collect();
             let filed = decision_losses(&tested, &cover);
+            rows_out = class_rows(&tested, &filed, &cover);
             findings.extend(measurements(&tested, &filed, &cover));
             findings.extend(filed);
             classes = tested;
         }
-        Ok(_) => unanswered.push(format!("decision loss: no analyst re-solves in the last {DECISION_LOSS_DAYS} days")),
+        Ok(_) => coverage.push(format!("no analyst re-solves in the last {DECISION_LOSS_DAYS} days")),
         Err(e) => {
             unanswered.push(format!("decision loss: the analyst's re-solves were unreadable ({e}); last findings kept"));
             // Both families the instrument produces: a failed read leaves its measurements unknown too.
@@ -316,7 +306,26 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
     // correction table it records is overwritten by the next learner cycle, so without it a finding
     // cannot be re-derived from its own ticket.
     let snapshot = scan_payload(store, &calibration_read, &classes, &findings, &mut unanswered);
-    Scan { at: now, findings, unanswered, sampled, unreadable, snapshot }
+    // The explanations the rows no longer repeat (#321), one per family. They are static descriptions
+    // of the instruments, so they are stated even on a pass whose read failed: the findings that carry
+    // over from the last pass are the ones that still need explaining.
+    let legends = BTreeMap::from([
+        ("decision".to_string(), decision_legend(floor)),
+        ("calibration".to_string(), calibration_legend()),
+        ("style-drift".to_string(), style_drift_legend()),
+    ]);
+    Scan { at: now, findings, unanswered, coverage, classes: rows_out, legends, sampled, unreadable, snapshot }
+}
+
+/// The shared explanation behind a finding (#321), from a scan's own legend map: the longest key that
+/// prefixes its id, so `decision-loss:turn:call` and `decision-measurement:turn:call` read the same
+/// legend without the scan having to name either family twice.
+pub fn legend_for<'a>(legends: &'a BTreeMap<String, String>, id: &str) -> Option<&'a str> {
+    legends
+        .iter()
+        .filter(|(prefix, _)| id.starts_with(prefix.as_str()))
+        .max_by_key(|(prefix, _)| prefix.len())
+        .map(|(_, text)| text.as_str())
 }
 
 /// Merge this scan into the stored set: a finding already known keeps its `since` and its ticket, a
@@ -350,128 +359,16 @@ pub fn merge(previous: &Value, scan: &Scan) -> Value {
         .filter(|o| !merged.iter().any(|m| m.id == o.id))
         .map(|o| json!({"id": o.id, "title": o.title, "ticket": o.ticket, "measured": scan.sampled.get(&o.id)}))
         .collect();
-    json!({"at": scan.at, "findings": merged, "cleared": cleared, "unanswered": scan.unanswered})
+    // The table and the coverage notes are what this pass measured, not a set that ages like the
+    // findings: a failed read leaves them empty and the panel falls back to the carrying-over findings
+    // list, rather than printing a table from before the failure as if it were this pass's.
+    json!({"at": scan.at, "findings": merged, "cleared": cleared, "unanswered": scan.unanswered,
+           "coverage": scan.coverage, "classes": scan.classes, "legends": scan.legends})
 }
 
-/// The findings the fleet should file tickets for: the new `P0` ones, at most `per_scan` of them.
-pub fn to_file(current: &Value, per_scan: usize) -> Vec<Finding> {
-    let findings: Vec<Finding> = serde_json::from_value(current.get("findings").cloned().unwrap_or(json!([]))).unwrap_or_default();
-    findings.into_iter().filter(|f| f.severity == "P0" && f.ticket.is_none()).take(per_scan).collect()
-}
-
-/// The ticket a finding files, in the tracker's own format.
-pub fn ticket_text(finding: &Finding, now: f64) -> String {
-    let date = chrono::DateTime::from_timestamp(now as i64, 0).map(|t| t.format("%Y-%m-%d").to_string()).unwrap_or_default();
-    format!(
-        "---\ntype: wayfinder:task\nstatus: open\npriority: {sev}\nassignee: fleet\nlabels: [found-by-fleet, decisions]\ncreated: {date}\nblocks: []\nblocked_by: []\n---\n\n## Question\n\n{title}\n\nFound by the fleet's own instruments on {date} (0273), no session involved: {evidence}.\n\nThe finding's signature is `{id}`, so a repeat is recognised as a repeat.\n\nThe threshold is {GAP_BB_PER_DECISION} bb per decision over at least {GAP_MIN_DECISIONS} decisions —\nthe floor at which a per-decision loss is larger than the instrument's own noise. The class's 95% lower\nbound has to clear it (0345), over the last {GAP_WINDOW_DAYS} days or, for a class that cannot reach the\nfloor there, over the last {DECISION_LOSS_DAYS} days. This finding was filed\nautomatically; it closes itself when the class stops reproducing.\n",
-        sev = finding.severity,
-        date = date,
-        title = finding.title,
-        id = finding.id,
-        evidence = finding.evidence
-    )
-}
-
-/// Why a cleared finding cleared, when it is not "measured and under the floor": `measured` is the
-/// comparable decisions its class had in the scan that cleared it, over the window that scan tested it
-/// on (0345: the short one when that holds [`GAP_MIN_DECISIONS`], else the retention-long one — so
-/// "under the floor" means under it in the window the class would have been filed on). Under
-/// [`GAP_MIN_DECISIONS`] the class was not measured at all, and saying it "stopped reproducing" would
-/// be a claim nobody tested (0316: the evidence behind 0282–0284 was graded on records without the
-/// live inputs).
-pub fn cleared_reason(measured: Option<i64>) -> Option<String> {
-    let n = measured.unwrap_or(0);
-    (n < GAP_MIN_DECISIONS).then(|| {
-        format!(
-            "the class now has {n} decisions graded on records that carry the live inputs (replay v{LIVE_INPUTS_REPLAY_VERSION}+, 0316), \
-             under the {GAP_MIN_DECISIONS} a verdict needs: the evidence this finding rested on is no longer counted, or no longer \
-             in the window. It was not measured to have stopped; the scan files it again if it reproduces on comparable records"
-        )
-    })
-}
-
-/// The note a cleared finding leaves on its ticket; `reason` is [`cleared_reason`] when the class was
-/// not measured, `None` for a class measured under the floor.
-pub fn cleared_text(finding: &Finding, reason: Option<&str>, now: f64) -> String {
-    let date = chrono::DateTime::from_timestamp(now as i64, 0).map(|t| t.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default();
-    let (id, title) = (finding.id.clone(), finding.title.clone());
-    match reason {
-        Some(why) => format!(
-            "\n## Resolution ({date})\n\nThe fleet's own scan no longer measures `{id}` ({title}): {why}. Closed by the finding loop\n(0273), not by a session.\n"
-        ),
-        None => format!(
-            "\n## Resolution ({date})\n\nThe fleet's own scan stopped reproducing `{id}` ({title}): the class is no longer above\n{GAP_BB_PER_DECISION} bb per decision over {GAP_MIN_DECISIONS} decisions. Closed by the finding loop (0273),\nnot by a session.\n"
-        ),
-    }
-}
-
-/// File (or close) the tickets a scan implies, in the wayfinder ticket directory under `root`.
-///
-/// The fleet writing its own board is the point: a leak that only exists until the next session is a
-/// leak that costs chips until someone happens to look. Two guards keep it honest — a file that
-/// already exists is never overwritten, and only `P0` findings file.
-pub fn write_tickets(root: &std::path::Path, current: &Value, now: f64) -> (Vec<String>, Vec<String>) {
-    let dir = root.join(".scratch").join("svanbot10").join("issues");
-    if std::fs::create_dir_all(&dir).is_err() {
-        return (vec![], vec![]);
-    }
-    let mut filed = Vec::new();
-    let mut closed = Vec::new();
-    let store: fn(&Finding) -> String = |f| f.ticket.clone().unwrap_or_default();
-    for finding in to_file(current, MAX_NEW_TICKETS_PER_SCAN) {
-        let id = next_ticket_id(&dir);
-        let path = dir.join(format!("{id}-{}.md", slug(&finding.id)));
-        // Never overwrite: a ticket is a person's (or the fleet's) record.
-        if std::fs::write(&path, ticket_text(&finding, now)).is_ok() {
-            filed.push(format!("{id}-{}", slug(&finding.id)));
-        }
-    }
-    // A finding that cleared closes the ticket it filed, with the evidence for closing it.
-    for cleared in current.get("cleared").and_then(|c| c.as_array()).into_iter().flatten() {
-        let (Some(name), Some(id)) = (cleared["ticket"].as_str(), cleared["id"].as_str()) else {
-            continue;
-        };
-        if name.is_empty() {
-            continue;
-        }
-        let path = dir.join(format!("{name}.md"));
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
-        if text.contains("status: resolved") {
-            continue;
-        }
-        let finding = Finding::new(id, "P0", cleared["title"].as_str().unwrap_or(id), String::new(), 0.0, now);
-        let updated = text
-            .replace("status: open", "status: resolved")
-            .replace("assignee: fleet", "assignee: fleet\nresolved_by: the finding loop (0273)")
-            + &cleared_text(&finding, cleared_reason(cleared["measured"].as_i64()).as_deref(), now);
-        if std::fs::write(&path, updated).is_ok() {
-            closed.push(name.to_string());
-        }
-    }
-    let _ = store;
-    (filed, closed)
-}
-
-/// At most this many tickets one scan may file, so a noisy instrument cannot flood the board.
-pub const MAX_NEW_TICKETS_PER_SCAN: usize = 3;
-
-/// The next free ticket number in the directory.
-pub fn next_ticket_id(dir: &std::path::Path) -> String {
-    let highest = std::fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| e.file_name().to_str().map(str::to_string))
-        .filter_map(|n| n.get(..4).and_then(|p| p.parse::<u32>().ok()))
-        .max()
-        .unwrap_or(0);
-    format!("{:04}", highest + 1)
-}
-
-/// A file name for a finding id: `decision-loss:turn:raise` becomes `decision-loss-turn-raise`.
-pub fn slug(id: &str) -> String {
-    id.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect()
-}
+/// The ticket path (0273), re-exported for the same reason the instruments above are.
+mod tickets;
+pub use tickets::*;
 
 #[cfg(test)]
 mod tests;
