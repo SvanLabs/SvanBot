@@ -29,6 +29,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The updates panel keeps one run to a statement** (#320). Four things on the Releases card
+  contradicted each other. The first was fixed in #351 (a finished run's `elapsed` is its duration,
+  not the age of its record); the card now says when as well — `finished 4 min ago` — so the last run
+  cannot be read as this one. A failed check rendered the incoming-commit list it could not have
+  refreshed with nothing saying so: the check carries `fetched_at`, the time of the last fetch that
+  worked, and the list names it. `Update complete` and `Checkout: Uncommitted changes` sat in one
+  panel as though they were about the same run: the row is `Next update`, and its tooltip says that
+  an update builds from this checkout, will not start while build inputs are uncommitted, and that
+  the fleet keeps playing the installed build — advice an operator of a playing machine can act on,
+  not a demand to commit. And the check's failure line is in operator terms ("GitHub could not be
+  reached from this host — no network, or it is offline"), with the tool's own wording in the tooltip.
+
 - **The self-calibration bias column is a measurement on every row** (#318). One cell held three kinds
   of thing — a number when a correction was applied, `learning` while a spot was under `MIN_SAMPLES`,
   and `calibrated` when it was not — so a spot that had settled to no correction read as a badge, and

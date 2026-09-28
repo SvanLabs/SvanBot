@@ -23,10 +23,27 @@ function clock(seconds: number | null | undefined): string {
   return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` : `${s}s`;
 }
 
-function ago(epochSecs: number | undefined): string {
+function ago(epochSecs: number | null | undefined): string {
   if (!epochSecs) return 'never';
   const s = Math.max(0, Date.now() / 1000 - epochSecs);
   return s < 90 ? 'just now' : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+}
+
+/** What a failed check means for the operator, in their terms (#320). The tool's own wording — the
+ *  last line of `scripts/update.sh --check`'s stderr, kept in the title and the log — names the
+ *  mechanism ("could not fetch origin/main (network or credentials)"), which is not a next step. */
+function checkFailFix(error: string): string {
+  const e = error.toLowerCase();
+  if (/could not fetch|resolve host|network|timed out|connection|unreachable/.test(e)) {
+    return 'GitHub could not be reached from this host — no network, or it is offline. The fleet keeps playing the installed build, and the next automatic check retries in 30 minutes.';
+  }
+  if (/authentication|username|password|403|401|permission|credential|publickey/.test(e)) {
+    return 'GitHub refused this checkout\'s credentials, so no update can fetch until an operator signs the host in again. The fleet keeps playing the installed build.';
+  }
+  if (/not a git repository|no such file|not found/.test(e)) {
+    return 'The checkout is not readable from here, so the update check cannot run on this host. The fleet keeps playing the installed build.';
+  }
+  return 'The update check did not answer — the tool\'s own words are in the title. The fleet keeps playing the installed build, and the next automatic check retries in 30 minutes.';
 }
 
 function StageIcon({ stage }: { stage: ReleaseStage }) {
@@ -50,7 +67,7 @@ export function UpdateProgress({ progress }: { progress: ReleaseProgress }) {
   return <section className={`update-progress ${state}`} aria-label="Update progress">
     <div className="update-progress-head">
       <strong>{title}</strong>
-      <span className="mono">{state === 'running' ? `${percent.toFixed(0)}% · ${clock(progress.elapsed)} elapsed · about ${clock(progress.eta)} left` : state === 'installed' ? `${progress.from ?? '?'} → ${progress.commit ?? '?'} in ${clock(progress.elapsed)}` : state === 'failed' ? `stopped after ${clock(progress.elapsed)}` : ''}</span>
+      <span className="mono">{state === 'running' ? `${percent.toFixed(0)}% · ${clock(progress.elapsed)} elapsed · about ${clock(progress.eta)} left` : state === 'installed' ? `${progress.from ?? '?'} → ${progress.commit ?? '?'} in ${clock(progress.elapsed)}${progress.finished_at ? ` · finished ${ago(progress.finished_at)}` : ''}` : state === 'failed' ? `stopped after ${clock(progress.elapsed)}${progress.finished_at ? ` · ${ago(progress.finished_at)}` : ''}` : ''}</span>
     </div>
     {/* Nothing ran and nothing will: no bar, no stages, no hot swap — the message says why (#394). */}
     {state !== 'current' && <>
@@ -190,13 +207,19 @@ export function UpdatesPanel() {
       <div><span>Installed</span><b className="mono">{data.installed.commit || 'unknown'}{data.installed.subject ? ` · ${data.installed.subject.length > 60 ? `${data.installed.subject.slice(0, 59)}…` : data.installed.subject}` : ''}</b></div>
       <div><span>Live build</span><b className="mono">{data.build.commit} · v{data.build.version}</b></div>
       <div><span>GitHub ({remote?.source ?? 'origin/main'})</span><b className={remote?.error ? 'negative' : pending ? 'amber' : 'positive'} title={remote?.error ?? ''}>{remote?.error ? 'check failed' : pending ? `${pending} update${pending === 1 ? '' : 's'} to install` : 'Up to date'}<small className="subtle"> · checked {ago(remote?.checked_at)}</small></b></div>
-      {data.dirty && <div><span>Checkout</span><b className="negative">Uncommitted changes — commit or discard them first</b></div>}
+      {/* `Next update`, not `Checkout`: this is what the next run cannot do, while the card below is
+          the run that already finished (#320). On a fleet host the checkout is a playing machine, so
+          the tooltip says what the operator can actually do about it. */}
+      {data.dirty && <div><span>Next update</span><b className="negative" title="An update builds from this checkout and will not start while crates/, web/ or Cargo files have uncommitted changes — the binary would not match any commit. Commit or discard them, or run scripts/release.sh by hand. The fleet keeps playing the installed build.">Blocked — uncommitted build inputs</b></div>}
     </div>
     {showProgress && progress && <UpdateProgress progress={progress}/>}
     {data.update_available && !active && <div className="update-banner"><ArrowUpCircle size={15}/><span>{pending} commit{pending === 1 ? '' : 's'} since <b className="mono">{data.installed.commit}</b> — one click downloads, builds, tests and installs them; the bots keep playing and swap between turns.</span><button className="button primary" disabled={data.dirty} onClick={() => setConfirming(true)}>Update</button></div>}
     <div className="settings-row"><span className="footnote">Checked for updates every 30 minutes.</span><button className="button" disabled={checking || active} onClick={check}><RefreshCw size={12} className={checking ? 'spin' : ''}/>{checking ? 'Checking…' : 'Check now'}</button></div>
-    {remote?.error && <p className="footnote negative">Update check failed: {remote.error}</p>}
+    {remote?.error && <p className="footnote negative" title={remote.error}>Update check failed. {checkFailFix(remote.error)}</p>}
     {groups.length > 0 && <section aria-label="Changelog since installed"><h3>What the update brings (since {data.installed.commit})</h3>
+      {/* The list is read from the local refs, so it is only as fresh as the last fetch that worked:
+          after a failed check it must not read as today's (#320). */}
+      {remote?.error && <p className="footnote">This list is the one the last successful check fetched{remote.fetched_at ? ` — ${ago(remote.fetched_at)}` : ''}. Today's commits are not in it.</p>}
       {groups.map(([group, entries]) => <div key={group}><h4 className="changelog-group">{group}</h4><ul className="changelog-list">{entries.map(e => <li key={e.commit}><span className="mono">{e.commit}</span> {e.subject}</li>)}</ul></div>)}
     </section>}
     {!groups.length && !data.update_available && <p className="footnote">Installed build is the newest{data.installed.at ? ` (installed ${time(data.installed.at, { date: true })})` : ''}.</p>}

@@ -169,6 +169,37 @@ fn range_and_status_read_a_real_repo() {
 }
 
 #[test]
+fn a_failed_check_keeps_the_last_successful_fetch_time() {
+    let dir = std::env::temp_dir().join(format!("sv10-update-fetched-{}", std::process::id()));
+    let (root, artifacts) = (dir.join("root"), dir.join("artifacts"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(root.join("scripts")).unwrap();
+    std::fs::create_dir_all(&artifacts).unwrap();
+    let script = root.join("scripts/update.sh");
+    // The check the panel runs is a fetch; a stub stands in for it here.
+    std::fs::write(&script, "echo '2 4f8372b'\n").unwrap();
+    let ok = run_update_check(&root, &artifacts);
+    assert_eq!((ok.behind, ok.commit.as_deref(), ok.error.as_deref()), (2, Some("4f8372b"), None));
+    assert_eq!(ok.fetched_at, Some(ok.checked_at), "a check that fetched stamps the tip it saw");
+    // One that cannot fetch keeps that stamp: the commit list the panel reads from the local refs is
+    // still the last one GitHub confirmed, and must be dated as such rather than as today's (#320).
+    std::fs::write(&script, "echo 'update: could not fetch origin/main (network or credentials)' >&2\nexit 1\n").unwrap();
+    let failed = run_update_check(&root, &artifacts);
+    assert!(failed.error.is_some(), "{failed:?}");
+    assert_eq!(failed.fetched_at, Some(ok.checked_at));
+    assert_eq!(last_check(&artifacts).and_then(|c| c.fetched_at), Some(ok.checked_at), "and it is what is stored");
+    // A record written before the field existed dates its list by its own check when it succeeded,
+    // and carries nothing when it did not.
+    let legacy = |body: &str| {
+        std::fs::write(artifacts.join("update-check.json"), body).unwrap();
+        run_update_check(&root, &artifacts).fetched_at
+    };
+    assert_eq!(legacy(r#"{"source":"origin/main","commit":"4f8372b","behind":2,"checked_at":900.0,"error":null}"#), Some(900.0));
+    assert_eq!(legacy(r#"{"source":"origin/main","commit":null,"behind":0,"checked_at":900.0,"error":"fetch failed"}"#), None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_finished_runs_elapsed_is_its_duration_not_its_age() {
     let now = 100_000.0;
     // Started 3000 s ago and took 120 s: the last save (`updated`) is the end of the run.
@@ -179,8 +210,12 @@ fn a_finished_runs_elapsed_is_its_duration_not_its_age() {
     for state in ["installed", "failed"] {
         let v = progress_view(&finished(state), &Value::Null, now);
         assert_eq!(v["elapsed"].as_f64(), Some(120.0), "{state} reports how long it took, not how long ago it ended: {v}");
+        // And when it ended, so the panel can date the card instead of contradicting the row below it
+        // that is about the *next* update (issue #320).
+        assert_eq!(v["finished_at"].as_f64(), Some(now - 2_880.0), "{state} carries the end of the run: {v}");
     }
-    // A running run has no recorded end: it still counts from `started` to now.
+    // A running run has no recorded end: it still counts from `started` to now, and dates nothing.
     let running = json!({"state": "running", "started": now - 150.0, "updated": now - 140.0, "stages": []});
     assert_eq!(progress_view(&running, &Value::Null, now)["elapsed"].as_f64(), Some(150.0));
+    assert!(progress_view(&running, &Value::Null, now)["finished_at"].is_null());
 }
