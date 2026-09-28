@@ -3,6 +3,8 @@
 
 use super::*;
 
+// The handler is one dispatch over the whole session's state; bundling it into a struct would only
+// rename the same borrows.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn handle(
     shared: &Arc<Shared>,

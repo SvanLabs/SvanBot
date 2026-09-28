@@ -67,8 +67,9 @@ fn fixture(path: &str) -> Fixture {
     match parsed {
         Some(v) => Fixture {
             source: path.to_string(),
-            params: serde_json::from_value(v["params"].clone()).expect("fixture params"),
-            models: serde_json::from_value(v["models"].clone()).expect("fixture models"),
+            params: serde_json::from_value(v["params"].clone()).unwrap_or_else(|e| die(&format!("{path}: `params` is not a Params: {e}"))),
+            models: serde_json::from_value(v["models"].clone())
+                .unwrap_or_else(|e| die(&format!("{path}: `models` is not a ModelStore: {e}"))),
             nn: serde_json::from_value::<Option<Mlp>>(v["nn"].clone()).ok().flatten().map(std::sync::Arc::new),
             decision_samples: v["decision_samples"].as_u64().unwrap_or(2_500) as usize,
             live_samples: v["live_samples"].as_u64().unwrap_or(400_000) as usize,
@@ -84,6 +85,12 @@ fn fixture(path: &str) -> Fixture {
             live_deal_chunks: 8,
         },
     }
+}
+
+/// A malformed input is the operator's to fix: name it and stop, rather than panic with a backtrace.
+fn die(msg: &str) -> ! {
+    eprintln!("bench: {msg}");
+    std::process::exit(2)
 }
 
 /// Process CPU seconds (user + system, every thread).

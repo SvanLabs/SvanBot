@@ -183,7 +183,7 @@ fn pdep_agrees_with_twin(start: CardMask) -> bool {
 /// sampled from the half-weighted range the `micro` deal case uses, so the masks carry the same
 /// 5 + 2k set bits the real loop's `used` carries.
 fn start_masks(k: usize, count: usize) -> Vec<CardMask> {
-    let dead = ["Ah", "Kd", "7s", "8s", "2c"].iter().fold(0, |m, s| m | Card::parse(s).unwrap().bit());
+    let dead = ["Ah", "Kd", "7s", "8s", "2c"].iter().fold(0, |m, s| m | Card::parse(s).expect("a literal card").bit());
     let sampler = ComboSampler::new(&top_range(0.5), dead);
     let mut rng = SmallRng::seed_from_u64(0x0354);
     (0..count)
@@ -238,6 +238,8 @@ fn cell(k: usize, rounds: usize, masks: &[CardMask]) -> Value {
                 let (t, sum) = match (arm, pdep) {
                     (0 | 1, _) => block(reject, seed, masks),
                     (2, _) => block(select_loop, seed, masks),
+                    // SAFETY: arm 3 takes this branch only when `pdep` is true, which is
+                    // `is_x86_feature_detected!("bmi2")` above — the one feature `block_pdep` enables.
                     (3, true) => unsafe { block_pdep(seed, masks) },
                     (3, false) => block(select_loop, seed, masks),
                     _ => block(probe, seed, masks),
