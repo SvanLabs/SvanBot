@@ -26,11 +26,12 @@ The dashboard is then at `http://127.0.0.1:5000` (host and port come from `.env`
 they say. There is no account, no signup and no cloud service: the whole system is these processes on
 this box.
 
-The clone lands on `dev`, the default branch — work lands there and pull requests go there. `main` is
-the released line, and moves only when `dev` is promoted to it. Updates follow one branch,
-`SVANBOT_UPDATE_BRANCH` (`main` by default), so `scripts/update.sh` fast-forwards a fresh clone onto
-the released line; an install that should follow development instead sets `SVANBOT_UPDATE_BRANCH=dev`
-in `.env` (the reference fleet does exactly that).
+The clone lands on `main`, the default branch — the released line, which moves only when `dev` is
+promoted to it. Work lands on `dev`: pull requests go there, and a pull request opened without a base
+targets `main`, so name `dev`. Updates follow one branch, `SVANBOT_UPDATE_BRANCH` (`main` by
+default), so `scripts/update.sh` fast-forwards a fresh clone onto the released line; an install that
+should follow development instead sets `SVANBOT_UPDATE_BRANCH=dev` in `.env` (the reference fleet
+does exactly that).
 
 That is one command to a working fleet, but **the first build is the wait** — a full workspace compile
 and a `cargo test` on the reference CPU, not two minutes. Later runs are incremental.
@@ -74,8 +75,8 @@ speed-only change must reproduce the reference simulation exactly. The gate enfo
 
 ## Docs
 
-These are the docs as `dev` has them — the branch you just cloned, and the one a change is made
-against.
+These are the docs as `dev` has them — the branch a change is made against, and where your pull
+request goes. `main`, the released line the clone landed on, is promoted from it.
 
 - [AGENTS.md](https://github.com/SvanLabs/SvanBot/blob/dev/AGENTS.md): the engineering brief — layout, the two hard invariants, the style the gate enforces.
 - [docs/README.md](https://github.com/SvanLabs/SvanBot/blob/dev/docs/README.md): the documentation map; which document answers which question.

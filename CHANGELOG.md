@@ -21,9 +21,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Dependabot opens grouped monthly updates.
 - **Cleanup every 6 hours** (`svanbot10-clean.timer`), no longer chained to the nightly archive:
   when the archive failed, cleanup silently stopped too.
+- **`scripts/units.sh`** renders the systemd user units for the checkout it is run from and installs
+  them (#15). The units in `scripts/` are templates that name no fixed directory, so an install under
+  any home directory gets units pointing at itself and moving one is a re-render instead of an edit.
+  `scripts/units.sh --check` names any installed unit that is missing or was rendered elsewhere, and
+  `scripts/status.sh` reports it.
 
 ### Changed
 
+- **`main` is the repository's default branch** (#402). It was `dev`, so the front page and a fresh
+  `git clone` showed the branch work lands on. `main` — the released line, promoted from a green
+  `dev` — is what a visitor and a new install should land on. Work still lands on `dev`, every pull
+  request still goes into it, and `claude-maintainer.yml` checks `dev` out by name now that the
+  default branch is no longer the one it works.
 - **`main` keeps itself current** (#370). `main` is the released line — what everyone who installs
   SvanBot runs and updates from — and it moved only when someone remembered to open the promotion
   pull request, so it drifted: it was promoted once and was behind again within the hour.

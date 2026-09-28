@@ -248,3 +248,25 @@
     lock non-blockingly and say it is held before waiting on it (`scripts/build-lock.sh`) — and keep
     the log of a stage that went over budget, because the next run truncates the only record of why
     it did.
+
+47. **A file that has to be hand-edited after every install is wrong on every machine but one.** The
+    systemd units shipped in `scripts/` named `/srv/svanbot10` — the reference machine's checkout —
+    in `WorkingDirectory`, `ExecStart`, `ExecStop` and `EnvironmentFile`. Nobody's install is there,
+    so the recipe in the runbook was `cp` followed by an edit, and the installed copies in
+    `~/.config/systemd/user/` were a fork of the tree with `%h/svanbot10` in them. A fork is what it
+    behaved like: a `git pull` that changed a unit changed nothing the machine would run, because the
+    file systemd reads had been edited away from the file git tracks, and neither side could tell.
+    Relocating a running deployment was blocked on it for the same reason — the units named the old
+    directory and nothing said so. *Rule*: ship the template, not one machine's copy. A path that
+    depends on where the software was installed is filled in at install time, from the directory the
+    installer is run from (`scripts/units.sh`), and the render is re-runnable and comparable, so
+    "are the installed units the ones this checkout would write?" is a question with an answer
+    (`--check`, reported by `scripts/status.sh`) rather than a diff nobody takes. The rendering
+    itself is where the second trap is: a path is arbitrary bytes, and every substitution operator
+    within reach reads some of them as syntax — `&` and `\1` in `sed` and `awk`, `&` in bash's own
+    `${v//pat/rep}` since 5.2 — so `/home/a & b/SvanBot` substituted with any of them puts the
+    placeholder back into the unit. Substitute literally, and escape into the target language's
+    rules on the way out (`%` is a systemd specifier and has to be doubled; a path with a space needs
+    the `Exec` line quoted). `scripts/tests/units.sh` renders a checkout under `od d %25 r & p` and
+    asks real systemd what it resolves to, because every one of those characters is legal in a home
+    directory.

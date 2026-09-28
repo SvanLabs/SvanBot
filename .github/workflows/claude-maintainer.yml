@@ -1,9 +1,10 @@
 # Keeps the repository moving when no one is at a keyboard (#19).
 #
 # Twice a day Claude takes the oldest open `agent-friendly` issue that no pull request closes yet,
-# fixes it on a branch cut from `dev`, runs the gate and opens a pull request into `dev` (the default
-# branch) with auto-merge on. The ruleset on `dev` and `main` requires the `check` job, so nothing
-# lands unless the full gate is green.
+# fixes it on a branch cut from `dev`, runs the gate and opens a pull request into `dev` — the branch
+# work lands on, which a scheduled run has to check out by name because the repository's default
+# branch is `main`, the released line. Auto-merge is on, and the ruleset on `dev` and `main` requires
+# the `check` job, so nothing lands unless the full gate is green.
 name: Claude maintainer
 
 on:
@@ -28,6 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # The job works `dev`'s issues and opens its pull request into `dev`. A scheduled run checks
+          # out the default branch, which is `main` — the released line — so the branch to work is
+          # named here rather than inherited: a branch cut from `main` would carry `main`'s promotion
+          # merge commits into the pull request with it.
+          ref: dev
           fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
@@ -81,8 +87,10 @@ jobs:
             3. Run `scripts/check.sh full`. If it fails and you cannot fix it, stop and comment on the
                issue with what you found instead of opening a pull request.
             4. Commit in the shape CONTRIBUTING.md describes, ending with
-               `Generated-by: claude-code/claude-opus-5`, push, and open a pull request from
-               .github/pull_request_template.md with `Closes #<issue>` and the same Generated-by line.
+               `Generated-by: claude-code/claude-opus-5`, push, and open a pull request into `dev`
+               from .github/pull_request_template.md with `Closes #<issue>` and the same Generated-by
+               line — `gh pr create --base dev`, because the base GitHub offers by default is `main`,
+               the released line, which takes no feature pull request.
             5. Turn on auto-merge: `gh pr merge <number> --auto --squash`.
 
             Never commit keys, email addresses or home-directory paths. A behaviour change to the bot

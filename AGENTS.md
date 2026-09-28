@@ -19,11 +19,13 @@ is `CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
 
 ## Branches
 
-`dev` is the default branch and where all work lands: cut your branch from `dev` and open the pull
-request into `dev` (squash merge). `main` is the released line — what everyone who installs SvanBot
-runs, and where their Update fetches from — and moves only when `dev` is promoted to it by a pull
-request from `dev` into `main`, merged with a merge commit so the two histories stay one. Promotion
-happens only when `dev` is green, so `main` never carries a build that failed. It is not yours to do
+`dev` is where all work lands: cut your branch from `dev` and open the pull request into `dev`
+(squash merge). `main` is the repository's default branch and the released line — what everyone who
+installs SvanBot runs, and where their Update fetches from — and moves only when `dev` is promoted to
+it by a pull request from `dev` into `main`, merged with a merge commit so the two histories stay
+one. The base GitHub offers for a new pull request is the default branch, so name `dev` explicitly:
+`gh pr create --base dev`. Promotion happens only when `dev` is green, so `main` never carries a
+build that failed. It is not yours to do
 and not yours to wait for: `scripts/promote.sh` keeps the promotion pull request open and armed, and
 `.github/workflows/promote.yml` runs it on a green `dev`, so merging your pull request into `dev` is
 the whole of it. Never open a feature pull request into `main`.

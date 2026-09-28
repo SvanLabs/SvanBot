@@ -50,6 +50,12 @@ for p in learner analyst; do pgrep -f "target/release/$p" >/dev/null && echo "$p
 sqlite3 "file:artifacts/svanbot10.db?mode=ro" "select 'decision audit 24h: ' || count(*) || ' decisions, ' || coalesce(round(100.0*sum(live_action = deep_action)/count(*),1),0) || '% same action, mean gap ' || coalesce(round(avg(gap_bb),2),0) || ' bb, queue ' || (select count(*) from audit_queue) from decision_audit where ts >= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-1 day');" 2>/dev/null
 [ -x target/release/archive ] && echo "archive: $(./target/release/archive list 2>/dev/null | tail -1)"
 systemctl --user list-timers svanbot10-archive.timer --no-pager 2>/dev/null | sed -n 2p
+# Installed units against the ones this checkout renders (#15): a unit written for another directory,
+# or left behind by a `git pull` that changed the template, runs the wrong checkout and says nothing
+# until it is needed. Silent unless units are installed here and they disagree.
+if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/svanbot10.service" ] && ! scripts/units.sh --check >/dev/null 2>&1; then
+  echo "systemd units: the installed copies are not the ones this checkout renders (scripts/units.sh)"
+fi
 # Pressure stall information (share of time tasks waited, 60 s average): CPU above ~20% or I/O "full"
 # above ~10% sustained means live play competes for the machine.
 printf 'pressure avg60: cpu %s%%, io full %s%%, memory full %s%%\n' \

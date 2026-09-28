@@ -47,7 +47,8 @@ docs page from `diagram:` fences in `docs/GUIDE.md`; keep the two in step.
 
 Supervision: `scripts/start.sh` runs the fleet under a crash-loop backoff supervisor (5 s doubling to
 5 min), the learner at `nice 15` with low I/O priority and the OOM killer's first choice, the results
-monitor, and log rotation; `scripts/svanbot10.service` starts it at boot.
+monitor, and log rotation; `scripts/svanbot10.service`, rendered for the checkout by
+`scripts/units.sh`, starts it at boot.
 
 ## Crates
 
