@@ -50,6 +50,15 @@ jobs:
       - name: Run Claude
         uses: anthropics/claude-code-action@v1
         with:
+          # The action hides the SDK's output by default, which is how the first run that got past the
+          # actor guard came to fail in 20.8 s saying only `is_error: true` (issue #398, run
+          # 36383892070: `"duration_ms": 410, "num_turns": 1, "total_cost_usd": 0, "modelUsage": {}`).
+          # That is the shape #338 was opened for on `claude-code-review.yml`, and the same line named
+          # its cause: `"api_error_status": 429`, `"error": "rate_limit"`. A scheduled job that fails
+          # without saying why is the defect either way, so this stays on until a dispatch runs green.
+          # Nothing private is printed: the job reads this public repository and writes only the branch
+          # and the pull request it would have opened.
+          show_full_output: true
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The SvanLabs GitHub App, so the action acts as svanlabs[bot] rather than
           # claude[bot] or a person's account.
