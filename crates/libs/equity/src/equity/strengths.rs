@@ -29,6 +29,39 @@ pub fn river_equity_exact(hero: [Card; 2], board: &[Card; 5], opp: &Range) -> f6
     if total == 0.0 { 0.5 } else { won / total }
 }
 
+/// Least-significant-digit radix sort of `(eval, combo)` pairs by eval, 8 bits per pass (#363:
+/// the learner profile puts sorting these pairs in ~40% of the suite). Four stable passes over one
+/// 256-entry table. Equal values keep their relative order, and the grouping math at every call
+/// site reads only equal-value groups, so every float is identical to a comparison sort.
+fn radix_pass<T: Copy>(src: &[(u32, T)], dst: &mut [(u32, T)], shift: u32) {
+    let mut count = [0u32; 256];
+    for &(v, _) in src {
+        count[((v >> shift) & 0xFF) as usize] += 1;
+    }
+    let mut sum = 0u32;
+    for c in count.iter_mut() {
+        let t = *c;
+        *c = sum;
+        sum += t;
+    }
+    for &(v, t) in src {
+        let d = ((v >> shift) & 0xFF) as usize;
+        dst[count[d] as usize] = (v, t);
+        count[d] += 1;
+    }
+}
+
+fn sort_by_eval<T: Copy>(made: &mut [(u32, T)]) {
+    if made.len() < 2 {
+        return;
+    }
+    let mut buf = made.to_vec();
+    radix_pass(&made[..], &mut buf, 0);
+    radix_pass(&buf[..], made, 8);
+    radix_pass(&made[..], &mut buf, 16);
+    radix_pass(&buf[..], made, 24);
+}
+
 /// Exact river equity of every live combo against a uniformly random live hand, identical to
 /// `river_equity_exact(combo, board, full)` for each combo but from one evaluation per combo:
 /// combos are sorted by rank and each counts the lower and tied combos that share none of its
@@ -37,7 +70,7 @@ pub fn river_strengths(board_mask: CardMask) -> Vec<f32> {
     let t = combos();
     let mut made: Vec<(u32, u16)> =
         (0..NUM_COMBOS).filter(|&i| combo_mask(i) & board_mask == 0).map(|i| (eval(combo_mask(i) | board_mask), i as u16)).collect();
-    made.sort_unstable();
+    sort_by_eval(&mut made);
     let live = made.len() as i64;
     let mut per_card = [0i64; 52];
     for &(_, i) in &made {
@@ -112,7 +145,7 @@ pub fn exact_strengths(board: &[Card]) -> Vec<f32> {
 fn made_percentiles(board_mask: CardMask) -> Vec<f32> {
     let mut made: Vec<(u32, usize)> =
         (0..NUM_COMBOS).filter(|&i| combo_mask(i) & board_mask == 0).map(|i| (eval(combo_mask(i) | board_mask), i)).collect();
-    made.sort();
+    sort_by_eval(&mut made);
     let mut out = vec![0f32; NUM_COMBOS];
     let n = made.len() as f32;
     let mut k = 0;
@@ -143,7 +176,7 @@ pub fn combo_strengths<R: Rng>(board: &[Card], samples_per_combo: usize, rng: &m
     }
     let live: Vec<usize> = (0..NUM_COMBOS).filter(|&i| combo_mask(i) & board_mask == 0).collect();
     let mut made: Vec<(u32, usize)> = live.iter().map(|&i| (eval(combo_mask(i) | board_mask), i)).collect();
-    made.sort();
+    sort_by_eval(&mut made);
     let mut made_pct = vec![0f32; NUM_COMBOS];
     let n = made.len() as f32;
     let mut k = 0;
