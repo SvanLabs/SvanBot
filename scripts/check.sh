@@ -60,7 +60,7 @@ markers=$(grep -rnwE "TO""DO|FIX""ME|X""XX|HA""CK" crates web/src scripts \
 
 # Every commit and every pull request description must name the AI system that produced it: a
 # `Generated-by: <tool>/<model>` trailer in the commit footer, and the same line in the report body.
-# The rule is stated in CONTRIBUTING.md section 0; this is the step that enforces it.
+# The rule is stated in docs/CONTRIBUTING.md section 0; this is the step that enforces it.
 #
 # It checks *declaration*, not authorship. A trailer is self-reported, and a person can add one to
 # hand-written code; the gate makes the convention mandatory and visible, and review is what makes it
@@ -70,7 +70,7 @@ markers=$(grep -rnwE "TO""DO|FIX""ME|X""XX|HA""CK" crates web/src scripts \
 # point in CI, so a pull request is checked over the commits it actually proposes. Both paths have to
 # exist: a contributor who is green locally and red on push learns the rule in the worst place.
 #
-# `report --check` is the other half: the trailers are also the roster in AI-PROVENANCE.md, and a system
+# `report --check` is the other half: the trailers are also the roster in docs/AI-PROVENANCE.md, and a system
 # that stamps its first commit must not slip in unrecorded. It compares the set of systems, not the
 # counts beside them, so an ordinary commit stays green (see scripts/provenance.py).
 step "ai provenance"
@@ -84,13 +84,13 @@ if [ -n "${SVANBOT_PR_BODY:-}" ]; then
   # way a bot-authored commit is exempt. Absent, it exempts nothing (#367).
   python3 scripts/provenance.py check --pr-body "$SVANBOT_PR_BODY" --pr-author "${SVANBOT_PR_AUTHOR:-}" \
     "$provenance_range" \
-    || fail "provenance: every commit and pull request must name its generating system (CONTRIBUTING.md section 0)"
+    || fail "provenance: every commit and pull request must name its generating system (docs/CONTRIBUTING.md section 0)"
 else
   python3 scripts/provenance.py check "$provenance_range" \
-    || fail "provenance: every commit must name its generating system (CONTRIBUTING.md section 0)"
+    || fail "provenance: every commit must name its generating system (docs/CONTRIBUTING.md section 0)"
 fi
 python3 scripts/provenance.py report --check \
-  || fail "provenance: AI-PROVENANCE.md is not the roster of systems on record (run scripts/provenance.py report)"
+  || fail "provenance: docs/AI-PROVENANCE.md is not the roster of systems on record (run scripts/provenance.py report)"
 
 staged_crates=1 staged_web=1
 if [ "$mode" = commit ]; then
@@ -121,7 +121,7 @@ if [ "$staged_crates" = 1 ]; then
   # it fails when the lock would need updating for any reason, a version bump or a new dependency.
   step "Cargo.lock matches the manifests"
   cargo metadata --locked --format-version 1 >/dev/null 2>&1 || fail "Cargo.lock is out of date: run cargo update --workspace (or cargo update for a new dependency) and commit Cargo.lock"
-  step "file sizes (CONTRIBUTING.md: 500-line limit, baseline may only shrink)"
+  step "file sizes (docs/CONTRIBUTING.md: 500-line limit, baseline may only shrink)"
   scripts/check-file-size.sh || fail "a Rust file is over 500 lines or an oversized file grew"
   step "clippy -D warnings"
   idle cargo clippy --release --workspace --all-targets -q -- -D warnings || fail "clippy"
@@ -146,7 +146,7 @@ case "$mode" in
     step "cargo-deny advisories"
     cargo deny check advisories 2>/dev/null || echo "   advisories failed or the RustSec database was unreachable; see: cargo deny check advisories"
     step "third-party notices current"
-    python3 scripts/notices.py --check || fail "run scripts/notices.py and commit THIRD-PARTY-NOTICES.md"
+    python3 scripts/notices.py --check || fail "run scripts/notices.py and commit docs/THIRD-PARTY-NOTICES.md"
     step "tickets lint + tool tests (tickets, codec vs zlib, test runner, release/rollback, keepalive, update, adopt-upstream, file-size, build lock, systemd units)"
     python3 scripts/tickets.py lint >/dev/null || { python3 scripts/tickets.py lint | tail -20 >&2; fail "tickets lint (scripts/tickets.py lint --fix fixes edges and types)"; }
     # The codec test builds a small example with cargo: while the full gate's test build holds the

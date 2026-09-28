@@ -34,7 +34,7 @@ from pathlib import Path
 # The message an agent needs is the rule and the fix, in that order; the check's own output above it
 # names the commit.
 ADVICE = (
-    "A commit must name the system that produced it (CONTRIBUTING.md section 0; the short version is\n"
+    "A commit must name the system that produced it (docs/CONTRIBUTING.md section 0; the short version is\n"
     "AGENTS.md section 0). Amend the commit just made to add a footer trailer:\n"
     "\n"
     "    Generated-by: <tool>/<model>\n"

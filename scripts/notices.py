@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Third-party notices and SBOM for what the release actually ships (0111).
 
-Writes THIRD-PARTY-NOTICES.md (committed; `scripts/check.sh full` fails when it is stale) from the
+Writes docs/THIRD-PARTY-NOTICES.md (committed; `scripts/check.sh full` fails when it is stale) from the
 Rust crates compiled into the workspace binaries (`cargo tree -e normal`) and the npm packages
 bundled into the dashboard (runtime `dependencies`, transitively). With `--sbom PATH` also writes a
 CycloneDX 1.5 JSON SBOM. With `--check` only reports whether the committed file is current.
@@ -13,7 +13,7 @@ Needs a workspace that has been built once (`cargo` resolves the crate list) and
 import json, os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "THIRD-PARTY-NOTICES.md")
+OUT = os.path.join(ROOT, "docs", "THIRD-PARTY-NOTICES.md")
 
 
 def crates():
@@ -96,7 +96,7 @@ def main():
             import difflib
             diff = difflib.unified_diff(current.splitlines(), text.splitlines(), "committed", "generated", lineterm="", n=0)
             print("\n".join(list(diff)[:40]), file=sys.stderr)
-            print("THIRD-PARTY-NOTICES.md is stale: run scripts/notices.py", file=sys.stderr)
+            print("docs/THIRD-PARTY-NOTICES.md is stale: run scripts/notices.py", file=sys.stderr)
             sys.exit(1)
         return
     open(OUT, "w").write(text)

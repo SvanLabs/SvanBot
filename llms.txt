@@ -58,7 +58,7 @@ These are the mistakes an agent makes here, in the order they are usually made.
    That is right for a fleet that only runs where it was built and wrong anywhere the binary travels;
    `Dockerfile` and `scripts/portable.sh` override it, and anything shipped must.
 6. **This project accepts no hand-written code.** Contributions are expected to be agent-directed —
-   see §0 of `CONTRIBUTING.md`. Directing the agent well is the contribution.
+   see §0 of `docs/CONTRIBUTING.md`. Directing the agent well is the contribution.
 
 ## Before changing anything
 
@@ -82,7 +82,7 @@ against, and where your pull request goes.
 - [docs/GUIDE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/GUIDE.md): the control room, panel by panel.
 - [docs/LESSONS.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/LESSONS.md): why the rules exist, as escaped defects.
 - [docs/RELEASE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/RELEASE.md): how a version is cut and published.
-- [CONTRIBUTING.md](https://github.com/SvanLabs/SvanBot/blob/main/CONTRIBUTING.md): the standard a change is held to, every MUST marked.
+- [docs/CONTRIBUTING.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/CONTRIBUTING.md): the standard a change is held to, every MUST marked.
 - [README.md](https://github.com/SvanLabs/SvanBot/blob/main/README.md): the human front page — highlights, architecture diagrams, quick start.
 
 ## Runtime data

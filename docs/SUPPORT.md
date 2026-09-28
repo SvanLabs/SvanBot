@@ -14,7 +14,7 @@ Three documents answer most questions before anyone has to:
 | `docs/OPERATIONS.md` | The runbook: everyday commands, benchmarks, fault drills, the host checklist |
 | `docs/LESSONS.md` | Why the rules are what they are, each one a mistake already paid for |
 
-If you are about to change the code, read `CONTRIBUTING.md` and `AGENTS.md` before you start; they
+If you are about to change the code, read `docs/CONTRIBUTING.md` and `AGENTS.md` before you start; they
 are the standard the gate enforces.
 
 ## Where things go
@@ -24,7 +24,7 @@ are the standard the gate enforces.
 | A question about using, configuring or extending it | **Discussions → Q&A** |
 | A bug you can describe, with a way to see it | **Issues → Bug report** (template `01-bug.yml`) |
 | A specific change, with an acceptance test | **Issues → Task** (template `02-task.yml`) |
-| A vulnerability, or anything involving a key | The private advisory form — `SECURITY.md` |
+| A vulnerability, or anything involving a key | The private advisory form — `docs/SECURITY.md` |
 | A rule, a ruling, an account problem, another bot | Open Poker, not this repository |
 
 Blank issues are disabled: a bug report and a task ask for different things, and the forms ask for

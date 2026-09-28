@@ -21,11 +21,11 @@ to read them all: find what you are about to do, and read that path in order.
 2. [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — the processes, the crates and the full decision path.
 3. [`docs/GUIDE.md`](GUIDE.md), sections 3 to 6 — the decision, opponent modelling, the neural
    model and the learner, explained for a reader rather than an implementer.
-4. [`CONTEXT.md`](../CONTEXT.md) — the vocabulary, when a word means something specific here.
+4. [`docs/CONTEXT.md`](CONTEXT.md) — the vocabulary, when a word means something specific here.
 
 ### 🛠️ I want to change something
 
-1. [**Your first pull request**](../CONTRIBUTING.md#your-first-pull-request) in `CONTRIBUTING.md`
+1. [**Your first pull request**](CONTRIBUTING.md#your-first-pull-request) in `docs/CONTRIBUTING.md`
    — pick an issue, branch, run the gate, open the pull request.
 2. [`AGENTS.md`](../AGENTS.md) — the brief your agent works from.
 3. [`docs/LESSONS.md`](LESSONS.md) — why the rules are what they are. Read the entries for the area
@@ -49,8 +49,8 @@ otherwise cost the first hour.
 | [`llms.txt`](../llms.txt) | How do I get a fleet running, in one page? | your agent was pointed here and asked for a running fleet |
 | [`AGENTS.md`](../AGENTS.md) | What must an agent know before changing anything? | before any change |
 | [`CLAUDE.md`](../CLAUDE.md) | Which three mistakes bite hardest here? | you are Claude Code |
-| [`CONTRIBUTING.md`](../CONTRIBUTING.md) | How do I get a change merged, and what standard is it held to? | before your first pull request |
-| [`CONTEXT.md`](../CONTEXT.md) | What does *flagship bot*, *fleet* or *season record* mean here? | a word seems to mean more than usual |
+| [`docs/CONTRIBUTING.md`](CONTRIBUTING.md) | How do I get a change merged, and what standard is it held to? | before your first pull request |
+| [`docs/CONTEXT.md`](CONTEXT.md) | What does *flagship bot*, *fleet* or *season record* mean here? | a word seems to mean more than usual |
 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Which processes run, how the crates layer, how one decision is made | you need the whole picture |
 | [`docs/GUIDE.md`](GUIDE.md) | How do I use it, and what is the dashboard showing me? | you are operating it |
 | [`docs/OPERATIONS.md`](OPERATIONS.md) | Which command does this job, and what do I do when something breaks? | you are running a fleet |
@@ -60,9 +60,9 @@ otherwise cost the first hour.
 | [`docs/SPEC-learner.md`](SPEC-learner.md) | How does the learner search, and what must a change prove before it plays live? | you touch the learner or a promotion gate |
 | [`docs/SPEC-dashboard.md`](SPEC-dashboard.md) | What does each dashboard endpoint and panel promise? | you touch the API or `web/` |
 | [`docs/RELEASE.md`](RELEASE.md) | How is a version cut and verified? | you are tagging a release |
-| [`AI-PROVENANCE.md`](../AI-PROVENANCE.md) | Which AI systems are on record for this repository? | you want the provenance rule's evidence, not its statement |
-| [`SUPPORT.md`](../SUPPORT.md) | Where does my question go? | you are stuck |
-| [`SECURITY.md`](../SECURITY.md) | How do I report a vulnerability privately? | you found one — never in a public issue |
+| [`docs/AI-PROVENANCE.md`](AI-PROVENANCE.md) | Which AI systems are on record for this repository? | you want the provenance rule's evidence, not its statement |
+| [`docs/SUPPORT.md`](SUPPORT.md) | Where does my question go? | you are stuck |
+| [`docs/SECURITY.md`](SECURITY.md) | How do I report a vulnerability privately? | you found one — never in a public issue |
 
 ## Where each area lives
 
@@ -73,7 +73,7 @@ otherwise cost the first hour.
 | The store | `crates/libs/store` | [`docs/SPEC-data.md`](SPEC-data.md) |
 | The learner | `crates/apps/bot/src/bin/learner.rs`, `crates/apps/bot/src/learner` | [`docs/SPEC-learner.md`](SPEC-learner.md) |
 | The dashboard | `web/src` (contract: `web/src/types.ts`), `crates/apps/bot/src/api` | [`docs/SPEC-dashboard.md`](SPEC-dashboard.md) |
-| The gate | `scripts/check.sh`, `.github/workflows/check.yml` | [`CONTRIBUTING.md`](../CONTRIBUTING.md) section 11 |
+| The gate | `scripts/check.sh`, `.github/workflows/check.yml` | [`docs/CONTRIBUTING.md`](CONTRIBUTING.md) section 11 |
 
 ## Keeping this map true
 

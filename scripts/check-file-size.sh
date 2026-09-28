@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rust file-size limit (CONTRIBUTING.md, 0320): 500 physical lines is the hard maximum for a source
+# Rust file-size limit (docs/CONTRIBUTING.md, 0320): 500 physical lines is the hard maximum for a source
 # file, 400 the point to consider splitting. Files over 500 when the rule was adopted are listed with
 # their size in scripts/file-size-baseline.txt: they may shrink but never grow, and a file leaves the
 # list once it is back under the limit. A new file over 500 lines fails.
@@ -36,7 +36,7 @@ while read -r path lines; do
   allowed=$(awk -v p="$path" '$1 == p {print $2}' "$baseline" 2>/dev/null)
   if [ "$lines" -gt "$max_lines" ]; then
     if [ -z "$allowed" ]; then
-      echo "ERROR: $path has $lines lines; maximum is $max_lines (split it by responsibility, CONTRIBUTING.md)"
+      echo "ERROR: $path has $lines lines; maximum is $max_lines (split it by responsibility, docs/CONTRIBUTING.md)"
       failed=1
     elif [ "$lines" -gt "$allowed" ]; then
       echo "ERROR: $path grew to $lines lines (baseline $allowed); oversized files may only shrink"

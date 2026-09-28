@@ -3,7 +3,7 @@
 > **Read this when** a word seems to mean more than usual. These are the terms whose meaning here is
 > narrower than in poker in general, and the dashboard and the docs use them exactly this way.
 > The poker basics (bb/100, EV, range, VPIP) are in the glossary at the end of
-> [`docs/GUIDE.md`](docs/GUIDE.md). · [All docs](docs/README.md)
+> [`docs/GUIDE.md`](GUIDE.md). · [All docs](README.md)
 
 ## Leaderboard rank
 

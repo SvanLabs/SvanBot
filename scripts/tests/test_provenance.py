@@ -43,6 +43,7 @@ class Provenance(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
         git(self.root, "init", "-q", "-b", "main")
+        (self.root / "docs").mkdir()
         self.n = 0
         self._old_root = pv.ROOT
         pv.ROOT = self.root
@@ -176,7 +177,7 @@ class Provenance(unittest.TestCase):
         return code, out.getvalue() + err.getvalue()
 
     def roster(self) -> str:
-        return (self.root / "AI-PROVENANCE.md").read_text()
+        return (self.root / "docs" / "AI-PROVENANCE.md").read_text()
 
     def test_report_lists_the_systems_on_record(self):
         self.commit("one\n\nGenerated-by: claude-code/opus-5\n")
@@ -218,7 +219,7 @@ class Provenance(unittest.TestCase):
     def test_a_documented_system_the_history_does_not_name_is_reported(self):
         self.commit("one\n\nGenerated-by: claude-code/opus-5\n")
         self.run_report()
-        (self.root / "AI-PROVENANCE.md").write_text(
+        (self.root / "docs" / "AI-PROVENANCE.md").write_text(
             self.roster().replace("| claude-code/opus-5 | 1 |", "| claude-code/opus-5 | 1 |\n| claude-code/opus-9 | 3 |"))
         code, out = self.run_report("--check")
         self.assertEqual(code, 1)
