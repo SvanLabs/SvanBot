@@ -210,3 +210,15 @@
     specification. *Rule*: a case that exists to prove a state is accepted asserts the fixture reached
     that state before it asserts what the code does with it — here, that `main` is *not* an ancestor of
     `dev`, which is what makes it the state under test rather than another caught-up one.
+
+45. **An identity comparison cannot answer a question about content.** The same script decided whether
+    `main` was current with `[ "$main" = "$dev" ]`, the two tips' commit ids. A promotion is a merge
+    commit of `dev` into `main`, so from the first promotion onward `main`'s tip is a commit `dev`'s
+    tip never equals, however identical the two trees are — and the early return was dead from the day
+    it could matter. Every run that found `main` already holding what `dev` held went on to open a
+    promotion pull request listing nothing: `printf '%s\n' ""` is one empty line, so `wc -l` read the
+    empty list as `1 commit(s)`. A `check` cycle, a release run and a review cycle went on a diff that
+    changed no file, after every promotion that had already merged. *Rule*: name the state you are
+    testing by the thing you actually mean — "these two hold the same thing" is a comparison of trees
+    (`git diff --quiet`), not of ids — and count a list by what is in it (`grep -c .`), not by the
+    lines a `printf` chose to write.

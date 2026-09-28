@@ -35,8 +35,13 @@ git fetch --quiet origin dev main
 dev=$(git rev-parse origin/dev)
 main=$(git rev-parse origin/main)
 
-if [ "$main" = "$dev" ]; then
-  echo "promote: main is already at dev ($(git rev-parse --short "$dev")); nothing to promote"
+# Content, not commit id. A promotion is a merge commit, so `main`'s tip is a commit `dev`'s tip
+# never equals again after the first one, and comparing the two ids reads as "not current" on every
+# run forever — including the run where `main` holds exactly what `dev` holds. What "nothing to
+# promote" means is that the two trees are equal: a merge commit into this `main` would change no
+# file and add nothing, wherever the two tips are. `git diff --quiet` is that comparison.
+if git diff --quiet "$main" "$dev"; then
+  echo "promote: main already holds what dev holds ($(git rev-parse --short "$dev")); nothing to promote"
   exit 0
 fi
 
@@ -60,8 +65,11 @@ if [ "$strays" != 0 ]; then
   exit 1
 fi
 
-commits=$(git log --oneline --no-decorate "$main..$dev")
-count=$(printf '%s\n' "$commits" | wc -l)
+# `grep -c .` and not `wc -l`: `printf '%s\n' ""` is one empty line, so an empty list counts as 1 and
+# the pull request says "1 commit(s)" over nothing. The early return above makes that unreachable for
+# a current `main`, and a count that is wrong on the empty list is still wrong to leave in.
+commits=$(git log --oneline --no-decorate "$dev" --not "$main")
+count=$(printf '%s' "$commits" | grep -c . || true)
 
 # `// empty`, because `.[0].number` alone prints the four characters `null` for an empty list, which
 # everything below would read as a pull request number.
