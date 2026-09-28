@@ -29,7 +29,7 @@ export function nextShot(bots: TableBot[], current: number | undefined, shownFor
 }
 
 /** One commentary line for a live decision or result, in plain broadcast style. */
-export function commentary(ev: { type: string; bot?: string; action?: string; amount?: number | null; equity?: number; net?: number | null }): string | null {
+export function commentary(ev: { type: string; bot?: string; action?: string; amount?: number | null; equity?: number | null; net?: number | null }): string | null {
   const who = ev.bot ?? 'Svan';
   const eq = ev.equity == null ? null : Math.round(ev.equity * 100);
   if (ev.type === 'decision') {

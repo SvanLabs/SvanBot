@@ -74,7 +74,7 @@ fn snapshot() -> Value {
             let d = decide_with(sit, &models, &params, None, &mut rng);
             json!({
                 "street": sit.street.name(), "pot": sit.pot, "call": sit.call_amount,
-                "action": d.action_name, "amount": d.amount, "equity": round(d.equity),
+                "action": d.action_name, "amount": d.amount, "equity": d.equity.map(round),
                 "candidates": d.candidates.iter().map(|c| json!([c.action, c.amount, round(c.ev), round(c.fold_prob)])).collect::<Vec<_>>(),
             })
         })

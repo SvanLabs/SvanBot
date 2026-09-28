@@ -316,7 +316,7 @@ mod tests {
         // (`preflop:check`, whose stored verdicts here are all pre-v3).
         let play = |street: &str, action: &str, n: usize| {
             for _ in 0..n {
-                store.insert_decision("A", "h", street, action, None, 0.0, 0, 0, 1.0, "{}").unwrap();
+                store.insert_decision("A", "h", street, action, None, Some(0.0), 0, 0, 1.0, "{}").unwrap();
             }
         };
         play("turn", "call", 200);

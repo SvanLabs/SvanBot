@@ -326,7 +326,9 @@ pub(super) fn table_json(s: &Shared, b: &BotLive) -> Value {
             .unwrap_or(hero_stack);
         let spr = if d.pot > 0 { Some(eff as f64 / d.pot as f64) } else { None };
         let samples = s.params.read().samples.max(1);
-        let se = (d.equity * (1.0 - d.equity) / samples as f64).sqrt();
+        // A refused decision has no equity to put a standard error on (#424); the panel reads the
+        // whole estimate as unavailable, so both fields are null together.
+        let se = d.equity.map(|e| (e * (1.0 - e) / samples as f64).sqrt());
         let (preflop_score, opening_threshold, opening_position) = preflop_guide_view(b, &hole);
         let best = d
             .candidates

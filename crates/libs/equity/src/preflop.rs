@@ -55,7 +55,12 @@ pub fn compute_class_strengths() -> Vec<f32> {
     let full = Range::full();
     scoped_map(169, |c| {
         let mut rng = SmallRng::seed_from_u64(1000 + c as u64);
-        equity_vs_ranges(representative(c), &[], &[&full, &full], 30_000, &mut rng) as f32
+        // Against two full ranges almost every deal is accepted, so a short draw here is a bug in
+        // the sampler rather than a cell to guess at: this table is committed as data
+        // (`preflop_data.rs`), and a refusal must not be written out as a strength of zero (#424).
+        let eq = equity_vs_ranges(representative(c), &[], &[&full, &full], 30_000, &mut rng)
+            .expect("30,000 samples against two full ranges fill");
+        eq as f32
     })
 }
 
@@ -118,7 +123,9 @@ pub fn compute_top_range_eq(strengths: &[f32]) -> Vec<[f32; 169]> {
         let mut out = [0f32; 169];
         for c in 0..169 {
             let mut rng = SmallRng::seed_from_u64(77 + c as u64);
-            out[c] = equity_vs_ranges(representative(c), &[], &[&r], 1500, &mut rng) as f32;
+            // One opponent, 1,500 samples: a short draw is a sampler bug, not a rung of the ladder
+            // to write out as zero (#424).
+            out[c] = equity_vs_ranges(representative(c), &[], &[&r], 1500, &mut rng).expect("1,500 samples against one range fill") as f32;
         }
         out
     })

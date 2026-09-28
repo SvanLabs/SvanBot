@@ -119,7 +119,7 @@ export function TvMode({bots, theme, public: onPublicTv = false}: {bots: TableBo
   }, [bots, slot]);
   useEffect(() => {
     const onEvent = (e: Event) => {
-      const ev = (e as CustomEvent<{type:string;slot:number;bot?:string;action?:string;amount?:number|null;equity?:number;net?:number|null}>).detail;
+      const ev = (e as CustomEvent<{type:string;slot:number;bot?:string;action?:string;amount?:number|null;equity?:number|null;net?:number|null}>).detail;
       if (ev.slot !== slotRef.current) return;
       const text = commentary(ev);
       if (text) setLines(list => [{id: ++counter.current, text}, ...list].slice(0, 4));
