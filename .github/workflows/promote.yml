@@ -1,0 +1,64 @@
+# Keeps `main` current (#370).
+#
+# `main` is the released line: the branch a stranger installs from and the branch their Update
+# fetches. It is meant to hold what `dev` holds whenever `dev` is green, and nothing made it so —
+# promotion was a hand-opened pull request, so `main` moved when someone remembered. It moved once,
+# on 2026-09-28, and was behind again within the hour.
+#
+# `scripts/promote.sh` holds the logic and `scripts/tests/promote.sh` tests it; this runs it when
+# `check` finishes on `dev`. Everything that decides anything is in the script, including the refusal
+# to touch a `main` that is not an ancestor of `dev`.
+name: promote
+
+on:
+  workflow_run:
+    # `check` is the workflow's `name:` in check.yml, and `branches` is the *head* branch of the run
+    # that finished: a pull request into `dev` carries its own branch here, a push to `main` is
+    # filtered out, and the promotion pull request — whose head is `dev` — arrives here too. Running
+    # on that one is harmless and useful: it re-arms auto-merge a failed attempt did not set, and the
+    # script says the pull request is already open rather than opening a second one.
+    workflows: ["check"]
+    types: [completed]
+    branches: [dev]
+  # The retry. A promotion that could not be armed, or a `dev` that was red when it was last pushed,
+  # is picked up by the next green run; this is for when there is no next push.
+  workflow_dispatch:
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    # A red `dev` promotes nothing, which is the point of keying on the gate rather than on a push.
+    # The manual run is exempt: it is the retry.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Both branches and their history: the script's ancestor test is one a shallow clone
+          # cannot answer.
+          fetch-depth: 0
+
+      - name: SvanLabs app token
+        id: app-token
+        # Not a fork pull request, so this is expected to work; the fallback is the same shape the
+        # other workflows use, and `github-actions[bot]` ends in `[bot]`, so the provenance gate
+        # exempts the promotion pull request by author whichever token opened it.
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.SVANLABS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SVANLABS_APP_PRIVATE_KEY }}
+
+      - name: Promote
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          SVANBOT_PROMOTE_REPO: ${{ github.repository }}
+        run: bash scripts/promote.sh
