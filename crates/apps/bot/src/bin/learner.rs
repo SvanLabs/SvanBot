@@ -193,7 +193,8 @@ fn main() -> Result<()> {
     let cycle: u64 = store.get_kv(sv10_bot::LEARNER_CYCLE_KEY).ok().flatten().and_then(|s| s.parse().ok()).unwrap_or(0);
     let pacing = Pacing::from_env();
     tracing::info!(
-        ".env pacing: {} new hands per cycle, backoff up to x{}, at most {:.0} h idle, {:.0} min cooldown (dashboard settings override)",
+        ".env pacing: {} new hands per champion search, backoff up to x{}, at most {:.0} h idle, {:.0} min cooldown; \
+         evidence refreshes run on new hands as they arrive (dashboard settings override)",
         pacing.min_new_hands,
         pacing.max_backoff,
         pacing.max_idle_secs / 3600.0,
@@ -266,7 +267,7 @@ fn main() -> Result<()> {
         let effective = (pacing.min_new_hands, pacing.cooldown_secs);
         if logged_pacing != Some(effective) {
             tracing::info!(
-                "effective pacing: {} new hands per cycle, {:.0} min cooldown (dashboard settings over .env)",
+                "effective pacing: {} new hands per champion search, {:.0} min cooldown (dashboard settings over .env)",
                 pacing.min_new_hands,
                 pacing.cooldown_secs / 60.0
             );
@@ -285,10 +286,9 @@ fn main() -> Result<()> {
                     sv10_bot::livefits::refit_stale(&store, now());
                     last_calls_refit = now();
                 }
-                let baseline = match job {
-                    LearnerJob::Refit => pace.refit_run,
-                    LearnerJob::Search => pace.last_run,
-                };
+                // A wait is a search wait (#314): a refresh waits only for a hand, and the hand that
+                // arrives starts one before the search, so the search's clock is the one to count.
+                let baseline = pace.last_run;
                 let elapsed = (started - baseline).max(1.0);
                 let eta = if needed == 0 {
                     cooldown_until.unwrap_or(started + 60.0)
@@ -351,7 +351,7 @@ fn advance(ctx: &Ctx, run: Run, pace: &mut PacingState, pacing: &Pacing, last_ca
             *last_calls_refit = ended;
             store.put_kv(PACING_KEY, &serde_json::to_string(&pace)?)?;
             run::clear(store);
-            tracing::info!("evidence refresh took {:.0}s; next after {} new hands", ended - r.started, pacing.min_new_hands);
+            tracing::info!("evidence refresh took {:.0}s; the next one runs on the next new hand", ended - r.started);
         }
         Run::Search(mut s) => match learner::search::step(ctx, &mut s, step_cap)? {
             Outcome::Continue => run::save(store, &Run::Search(s))?,

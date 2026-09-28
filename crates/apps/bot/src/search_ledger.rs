@@ -4,14 +4,14 @@
 //! transitions evaluated 6,402 times: 97.8% repeats), and the per-round accumulator that combines
 //! repeated measurements dies with the cycle, so every repeat is simulated from scratch. The
 //! ledger persists the *combined* [`PairedResult`](sv10_core::sim::PairedResult) per transition,
-//! scoped to the champion version and the evidence-refresh watermark: a repeat then continues the
-//! interval instead of restarting it, and a transition whose combined interval is decisively below
-//! the +1 bb/100 promotion bar is not proposed while the scope is valid.
+//! scoped to the champion version and the evidence epoch: a repeat then continues the interval
+//! instead of restarting it, and a transition whose combined interval is decisively below the
+//! +1 bb/100 promotion bar is not proposed while the scope is valid.
 //!
-//! Invalidation is by construction, not by expiry: a promotion changes the champion version and an
-//! evidence refresh changes the watermark, and both are part of the scope, so a stale entry can
-//! never bar a live candidate. The fresh-deal confirmation path (`sv10_bot::promotion`) is
-//! untouched — the ledger only screens, it never promotes.
+//! Invalidation is by construction, not by expiry: a promotion changes the champion version, the
+//! evidence epoch advances as the fleet plays (see [`crate::pacing::evidence_epoch`]), and both are
+//! part of the scope, so a stale entry can never bar a live candidate. The fresh-deal confirmation
+//! path (`sv10_bot::promotion`) is untouched — the ledger only screens, it never promotes.
 
 use std::collections::BTreeMap;
 
@@ -61,7 +61,7 @@ impl LedgerEntry {
 pub struct Ledger {
     /// Champion version the entries were measured against; a promotion retires the scope.
     pub champion: String,
-    /// Evidence-refresh watermark the entries were measured against; a refresh retires the scope.
+    /// Evidence epoch the entries were measured against; the epoch advancing retires the scope.
     pub refit_rowid: i64,
     /// Combined entries by [`transition_key`].
     pub entries: BTreeMap<String, LedgerEntry>,
@@ -137,7 +137,9 @@ pub fn review(store: &Store) -> Result<String> {
     let champion = lineage.last().cloned().unwrap_or_default();
     let pace: crate::pacing::PacingState =
         store.get_kv(crate::pacing::PACING_KEY)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-    let ledger = load(store, &champion, pace.refit_rowid);
+    // The same epoch a search would record under, so `review ledger` names the entries that are
+    // actually in force rather than looking for a watermark no search has ever stored (#314).
+    let ledger = load(store, &champion, crate::pacing::evidence_epoch(pace.refit_rowid));
     let hw = sv10_core::hardware::detect();
     Ok(describe(&ledger, hw.tuning.learner_tables, hw.tuning.learner_hands))
 }
