@@ -15,7 +15,9 @@
 #
 # A merge commit, never a squash: a squash gives `main` a commit `dev` does not have, so the next
 # promotion is a real merge with a conflict to resolve instead of a no-op. `docs/RELEASE.md` is the
-# argument in full. `.github/workflows/promote.yml` runs this on a green `check` on `dev`.
+# argument in full. `.github/workflows/promote.yml` runs this whenever a `check` on `dev` finishes,
+# whatever it concluded: this script opens and arms, and the gate on the pull request it opens is what
+# decides whether `main` moves.
 #
 # Repository: SVANBOT_PROMOTE_REPO, or what `gh repo view` reports. Needs `gh` with a token that can
 # write contents and pull requests on it.
@@ -114,9 +116,9 @@ if [ -z "$number" ]; then
     fi
     echo '```'
     echo
-    echo 'Opened by `scripts/promote.sh` (#370), which `.github/workflows/promote.yml` runs on a'
-    echo 'green `check` on `dev`. Auto-merge is armed, so this merges itself once `check` passes on'
-    echo 'it; a red `dev` never gets here.'
+    echo 'Opened by `scripts/promote.sh` (#370), which `.github/workflows/promote.yml` runs whenever a'
+    echo '`check` on `dev` finishes. Auto-merge is armed, so this merges itself once `check` passes on'
+    echo 'it — the ruleset on `main` requires that check, so a `dev` that failed the gate never lands.'
     echo
     # A person running this by hand authors the pull request, and the provenance gate exempts only an
     # author whose name ends in `[bot]`. Without this line the promotion pull request they opened
