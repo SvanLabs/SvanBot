@@ -79,7 +79,7 @@ jobs:
       # downloaded it again, inside the agent's session (#418). Just the one binary rather than the
       # directory, because rustup keeps its own shims there. The key names the installer, so a change
       # to how cargo-deny is obtained takes a fresh cache instead of restoring the old binary.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/cargo-deny
           key: cargo-deny-${{ hashFiles('scripts/cloud-setup.sh') }}
