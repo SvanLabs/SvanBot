@@ -200,3 +200,13 @@
     manifest already states, and a second copy drifts where no check reads it.
     *Rule*: a fact stated in two files is checked in the gate — `cargo metadata --locked` compares
     the lock to the manifests in under a second, and fails on a version bump or a dependency alike.
+44. **A fixture that models the wrong shape passes on the bug it exists to catch.** `scripts/promote.sh`
+    refused a promotion when `main` was not an ancestor of `dev`. A promotion *is* a merge commit of
+    `dev` into `main`, and a merge commit lives on `main` and never on `dev` — so `main` stops being an
+    ancestor of `dev` the moment it has been promoted once, and the guard refused every promotion after
+    the first. The first real run refused `main` at the merge commit of the promotion that had just
+    succeeded. Seven test cases were green on it: every one left `main` fast-forwardable to `dev`, so
+    none of them ever built the shape a promotion leaves, and the suite graded the bug as the
+    specification. *Rule*: a case that exists to prove a state is accepted asserts the fixture reached
+    that state before it asserts what the code does with it — here, that `main` is *not* an ancestor of
+    `dev`, which is what makes it the state under test rather than another caught-up one.
