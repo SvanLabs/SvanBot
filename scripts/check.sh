@@ -67,7 +67,10 @@ if [ -z "${SVANBOT_PROVENANCE_RANGE:-}" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
 fi
 if [ -n "${SVANBOT_PR_BODY:-}" ]; then
   # CI writes the pull request description to a file and names it; the body is not a file in the tree.
-  python3 scripts/provenance.py check --pr-body "$SVANBOT_PR_BODY" "$provenance_range" \
+  # `SVANBOT_PR_AUTHOR` is the login that opened it, which exempts a bot-opened pull request the same
+  # way a bot-authored commit is exempt. Absent, it exempts nothing (#367).
+  python3 scripts/provenance.py check --pr-body "$SVANBOT_PR_BODY" --pr-author "${SVANBOT_PR_AUTHOR:-}" \
+    "$provenance_range" \
     || fail "provenance: every commit and pull request must name its generating system (CONTRIBUTING.md section 0)"
 else
   python3 scripts/provenance.py check "$provenance_range" \

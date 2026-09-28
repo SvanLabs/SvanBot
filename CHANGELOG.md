@@ -7,8 +7,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet. Merged changes land here and move under a version when a release is tagged
-(`docs/RELEASE.md`).
+### Added
+
+- **Banking follows the bot's chip stack** (#359). Below 500k chips, counting the off-table balance plus the table stack,
+  a bot banks at 1,000 bb on the table (was 2,000 bb). From 500k it stops banking and keeps a deep
+  stack for the big hands. The settings are `SVANBOT_BANK_STACK_BB` and `SVANBOT_BANK_UNTIL_CHIPS`.
+- **`scripts/adopt-upstream.sh`** moves a fleet cloned from another repository onto this one in
+  place, with a verified backup first (#352, #353, #354).
+- **A `dev` branch** (#362). Work lands on `dev`; `main` is the released line — what everyone who
+  installs SvanBot runs and updates from — and moves only by promotion (`docs/RELEASE.md`).
+- **Readiness labels and a board** (#358). Every open issue is `agent-friendly`,
+  `blocked-on-decision` or `needs-triage`, and https://github.com/orgs/SvanLabs/projects/1 shows them.
+  Dependabot opens grouped monthly updates.
+- **Cleanup every 6 hours** (`svanbot10-clean.timer`), no longer chained to the nightly archive:
+  when the archive failed, cleanup silently stopped too.
+
+### Changed
+
+- The Claude workflows act as the SvanLabs GitHub App (`svanlabs[bot]`) (#355).
+
+### Fixed
+
+- **A fleet set to `dev` could not install a release** (#365). The gate's update test builds a fixture
+  whose origin has only `main`, and its list of ambient variables to clear missed the three settings
+  `scripts/update.sh` reads for where it fetches from. With `SVANBOT_UPDATE_BRANCH=dev` exported — what
+  an operator sets to put a fleet on `dev` — the fixture looked for a branch its origin does not have,
+  so `scripts/check.sh full` failed and every release on that fleet stopped before it could build. CI
+  could not catch it: no such variable is set there.
+- **A pull request opened by a bot failed the provenance gate** (#367). The check exempts a commit
+  whose author is `<name>[bot]`, because the author field already names the system, but the
+  pull-request half never received the author — so every Dependabot pull request failed on
+  `pr-body.md: no Generated-by line in the pull request body` and none of them could merge.
+- `bench` and `sim` name a malformed input file instead of panicking (#357).
 
 ## [10.0.1] - 2026-09-28
 

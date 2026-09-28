@@ -20,7 +20,8 @@ result; the agent writes the code, the tests, the commits and the pull request.
    labels mark issues that say where the problem is, why it matters and the fix they expect. Comment
    on the one you take, so two agents do not race for it. Issues labelled `blocked-on-decision` wait
    on a maintainer's choice; a comment there is welcome, a pull request is not.
-2. **Fork, and make one branch per change**, named for it: `fix/split-pots-all-folded`,
+2. **Fork, and make one branch per change off `dev`** (the default branch; pull requests go into
+   `dev`, and `main` is only ever updated from it), named for it: `fix/split-pots-all-folded`,
    `fix/localstorage-guard`.
 3. **Brief your agent.** Give it [`AGENTS.md`](AGENTS.md) and the issue. For a bug, ask for a
    failing test first: a fix lands with a test that fails on the old code (section 8).
@@ -126,8 +127,10 @@ renders it in the commit view.
 
 `scripts/provenance.py check` is the gate: it walks the commits in a range and fails listing the ones
 that name no system, and `scripts/check.sh` runs it, so a commit or a pull request that skips the line
-does not merge. Merge commits are skipped — they carry no content of their own — and a commit whose
-author is already `<name>[bot]` is exempt, because the author field has already named it.
+does not merge. Merge commits are skipped — they carry no content of their own — and an artifact whose
+author is already `<name>[bot]` is exempt, because the author field has already named it. That covers
+a bot-opened pull request as well as a bot-authored commit: Dependabot's pull request body is
+Dependabot's, and the login GitHub reports for whoever opened it says so.
 
 `AI-PROVENANCE.md` is the roster of systems on record, read from the same trailers, and
 `scripts/provenance.py report --check` keeps it current — it fails when a system has commits that the

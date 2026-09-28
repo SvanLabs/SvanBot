@@ -9,9 +9,11 @@ What this checks is *declaration*, not *authorship*. A trailer is self-reported 
 add one to hand-written code. The gate makes the convention mandatory and visible; review is what
 makes it true. A clean run is not a guarantee about who wrote the code.
 
-Merge commits are skipped (they carry no content of their own) and a commit whose author is already
-`<name>[bot]` is exempt: `dependabot[bot]` and `github-actions[bot]` name their generator in the
-author field, so a trailer would only repeat it.
+Merge commits are skipped (they carry no content of their own) and an artifact whose author is
+already `<name>[bot]` is exempt: `dependabot[bot]` and `github-actions[bot]` name their generator in
+the author field, so a trailer would only repeat it. That exemption covers the pull request body as
+well as the commit — a pull request Dependabot opens is Dependabot's, and the login GitHub reports
+for whoever opened it says so.
 
 `report` writes `AI-PROVENANCE.md`: the systems on record, read from the same trailers. Its `--check`
 compares the **set** of systems, not the counts beside them — a count moves with every commit, so a
@@ -20,7 +22,9 @@ nobody. A system appearing for the first time is therefore a red gate until some
 which is the drift this exists to make visible.
 
   scripts/provenance.py check [<range>]        check commits, default range HEAD
-  scripts/provenance.py check --pr-body FILE   check a pull request description as well
+  scripts/provenance.py check --pr-body FILE [--pr-author LOGIN]
+                                               check a pull request description as well, exempting
+                                               one opened by a `<name>[bot]`
   scripts/provenance.py stamp                  print the trailer for this system
   scripts/provenance.py report [--check]       write AI-PROVENANCE.md, or say whether it is current
 """
@@ -95,11 +99,19 @@ def check_commits(rev_range: str, problems: list[str]) -> int:
     return checked
 
 
-def check_pr_body(path: Path, problems: list[str]) -> None:
-    """Report a pull request description that names no generating system."""
+def check_pr_body(path: Path, author: str, problems: list[str]) -> None:
+    """Report a pull request description that names no generating system.
+
+    `author` is the login GitHub reports for whoever opened the pull request, and an empty one means
+    the login did not reach the gate — no login is empty, so nothing is exempt by accident. The file
+    is checked for existence before the exemption: a body that never arrived is a gate that is not
+    checking anything, whoever opened the pull request, and the workflow says so at the point of use.
+    """
     if not path.exists():
         problems.append(f"{path}: pull request body not found")
         return
+    if BOT_AUTHOR.search(author):
+        return  # The author field already names the system.
     if not trailer_in(path.read_text()):
         problems.append(f"{path}: no Generated-by line in the pull request body (CONTRIBUTING.md section 0)")
 
@@ -236,21 +248,26 @@ def main(argv: list[str]) -> int:
         rest = [a for a in argv[1:] if a != "--check"]
         return report("--check" in argv[1:], rest[0] if rest else "HEAD")
 
-    body = None
+    body, author = None, ""
     rest = argv[1:]
-    if "--pr-body" in rest:
-        i = rest.index("--pr-body")
+    for flag in ("--pr-body", "--pr-author"):
+        if flag not in rest:
+            continue
+        i = rest.index(flag)
         if i + 1 >= len(rest):
-            print("provenance: --pr-body needs a file", file=sys.stderr)
+            print(f"provenance: {flag} needs a value", file=sys.stderr)
             return 2
-        body = Path(rest[i + 1])
+        if flag == "--pr-body":
+            body = Path(rest[i + 1])
+        else:
+            author = rest[i + 1]
         rest = rest[:i] + rest[i + 2 :]
     rev_range = rest[0] if rest else "HEAD"
 
     problems: list[str] = []
     checked = check_commits(rev_range, problems)
     if body is not None:
-        check_pr_body(body, problems)
+        check_pr_body(body, author, problems)
     for p in problems:
         print(p)
     if problems:

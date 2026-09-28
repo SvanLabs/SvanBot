@@ -7,6 +7,25 @@ A release is a tagged commit on `main` that the gate passed, with a changelog en
 notes. This document is the process; `scripts/check.sh` is the gate that decides whether a commit
 is releasable at all.
 
+## Promoting `dev` to `main`
+
+Work lands on `dev`. `main` is the released line: what everyone who installs SvanBot runs, and where
+their Update fetches from. It moves only by promotion — a pull request from `dev` into `main`, opened
+when `dev` is green and has something worth releasing, and merged **with a merge commit**, never a
+squash, which would give `main` a commit `dev` does not have and make the next promotion conflict.
+Because promotion waits on a green `dev`, `main` never carries a build that failed.
+
+The reference fleet tracks `dev` (`SVANBOT_UPDATE_BRANCH=dev`) rather than `main`, so every change is
+played before it is promoted.
+
+```sh
+gh pr create --base main --head dev --title "release: promote dev to main"
+gh pr merge <number> --merge
+```
+
+After it merges, every fleet following `main` installs it at its next Update (or `scripts/update.sh`).
+Tags are cut on `main`.
+
 ## What ships
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`: it attaches the portable x86-64-v2/v3

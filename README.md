@@ -6,7 +6,7 @@
 
 **Six-max no-limit hold'em · virtual chips · 14-day seasons · Rust 🦀 + React ⚛️**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/SvanLabs/SvanBot/check.yml?branch=main&label=CI&style=flat-square)](https://github.com/SvanLabs/SvanBot/actions/workflows/check.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/SvanLabs/SvanBot/check.yml?branch=dev&label=CI&style=flat-square)](https://github.com/SvanLabs/SvanBot/actions/workflows/check.yml)
 ![Rust](https://img.shields.io/badge/rust-1.98.1-dea584?style=flat-square&logo=rust&logoColor=white)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-3b5b8c?style=flat-square)](#-license)
 ![Platform](https://img.shields.io/badge/platform-Linux%20x86--64-2f3b52?style=flat-square&logo=linux&logoColor=white)
@@ -308,7 +308,7 @@ while the bots keep playing.
 
 ```mermaid
 flowchart LR
-  U(["🖱️ Update"]) --> FE["fetch main"] --> SN["snapshot<br/>installed build"] --> LI["lint"] --> TE["test"] --> BU["build"] --> DA["dashboard"] --> IN["install"] --> HS(["hot swap<br/>between turns"])
+  U(["🖱️ Update"]) --> FE["fetch update branch"] --> SN["snapshot<br/>installed build"] --> LI["lint"] --> TE["test"] --> BU["build"] --> DA["dashboard"] --> IN["install"] --> HS(["hot swap<br/>between turns"])
   TE -. any failure .-> KEEP(["installed build<br/>keeps playing"])
 ```
 
@@ -348,8 +348,12 @@ Directing the agent well is the contribution.
 1. **Pick an issue.** Start with
    [**good first issue**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
    or [**agent-friendly**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3Aagent-friendly).
-   Each one says where the problem is, why it matters, and the fix it expects.
-2. **Fork, and make a branch** named for the change — `fix/split-pots-all-folded`, `docs/…`.
+   Each one says where the problem is, why it matters, and the fix it expects. Issues labelled
+   `blocked-on-decision` wait on a maintainer's choice first; the
+   [board](https://github.com/orgs/SvanLabs/projects/1) shows every open issue by readiness.
+2. **Fork, and make a branch off `dev`** named for the change — `fix/split-pots-all-folded`,
+   `docs/…`. `dev` is the default branch and every pull request goes into it; `main` is the released
+   line, and moves only when `dev` is promoted.
 3. **Hand your agent [`AGENTS.md`](AGENTS.md) and the issue.** `AGENTS.md` is the brief: where
    code goes, the two hard invariants, and everything the gate enforces.
 4. **Run the gate** before you push. It is the same command CI runs, so a green run here is a green
