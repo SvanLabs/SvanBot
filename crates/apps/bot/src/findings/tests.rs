@@ -19,16 +19,16 @@ fn class(n: i64, total: f64) -> (ClassKey, ClassStat) {
 #[test]
 fn a_decision_loss_needs_both_a_rate_and_a_sample() {
     let big = BTreeMap::from([class(5_000, 5_000.0)]);
-    let found = decision_losses(&big, &no_coverage());
+    let found = decision_losses(&big, &no_coverage(), &Shapes::new());
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].id, "decision-loss:turn:raise");
     assert_eq!(found[0].severity, "P0");
     assert!((found[0].value - 1.0).abs() < 1e-9, "1.0 bb per decision");
 
-    let thin = decision_losses(&BTreeMap::from([class(100, 100.0)]), &no_coverage());
+    let thin = decision_losses(&BTreeMap::from([class(100, 100.0)]), &no_coverage(), &Shapes::new());
     assert!(thin.is_empty(), "a rate on 100 decisions is not a rate");
 
-    let quiet = decision_losses(&BTreeMap::from([class(5_000, 10.0)]), &no_coverage());
+    let quiet = decision_losses(&BTreeMap::from([class(5_000, 10.0)]), &no_coverage(), &Shapes::new());
     assert!(quiet.is_empty(), "0.002 bb per decision is inside the instrument's noise");
 }
 
@@ -41,13 +41,18 @@ fn a_decision_loss_needs_its_lower_bound_over_the_floor() {
     assert!(lumpy.mean() > GAP_BB_PER_DECISION, "the point estimate clears the floor");
     assert!(lumpy.lower_bound() < GAP_BB_PER_DECISION, "but the interval does not");
     let classes = BTreeMap::from([(ClassKey::Spot { street: "turn".into(), action: "raise".into() }, lumpy)]);
-    assert!(decision_losses(&classes, &no_coverage()).is_empty(), "one decision is not a leak");
+    assert!(decision_losses(&classes, &no_coverage(), &Shapes::new()).is_empty(), "one decision is not a leak");
 
     // The same total given up, spread over the class instead of riding on one decision.
     let even = ClassStat { sumsq: 30.0 * lumpy.mean(), ..lumpy };
     assert!(even.lower_bound() >= GAP_BB_PER_DECISION);
     assert_eq!(
-        decision_losses(&BTreeMap::from([(ClassKey::Spot { street: "turn".into(), action: "raise".into() }, even)]), &no_coverage()).len(),
+        decision_losses(
+            &BTreeMap::from([(ClassKey::Spot { street: "turn".into(), action: "raise".into() }, even)]),
+            &no_coverage(),
+            &Shapes::new()
+        )
+        .len(),
         1
     );
 }
@@ -63,7 +68,7 @@ fn the_all_in_family_is_pooled_across_streets() {
         verdict(Some(3), "flop", "all_in:120", 0.0),
         verdict(Some(3), "preflop", "all_in:100", 0.0),
     ];
-    let (classes, excluded) = comparable_classes(rows.iter(), DECISION_LOSS_DAYS);
+    let (classes, _, excluded) = comparable_classes(rows.iter(), DECISION_LOSS_DAYS);
     assert_eq!(excluded, 0);
     let pooled = classes[&ClassKey::AllIn];
     assert_eq!((pooled.n, pooled.big, pooled.total, pooled.days), (4, 1, 20.0, DECISION_LOSS_DAYS), "one class over four streets");
@@ -75,7 +80,7 @@ fn the_all_in_family_is_pooled_across_streets() {
     // 0345's measured case: the pooled class on the long window, the only formulation that clears.
     let stats =
         BTreeMap::from([(ClassKey::AllIn, ClassStat { n: 1_315, total: 200.0, sumsq: 2_600.0, big: 26, days: DECISION_LOSS_DAYS })]);
-    let found = decision_losses(&stats, &no_coverage());
+    let found = decision_losses(&stats, &no_coverage(), &Shapes::new());
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].id, "decision-loss:all_in", "not decision-loss:all_in:all_in");
     assert!(
@@ -99,7 +104,7 @@ fn a_class_is_tested_on_the_short_window_unless_it_cannot_be() {
         (1_315, DECISION_LOSS_DAYS),
         "8 days hold 40 verdicts, so the long window is the one tested"
     );
-    assert_eq!(decision_losses(&tested, &no_coverage()).len(), 1, "and it is a finding on the window that can speak");
+    assert_eq!(decision_losses(&tested, &no_coverage(), &Shapes::new()).len(), 1, "and it is a finding on the window that can speak");
 
     // The short window holding the floor: it is the tested one, so a leak fixed in a release clears in
     // days rather than weeks — and the long window does not get to overrule it.
@@ -107,7 +112,7 @@ fn a_class_is_tested_on_the_short_window_unless_it_cannot_be() {
     let stale = ClassStat { n: 2_000, total: 200.0, sumsq: 20.0, big: 100, days: DECISION_LOSS_DAYS };
     let tested = tested_classes(&BTreeMap::from([(key.clone(), current)]), &BTreeMap::from([(key.clone(), stale)]));
     assert_eq!((tested[&key].n, tested[&key].days), (600, GAP_WINDOW_DAYS));
-    assert!(decision_losses(&tested, &no_coverage()).is_empty(), "a leak fixed in the last 8 days has cleared");
+    assert!(decision_losses(&tested, &no_coverage(), &Shapes::new()).is_empty(), "a leak fixed in the last 8 days has cleared");
     assert_eq!(tested.len(), 1, "and every class the long window holds is tested");
 }
 
@@ -121,9 +126,9 @@ fn every_class_is_printed_even_the_ones_that_cannot_file_yet() {
         ClassStat { n: 40, total: 8.0, sumsq: 6.4, big: 2, days: GAP_WINDOW_DAYS },
     );
     let classes = BTreeMap::from([thin, class(2_000, 200.0)]);
-    let filed = decision_losses(&classes, &no_coverage());
+    let filed = decision_losses(&classes, &no_coverage(), &Shapes::new());
     assert_eq!(filed.len(), 1);
-    let rows = measurements(&classes, &filed, &no_coverage());
+    let rows = measurements(&classes, &filed, &no_coverage(), &Shapes::new());
     assert_eq!(rows.len(), 1, "the class that filed is not printed twice");
     assert_eq!(rows[0].id, "decision-measurement:river:all_in");
     assert_eq!(rows[0].severity, "P2", "a measurement, not a leak (0269)");
@@ -177,7 +182,8 @@ fn a_duplicate_signature_merges_to_one_entry() {
 #[test]
 fn a_repeated_finding_keeps_its_age_and_its_ticket() {
     let classes = BTreeMap::from([class(2_000, 200.0)]);
-    let first = merge(&Value::Null, &Scan { at: 100.0, findings: decision_losses(&classes, &no_coverage()), ..Default::default() });
+    let first =
+        merge(&Value::Null, &Scan { at: 100.0, findings: decision_losses(&classes, &no_coverage(), &Shapes::new()), ..Default::default() });
     let one = to_file(&first, 5);
     assert_eq!(one.len(), 1, "the first scan files it");
     let mut stored = first.clone();
@@ -185,7 +191,8 @@ fn a_repeated_finding_keeps_its_age_and_its_ticket() {
     stored["findings"][0]["ticket"] = json!("0282-some-ticket");
     stored["findings"][0]["since"] = json!(50.0);
 
-    let second = merge(&stored, &Scan { at: 200.0, findings: decision_losses(&classes, &no_coverage()), ..Default::default() });
+    let second =
+        merge(&stored, &Scan { at: 200.0, findings: decision_losses(&classes, &no_coverage(), &Shapes::new()), ..Default::default() });
     assert!(to_file(&second, 5).is_empty(), "already filed, so nothing new");
     assert_eq!(second["findings"][0]["since"], json!(50.0), "and it keeps its age");
     assert_eq!(second["findings"][0]["ticket"], json!("0282-some-ticket"));
@@ -199,7 +206,11 @@ fn a_repeated_finding_keeps_its_age_and_its_ticket() {
 fn a_finding_that_clears_is_reported_as_cleared() {
     let stored = merge(
         &Value::Null,
-        &Scan { at: 100.0, findings: decision_losses(&BTreeMap::from([class(2_000, 200.0)]), &no_coverage()), ..Default::default() },
+        &Scan {
+            at: 100.0,
+            findings: decision_losses(&BTreeMap::from([class(2_000, 200.0)]), &no_coverage(), &Shapes::new()),
+            ..Default::default()
+        },
     );
     let after = merge(&stored, &Scan { at: 300.0, findings: vec![], ..Default::default() });
     assert_eq!(after["findings"].as_array().unwrap().len(), 0);
@@ -218,7 +229,8 @@ fn the_fleet_files_its_own_ticket_and_closes_it_when_the_finding_clears() {
     let hot = BTreeMap::from([class(2_000, 200.0)]);
 
     // First scan: the loss is above the floor, so a ticket is filed.
-    let first = merge(&Value::Null, &Scan { at: 1_000.0, findings: decision_losses(&hot, &no_coverage()), ..Default::default() });
+    let first =
+        merge(&Value::Null, &Scan { at: 1_000.0, findings: decision_losses(&hot, &no_coverage(), &Shapes::new()), ..Default::default() });
     let (filed, closed) = write_tickets(&root, &first, 1_000.0);
     assert_eq!(filed.len(), 1, "one new finding files one ticket");
     assert!(closed.is_empty());
@@ -234,7 +246,8 @@ fn the_fleet_files_its_own_ticket_and_closes_it_when_the_finding_clears() {
     stored["findings"][0]["since"] = json!(1_000.0);
 
     // Second scan, same finding: nothing new, nothing touched.
-    let second = merge(&stored, &Scan { at: 2_000.0, findings: decision_losses(&hot, &no_coverage()), ..Default::default() });
+    let second =
+        merge(&stored, &Scan { at: 2_000.0, findings: decision_losses(&hot, &no_coverage(), &Shapes::new()), ..Default::default() });
     let (filed, _) = write_tickets(&root, &second, 2_000.0);
     assert!(filed.is_empty(), "a repeat is not a new ticket");
     assert!(std::fs::read_to_string(issues.join(format!("{name}.md"))).unwrap().contains("status: open"));
@@ -299,7 +312,7 @@ fn only_verdicts_graded_on_the_live_inputs_are_decision_loss_evidence() {
         verdict(Some(3), "river", "raise:900", 0.75),
         verdict(Some(4), "turn", "call", -1.0),
     ];
-    let (classes, excluded) = comparable_classes(rows.iter(), GAP_WINDOW_DAYS);
+    let (classes, _, excluded) = comparable_classes(rows.iter(), GAP_WINDOW_DAYS);
     assert_eq!(excluded, 2, "the unversioned and the v2 verdict are not evidence");
     let raised = classes[&ClassKey::Spot { street: "river".into(), action: "raise".into() }];
     assert_eq!((raised.n, raised.total), (2, 1.0), "sized raises are one family");
@@ -380,7 +393,8 @@ fn a_finding_that_loses_its_evidence_says_so_and_does_not_claim_it_stopped_repro
     let issues = root.join(".scratch").join("svanbot10").join("issues");
     std::fs::create_dir_all(&issues).unwrap();
     let hot = BTreeMap::from([class(2_000, 200.0)]);
-    let mut stored = merge(&Value::Null, &Scan { at: 1_000.0, findings: decision_losses(&hot, &no_coverage()), ..Default::default() });
+    let mut stored =
+        merge(&Value::Null, &Scan { at: 1_000.0, findings: decision_losses(&hot, &no_coverage(), &Shapes::new()), ..Default::default() });
     let (filed, _) = write_tickets(&root, &stored, 1_000.0);
     stored["findings"][0]["ticket"] = json!(filed[0]);
 
@@ -408,7 +422,11 @@ fn a_finding_that_loses_its_evidence_says_so_and_does_not_claim_it_stopped_repro
 fn an_unreadable_instrument_keeps_its_findings_and_their_tickets() {
     let mut stored = merge(
         &Value::Null,
-        &Scan { at: 100.0, findings: decision_losses(&BTreeMap::from([class(2_000, 200.0)]), &no_coverage()), ..Default::default() },
+        &Scan {
+            at: 100.0,
+            findings: decision_losses(&BTreeMap::from([class(2_000, 200.0)]), &no_coverage(), &Shapes::new()),
+            ..Default::default()
+        },
     );
     stored["findings"][0]["ticket"] = json!("0400-decision-loss-turn-raise");
     let busy = Scan { at: 200.0, unreadable: vec!["decision-loss:".into()], ..Default::default() };

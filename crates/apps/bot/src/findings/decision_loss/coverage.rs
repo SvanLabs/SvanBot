@@ -232,7 +232,7 @@ mod tests {
         let pops = Populations::new(&[("preflop".to_string(), "check".to_string(), 213)], &[]);
         let classes = pops.seeded(Classes::new());
         let cover = coverages(&classes, Some(&pops), &pots, AUDIT_MIN_POT_BB);
-        let found = measurements(&classes, &[], &cover);
+        let found = measurements(&classes, &[], &cover, &Shapes::new());
         assert_eq!(found.len(), 1);
         assert_eq!((found[0].id.as_str(), found[0].severity.as_str()), ("decision-measurement:preflop:check", "P2"));
         assert!(found[0].title.contains("never queued"), "{}", found[0].title);
@@ -262,14 +262,14 @@ mod tests {
         let pop = |n: i64| vec![("turn".to_string(), "call".to_string(), n)];
         let pops = Populations::new(&pop(20_000), &pop(1_500));
         let cover = coverages(&classes, Some(&pops), &BTreeMap::new(), 12.5);
-        let filed = decision_losses(&classes, &cover);
+        let filed = decision_losses(&classes, &cover, &Shapes::new());
         assert_eq!(filed.len(), 1);
         assert!(filed[0].evidence.contains("600 of 1500 decisions in the turn call class in the window (40.00%)"), "{}", filed[0].evidence);
         assert!(
             decision_legend(12.5).contains("pot >= 12.5 bb, or a call of >= 3.125 bb that is at least 25% of the pot, or any all-in"),
             "the legend names the floor the analyst is actually applying"
         );
-        assert!(measurements(&classes, &filed, &cover).is_empty(), "the filed class keeps its one P0 row");
+        assert!(measurements(&classes, &filed, &cover, &Shapes::new()).is_empty(), "the filed class keeps its one P0 row");
     }
 
     /// 0355: a count that could not be read is unknown, not zero — a row must not price its mean against a
@@ -279,7 +279,7 @@ mod tests {
         let key = ClassKey::Spot { street: "turn".into(), action: "call".into() };
         let classes = Classes::from([(key, ClassStat { n: 600, total: 18.0, sumsq: 0.54, big: 0, days: GAP_WINDOW_DAYS })]);
         let cover = coverages(&classes, None, &BTreeMap::new(), AUDIT_MIN_POT_BB);
-        let filed = decision_losses(&classes, &cover);
+        let filed = decision_losses(&classes, &cover, &Shapes::new());
         assert_eq!(filed.len(), 1);
         assert!(filed[0].evidence.contains("coverage unknown"), "{}", filed[0].evidence);
         assert!(!filed[0].evidence.contains("0 of "), "a zero nobody measured: {}", filed[0].evidence);
@@ -362,7 +362,7 @@ mod tests {
             (spot("river", "call"), ClassStat { n: 40, total: 8.0, sumsq: 6.4, big: 2, days: GAP_WINDOW_DAYS }),
             (spot("preflop", "check"), ClassStat { n: 0, days: DECISION_LOSS_DAYS, ..Default::default() }),
         ]);
-        let filed = decision_losses(&classes, &Coverages::new());
+        let filed = decision_losses(&classes, &Coverages::new(), &Shapes::new());
         assert_eq!(filed.len(), 1, "only the class with a rate and a sample files");
         let rows = class_rows(&classes, &filed, &Coverages::new());
         assert_eq!(

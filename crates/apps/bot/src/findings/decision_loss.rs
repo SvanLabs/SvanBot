@@ -170,19 +170,29 @@ impl ClassStat {
 /// Decision-loss classes: which spot, and what its window measured.
 pub type Classes = BTreeMap<ClassKey, ClassStat>;
 
+/// The shapes inside a class, split out by responsibility; its items are re-exported here so
+/// `sv10_bot::findings::decision_loss::…` is the path a caller still uses.
+mod shapes;
+pub use shapes::*;
+
 /// Decision-loss classes, by spot, built only from verdicts graded on records that carry the live
 /// inputs ([`LIVE_INPUTS_REPLAY_VERSION`]). `days` is the window the rows were fetched over, recorded
-/// on each class so a finding can say which one it rests on. Returns the number of verdicts left out,
-/// so the scan can say how much of the window was not evidence.
-pub fn comparable_classes<'a>(rows: impl Iterator<Item = &'a (String, sv10_store::store::AuditResult)>, days: i64) -> (Classes, usize) {
+/// on each class so a finding can say which one it rests on. The shapes ride along from the same
+/// verdicts, so the classes and what names their repeats can never disagree (#319). Returns the
+/// number of verdicts left out, so the scan can say how much of the window was not evidence.
+pub fn comparable_classes<'a>(
+    rows: impl Iterator<Item = &'a (String, sv10_store::store::AuditResult)>,
+    days: i64,
+) -> (Classes, Shapes, usize) {
     let mut classes = Classes::new();
+    let mut shapes = Shapes::new();
     let mut excluded = 0;
     for (_, r) in rows {
         if !r.replay_version.is_some_and(|v| v >= LIVE_INPUTS_REPLAY_VERSION) {
             excluded += 1;
             continue;
         }
-        let action = r.live_action.split(':').next().unwrap_or(&r.live_action).to_string();
+        let action = family(&r.live_action).to_string();
         // 0345: an all-in is evidence about the all-in family, wherever it was taken. The verdict is
         // still counted under its own street as well — the scan prints per-street lines and pools
         // only for the class that has to reach the sample floor.
@@ -191,15 +201,27 @@ pub fn comparable_classes<'a>(rows: impl Iterator<Item = &'a (String, sv10_store
             keys.push(ClassKey::AllIn);
         }
         let gap = r.gap_bb.max(0.0);
+        let (live, deep) = (action.clone(), family(&r.deep_action).to_string());
         for key in keys {
-            let c = classes.entry(key).or_insert(ClassStat { days, ..Default::default() });
+            let c = classes.entry(key.clone()).or_insert(ClassStat { days, ..Default::default() });
             c.n += 1;
             c.total += gap;
             c.sumsq += gap * gap;
             c.big += i64::from(gap >= BIG_GAP_BB);
+            let shapes = shapes.entry(key).or_default();
+            match shapes.iter_mut().find(|s| s.live == live && s.deep == deep) {
+                Some(s) => {
+                    s.n += 1;
+                    s.total_gap += gap;
+                }
+                None => shapes.push(ShapeCount { live: live.clone(), deep: deep.clone(), n: 1, total_gap: gap }),
+            }
         }
     }
-    (classes, excluded)
+    for shapes in shapes.values_mut() {
+        shapes.sort_by_key(|s| std::cmp::Reverse(s.n));
+    }
+    (classes, shapes, excluded)
 }
 
 /// The window each class is tested on (0345): the short one when it already holds
@@ -219,8 +241,10 @@ pub fn tested_classes(short: &Classes, long: &Classes) -> Classes {
 }
 
 /// What a class's window measured, in the words every decision-loss row uses: the verdict count and
-/// window, the total given up, the 95% interval on the per-decision mean, and the tally of decisions
-/// that gave up at least [`BIG_GAP_BB`] — the number a reader acts on when the class is mostly zeros.
+/// window, the total given up, the 95% interval on the per-decision mean, the tally of decisions
+/// that gave up at least [`BIG_GAP_BB`] — the number a reader acts on when the class is mostly zeros —
+/// and the (live -> deep) shapes behind it, most frequent first, so a repeat reads as a repeat and
+/// not as three unrelated hands (#319).
 ///
 /// 0355: it ends with the population the verdicts are drawn from, so a class's mean prints as the mean
 /// of the audited sub-population it is and not as the class's (lesson 39). A class with no deep
@@ -229,13 +253,27 @@ pub fn tested_classes(short: &Classes, long: &Classes) -> Classes {
 /// #321: the filter that admits the verdicts, and what it takes to file, are the same sentence for
 /// every class in the table — they live in [`decision_legend`] and are stated once per scan, where the
 /// rows used to repeat them word for word.
-pub fn class_evidence(key: &ClassKey, s: &ClassStat, cover: &Coverage) -> String {
+pub fn class_evidence(key: &ClassKey, s: &ClassStat, cover: &Coverage, shapes: &Shapes) -> String {
     let interval = match s.interval() {
         Some((lo, hi)) => format!("95% {lo:.3}..{hi:.3}"),
         None => "no interval on one verdict".to_string(),
     };
+    let shapes = shapes.get(key).map(|v| v.as_slice()).unwrap_or_default();
+    let shapes = if shapes.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "; shapes: {}",
+            shapes
+                .iter()
+                .take(3)
+                .map(|shape| format!("live {} -> deep {} ×{} ({:.3} bb per decision)", shape.live, shape.deep, shape.n, shape.mean()))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    };
     format!(
-        "{} deep re-solves over {} days, {:.1} bb given up ({:.3} bb per decision, {interval}); {} gave up >= {BIG_GAP_BB} bb; {} [{}]",
+        "{} deep re-solves over {} days, {:.1} bb given up ({:.3} bb per decision, {interval}); {} gave up >= {BIG_GAP_BB} bb; {} [{}]{shapes}",
         s.n,
         s.days,
         s.total,
@@ -309,14 +347,21 @@ fn never_queued_evidence(key: &ClassKey, s: &ClassStat, cover: &Coverage) -> Str
 /// 95% lower bound of its per-decision loss clears [`GAP_BB_PER_DECISION`]. The point estimate alone
 /// no longer files: on a fat-tailed class it can clear the floor while the interval still contains
 /// zero, and a `P0` nobody can act on is worse than a measurement.
-pub fn decision_losses(classes: &Classes, cover: &Coverages) -> Vec<Finding> {
+pub fn decision_losses(classes: &Classes, cover: &Coverages, shapes: &Shapes) -> Vec<Finding> {
     let mut out: Vec<Finding> = classes
         .iter()
         .filter(|(_, s)| s.n >= GAP_MIN_DECISIONS && s.lower_bound() >= GAP_BB_PER_DECISION)
         .map(|(key, s)| {
             let per = s.mean();
             let c = cover.get(key).copied().unwrap_or_default();
-            Finding::new(&key.id(), "P0", &format!("{} costs {per:.3} bb per decision", key.label()), class_evidence(key, s, &c), per, 0.0)
+            Finding::new(
+                &key.id(),
+                "P0",
+                &format!("{} costs {per:.3} bb per decision", key.label()),
+                class_evidence(key, s, &c, shapes),
+                per,
+                0.0,
+            )
         })
         .collect();
     out.sort_by(|a, b| b.value.total_cmp(&a.value));
@@ -336,7 +381,7 @@ pub fn decision_losses(classes: &Classes, cover: &Coverages) -> Vec<Finding> {
 /// carries its coverage; a class with comparable verdicts and none is `never queued`, with the pot
 /// distribution that explains why the filter never reaches it, rather than the mean of an empty
 /// sample.
-pub fn measurements(classes: &Classes, filed: &[Finding], cover: &Coverages) -> Vec<Finding> {
+pub fn measurements(classes: &Classes, filed: &[Finding], cover: &Coverages, shapes: &Shapes) -> Vec<Finding> {
     let mut out: Vec<Finding> = classes
         .iter()
         .filter(|(key, _)| !filed.iter().any(|f| f.id == key.id()))
@@ -353,7 +398,7 @@ pub fn measurements(classes: &Classes, filed: &[Finding], cover: &Coverages) -> 
                 &key.measurement_id(),
                 "P2",
                 &format!("{}: {:.3} bb per decision over {} deep re-solves", key.label(), s.mean(), s.n),
-                class_evidence(key, s, &c),
+                class_evidence(key, s, &c, shapes),
                 s.mean(),
                 0.0,
             )

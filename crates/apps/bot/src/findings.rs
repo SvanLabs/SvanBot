@@ -209,8 +209,9 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
     let short_since = (chrono::Utc::now() - chrono::Duration::days(GAP_WINDOW_DAYS)).to_rfc3339();
     match store.audit_results_since(&long_since) {
         Ok(rows) if !rows.is_empty() => {
-            let (long, excluded) = comparable_classes(rows.iter(), DECISION_LOSS_DAYS);
-            let (short, _) = comparable_classes(rows.iter().filter(|(ts, _)| ts.as_str() >= short_since.as_str()), GAP_WINDOW_DAYS);
+            let (long, long_shapes, excluded) = comparable_classes(rows.iter(), DECISION_LOSS_DAYS);
+            let (short, short_shapes, _) =
+                comparable_classes(rows.iter().filter(|(ts, _)| ts.as_str() >= short_since.as_str()), GAP_WINDOW_DAYS);
             let tested = tested_classes(&short, &long);
             // The class populations (0355), the denominator every coverage names: read over the same two
             // windows the verdicts were counted over, and `None` — coverage unknown, not zero — if either
@@ -248,9 +249,10 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
             // The tested window's counts, so a cleared finding's "measured" is what the scan actually
             // tested and a class tested on the long window cannot read as unmeasured.
             sampled = tested.iter().map(|(key, c)| (key.id(), c.n)).collect();
-            let filed = decision_losses(&tested, &cover);
+            let shapes = tested_shapes(&short, &short_shapes, &long_shapes);
+            let filed = decision_losses(&tested, &cover, &shapes);
             rows_out = class_rows(&tested, &filed, &cover);
-            findings.extend(measurements(&tested, &filed, &cover));
+            findings.extend(measurements(&tested, &filed, &cover, &shapes));
             findings.extend(filed);
             classes = tested;
         }
