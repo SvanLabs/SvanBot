@@ -206,3 +206,22 @@ async fn the_page_and_its_assets_are_served_from_the_build_directory() {
         assert!(!body.contains("not the page"), "{path} served a file outside the build directory");
     }
 }
+
+/// One projection per (slot, tick), shared by every connection (#334): a second consumer in the
+/// same tick reads the cached projection even after the table moved, and past the tick the next
+/// consumer triggers a fresh one.
+#[tokio::test]
+async fn the_stream_shares_one_projection_per_slot_and_tick() {
+    let s = Shared::for_test("tv-cache", &["A"]);
+    let first = project_shared(&s, 0).await.expect("a projection");
+    // Move the table; a second consumer in the same tick still reads the shared projection.
+    s.update(0, |b| b.pot = 999_999);
+    let second = project_shared(&s, 0).await.expect("a shared projection");
+    assert_eq!(first, second, "the second consumer re-projected instead of sharing");
+    assert!(!second.contains("999999"), "the shared projection is not the moved table");
+    // Past the tick the projection refreshes to the moved table.
+    tokio::time::sleep(state::TABLE_EVERY + Duration::from_millis(50)).await;
+    let third = project_shared(&s, 0).await.expect("a fresh projection");
+    assert_ne!(first, third, "the projection did not refresh past the tick");
+    assert!(third.contains("999999"), "the refreshed projection missed the moved table: {third}");
+}

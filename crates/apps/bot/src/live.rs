@@ -242,6 +242,11 @@ pub struct Shared {
     pub experiment: RwLock<crate::experiment::Live>,
     /// Hands the previous process left in progress, by bot, waiting for their replayed result (0315).
     pub resumable: Mutex<OpenHands>,
+    /// The TV's last projection per slot, shared by every spectator connection (#334): the first
+    /// connection whose slot is due projects, the rest read the entry while it is fresher than
+    /// [`crate::api::tv`] 's tick. Bounded by the seat count; entries go stale, never wrong, and a
+    /// slot re-projects past the tick.
+    pub tv_cache: Mutex<std::collections::HashMap<usize, (std::time::Instant, String)>>,
 }
 
 impl Shared {
