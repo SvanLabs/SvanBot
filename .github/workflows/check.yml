@@ -115,11 +115,20 @@ jobs:
       # `artifacts/tables` is cached beside the build: 96 MB of board strengths that `cloud-setup.sh`
       # generates in about a minute, unchanged between runs, and expensive enough that paying for it
       # on every pull request would be the slowest step here.
+      #
+      # `target/dev` is deliberately not listed. The action caches `<repo>/target` whatever
+      # `CARGO_TARGET_DIR` says — the restore step prints the paths it uses, and that one is first —
+      # so naming it archived every build artifact twice.
+      #
+      # `cache-workspace-crates` adds the ~20 workspace members the action drops by default, which the
+      # gate rebuilt on every run. It applies on the save side only, and the action skips the save
+      # when the restore was a full match, so this flag takes effect together with the path list above
+      # or not at all: it is the list changing that gives the next save a new cache version.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           cache-directories: |
-            target/dev
             artifacts/tables
+          cache-workspace-crates: "true"
       # cargo-deny, web/node_modules and the board-strength tables. The gate's notices check reads the
       # installed npm packages, so it cannot run on a checkout that has never run `npm ci`.
       - name: Setup (cargo-deny, web deps, tables)
