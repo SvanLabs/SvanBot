@@ -185,8 +185,9 @@ against `main` (they close #15 and #315). Delete the four local branches whose c
 `CONTRIBUTING.md`, `docs/README.md`, `docs/RELEASE.md`, `docs/OPERATIONS.md`, `README.md`,
 `llms.txt`, `.env.example`, the push trigger in `.github/workflows/check.yml` and the two places in
 `scripts/update.sh` that hardcode the branch-line message. Post the
-four decision comments on the blocked issues, relabel #347, #334 and #17 `agent-friendly`, give #319
-the readiness label it is missing, and close #18. Change the `main` ruleset to allow squash merges.
+four decision comments on the blocked issues, relabel #334 and #17 `agent-friendly`, give #319
+the readiness label it is missing, close #18, close #347 with its decision recorded, and close #15.
+Change the `main` ruleset to allow squash merges.
 
 **Why first.** Every later pull request is created under this policy; it cannot be done afterwards.
 Most of it is deletion.
@@ -278,7 +279,7 @@ ever issued on it again.
 |---|---|
 | #334 | Measure first, exactly as its own triage comment requires: open a stream against a busy table with `SVANBOT_TV_PORT` set and count the projections. Then choose the cache, the cap, or both on the number. |
 | #17 | Publish a dated release of derived aggregates and schema. **Never raw opponent hands** — narrower than the issue's own framing, which proposed a sealed copy of the live database. Confirm the scrub list before anything is published. |
-| #347 | The `test-hooks` feature is **not** built. Piece 1 landed the log capture; the seam is deferred until a call site actually needs it. |
+| #347 | The `test-hooks` feature is **not** built. Piece 1 landed the log capture; the seam is deferred until a call site actually needs it. The issue is closed with that decision recorded and reopens if one does. |
 | #18 | Closed in Phase 0. |
 
 ## 5. What was cut, and why

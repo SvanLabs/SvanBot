@@ -756,20 +756,22 @@ Confirm `git status --short` is clean before proceeding — in particular that n
 
 These comments are public. Post them only when the operator has confirmed the wording, and keep the `Generated-by:` line in each body.
 
-- [ ] **Step 1: Post the decision that unblocks #347**
+- [ ] **Step 1: Record the decision on #347 and close it**
 
 ```bash
 gh issue comment 347 --body "$(cat <<'EOF'
 Decision: neither seam is built now. Piece 1, the log-capture helper, landed in #452 and unblocked
 every site that could already be made to fail. Piece 2 — a way for `sv10-bot` to force a store write
-to fail — is deferred until a call site actually needs it, because the smaller design is still
+to fail — is deferred until a call site actually needs it: the smaller of the two designs is still
 machinery for three call sites that have not asked for it.
 
-Leaving this open without a readiness label so the decision stays visible.
+Closing with the decision recorded rather than leaving it open: nothing is left to choose, so none of
+the three readiness labels applies. Reopen this if a call site needs the seam.
 
 Generated-by: claude-code/deepseek-flash
 EOF
 )"
+gh issue close 347 --reason "not planned"
 ```
 
 - [ ] **Step 2: Post the decision that unblocks #334**
@@ -852,15 +854,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 6: Verify the board state**
-
-```bash
-gh issue list --state open --json number,labels --jq '.[] | "\(.number)\t\(.labels|map(.name)|join(","))"'
-```
-
-Expected: seven open issues, every one carrying a readiness label, and no `blocked-on-decision` among them except those deliberately left.
-
-- [ ] **Step 6b: Close #15**
+- [ ] **Step 6: Close #15**
 
 Its fix landed as #456, which made `scripts/setup.sh` build through `scripts/release.sh` instead of
 writing `target/release` directly.
@@ -874,6 +868,27 @@ Generated-by: claude-code/deepseek-flash
 EOF
 )"
 ```
+
+- [ ] **Step 7: Verify the board state**
+
+Every close in this task runs before this step, because the count this asserts is the state the
+closes produce.
+
+```bash
+issues=$(gh issue list --state open --json number,labels)
+echo "$issues" | jq '.[] | "\(.number)\t\(.labels|map(.name)|join(","))"'
+echo "$issues" | jq -e '
+  ([.[].number] | sort) == [17, 319, 334, 363]
+  and all(.[]; (.labels | map(.name) | index("agent-friendly")) != null)
+  and all(.[]; (.labels | map(.name) | index("blocked-on-decision")) == null)
+' >/dev/null \
+  && echo "board ok: four open, every one agent-friendly, none blocked-on-decision" \
+  || { echo "board WRONG: the listing above is not four open issues all labelled agent-friendly"; exit 1; }
+```
+
+Expected: **four** open issues — #363, #334, #319, #17 — every one labelled `agent-friendly`, and
+none labelled `blocked-on-decision`. #315 closed when #457 merged; #18, #347 and #15 closed in this
+task.
 
 ---
 
@@ -1202,7 +1217,7 @@ Run after the plan is written, against the spec.
 | Land the spec on `main` | 3 |
 | Delete `dev`'s machinery, rewrite docs, `check.yml` trigger, `update.sh` | 4 |
 | Delete `dev` branch and ruleset (admin) | 5 |
-| Decision comments, relabel #347/#334/#17, label #319, close #18 | 6 |
+| Decision comments, relabel #334/#17, label #319, close #18, #347 and #15 | 6 |
 | `verify-install` | 7 |
 | `promotion.rs:87` shifted z + test pinning it | 8 |
 | Correct `docs/SPEC-learner.md:230` | 9 |
