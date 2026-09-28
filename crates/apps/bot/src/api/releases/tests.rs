@@ -167,3 +167,20 @@ fn range_and_status_read_a_real_repo() {
     assert!(!git(&dir, &["status", "--porcelain"]).unwrap().trim().is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_finished_runs_elapsed_is_its_duration_not_its_age() {
+    let now = 100_000.0;
+    // Started 3000 s ago and took 120 s: the last save (`updated`) is the end of the run.
+    let finished = |state: &str| {
+        json!({"state": state, "started": now - 3_000.0, "updated": now - 2_880.0,
+               "stages": [{"name": "fetch", "state": "done", "seconds": 3.0}]})
+    };
+    for state in ["installed", "failed"] {
+        let v = progress_view(&finished(state), &Value::Null, now);
+        assert_eq!(v["elapsed"].as_f64(), Some(120.0), "{state} reports how long it took, not how long ago it ended: {v}");
+    }
+    // A running run has no recorded end: it still counts from `started` to now.
+    let running = json!({"state": "running", "started": now - 150.0, "updated": now - 140.0, "stages": []});
+    assert_eq!(progress_view(&running, &Value::Null, now)["elapsed"].as_f64(), Some(150.0));
+}
