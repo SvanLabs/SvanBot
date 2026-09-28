@@ -49,6 +49,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A pull request into `dev` named an issue and closed nothing** (#410). GitHub interprets a closing
+  keyword in a description only when the pull request targets the repository's *default* branch — "The
+  pull request must be on the default branch" — and with `main` the default (#402), `Closes #<issue>`
+  made no link at all: PR #409 merged into `dev` with `Closes #408` in its body and #408 stayed open.
+  Every document here asks for that line, and the maintainer's rule is the oldest open
+  `agent-friendly` issue **that no pull request closes yet**, tested with `gh pr list`, which lists
+  open pull requests only — so an issue whose fix had landed stayed open, was reported as closed by no
+  open pull request, and could be picked and done a second time. `.github/workflows/close-linked-issues.yml`
+  now closes what a merged description names, using GitHub's own keywords
+  (`scripts/close-linked-issues.py`, covered by the gate). On `main` the platform has already closed
+  them and the request is a no-op.
 - **A red gate named the suite it died in, not the test** (#408). `scripts/check.sh` ran the Python
   tool tests and the eight shell suites with their output discarded — `unittest` writes its failures to
   stderr and the suites write theirs to stdout — so the whole of the evidence was the suite's name.

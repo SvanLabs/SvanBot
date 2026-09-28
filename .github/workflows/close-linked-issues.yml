@@ -1,0 +1,66 @@
+# Closes the issues a merged pull request names (#410).
+#
+# GitHub interprets a closing keyword in a pull request description only when the pull request targets
+# the repository's *default* branch — "The pull request must be on the default branch" — and the
+# default branch here is `main` while every pull request targets `dev`. So `Closes #<issue>`, which
+# `.github/pull_request_template.md`, `CONTRIBUTING.md` and `claude-maintainer.yml` all ask for, made
+# no link and closed nothing: PR #409 merged into `dev` with `Closes #408` in its body and #408 stayed
+# open. The loss is not cosmetic — the maintainer's rule is "the oldest open `agent-friendly` issue
+# that no pull request closes yet", tested with `gh pr list`, which lists open pull requests only, so
+# an issue whose fix had landed stayed open, was reported as closed by no open pull request, and could
+# be picked and done a second time.
+#
+# `scripts/close-linked-issues.py` reads the description and closes what it names, with GitHub's own
+# keywords. It is the missing half of the convention rather than a change to it, and it runs on every
+# merged pull request: on `main` the platform has already closed them and the request is a no-op.
+name: close linked issues
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  close:
+    # A pull request closed without merging closes nothing: the change is not in the tree, and a
+    # description that promised the close has not delivered it.
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The script is `dev`'s: it is fixed there and promoted from there, and a checkout with no
+          # `ref:` would take the default branch, where a fix to it would have to be promoted before it
+          # could run. The same reason `promote.yml` names the branch it works.
+          ref: dev
+
+      - name: SvanLabs app token
+        id: app-token
+        # A pull request from a fork gets no secrets, and a run a bot started has no Actions secrets
+        # either; the fallback is the workflow token, which the permissions above make sufficient.
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.SVANLABS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SVANLABS_APP_PRIVATE_KEY }}
+
+      # The description is untrusted text: into the environment, out to a file, and only the constant
+      # path is named to the step below, so a description containing `$(…)` or a backtick runs nothing.
+      # The same path `check.yml` takes to hand the body to the provenance check.
+      - name: Pull request body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+
+      - name: Close what it names
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+        run: |
+          python3 scripts/close-linked-issues.py \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file "$RUNNER_TEMP/pr-body.md"
