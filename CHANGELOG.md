@@ -29,6 +29,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`Decision` no longer claims to be serializable** (#325). `Decision` derived `Serialize` with
+  `#[serde(skip)]` on `action` — the field that says what to do — while nothing in the workspace ever
+  serialized a `Decision`: the action crosses every boundary as protocol text (`DecisionView.action`,
+  the `decisions.action` column, `ReplayRecord.action`), and the engine's `Action` enum deliberately
+  has no serde impl. The derive and the skip are both gone, so a silent drop of the action through
+  serde is now impossible by construction rather than by a test. `BotLive`'s twelve skipped fields
+  are runtime state (`Instant` timers, per-connection turn tokens, the hand in progress) and now say
+  so once at the struct, naming where the two pieces that must outlive a process actually persist;
+  `ModelStore`'s per-opponent corrections already carried that note at every field.
+
+- **The hourly backup moves to the second disk instead of being copied and checked there** (#374).
+  The copy was written under a temporary name, its bytes read back against the seal, the page cache
+  dropped and only then renamed — and the second disk answers that dance with `EUCLEAN` ("structure
+  needs cleaning"), 22 times between 2026-09-26 11:32 and 2026-09-28 05:58, so the hour's copy never
+  landed. The sealed pair now goes straight to the name a restore reads, in one step, and the SSD
+  copy is removed after it: a failed move discards the partial file and leaves the SSD pair exactly
+  where it was, so the worst case is one hour without a copy on a disk that is already failing, never
+  a lost backup. This is the operator's call (2026-09-28): guard the hour on the SSD, not on the disk
+  the kernel is complaining about.
+
 - **The learner refreshes its evidence on the hands as they arrive** (#314). Every gate was
   denominated in hands, so the play rate decided how fast the models improved: on the live fleet the
   learner waited about two and a half hours between a 57 s refresh and a 468 s search, and the

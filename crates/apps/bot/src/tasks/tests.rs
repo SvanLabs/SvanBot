@@ -87,7 +87,7 @@ fn backup_rotation_keeps_the_newest_copies_and_their_seals() {
 }
 
 #[test]
-fn hourly_backups_mirror_verified_and_keep_the_newest() {
+fn hourly_backups_are_moved_to_the_second_disk_and_keep_the_newest() {
     let d = dir("mirror");
     let (ssd, hdd) = (d.join("backups"), d.join("hdd").join("hourly"));
     std::fs::create_dir_all(&ssd).unwrap();
@@ -106,65 +106,41 @@ fn hourly_backups_mirror_verified_and_keep_the_newest() {
         ["svanbot10-2026092611.db", "svanbot10-2026092611.db.sha256", "svanbot10-2026092612.db", "svanbot10-2026092612.db.sha256"]
     );
     assert!(sv10_store::integrity::verify_backup(&hdd.join("svanbot10-2026092612.db")));
-    // A copy that does not match its seal is removed, never kept as a restore point.
-    let bad = ssd.join("svanbot10-2026092613.db");
-    std::fs::copy(ssd.join("svanbot10-2026092612.db"), &bad).unwrap();
-    std::fs::write(ssd.join("svanbot10-2026092613.db.sha256"), "0".repeat(64)).unwrap();
-    assert!(super::backup::mirror_backup(&bad, &hdd, 2).is_err());
-    assert!(!hdd.join("svanbot10-2026092613.db").exists());
+    // A move, not a copy (#374): the hour leaves the SSD, so there is exactly one pair and it is
+    // the one a restore reads.
+    assert!(!ssd.join("svanbot10-2026092612.db").exists(), "the moved hour is off the SSD");
+    assert!(!ssd.join("svanbot10-2026092612.db.sha256").exists(), "and its seal went with it");
 }
 
 #[test]
-fn a_failed_mirror_keeps_the_hours_previous_copy_and_names_the_step() {
-    // 2026-09-27: /backup-disk reported `Structure needs cleaning` (EUCLEAN) and mirror steps that
-    // copied, synced and renamed fine failed their check afterwards. The old code then deleted
-    // the target pair, so a failed re-mirror destroyed the hour's only copy on that disk and
-    // said only "does not match its seal", which the operator could not act on (0292).
-    let d = dir("mirror-keep");
-    let (ssd, other, hdd) = (d.join("backups"), d.join("other"), d.join("hdd").join("hourly"));
+fn a_failed_move_leaves_the_ssd_pair_and_names_the_step() {
+    // 2026-09-27: /backup-disk reported `Structure needs cleaning` (EUCLEAN) to the copy-verify-
+    // rename the mirror used to do (0292, 22 times over two days). The operator's call is a plain
+    // move (#374), so what a failure has to preserve is the SSD pair — and it has to say which step
+    // failed.
+    let d = dir("mirror-fail");
+    let (ssd, hdd) = (d.join("backups"), d.join("hdd").join("hourly"));
     std::fs::create_dir_all(&ssd).unwrap();
-    std::fs::create_dir_all(&other).unwrap();
+    std::fs::create_dir_all(&hdd).unwrap();
     let name = "svanbot10-2026092614.db";
     let good = ssd.join(name);
     let c = rusqlite::Connection::open(&good).unwrap();
     c.execute_batch("CREATE TABLE t (x); INSERT INTO t VALUES (1);").unwrap();
     drop(c);
     sv10_store::integrity::seal_backup(&good).unwrap();
-    assert!(super::backup::mirror_backup(&good, &hdd, 2).unwrap());
-    let kept = hdd.join(name);
-    assert!(sv10_store::integrity::verify_backup(&kept), "the hour is on the second disk");
-    // The same hour again, from a pair whose seal disagrees with its copy.
-    let bad = other.join(name);
-    std::fs::copy(&good, &bad).unwrap();
-    std::fs::write(other.join(format!("{name}.sha256")), "0".repeat(64)).unwrap();
-    let err = super::backup::mirror_backup(&bad, &hdd, 2).unwrap_err().to_string();
-    assert!(sv10_store::integrity::verify_backup(&kept), "the previous verified copy survives the failed attempt: {err}");
-    assert!(err.contains("different bytes"), "the failure names the check that failed: {err}");
-    let mut left: Vec<String> = std::fs::read_dir(&hdd).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-    left.sort();
-    assert_eq!(left, [name, &format!("{name}.sha256")], "nothing of the rejected attempt stays behind");
-}
-
-#[test]
-fn an_interrupted_mirror_leaves_no_temporaries_behind() {
-    // A hot swap exits the process where it stands, mid-copy: the half-written pair stayed on a
-    // disk that is 86% full because rotation only ever looks at `*.db` (0292).
-    let d = dir("mirror-tmp");
-    let (ssd, hdd) = (d.join("backups"), d.join("hdd").join("hourly"));
-    std::fs::create_dir_all(&ssd).unwrap();
-    std::fs::create_dir_all(&hdd).unwrap();
-    for n in [".svanbot10-2026092613.db.tmp", ".svanbot10-2026092613.db.tmp.sha256"] {
-        std::fs::write(hdd.join(n), vec![0u8; 4096]).unwrap();
-    }
-    let good = ssd.join("svanbot10-2026092614.db");
-    let c = rusqlite::Connection::open(&good).unwrap();
-    c.execute_batch("CREATE TABLE t (x);").unwrap();
-    drop(c);
-    sv10_store::integrity::seal_backup(&good).unwrap();
-    assert!(super::backup::mirror_backup(&good, &hdd, 2).unwrap());
-    let mut left: Vec<String> = std::fs::read_dir(&hdd).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-    left.sort();
-    assert_eq!(left, ["svanbot10-2026092614.db", "svanbot10-2026092614.db.sha256"]);
+    // A second disk that refuses the write, which is what a failing one does.
+    use std::os::unix::fs::PermissionsExt;
+    let chmod = |mode: u32| {
+        let mut perms = std::fs::metadata(&hdd).unwrap().permissions();
+        perms.set_mode(mode);
+        std::fs::set_permissions(&hdd, perms).unwrap();
+    };
+    chmod(0o555);
+    let err = super::backup::mirror_backup(&good, &hdd, 2).unwrap_err().to_string();
+    assert!(err.contains("moving") && err.contains(name), "the failure names the step that failed: {err}");
+    assert!(sv10_store::integrity::verify_backup(&good), "the SSD pair is untouched");
+    chmod(0o755);
+    let _ = std::fs::remove_dir_all(&d);
 }
 
 #[test]
