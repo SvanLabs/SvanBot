@@ -29,6 +29,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The learner refreshes its evidence on the hands as they arrive** (#314). Every gate was
+  denominated in hands, so the play rate decided how fast the models improved: on the live fleet the
+  learner waited about two and a half hours between a 57 s refresh and a 468 s search, and the
+  Autonomy panel reported it as "872 of 1000 new hands". A refresh now waits for nothing but a new
+  hand — the fits live play reads are never more than about a minute old — while champion search
+  keeps its own gate (the dashboard's new-hands limit, the early-season cooldown, the backoff), since
+  a champion is only replaced on fresh-deal evidence. A due search yields to a refresh only when the
+  fits are a whole evidence epoch (500 hands) behind, and the rejection ledger and the experiment
+  target queue are scoped to that epoch rather than to the refresh watermark, so continuous
+  refreshes cannot retire the search's memory of what it has already measured (0285). The panel names
+  a running refresh instead of reporting it as challenger validation.
+
 - **The findings panel states one explanation per family and tables the deep re-solve** (#321). The
   panel printed the same paragraph thirty times — the filter, the floor and the interval in every row —
   with the line saying none of it was measurable in the footnote. It now leads with the coverage (how

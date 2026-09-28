@@ -63,28 +63,36 @@ next process resumes the stored run.
 ## One cycle
 
 1. **Release check**: if `release.sh` installed a new binary, exit; the supervisor restarts on it.
-   **Two-job pacing** (`learner.pacing`, checked every 10 s): the dashboard hand limit controls
-   evidence refreshes at every point in the season. A refresh runs range calibration, live fits and
-   per-opponent fits, snapshots the opponent models used to build population clones, then advances
-   only its own hand watermark. Champion search has a separate watermark and schedule:
+   **Two-job pacing** (`learner.pacing`, checked every 10 s): an evidence refresh waits for nothing
+   but a new hand (issue #314 — its own duration is the pace, and the fits it writes are what live
+   play reads). A refresh runs range calibration, live fits and per-opponent fits, snapshots the
+   opponent models used to build population clones, then advances only its own hand watermark.
+   Champion search has a separate watermark and schedule:
    - During the first 72 hours after `season.current.v1.started_at`, search runs whenever the
      dashboard cooldown ends, without waiting for more hands. The pacing study found that opponent
      rates move only about 0.2 percentage points per 500 hands and candidate-rank changes are smaller
      than seed noise, so early searches gain from additional independent samples rather than refitting
      nearly identical populations.
-   - After 72 hours, search runs at the dashboard hand limit. It therefore never waits for more hands
-     than an evidence refresh. Missing season state uses this conservative late-season policy.
+   - After 72 hours, search runs at the dashboard hand limit. Missing season state uses this
+     conservative late-season policy.
    - A promotion requests one follow-up search after cooldown. The 6-hour maximum idle rule and an
      operator "Start next search early" request also start search; the operator request bypasses cooldown.
-   - When both jobs are due, evidence refresh runs first and search follows on the next scheduler poll
-     against the refreshed state.
+   - When both are due and the fits are a whole evidence epoch behind (500 hands), the refresh runs
+     first and search follows on the next scheduler poll against the refreshed state; inside the
+     epoch a due search goes first, and the refresh that would have preceded it resumes as soon as
+     the search ends. A refresh never holds a search back by more than its own duration.
    - While the learner is idle, the cheap live fits (fold calibration, deep-pot all-in calls) are
      refit hourly anyway, so a quiet table never leaves live play on stale calibration.
    `LEARNER_MIN_NEW_HANDS` defaults to 500 and the dashboard's `min_new_hands` setting (0–20,000)
-   overrides it. `LEARNER_COOLDOWN_MINUTES` defaults to 60 and the dashboard's cooldown setting
-   (0–1,440) overrides it. `LEARNER_MAX_BACKOFF` remains available but defaults to 1 (none).
-   The dashboard reports the next job, accumulated and remaining hands, season day and scheduling
-   reason. These settings change scheduling only; the fresh-deal +1 bb/100 promotion gate is unchanged.
+   overrides it; it gates champion search only. `LEARNER_COOLDOWN_MINUTES` defaults to 60 and the
+   dashboard's cooldown setting (0–1,440) overrides it. `LEARNER_MAX_BACKOFF` remains available but
+   defaults to 1 (none). The dashboard reports the next job, accumulated and remaining hands, season
+   day and scheduling reason, and names a running refresh rather than reporting it as challenger
+   validation. These settings change scheduling only; the fresh-deal +1 bb/100 promotion gate is unchanged.
+   The rejection ledger and the experiment target queue are scoped to the evidence epoch
+   (`pacing::evidence_epoch`, 500 hands of rowid) rather than to the refresh watermark: refreshes run
+   continuously, and a scope that moved with each one would retire the search's memory of what it has
+   already measured (0285).
    **Deep-pot all-in calls** (2026-09-23, `sv10_bot::raisewar::fit_deep_call`, key `deep_call.v1`): calls of an
    all-in in pots of at least 500 bb over-estimate equity while smaller pots are calibrated. Each cycle
    fits the mean over-estimate on the older half. The shift (`Params::deep_call_shift`,
@@ -276,9 +284,13 @@ search spent losing.
 
 ## Budgets on this box
 
-Pacing: the fleet plays about 1,000 hands in 2 h 20 min. Before pacing, cycles ran back to back
-at ~300% CPU, each seeing ~50 new hands. With pacing a cycle runs every 2–9 h plus follow-ups after
-promotions, about 5% of the old CPU time.
+Pacing: the fleet plays about 1,000 hands in 2 h 20 min — 394 hands/hour on the live fleet where
+issue #314 measured the wait. Before pacing, cycles ran back to back at ~300% CPU, each seeing ~50
+new hands; champion search is still paced, every 2–9 h plus follow-ups after promotions, about 5% of
+that CPU. Evidence refreshes are not: a refresh took 57 s against hands arriving every ~9 s, so the
+learner now refreshes on nearly every hand, and the fits live play reads are never more than about a
+minute old. `learner_threads` (the dashboard compute profile) is the lever on that share, and the
+work runs at idle CPU priority so the fleet always goes first.
 
 
 `learner_threads` 8 (6 before 2026-09-17), `learner_tables` 12 (unchanged: still sized from logical cores − 2), `learner_hands` 1,500–3,000 (scaled by the measured

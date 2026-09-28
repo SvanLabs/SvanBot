@@ -148,7 +148,7 @@ pub struct SearchRun {
     pub started: f64,
     /// Champion version searched against.
     pub champion_version: String,
-    /// Evidence-refresh watermark (the ledger's scope).
+    /// Evidence epoch the search is measured under (the ledger's and the target queue's scope).
     pub refit_rowid: i64,
     /// Digest of the champion's search parameters; a change abandons the run.
     pub champion_digest: String,

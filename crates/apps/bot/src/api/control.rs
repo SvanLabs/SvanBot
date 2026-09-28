@@ -39,7 +39,8 @@ pub(super) async fn training_command(State(s): State<Arc<Shared>>, Json(body): J
 }
 
 /// Operator learner settings: `{"cooldown_minutes": 0..=1440, "min_new_hands": 0..=20000}`, either or both
-/// (minutes between cycles unless enough new hands arrived; new live hands that start a cycle at once).
+/// (minutes to let a search cool down; live hands after which a search starts at once). Evidence
+/// refreshes are not set here: they run on the hands as they arrive (#314).
 pub(super) async fn training_settings(State(s): State<Arc<Shared>>, Json(body): Json<Value>) -> Response {
     let stored = crate::pacing::LearnerSettings::parse(s.store.get_kv(crate::pacing::SETTINGS_KEY).ok().flatten().as_deref());
     let settings = match stored.update(&body) {
@@ -51,7 +52,7 @@ pub(super) async fn training_settings(State(s): State<Arc<Shared>>, Json(body): 
     }
     let effective = crate::pacing::Pacing::from_env().with_settings(&settings);
     let (minutes, hands) = (effective.cooldown_secs / 60.0, effective.min_new_hands);
-    s.log("learner", "info", format!("learner settings: cooldown {minutes} min, {hands} new hands start a cycle"));
+    s.log("learner", "info", format!("learner settings: cooldown {minutes} min, {hands} new hands start a champion search"));
     Json(json!({"ok": true, "cooldown_minutes": minutes, "min_new_hands": hands})).into_response()
 }
 

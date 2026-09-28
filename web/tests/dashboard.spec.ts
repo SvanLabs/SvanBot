@@ -656,7 +656,7 @@ test('an idle learner says what it waits for and lists what learned recently, wi
     const now = Date.now() / 1000;
     Object.assign(state.training, {
       status:'idle', automatic:true, phase:'waiting for new hands', progress:{hands:139,target:500},
-      next_job:{kind:'refit',label:'Evidence refresh',hands:139,target:500,remaining:361,reason:'139 of 500 new hands for refreshed models and fits',season_day:6},
+      next_job:{kind:'search',label:'Champion search',hands:139,target:500,remaining:361,reason:'139 of 500 new hands for champion search',season_day:6},
       learning:[{what:'Opponent models', updated: now - 60, detail:'265 players, 539416 observed hands; updated after every hand'},
                 {what:'Neural response model', updated: now - 3 * 3600, detail:'in use · validation log-loss 0.6687 vs 0.7583 for the stat model · 645305 training samples'}],
       experiments:[{id:'x',status:'rejected',ts:1,knob:'open_bb',old:2.5,new:2.375,hands:13056,
@@ -665,7 +665,7 @@ test('an idle learner says what it waits for and lists what learned recently, wi
     await route.fulfill({json:state});
   });
   await page.goto('/');
-  await expect(page.getByText('NEXT JOB · EVIDENCE REFRESH')).toBeVisible();
+  await expect(page.getByText('NEXT JOB · CHAMPION SEARCH')).toBeVisible();
   await expect(page.getByText(/361 hands left.*139 of 500 new hands.*Season day 6/)).toBeVisible();
   await expect(page.getByText('Opponent models')).toBeVisible();
   await expect(page.getByText('1 min ago', {exact:true})).toBeVisible();
@@ -674,6 +674,26 @@ test('an idle learner says what it waits for and lists what learned recently, wi
   await expect(page.getByText(/^Synthetic/)).toHaveCount(0);
   // An idle learner has no candidate in flight; the next job panel says what it waits for instead.
   await expect(page.getByText('Next: parameter search', {exact:false})).toHaveCount(0);
+});
+
+test('a learner refreshing evidence says so instead of reporting challenger validation', async ({ page }) => {
+  await page.route('**/api/events', route => route.abort());
+  await page.route('**/api/state', async route => {
+    const state = await (await route.fetch()).json();
+    // Refreshes run on the hands as they arrive (#314), so this is the panel's usual state while
+    // the fleet plays: the label names the fit in flight and the fraction is the refresh's own
+    // step count, not a challenger's.
+    Object.assign(state.training, {
+      status:'training', automatic:true, job:'refit',
+      phase:'refreshing evidence-derived models: per-opponent fits', progress:{hands:2,target:3},
+    });
+    await route.fulfill({json:state});
+  });
+  await page.goto('/');
+  const progress = page.locator('.training-progress');
+  await expect(progress.getByText('EVIDENCE REFRESH')).toBeVisible();
+  await expect(progress.getByText('CHALLENGER VALIDATION')).toHaveCount(0);
+  await expect(progress.getByText(/Refitted on the hands as they arrive/)).toBeVisible();
 });
 
 test('a cooling-down search shows the clock, not an empty hand fraction', async ({ page }) => {
@@ -799,7 +819,7 @@ test('the operator sets the learner cooldown from the Autonomy panel and the ser
   // One "Learner pacing" form holds the new-hands limit and the cooldown (0185).
   const box = page.getByRole('form', {name: 'Learner pacing'});
   const input = box.getByLabel(/cooldown between searches/i);
-  const hands = box.getByLabel(/new hands before an evidence refresh/i);
+  const hands = box.getByLabel(/new hands before a champion search/i);
   await expect(input).toHaveValue('60');
   await input.fill('5000');
   await expect(box.getByRole('button', {name: 'Save'})).toBeDisabled();
@@ -808,10 +828,10 @@ test('the operator sets the learner cooldown from the Autonomy panel and the ser
   await expect(box.getByRole('button', {name: 'Save'})).toBeDisabled();
   await hands.fill('300');
   await box.getByRole('button', {name: 'Save'}).click();
-  await expect(box.getByText('Saved: refresh after 300 new hands; late-season search uses the same limit; 45 min search cooldown')).toBeVisible();
+  await expect(box.getByText(/Saved: champion search after 300 new hands.*45 min search cooldown/)).toBeVisible();
   await page.reload();
   await expect(page.getByRole('form', {name: 'Learner pacing'}).getByLabel(/cooldown between searches/i)).toHaveValue('45');
-  await expect(page.getByRole('form', {name: 'Learner pacing'}).getByLabel(/new hands before an evidence refresh/i)).toHaveValue('300');
+  await expect(page.getByRole('form', {name: 'Learner pacing'}).getByLabel(/new hands before a champion search/i)).toHaveValue('300');
   const bad = await page.request.post('/api/training/settings', {data: {cooldown_minutes: -1}});
   expect(bad.status()).toBe(400);
 });

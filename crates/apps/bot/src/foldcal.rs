@@ -93,8 +93,8 @@ pub fn installed_preflop_shift(stored: Option<&str>) -> f64 {
 const STALE_AFTER_SECS: f64 = 3_600.0;
 
 /// Whether the learner should refit at start (unix `now`): nothing stored, unreadable, or older
-/// than an hour. Otherwise a release or restart would play uncalibrated until the next cycle,
-/// which waits for `LEARNER_MIN_NEW_HANDS` new hands.
+/// than an hour. Otherwise a release or restart would play uncalibrated until the next cycle — and
+/// a quiet table, where hands stopped arriving, until the next hand (#314).
 pub fn refit_due(stored: Option<&str>, now: f64) -> bool {
     match stored.and_then(|j| serde_json::from_str::<FoldCalibration>(j).ok()) {
         // A fit stored before the preflop street existed (2026-09-23) is refitted at once.

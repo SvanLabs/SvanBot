@@ -1,9 +1,14 @@
 //! Learner pacing separates evidence refreshes from champion search.
 //!
-//! Refits run after the dashboard's `min_new_hands` threshold. Champion search runs after the
-//! cooldown during the first three season days, then at the same hand threshold. Separate
-//! watermarks prevent early-season searches from repeatedly fitting unchanged evidence. The
-//! promotion gate is independent of this scheduler.
+//! An evidence refresh waits for nothing but a new hand (#314): the fits are what live play reads,
+//! and hands arrive at the fleet's play rate, so a refresh runs whenever one is not already
+//! running. Champion search keeps its own gate — the dashboard's `min_new_hands` threshold after
+//! season day three, the cooldown before it, and the no-promotion backoff — because a champion is
+//! replaced only on fresh-deal evidence and a handful of new hands cannot pay for a search. A
+//! search yields to a refresh only when the fits are a whole evidence epoch behind (over a
+//! population the ledger no longer speaks for); within the epoch it goes first, and the refresh
+//! resumes the moment it ends. Separate watermarks prevent early-season searches from repeatedly
+//! fitting unchanged evidence. The promotion gate is independent of this scheduler.
 
 use serde::{Deserialize, Serialize};
 
@@ -19,12 +24,35 @@ pub const MAX_COOLDOWN_MINUTES: f64 = 1440.0;
 /// Largest new-hands limit the dashboard accepts (about two days of fleet play).
 pub const MAX_MIN_NEW_HANDS: i64 = 20_000;
 
+/// Hands per evidence epoch: the granularity at which the population a search measures against
+/// counts as changed.
+///
+/// Refreshes run on hands as they arrive (#314), so the refresh watermark alone would retire the
+/// rejection ledger (0285) and the experiment target queue every time an opponent played a hand,
+/// and every search would re-spend its budget re-measuring transitions it had already decided. Both
+/// are scoped to the epoch instead: a bar measured within the epoch stands, and the fits inside the
+/// epoch are what make a search's measurements current.
+///
+/// 500 hands is the batch threshold a refresh used to wait for, so a bar never outlives more
+/// population drift than it did before (the batch refresh ran first and retired the scope anyway) —
+/// and a search threshold below the epoch, which the dashboard can set, now lets a bar outlive the
+/// refresh that lands inside it.
+pub const EVIDENCE_EPOCH_HANDS: i64 = 500;
+
+/// The evidence epoch of a hand rowid: the rowid rounded down to [`EVIDENCE_EPOCH_HANDS`]. Derived
+/// rather than stored, so a restarted or hot-swapped learner computes the same scope the search it
+/// resumes was measured under.
+pub fn evidence_epoch(rowid: i64) -> i64 {
+    rowid - rowid.rem_euclid(EVIDENCE_EPOCH_HANDS)
+}
+
 /// Operator-set learner settings.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LearnerSettings {
     /// Minutes between the end of a champion search and the start of the next one.
     pub cooldown_minutes: Option<f64>,
-    /// New live hands that start the next job at once (0: back to back); overrides `LEARNER_MIN_NEW_HANDS`.
+    /// New live hands that start the next champion search at once (0: back to back); overrides
+    /// `LEARNER_MIN_NEW_HANDS`. Evidence refreshes run on new hands whatever this is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_new_hands: Option<i64>,
 }
@@ -71,7 +99,8 @@ impl LearnerSettings {
 /// Pacing configuration.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Pacing {
-    /// Hands required for an evidence refresh and, after season day three, champion search.
+    /// Hands required before a champion search after season day three. Evidence refreshes do not
+    /// wait for a threshold: they run on the hands as they arrive (#314).
     pub min_new_hands: i64,
     /// Largest multiplier the no-promotion backoff reaches.
     pub max_backoff: i64,
@@ -88,8 +117,10 @@ impl Default for Pacing {
 }
 
 impl Pacing {
-    /// Defaults overridden by `LEARNER_MIN_NEW_HANDS`, `LEARNER_MAX_BACKOFF`, `LEARNER_MAX_IDLE_HOURS` and
-    /// `LEARNER_COOLDOWN_MINUTES` (`LEARNER_MIN_NEW_HANDS=0 LEARNER_COOLDOWN_MINUTES=0` restores back-to-back searches).
+    /// Defaults overridden by `LEARNER_MIN_NEW_HANDS` (the champion-search threshold; refreshes run
+    /// on new hands regardless), `LEARNER_MAX_BACKOFF`, `LEARNER_MAX_IDLE_HOURS` and
+    /// `LEARNER_COOLDOWN_MINUTES` (`LEARNER_MIN_NEW_HANDS=0 LEARNER_COOLDOWN_MINUTES=0` restores
+    /// back-to-back searches).
     pub fn from_env() -> Self {
         let d = Pacing::default();
         let get = |k: &str| std::env::var(k).ok().and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| *v >= 0.0);
@@ -138,9 +169,15 @@ impl Pacing {
             || (!early && search_have >= search_needed)
             || (now >= cooldown_until && (early || st.follow_up || now - st.search_run() >= self.max_idle_secs));
 
-        let refit_due = if self.min_new_hands == 0 { refit_have > 0 } else { refit_have >= self.min_new_hands };
-        if refit_due && !forced {
-            return Gate::Run { job: LearnerJob::Refit, reason: "new evidence reached the refit threshold" };
+        // An evidence refresh waits for nothing but a new hand (#314). It goes first when the fits
+        // are a whole epoch behind — a search that starts on models older than the scope it will be
+        // measured under is what the batch threshold used to prevent — and otherwise whenever a
+        // search is not itself due. The other order would starve the search: hands arrive while a
+        // refresh runs, so a refresh that always went first would always be due again.
+        let refit_due = refit_have > 0;
+        let fits_stale = evidence_epoch(max_rowid) != evidence_epoch(st.refit_rowid());
+        if refit_due && (fits_stale || !search_due) {
+            return Gate::Run { job: LearnerJob::Refit, reason: "new hands since the last refresh" };
         }
         if search_due {
             let reason = if forced {
@@ -159,33 +196,24 @@ impl Pacing {
             return Gate::Run { job: LearnerJob::Search, reason };
         }
 
-        let search_blocked_by_cooldown = now < cooldown_until && (early || st.follow_up);
-        let (job, have, needed, reason) = if search_blocked_by_cooldown {
-            (
-                LearnerJob::Search,
-                search_have,
-                search_needed,
-                format!(
-                    "champion search cooling down for {:.0} more min{}",
-                    ((cooldown_until - now) / 60.0).ceil(),
-                    if early { " during season days 1-3" } else { "" }
-                ),
-            )
-        } else if self.min_new_hands > 0 && refit_have < self.min_new_hands && refit_have >= search_have {
-            (
-                LearnerJob::Refit,
-                refit_have,
-                self.min_new_hands,
-                format!("{refit_have} of {} new hands for refreshed models and fits", self.min_new_hands),
+        // Only a search waits here: reaching this point means no hand has arrived since the last
+        // refresh, so the fits are current and the search's own gate has not opened. The search is
+        // what the panel counts towards; the hands that arrive while it waits are refreshed on the
+        // way, and a refresh never holds the search back by more than its own duration.
+        let reason = if now < cooldown_until && (early || st.follow_up) {
+            format!(
+                "champion search cooling down for {:.0} more min{}",
+                ((cooldown_until - now) / 60.0).ceil(),
+                if early { " during season days 1-3" } else { "" }
             )
         } else {
-            (LearnerJob::Search, search_have, search_needed, format!("{search_have} of {search_needed} new hands for champion search"))
+            format!("{search_have} of {search_needed} new hands for champion search")
         };
         Gate::Wait {
-            job,
-            have,
-            needed,
-            cooldown_until: (job == LearnerJob::Search && now < cooldown_until).then_some(cooldown_until),
+            job: LearnerJob::Search,
+            have: search_have,
+            needed: search_needed,
+            cooldown_until: (now < cooldown_until).then_some(cooldown_until),
             reason,
         }
     }
@@ -298,9 +326,10 @@ pub enum Gate {
         /// Why it is due.
         reason: &'static str,
     },
-    /// Keep waiting for evidence or cooldown.
+    /// Keep waiting for the search's gate or its cooldown. A refresh is never what a wait is for:
+    /// it waits only for a hand, and a hand that arrives starts one before the search.
     Wait {
-        /// Job expected to run next.
+        /// Job expected to run next (a search today).
         job: LearnerJob,
         /// New hands accumulated for it.
         have: i64,
@@ -372,13 +401,47 @@ mod tests {
     }
 
     #[test]
-    fn refresh_runs_before_search_when_both_are_due() {
+    fn a_refresh_runs_on_the_hands_as_they_arrive() {
         let p = pacing();
         let st = state();
+        // One new hand, far short of any threshold: the fits are refreshed anyway (#314).
         assert_eq!(
-            p.gate(&st, 1_500, 20_000.0, None, None),
-            Gate::Run { job: LearnerJob::Refit, reason: "new evidence reached the refit threshold" }
+            p.gate(&st, 1_001, 20_000.0, None, None),
+            Gate::Run { job: LearnerJob::Refit, reason: "new hands since the last refresh" }
         );
+    }
+
+    #[test]
+    fn a_due_search_goes_before_a_refresh_within_the_epoch() {
+        // A search threshold inside the epoch (the dashboard can set one): the search runs without
+        // waiting for a refresh, because the hands it will be measured against were refreshed
+        // minutes ago. With the default 500-hand threshold a due search has always crossed an epoch
+        // boundary, so it waits for the one refresh first — what the batch gate used to force.
+        let p = Pacing { min_new_hands: 100, ..pacing() };
+        let st = state();
+        assert_eq!(p.gate(&st, 1_200, 20_000.0, None, None), Gate::Run { job: LearnerJob::Search, reason: "enough new hands" });
+    }
+
+    #[test]
+    fn a_refresh_goes_first_when_the_fits_are_an_epoch_behind() {
+        let p = pacing();
+        let st = state();
+        // A search is due at a hand two epochs past the one the fits were refitted in: it waits for
+        // one refresh, then runs. A search measured under a scope the population has left is what
+        // the batch threshold used to prevent.
+        let behind = 4 * EVIDENCE_EPOCH_HANDS;
+        assert_eq!(
+            p.gate(&st, behind, 20_000.0, None, None),
+            Gate::Run { job: LearnerJob::Refit, reason: "new hands since the last refresh" }
+        );
+        let mut refitted = state();
+        refitted.finish_refit(behind, 20_000.0, 20_010.0);
+        assert_eq!(p.gate(&refitted, behind + 1, 20_020.0, None, None), Gate::Run { job: LearnerJob::Search, reason: "enough new hands" });
+    }
+
+    #[test]
+    fn an_epoch_is_five_hundred_hands_of_rowid() {
+        assert_eq!((evidence_epoch(0), evidence_epoch(499), evidence_epoch(500), evidence_epoch(1_499)), (0, 0, 500, 1_000));
     }
 
     #[test]
