@@ -2,11 +2,17 @@
 # one per crate. Dependabot's commits are authored `dependabot[bot]`, which the provenance gate exempts
 # (scripts/provenance.py). A Cargo.lock change also moves THIRD-PARTY-NOTICES.md: if the notices check
 # is red on one of these, `python3 scripts/notices.py` regenerates it.
+#
+# `target-branch: dev` on every entry, because Dependabot opens against the repository's default branch
+# when it is not told otherwise. The default is `main` — the released line — and a bump merged there
+# would move what a stranger installs without ever passing through `dev`, which is the one thing the
+# branch arrangement exists to prevent. Named, it lands where every other change lands (#402).
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule: { interval: monthly }
+    target-branch: dev
     open-pull-requests-limit: 2
     labels: [area:crates]
     groups:
@@ -14,6 +20,7 @@ updates:
   - package-ecosystem: npm
     directory: /web
     schedule: { interval: monthly }
+    target-branch: dev
     open-pull-requests-limit: 2
     labels: [area:web]
     groups:
@@ -21,6 +28,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
+    target-branch: dev
     open-pull-requests-limit: 2
     labels: [area:ci]
     groups:

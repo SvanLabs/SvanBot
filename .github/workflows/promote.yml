@@ -42,6 +42,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # The script is `dev`'s, and the repository's default branch is `main` — the line this job
+          # promotes *to*. GitHub runs a `workflow_run` workflow from the default branch, so without
+          # this the job would read `main`'s copy of a script whose whole subject is moving `main`
+          # forward: a fix to `scripts/promote.sh` would have to be promoted before it could promote,
+          # which is the one shape that can never resolve itself.
+          ref: dev
           # Both branches and their history: the script's ancestor test is one a shallow clone
           # cannot answer.
           fetch-depth: 0
