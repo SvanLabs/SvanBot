@@ -20,8 +20,10 @@ on:
     workflows: ["check"]
     types: [completed]
     branches: [dev]
-  # The retry. A promotion that could not be armed, or a `dev` that was red when it was last pushed,
-  # is picked up by the next green run; this is for when there is no next push.
+  # The retry, for the one case the trigger above cannot reach: no check on `dev` completes again.
+  # Everything else — a run that ended `cancelled`, a promotion that could not be armed, a `main`
+  # that was diverged when it was last looked at — is picked up by the next check that completes on
+  # `dev`, whatever it concluded.
   workflow_dispatch:
 
 concurrency:
@@ -34,9 +36,17 @@ permissions:
 
 jobs:
   promote:
-    # A red `dev` promotes nothing, which is the point of keying on the gate rather than on a push.
-    # The manual run is exempt: it is the retry.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Every completed check on `dev` is considered, whatever it concluded, and the guard is not here:
+    # it is `check` on the promotion pull request itself, which the ruleset on `main` requires, so a
+    # `dev` that would fail the gate cannot merge no matter what starts this job.
+    #
+    # Filtering on `success` looked like that guard and was never the thing doing the work. What it
+    # did was make a promotion depend on the run that *reported*: a run that ends `cancelled` — the
+    # normal fate of a push superseded by the next one, and what a preempted runner leaves too — is
+    # not `success`, so the job was skipped, and when no later push came, `main` rested behind a `dev`
+    # that was green the whole time with nothing said and nothing to retry it (#404). `promote.sh` is
+    # idempotent, refuses a `main` carrying content of its own, and returns without a word when the
+    # two trees are equal, so looking again costs a few `gh` calls.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
