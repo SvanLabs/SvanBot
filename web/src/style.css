@@ -370,3 +370,18 @@ body{background:radial-gradient(1200px 600px at 8% -10%,#e4b9561a,transparent 60
    Centred and quiet — it is visible for one round trip, and on a listener that never answers it says
    what is happening instead of showing a page whose numbers would be the wrong page's. */
 .boot{display:flex;align-items:center;justify-content:center;gap:9px;min-height:70vh;color:var(--muted);font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+
+/* Why search candidates die, over the last day (issue #317): the experiment list below is capped at
+   40 entries and holds only rejections, so the panel needs the counts the learner takes at the death
+   to say whether the search is starved of candidates that move anything, or re-proposing what the
+   ledger already barred. Chips rather than a table: it is a glance, and the cards carry the detail. */
+.funnel{padding:13px 14px;border-bottom:1px solid var(--line)}
+.funnel-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font:10px var(--mono);color:var(--muted);letter-spacing:.6px;text-transform:uppercase}
+.funnel-head b{font:13px var(--mono);color:var(--text)}
+.funnel-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}
+.funnel-chip{display:flex;align-items:center;gap:6px;padding:4px 7px;background:#272a21;border:1px solid var(--line);border-radius:3px;font:10px var(--mono);color:var(--muted)}
+.funnel-chip b{font:10.5px var(--mono);color:var(--text)}
+.funnel-chip.ledger{color:#8a8f7c}
+.funnel-chip.promotion{border-color:#4e7a5c;color:var(--mint)}
+.funnel-chip.promotion b{color:var(--mint)}
+.funnel-knobs{margin-top:10px;font:10px var(--mono);color:var(--muted)}
