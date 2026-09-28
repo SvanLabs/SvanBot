@@ -92,6 +92,11 @@ pub struct UpdateCheck {
     pub behind: u64,
     /// When the check ran (seconds since the epoch).
     pub checked_at: f64,
+    /// When the tip in this record was last actually fetched (issue #320). The commit list the panel
+    /// shows is read from the local refs, so it can only be as fresh as the last fetch that worked;
+    /// a failed check carries the previous record's stamp forward and this stays the date of the list.
+    #[serde(default)]
+    pub fetched_at: Option<f64>,
     /// Why the check failed (network, credentials), if it did.
     pub error: Option<String>,
 }
@@ -118,6 +123,10 @@ pub fn last_check(artifacts: &std::path::Path) -> Option<UpdateCheck> {
 pub fn run_update_check(root: &std::path::Path, artifacts: &std::path::Path) -> UpdateCheck {
     let (remote, branch) = update_source();
     let mut check = UpdateCheck { source: format!("{remote}/{branch}"), checked_at: now_secs(), ..UpdateCheck::default() };
+    // Until this check fetches, the local refs are as fresh as the last one that did: a failure
+    // keeps that stamp so the commit list can be dated (#320). A record written before the field
+    // existed carries its own time when it succeeded, and nothing when it did not.
+    check.fetched_at = last_check(artifacts).and_then(|p| p.fetched_at.or_else(|| p.error.is_none().then_some(p.checked_at)));
     let out = std::process::Command::new("bash")
         .arg("scripts/update.sh")
         .arg("--check")
@@ -130,6 +139,7 @@ pub fn run_update_check(root: &std::path::Path, artifacts: &std::path::Path) -> 
             Some((behind, commit)) => {
                 check.behind = behind;
                 check.commit = Some(commit);
+                check.fetched_at = Some(check.checked_at);
             }
             None => check.error = Some("unexpected check output".into()),
         },
