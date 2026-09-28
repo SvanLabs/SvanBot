@@ -382,6 +382,15 @@ function overbetShift(slope: number, ratio: number): number {
   return ratio < 1.5 ? 0 : Math.min(0.4, slope * (1 + Math.log(ratio / 1.5)));
 }
 
+/** Why a row carries no correction (0318). `bound_by` names the rule that set the correction's size
+ *  (`crates/apps/bot/src/tasks/calibration.rs`); on a row at zero that state is a reason, not a
+ *  measurement, so it belongs in the tooltip and never in place of the number. */
+const AT_ZERO: Record<string, string> = {
+  'too few samples': 'too few decisions to measure yet',
+  'inside its 95% band': 'the gap is inside its 95% band — the evidence says zero',
+  'margin evidence': 'the raise it would justify has no margin behind it yet',
+};
+
 export function CalibrationPanel() {
   const dataPoll = usePoll<CalData>('/calibration', 60000);
   const data = dataPoll.data;
@@ -389,11 +398,11 @@ export function CalibrationPanel() {
   const pretty = (c: string) => c.replace(':', ' · ').replace(':', ' · ').replace('allin', 'all-in');
   return <div className="calib">
     <StaleNote poll={dataPoll} />
-    <p className="footnote">Every decision's predicted value is checked against what it actually won. Spots where the model is consistently off get a small, capped correction once there is enough evidence. {data ? `${data.active_corrections} active correction${data.active_corrections === 1 ? '' : 's'}.` : ''}</p>
+    <p className="footnote">Every decision's predicted value is checked against what it actually won. Spots where the model is consistently off get a small, capped correction once there is enough evidence. {data ? `${data.active_corrections} active correction${data.active_corrections === 1 ? '' : 's'}.` : ''} The last column is the correction in use in chips of EV, two decimals on every row: <b>0.00 bb</b> means none, and that row's tooltip gives the reason — too few decisions yet, or evidence that says zero.</p>
     <div className="calib-list">{rows.slice(0, 14).map(r => <div key={r.category} className="calib-row">
       <span className="calib-cat">{pretty(r.category)}<small>{fmt(r.n)} decisions</small></span>
       <span className="calib-vals"><span>model {sgn(r.predicted_bb, 2)}</span><span className={r.realized_bb < r.predicted_bb ? 'negative' : 'positive'}>real {sgn(r.realized_bb, 2)}</span></span>
-      <span className={`calib-bias ${r.bias_bb ? 'on' : ''}`} title={`residual ${sgn(r.residual_bb, 2)} ± ${fmt(r.se_bb, 2)} bb${r.bound_by ? ` · size set by ${r.bound_by}` : ''}${r.residual_pot != null ? ` · per pot ${sgn(r.residual_pot * 100, 1)}% ± ${fmt((r.se_pot || 0) * 100, 1)}% (candidate ${sgn((r.pot_bias_candidate || 0) * 100, 1)}%, not applied)` : ''}`}>{r.bias_bb ? `${sgn(r.bias_bb, 2)} bb` : r.n < 60 ? 'learning' : 'calibrated'}</span>
+      <span className={`calib-bias ${r.bias_bb ? 'on' : ''}`} title={`${r.bias_bb ? `applied, size set by ${r.bound_by || 'the evidence'}` : `no correction: ${AT_ZERO[r.bound_by || ''] || 'no evidence yet'}`} · residual ${sgn(r.residual_bb, 2)} ± ${fmt(r.se_bb, 2)} bb${r.residual_pot != null ? ` · per pot ${sgn(r.residual_pot * 100, 1)}% ± ${fmt((r.se_pot || 0) * 100, 1)}% (candidate ${sgn((r.pot_bias_candidate || 0) * 100, 1)}%, not applied)` : ''}`}>{sgn(r.bias_bb || 0, 2, true)} bb</span>
     </div>)}{!rows.length && <p className="footnote">Collecting the first outcomes…</p>}</div>
     {data && <LiveFits data={data} />}
   </div>;

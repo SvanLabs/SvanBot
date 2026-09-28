@@ -29,6 +29,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The self-calibration bias column is a measurement on every row** (#318). One cell held three kinds
+  of thing — a number when a correction was applied, `learning` while a spot was under `MIN_SAMPLES`,
+  and `calibrated` when it was not — so a spot that had settled to no correction read as a badge, and
+  the column could not be scanned or compared. Every row now reads its correction in bb at two
+  decimals, with `0.00 bb` for none (`bias_bb` itself, not a stand-in that could drift from it), and
+  the state moved into the tooltip, worded from the backend's own `bound_by`: too few decisions to
+  measure yet, a gap inside its 95% band, or a raise the margin would not support. The old wording
+  was also the dashboard's second copy of `MIN_SAMPLES`
+  (`crates/apps/bot/src/tasks/calibration.rs`); that copy is gone.
+
 - **The front-page highlight cards point at their evidence** (#331). The five cards under Highlights
   read like a pitch: a latency range with no instrument, a think-time capability with no "when", and
   "zero-downtime" doing work that "the bots keep playing" does better. Each card is now one claim
