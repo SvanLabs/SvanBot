@@ -28,6 +28,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A fleet set to `dev` could not install a release** (#365). The gate's update test builds a fixture
+  whose origin has only `main`, and its list of ambient variables to clear missed the three settings
+  `scripts/update.sh` reads for where it fetches from. With `SVANBOT_UPDATE_BRANCH=dev` exported — what
+  an operator sets to put a fleet on `dev` — the fixture looked for a branch its origin does not have,
+  so `scripts/check.sh full` failed and every release on that fleet stopped before it could build. CI
+  could not catch it: no such variable is set there.
+- **A pull request opened by a bot failed the provenance gate** (#367). The check exempts a commit
+  whose author is `<name>[bot]`, because the author field already names the system, but the
+  pull-request half never received the author — so every Dependabot pull request failed on
+  `pr-body.md: no Generated-by line in the pull request body` and none of them could merge.
 - `bench` and `sim` name a malformed input file instead of panicking (#357).
 
 ## [10.0.1] - 2026-09-28
