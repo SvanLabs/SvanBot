@@ -13,25 +13,27 @@ Work lands on `dev`. `main` is the released line: what everyone who installs Sva
 their Update fetches from. It moves only by promotion — a pull request from `dev` into `main`, merged
 **with a merge commit**, never a squash, which would give `main` a commit `dev` does not have and
 make the next promotion a conflict to resolve by hand instead of a merge that changes no file.
-Because promotion waits on a green `dev`, `main` never carries a build that failed.
+Because `main` takes a promotion only when the gate passes on it, `main` never carries a build that
+failed.
 
-**It happens by itself.** `.github/workflows/promote.yml` runs `scripts/promote.sh` when `check`
-finishes green on `dev`. The script keeps one promotion pull request open with auto-merge armed, and
-GitHub merges it when the gate passes on it — a pull request's merge ref is recomputed on every push
-to its head, so that one pull request always tests the head `dev` has now. A red `dev` promotes
-nothing, because the workflow only fires on a green run, and a `main` that carries a commit of its
-own — a non-merge commit `dev` does not have, which is what a squash promotion or a commit pushed
-straight to `main` leaves behind — is refused by name rather than merged, and so is a `main` that
-carries content of its own inside a *merge* commit: a conflict resolved on `main`'s side, where every
-commit `dev` has is already on `main` and the two trees still disagree. That one is invisible to a
-count of non-merge commits, and GitHub will not open the pull request either — `No commits between
-main and dev`. Both are a person's to resolve; neither is something a promotion can undo. A `main`
-that already holds what `dev` holds promotes nothing and opens no pull request, and that test is the
-two **trees**, not the two commit ids: a promotion is a merge commit, so it makes the ids permanently
-different however identical what they hold. The promotion merge commits themselves are not the
-refusal's business:
-they live on `main` alone by construction, so `main` stops being an ancestor of `dev` the moment it
-has been promoted once, and a check phrased that way would refuse every promotion after the first.
+**It happens by itself.** `.github/workflows/promote.yml` runs `scripts/promote.sh` whenever a `check`
+on `dev` finishes, whatever it concluded: the script opens and arms, and the ruleset on `main`
+requires the `check` status, so the pull request merges only when the gate passes on it. The script
+keeps one promotion pull request open with auto-merge armed, and GitHub merges it when the gate passes
+— a pull request's merge ref is recomputed on every push to its head, so that one pull request always
+tests the head `dev` has now. A red `dev` promotes nothing, because the check on that pull request
+fails. A `main` that carries a commit of its own — a non-merge commit `dev` does not have, which is
+what a squash promotion or a commit pushed straight to `main` leaves behind — is refused by name
+rather than merged, and so is a `main` that carries content of its own inside a *merge* commit: a
+conflict resolved on `main`'s side, where every commit `dev` has is already on `main` and the two
+trees still disagree. That one is invisible to a count of non-merge commits, and GitHub will not open
+the pull request either — `No commits between main and dev`. Both are a person's to resolve; neither
+is something a promotion can undo. A `main` that already holds what `dev` holds promotes nothing and
+opens no pull request, and that test is the two **trees**, not the two commit ids: a promotion is a
+merge commit, so it makes the ids permanently different however identical what they hold. The
+promotion merge commits themselves are not the refusal's business: they live on `main` alone by
+construction, so `main` stops being an ancestor of `dev` the moment it has been promoted once, and a
+check phrased that way would refuse every promotion after the first.
 
 The same thing by hand, which is also the retry after a failure:
 

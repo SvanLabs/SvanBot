@@ -43,12 +43,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   SvanBot runs and updates from — and it moved only when someone remembered to open the promotion
   pull request, so it drifted: it was promoted once and was behind again within the hour.
   `scripts/promote.sh` now keeps a promotion pull request open with auto-merge armed, and
-  `.github/workflows/promote.yml` runs it whenever `dev`'s gate goes green, so `main` follows green
-  `dev` by itself and never carries a build that failed.
+  `.github/workflows/promote.yml` runs it whenever a `check` on `dev` finishes (#404), so `main`
+  follows `dev` by itself and never carries a build that failed.
 - The Claude workflows act as the SvanLabs GitHub App (`svanlabs[bot]`) (#355).
 
 ### Fixed
 
+- **A cancelled `check` on `dev` parked `main`, and nothing retried the promotion** (#404).
+  `promote.yml`'s job was gated on the finished run's conclusion being `success`, which read as "a red
+  `dev` promotes nothing" and was never the thing doing that work: the guard is the `check` status the
+  ruleset on `main` requires of the promotion pull request, so a `dev` that would fail the gate cannot
+  merge whatever starts the job. What the filter did instead was make a promotion depend on the run
+  that *reported* — a `check` that ends `cancelled` (a push superseded by the next one, or a
+  preempted runner) is not `success`, so the job was skipped, and when no later push came, `main`
+  rested behind a `dev` that had been green the whole time, silently. A `check` on `dev` is now
+  considered whatever it concluded; `scripts/promote.sh` is idempotent, refuses a `main` carrying
+  content of its own, and returns without a word when the two trees are equal, so looking again costs
+  a few `gh` calls.
 - **A pull request into `dev` named an issue and closed nothing** (#410). GitHub interprets a closing
   keyword in a description only when the pull request targets the repository's *default* branch — "The
   pull request must be on the default branch" — and with `main` the default (#402), `Closes #<issue>`
