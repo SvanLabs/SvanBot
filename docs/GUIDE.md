@@ -533,7 +533,7 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Opponent intelligence | Every opponent's style, sample size and key stats; click for the full profile |
 | Season race | Live leaderboard with our bots highlighted, rank movement, gap to #1, time left |
 | Performance | Net winnings chart (showdown vs non-showdown), win rate and 95% interval |
-| Champion profile | Live strategy parameters and promotion lineage |
+| Champion profile | Live strategy parameters and promotion lineage. Each bar is drawn over the range the learner searches that parameter within, marked with the shipped default; a parameter the server did not report prints `—` and draws no bar rather than an empty one |
 | Season ledger | Server-confirmed score, balances, rebuys and hands |
 | Autonomy / Experiments | Learner state, neural model status, every evaluated challenger |
 | Highlights | Achievements, biggest wins, monster hands, bad beats — click to replay |

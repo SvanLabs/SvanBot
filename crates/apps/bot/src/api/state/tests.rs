@@ -7,16 +7,32 @@ use super::*;
 #[test]
 fn the_champion_carries_every_knob_the_dashboard_shows() {
     // 2026-09-27: the Champion profile read "Short-stack open 0.00" and "Preflop jam at or below
-    // 0.00" (live values 2.5 and 30): the panel lists knobs the API never sent.
-    let web = include_str!("../../../../../../web/src/training.tsx");
-    let list = web.split("const knobs = [").nth(1).and_then(|r| r.split("] as const").next()).expect("the knob list");
-    let keys: Vec<&str> = list.split("['").skip(1).filter_map(|k| k.split('\'').next()).collect();
-    assert!(keys.len() >= 17, "{keys:?}");
+    // 0.00" (live values 2.5 and 30): the panel listed knobs the API never sent. The panel's list is
+    // now the payload's own (#322), so the two cannot disagree — what is left to check is that every
+    // row the payload describes also carries a value, because a row without one draws no bar.
     let shared = Shared::for_test("champion-knobs", &["A"]);
     let t = training_json(&shared);
-    for key in keys {
+    let rows = t["knobs"].as_array().expect("the knob catalogue");
+    assert!(rows.len() >= 17, "{rows:?}");
+    for row in rows {
+        let key = row["key"].as_str().unwrap_or_default();
         assert!(t["champion"][key].is_number(), "champion lacks {key}");
+        for field in ["label", "description"] {
+            assert!(row[field].as_str().is_some_and(|v| !v.is_empty()), "{key} has no {field}");
+        }
+        let (min, max) = (row["min"].as_f64().unwrap_or_default(), row["max"].as_f64().unwrap_or_default());
+        assert!(min < max, "{key} has an empty range {min}..{max}");
+        assert!(row["decimals"].is_number() && row["default"].is_number(), "{key} cannot be printed or marked");
     }
+}
+
+#[test]
+fn the_dashboard_keeps_no_copy_of_the_knob_list() {
+    // The whole of #322: the panel held its own literal of keys, bounds and explanations, and nothing
+    // made it follow the search. It renders `training.knobs` now, so the literal must not come back.
+    let web = include_str!("../../../../../../web/src/training.tsx");
+    assert!(!web.contains("const knobs = ["), "the profile has a hand-written knob list again");
+    assert!(web.contains("training?.knobs"), "the profile no longer renders the server's knob list");
 }
 
 #[test]
