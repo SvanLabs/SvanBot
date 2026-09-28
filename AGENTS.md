@@ -17,6 +17,16 @@ is `CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
    why, `Closes #<issue>` in its own paragraph, and `Generated-by:` last (section 0).
 7. **Open the pull request** from the template, with the same `Generated-by:` line in the body.
 
+## Which issue to take
+
+Every open issue carries one readiness label. Take an `agent-friendly` one: it names the files, says
+what the fix is and needs no decision from anyone. `blocked-on-decision` means the diagnosis is done
+but a maintainer or the operator has to choose first (a comment on the issue says what), and
+`needs-triage` means something has to be checked or added before it can be specified. Do not start
+either of those; comment on what you found instead. Comment on the one you take, so two agents do not
+race for it. The same view is a board: <https://github.com/orgs/SvanLabs/projects/1> (its
+**Readiness** field mirrors these labels).
+
 ## 0. Every artifact here is machine-generated, and says so
 
 Code, issues, pull requests, review comments and commit messages in this repository are produced by
