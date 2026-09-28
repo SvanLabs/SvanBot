@@ -348,8 +348,12 @@ Directing the agent well is the contribution.
 1. **Pick an issue.** Start with
    [**good first issue**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
    or [**agent-friendly**](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3Aagent-friendly).
-   Each one says where the problem is, why it matters, and the fix it expects.
-2. **Fork, and make a branch** named for the change — `fix/split-pots-all-folded`, `docs/…`.
+   Each one says where the problem is, why it matters, and the fix it expects. Issues labelled
+   `blocked-on-decision` wait on a maintainer's choice first; the
+   [board](https://github.com/orgs/SvanLabs/projects/1) shows every open issue by readiness.
+2. **Fork, and make a branch off `dev`** named for the change — `fix/split-pots-all-folded`,
+   `docs/…`. `dev` is the default branch and every pull request goes into it; `main` is what the
+   fleet installs, and moves only when `dev` is promoted.
 3. **Hand your agent [`AGENTS.md`](AGENTS.md) and the issue.** `AGENTS.md` is the brief: where
    code goes, the two hard invariants, and everything the gate enforces.
 4. **Run the gate** before you push. It is the same command CI runs, so a green run here is a green

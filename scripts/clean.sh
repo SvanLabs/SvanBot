@@ -11,7 +11,7 @@
 #                                 rotated logs, clear target/dev when the root filesystem has under 10 GB
 #                                 free (left alone, and said so, while a build runs)
 # Never touches databases, backups, tables, .env files, target/release (the installed build) or tracked
-# files. Runs after the nightly archive.
+# files. Runs every 6 hours (svanbot10-clean.timer), independent of the nightly archive.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 apply=0; [ "${1:-}" = --apply ] && apply=1

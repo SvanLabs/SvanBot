@@ -1,0 +1,9 @@
+[Unit]
+Description=SvanBot cleanup every 6 hours, independent of the nightly archive
+
+[Timer]
+OnCalendar=*-*-* 00/6:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

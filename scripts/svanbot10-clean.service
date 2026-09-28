@@ -1,0 +1,11 @@
+[Unit]
+Description=SvanBot cleanup: superseded builds, scratch dirs and old logs (scripts/clean.sh --apply)
+# Source of truth: scripts/svanbot10-clean.service (installed by scripts/archive-timer.sh).
+# Its own timer, not a step after the archive: a failing archive used to stop cleanup with it.
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/svanbot10
+ExecStart=/srv/svanbot10/scripts/clean.sh --apply
+Nice=15
+IOSchedulingClass=idle

@@ -7,8 +7,6 @@ Type=oneshot
 WorkingDirectory=/srv/svanbot10
 EnvironmentFile=-/srv/svanbot10/.env
 ExecStart=/srv/svanbot10/target/release/archive run
-# Safe housekeeping after the archive (0116): worktrees, scratch build dirs, rotated logs.
-ExecStartPost=/srv/svanbot10/scripts/clean.sh --apply
 Nice=15
 IOSchedulingClass=idle
 # A run is ~4 min (monthly recompression is the slow part); anything past 1 h is hung.
