@@ -413,8 +413,8 @@ itself in the background.
   columns as blobs).
 
 **Backups on a second disk.** With `SVANBOT_MIRROR_HOURLY_BACKUPS` set and `SVANBOT_ARCHIVE_DIR`
-on another disk than `artifacts/`, every hourly backup is also copied there and checked against its
-seal, and the SSD keeps only the two newest. The mirror is off by default.
+on another disk than `artifacts/`, every hourly backup is moved there (sealed pair, off the SSD),
+and the SSD keeps only the two newest. The mirror is off by default.
 
 **Never losing data**
 

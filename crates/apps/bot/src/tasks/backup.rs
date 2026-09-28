@@ -167,82 +167,40 @@ fn discard(paths: &[&std::path::Path]) {
     }
 }
 
-/// Why a copied pair did not verify, check by check (0292). The single "does not match its seal"
-/// covers a failed read, a file of the wrong bytes and a structural problem alike; on a second disk
-/// that is failing (EUCLEAN, bad reads) the operator needs to know which one it was.
-fn mirror_rejection(db: &std::path::Path) -> String {
-    let seal = sidecar(db);
-    if let Err(e) = sv10_rt::evict_cache(db).and_then(|_| sv10_rt::evict_cache(&seal)) {
-        return format!("dropping the copy from the page cache failed: {e:#}");
-    }
-    let expected = match std::fs::read_to_string(&seal) {
-        Ok(s) => s,
-        Err(e) => return format!("reading the copy's seal {} failed: {e}", seal.display()),
-    };
-    match sv10_store::integrity::file_sha256(db) {
-        Err(e) => format!("reading the copy back failed: {e:#}"),
-        Ok(h) if h != expected.trim() => format!("the copy reads back as different bytes than its seal ({h} != {})", expected.trim()),
-        Ok(_) => match sv10_store::integrity::quick_check(db) {
-            Ok(()) => "every check passed when run by hand".to_string(),
-            Err(e) => format!("the copy's structural check failed: {e}"),
-        },
-    }
-}
-
-/// Remove temporary pairs a run that was killed mid-copy left behind: a hot swap exits the process
-/// where it stands, and `rotate_backups_keeping` only matches `*.db`, so nothing else collects them
-/// — half a gigabyte each on a disk that is 86% full (0292). This call is the only writer of the
-/// mirror's temporary names, so anything matching here is a leftover.
-fn clear_stale_temporaries(dir: &std::path::Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for path in entries.flatten().map(|e| e.path()) {
-        let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) else { continue };
-        if !(name.starts_with('.') && (name.ends_with(".tmp") || name.ends_with(".tmp.sha256"))) {
-            continue;
-        }
-        let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-        match std::fs::remove_file(&path) {
-            Ok(()) => tracing::warn!("removed leftover mirror temporary {} ({bytes} bytes)", path.display()),
-            Err(e) => tracing::warn!("could not remove leftover mirror temporary {}: {e}", path.display()),
-        }
-    }
-}
-
-/// Copy a sealed hourly backup (and its sidecar) into `mirror`, verified against the seal, then keep
-/// the newest `keep` there. Skipped when the mirror lacks room for three more copies and 1 GB.
+/// Move a sealed hourly backup (and its sidecar) onto the second disk, then keep the newest `keep`
+/// there. Skipped when the mirror lacks room for three more copies and 1 GB.
 ///
-/// The copy is checked under its temporary name, before either file takes the real one: a copy that
-/// does not verify never replaces the hour's previous good pair, and the mirror keeps only pairs
-/// that passed (0292). Failures name the step that failed and leave the mirror otherwise untouched.
+/// The pair used to be copied to a temporary name, read back against its seal and renamed. The
+/// second disk returns `EUCLEAN` (os error 117, "structure needs cleaning") to that dance — 22
+/// times over 2026-09-26/27 — and the operator's call (2026-09-28) is to stop guarding the hour
+/// with it: the two files go straight to the names a restore reads, in one step, and a failure
+/// names the step and leaves the SSD pair where it is (#374, 0292).
 pub(super) fn mirror_backup(hourly: &std::path::Path, mirror: &std::path::Path, keep: usize) -> Result<bool> {
     std::fs::create_dir_all(mirror)?;
-    clear_stale_temporaries(mirror);
     let size = std::fs::metadata(hourly)?.len();
     if sv10_rt::free_bytes(mirror).is_some_and(|free| free < size.saturating_mul(3) + (1 << 30)) {
         tracing::warn!("hourly backup not mirrored: {} lacks room", mirror.display());
         return Ok(false);
     }
     let name = hourly.file_name().ok_or_else(|| anyhow::anyhow!("backup path has no name"))?;
-    let (to, tmp) = (mirror.join(name), mirror.join(format!(".{}.tmp", name.to_string_lossy())));
-    let (side_to, side_tmp) = (sidecar(&to), sidecar(&tmp));
-    // Both files synced before they are named, and the check reads the disk, not the page cache:
-    // on a failing HDD the unsynced seals were verified from memory and read as zeros later (0308).
-    let copied = sv10_rt::copy_durable(hourly, &tmp)
-        .and_then(|_| sv10_rt::copy_durable(&sidecar(hourly), &side_tmp))
-        .map_err(|e| anyhow::anyhow!("copying {} to {} failed: {e:#}", hourly.display(), tmp.display()));
+    let (to, side_to) = (mirror.join(name), sidecar(&mirror.join(name)));
+    let copied = sv10_rt::copy_durable(hourly, &to)
+        .and_then(|_| sv10_rt::copy_durable(&sidecar(hourly), &side_to))
+        .map_err(|e| anyhow::anyhow!("moving {} to {} failed: {e:#}", hourly.display(), to.display()));
     if let Err(e) = copied {
-        discard(&[&tmp, &side_tmp]);
+        // A file under the real name with half its bytes reads as this hour's backup, so it goes
+        // before the error is returned: the SSD pair is untouched and the next attempt lands clean.
+        discard(&[&to, &side_to]);
         return Err(e);
     }
-    if !sv10_store::integrity::verify_backup_on_disk(&tmp) {
-        let why = mirror_rejection(&tmp);
-        discard(&[&tmp, &side_tmp]);
-        anyhow::bail!("mirrored copy of {} rejected before it took its name: {why}", name.to_string_lossy());
-    }
-    std::fs::rename(&tmp, &to)
-        .and_then(|_| std::fs::rename(&side_tmp, &side_to))
-        .map_err(|e| anyhow::anyhow!("naming the verified copy {} failed: {e}", to.display()))?;
     sv10_rt::sync_dir(&to)?;
+    // The move's second half. A source that cannot be removed leaves a second copy, not a lost
+    // backup, so it is a warning rather than a failed mirror.
+    for p in [hourly, &sidecar(hourly)] {
+        if let Err(e) = std::fs::remove_file(p) {
+            tracing::warn!("mirrored pair copied but {} stays on the SSD: {e}", p.display());
+        }
+    }
     rotate_backups_keeping(mirror, keep, usize::MAX);
     Ok(true)
 }
