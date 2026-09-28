@@ -29,6 +29,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`Decision` no longer claims to be serializable** (#325). `Decision` derived `Serialize` with
+  `#[serde(skip)]` on `action` — the field that says what to do — while nothing in the workspace ever
+  serialized a `Decision`: the action crosses every boundary as protocol text (`DecisionView.action`,
+  the `decisions.action` column, `ReplayRecord.action`), and the engine's `Action` enum deliberately
+  has no serde impl. The derive and the skip are both gone, so a silent drop of the action through
+  serde is now impossible by construction rather than by a test. `BotLive`'s twelve skipped fields
+  are runtime state (`Instant` timers, per-connection turn tokens, the hand in progress) and now say
+  so once at the struct, naming where the two pieces that must outlive a process actually persist;
+  `ModelStore`'s per-opponent corrections already carried that note at every field.
+
 - **The hourly backup moves to the second disk instead of being copied and checked there** (#374).
   The copy was written under a temporary name, its bytes read back against the seal, the page cache
   dropped and only then renamed — and the second disk answers that dance with `EUCLEAN` ("structure

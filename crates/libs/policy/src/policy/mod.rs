@@ -66,10 +66,9 @@ pub fn spot_category(street: Street, action: &str, amount: Option<i64>, pot: i64
 }
 
 /// A decision with everything that explains it.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub struct Decision {
     /// The action to send.
-    #[serde(skip)]
     pub action: Action,
     /// Protocol name of the action.
     pub action_name: String,
@@ -454,6 +453,12 @@ mod tests {
     use super::*;
     use sv10_rng::SeedableRng;
 
+    /// Every option a decision considered, as (action, raise-to total) — the shape two decisions
+    /// must agree on when a correction moves their pricing but not their protocol legality.
+    fn options(d: &Decision) -> Vec<(String, Option<i64>)> {
+        d.candidates.iter().map(|c| (c.action.clone(), c.amount)).collect()
+    }
+
     #[test]
     fn a_penalty_is_capped_by_its_own_per_pot_evidence() {
         // Live 2026-09-24: river:call carried -8.8 bb from big-pot residuals while calls in pots up to
@@ -626,7 +631,6 @@ mod tests {
         let fold_priced = decide(Some(&fold_heavy));
         let raise_priced = decide(Some(&raise_heavy));
 
-        let options = |d: &Decision| d.candidates.iter().map(|c| (c.action.clone(), c.amount)).collect::<Vec<_>>();
         for priced in [&ignored, &fold_priced, &raise_priced] {
             assert_eq!(options(&stat), options(priced), "the response model must not alter protocol legality");
             assert!(priced.candidates.iter().all(|c| c.ev.is_finite() && c.fold_prob.is_finite() && c.equity_called.is_finite()));
@@ -666,7 +670,6 @@ mod tests {
             ..Default::default()
         };
         let corrected = decide(&sticky);
-        let options = |d: &Decision| d.candidates.iter().map(|c| (c.action.clone(), c.amount)).collect::<Vec<_>>();
         assert_eq!(options(&plain), options(&corrected));
         let bets: Vec<_> = plain.candidates.iter().zip(&corrected.candidates).filter(|(a, _)| a.fold_prob > 0.0).collect();
         assert!(!bets.is_empty(), "no bet candidates on the flop");
@@ -696,7 +699,6 @@ mod tests {
             ..Default::default()
         };
         let corrected = decide(&folders);
-        let options = |d: &Decision| d.candidates.iter().map(|c| (c.action.clone(), c.amount)).collect::<Vec<_>>();
         assert_eq!(options(&plain), options(&corrected));
         let aggressive = plain.candidates.iter().zip(&corrected.candidates).filter(|(a, _)| a.fold_prob > 0.0);
         let mut seen = 0;
