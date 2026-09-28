@@ -230,7 +230,31 @@ next process resumes the stored run.
    search-only no-promotion streak and follow-up flag.
 
 Every dropped, halved, rejected and promoted candidate is logged to `learner.log`, and the last 40
-experiments are kept in `learner.experiments` for the dashboard.
+experiments are kept in `learner.experiments` for the dashboard. Each of those experiments carries
+`stage` and `reason` beside its prose rationale (a halving drop is `no-effect` or `below-bar`, a
+confirmation rejection is one of the four `promotion::Reason` codes, a promotion is `promoted`).
+
+### Why candidates die (`sv10_bot::learner::funnel`, issue #317)
+
+`learner.experiments` is capped at 40 entries and holds only rejections, so on its own it can neither
+count a full day nor say what the search was even offered: every cycle reads as a wall of `rejected`.
+The learner counts at the death instead, into the hour bucket of `learner.search-funnel.v1`:
+
+| Key | Counted |
+|---|---|
+| `ledger/barred` | transitions the rejection ledger kept out of the pool |
+| `search/proposed` | candidates the search was handed after that filter |
+| `search/no-effect` | candidates that changed no simulated outcome |
+| `search/below-bar` | candidates whose 95% upper bound sat below +1 bb/100 |
+| `search/halved-out` | candidates the round ranking left out — alive, but not in the better half |
+| `confirm/<code>` | survivors rejected on fresh deals, by `promotion::Reason::code` |
+| `promotion/promoted` | survivors promoted |
+
+Deaths also count against the knob that died, which is what says whether one knob family is
+supplying every candidate. Buckets older than 48 hours are dropped on the next write, and the
+dashboard sums the last 24 of them into `training.search_funnel`, unfiltered by champion or evidence
+watermark — that scope exists to invalidate evidence, and a promotion must not erase the hours the
+search spent losing.
 
 ## Paired evaluation (`sim::paired_eval`)
 

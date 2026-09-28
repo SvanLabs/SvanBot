@@ -337,7 +337,9 @@ Each cycle:
    within 30 seconds.
 
 Every evaluation (promoted or rejected) is listed in the Experiments panel with its confidence
-interval.
+interval, and the panel opens with a count of what killed candidates over the last day — by stage
+(barred by the ledger, no effect, below the bar, halved out, failed on fresh deals) and by knob — so
+a run of rejections reads as a reason rather than a wall.
 
 ---
 

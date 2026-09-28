@@ -429,6 +429,10 @@ pub fn training_json(s: &Shared) -> Value {
             "bet_sizes": params.bet_sizes.len()},
         "progress": {"hands": 0, "target": 10800},
         "experiments": experiments,
+        // Why candidates have been dying, over the last day (#317): the experiment list is capped at
+        // 40 and holds only rejections, so it can neither count a full day nor say what the search
+        // was even offered. `learner::funnel` counts at the death instead of reading the list back.
+        "search_funnel": crate::learner::funnel::dashboard(&s.store),
         "lineage": lineage,
         "opponent_profiles_tracked": models.players.len(),
         "neural_ev_status": "inactive",

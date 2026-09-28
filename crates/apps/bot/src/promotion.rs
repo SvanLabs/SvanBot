@@ -32,13 +32,52 @@ pub fn worth_confirming(search: &PairedResult) -> bool {
     search.differing > 0 && search.mean_bb >= MIN_EDGE_BB
 }
 
+/// Why a confirmation rejected the candidate. One variant per branch of [`verdict`] that rejects,
+/// so a branch that stops reporting its reason no longer compiles; [`Reason::code`] is what the
+/// dashboard's funnel counts deaths by and [`Reason::message`] is what the log, the experiment card
+/// and `review` print (#317 — the four used to be indistinguishable prose).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reason {
+    /// The mean is not ahead of the champion at all.
+    NotAhead,
+    /// The 95% upper bound is below the worthwhile edge.
+    UpperBelowBar,
+    /// The mean could not clear the worthwhile edge even with the full confirmation's standard
+    /// error (projected futility).
+    CannotClear,
+    /// The full confirmation's 95% lower bound is below the worthwhile edge.
+    LowerBelowBar,
+}
+
+impl Reason {
+    /// The dashboard's slug for this reason.
+    pub fn code(self) -> &'static str {
+        match self {
+            Reason::NotAhead => "not-ahead",
+            Reason::UpperBelowBar => "upper-below-bar",
+            Reason::CannotClear => "cannot-clear",
+            Reason::LowerBelowBar => "lower-below-bar",
+        }
+    }
+
+    /// The sentence a person reads.
+    pub fn message(self) -> &'static str {
+        match self {
+            Reason::NotAhead => "not ahead on fresh deals",
+            Reason::UpperBelowBar => "upper bound below +1 bb/100",
+            Reason::CannotClear => "cannot clear +1 bb/100 even over the full confirmation",
+            Reason::LowerBelowBar => "lower bound below +1 bb/100 over the full confirmation",
+        }
+    }
+}
+
 /// Outcome of a confirmation look.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Verdict {
     /// Promote the challenger.
     Promote,
     /// Stop without promoting, with the reason.
-    Reject(&'static str),
+    Reject(Reason),
     /// Evaluate another chunk.
     Continue,
 }
@@ -48,23 +87,19 @@ pub fn verdict(r: &PairedResult, chunk: usize) -> Verdict {
     let z = if r.se_bb > 0.0 { r.mean_bb / r.se_bb } else { 0.0 };
     let clears_worthwhile_edge = r.lower_95() >= MIN_EDGE_BB;
     if chunk >= CONFIRM_CHUNKS {
-        return if clears_worthwhile_edge {
-            Verdict::Promote
-        } else {
-            Verdict::Reject("lower bound below +1 bb/100 over the full confirmation")
-        };
+        return if clears_worthwhile_edge { Verdict::Promote } else { Verdict::Reject(Reason::LowerBelowBar) };
     }
     if r.mean_bb <= 0.0 {
-        return Verdict::Reject("not ahead on fresh deals");
+        return Verdict::Reject(Reason::NotAhead);
     }
     if r.upper_95() < MIN_EDGE_BB {
-        return Verdict::Reject("upper bound below +1 bb/100");
+        return Verdict::Reject(Reason::UpperBelowBar);
     }
     if chunk >= FUTILITY_FROM {
         // The standard error shrinks with the square root of the hands still to come.
         let final_se = r.se_bb * (chunk as f64 / CONFIRM_CHUNKS as f64).sqrt();
         if r.mean_bb - 1.96 * final_se < MIN_EDGE_BB {
-            return Verdict::Reject("cannot clear +1 bb/100 even over the full confirmation");
+            return Verdict::Reject(Reason::CannotClear);
         }
     }
     if z >= EARLY_Z && clears_worthwhile_edge {
@@ -99,8 +134,8 @@ mod tests {
 
     #[test]
     fn interim_looks_stop_for_futility_or_overwhelming_evidence_only() {
-        assert_eq!(verdict(&res(-0.5, 2.0), 1), Verdict::Reject("not ahead on fresh deals"));
-        assert_eq!(verdict(&res(0.2, 0.3), 2), Verdict::Reject("upper bound below +1 bb/100"));
+        assert_eq!(verdict(&res(-0.5, 2.0), 1), Verdict::Reject(Reason::NotAhead));
+        assert_eq!(verdict(&res(0.2, 0.3), 2), Verdict::Reject(Reason::UpperBelowBar));
         // Nominally significant (z = 2.5) at an interim look is not enough.
         assert_eq!(verdict(&res(5.0, 2.0), 2), Verdict::Continue);
         assert_eq!(verdict(&res(9.0, 2.0), 1), Verdict::Promote);
@@ -115,32 +150,32 @@ mod tests {
         assert_eq!(verdict(&res(2.4, se(4.0)), 4), Verdict::Continue);
         assert_eq!(verdict(&res(2.4, se(12.0)), CONFIRM_CHUNKS), Verdict::Promote);
         // check_lookahead: +1.25 at 4 chunks cannot reach +1 + 1.96 x 0.95 by chunk 12: stop now.
-        assert_eq!(verdict(&res(1.25, se(4.0)), 4), Verdict::Reject("cannot clear +1 bb/100 even over the full confirmation"));
+        assert_eq!(verdict(&res(1.25, se(4.0)), 4), Verdict::Reject(Reason::CannotClear));
         // Before FUTILITY_FROM the projection does not apply.
         assert_eq!(verdict(&res(1.25, se(2.0)), 2), Verdict::Continue);
     }
 
     #[test]
     fn final_look_requires_the_worthwhile_95_percent_lower_bound() {
-        assert_eq!(verdict(&res(1.5, 1.0), CONFIRM_CHUNKS), Verdict::Reject("lower bound below +1 bb/100 over the full confirmation"));
+        assert_eq!(verdict(&res(1.5, 1.0), CONFIRM_CHUNKS), Verdict::Reject(Reason::LowerBelowBar));
         assert_eq!(verdict(&res(3.0, 1.0), CONFIRM_CHUNKS), Verdict::Promote);
         // Significant but below the minimum worthwhile edge.
-        assert_eq!(verdict(&res(0.8, 0.3), CONFIRM_CHUNKS), Verdict::Reject("lower bound below +1 bb/100 over the full confirmation"));
+        assert_eq!(verdict(&res(0.8, 0.3), CONFIRM_CHUNKS), Verdict::Reject(Reason::LowerBelowBar));
     }
 
     #[test]
     fn fresh_confirmation_outcomes_control_promotion() {
         assert!(worth_confirming(&res(4.0, 2.0)), "positive search survivor reaches fresh confirmation");
-        assert_eq!(verdict(&res(-0.1, 0.2), 1), Verdict::Reject("not ahead on fresh deals"));
+        assert_eq!(verdict(&res(-0.1, 0.2), 1), Verdict::Reject(Reason::NotAhead));
         assert_eq!(verdict(&res(1.96, 1.0), 1), Verdict::Continue, "a zero lower bound waits before the final look");
         assert_eq!(
             verdict(&res(1.96, 1.0), CONFIRM_CHUNKS),
-            Verdict::Reject("lower bound below +1 bb/100 over the full confirmation"),
+            Verdict::Reject(Reason::LowerBelowBar),
             "a zero lower bound cannot promote at the final look"
         );
         assert_eq!(
             verdict(&res(2.5, 0.9), CONFIRM_CHUNKS),
-            Verdict::Reject("lower bound below +1 bb/100 over the full confirmation"),
+            Verdict::Reject(Reason::LowerBelowBar),
             "a positive lower bound below the minimum worthwhile edge must reject"
         );
         assert_eq!(verdict(&res(3.0, 1.0), CONFIRM_CHUNKS), Verdict::Promote);
@@ -149,5 +184,16 @@ mod tests {
             Verdict::Continue,
             "z=3 alone cannot promote when the lower bound misses the worthwhile edge"
         );
+    }
+
+    #[test]
+    fn every_reason_has_its_own_code_and_message() {
+        // The dashboard counts rejections by code and the log prints the message (#317). Two
+        // reasons sharing either would merge two different responses into one number.
+        let all = [Reason::NotAhead, Reason::UpperBelowBar, Reason::CannotClear, Reason::LowerBelowBar];
+        let codes: std::collections::BTreeSet<&str> = all.iter().map(|r| r.code()).collect();
+        let messages: std::collections::BTreeSet<&str> = all.iter().map(|r| r.message()).collect();
+        assert_eq!(codes.len(), all.len(), "codes: {codes:?}");
+        assert_eq!(messages.len(), all.len(), "messages: {messages:?}");
     }
 }
