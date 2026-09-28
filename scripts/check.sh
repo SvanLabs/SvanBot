@@ -147,7 +147,7 @@ case "$mode" in
     cargo deny check advisories 2>/dev/null || echo "   advisories failed or the RustSec database was unreachable; see: cargo deny check advisories"
     step "third-party notices current"
     python3 scripts/notices.py --check || fail "run scripts/notices.py and commit THIRD-PARTY-NOTICES.md"
-    step "tickets lint + tool tests (tickets, codec vs zlib, test runner, release/rollback, keepalive, update, adopt-upstream, file-size, promote, build lock, systemd units)"
+    step "tickets lint + tool tests (tickets, codec vs zlib, test runner, release/rollback, keepalive, update, adopt-upstream, file-size, build lock, systemd units)"
     python3 scripts/tickets.py lint >/dev/null || { python3 scripts/tickets.py lint | tail -20 >&2; fail "tickets lint (scripts/tickets.py lint --fix fixes edges and types)"; }
     # The codec test builds a small example with cargo: while the full gate's test build holds the
     # build directory it would wait on that lock (57 s of an 85 s gate, 0334), so it runs after it.
@@ -162,7 +162,6 @@ case "$mode" in
     run_suite "update tests (run bash scripts/tests/update.sh)" bash scripts/tests/update.sh
     run_suite "adopt-upstream tests (run bash scripts/tests/adopt-upstream.sh)" bash scripts/tests/adopt-upstream.sh
     run_suite "file-size tests (run bash scripts/tests/file-size.sh)" bash scripts/tests/file-size.sh
-    run_suite "promote tests (run bash scripts/tests/promote.sh)" bash scripts/tests/promote.sh
     run_suite "build-lock tests (run bash scripts/tests/build-lock.sh)" bash scripts/tests/build-lock.sh
     run_suite "systemd unit tests (run bash scripts/tests/units.sh)" bash scripts/tests/units.sh
     [ "$mode" = lint ] && { step_end; step "ok (lint, $(($(date +%s) - check_t0)) s)"; exit 0; }

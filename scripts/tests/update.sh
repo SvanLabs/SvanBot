@@ -146,7 +146,7 @@ push f
 grep -q "fast-forwarded" "$t/box2/artifacts/release.log" || fail "the update after an adoption was not a fast-forward"
 
 # 10. A checkout ahead of the update branch with every commit on a remote branch (#394): the shape a
-# fresh clone has between a merge on `dev` and its promotion to `main`. Nothing is at risk and
+# checkout has when it sits on a branch ahead of the one `.env` names. Nothing is at risk and
 # nothing needs installing, so it is neither a failure nor an install, and the message says which
 # branch line the checkout is on and how to follow it.
 git clone -q "$t/origin.git" "$t/ahead" 2>/dev/null

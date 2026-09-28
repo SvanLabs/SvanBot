@@ -19,19 +19,16 @@ is `CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
 
 ## Branches
 
-`dev` is where all work lands: cut your branch from `dev` and open the pull request into `dev`
-(squash merge). `main` is the repository's default branch and the released line — what everyone who
-installs SvanBot runs, and where their Update fetches from — and moves only when `dev` is promoted to
-it by a pull request from `dev` into `main`, merged with a merge commit so the two histories stay
-one. The base GitHub offers for a new pull request is the default branch, so name `dev` explicitly:
-`gh pr create --base dev`. Promotion happens only when the gate passes on it, so `main` never carries
-a build that failed. It is not yours to do and not yours to wait for: `scripts/promote.sh` keeps the
-promotion pull request open and armed, and `.github/workflows/promote.yml` runs it whenever a `check`
-on `dev` finishes, so merging your pull request into `dev` is the whole of it. Never open a feature
-pull request into `main`.
+There is one branch: `main`. It is the repository's default branch, the released line — what a fresh
+`git clone` lands on, what the Update button fetches, and what every pull request targets.
 
-The reference fleet is the exception: it tracks `dev` (`SVANBOT_UPDATE_BRANCH=dev`), so every change
-is played before it is promoted.
+Cut a short-lived branch from `main` for your change, open the pull request into `main` with
+`gh pr create --base main`, and let GitHub delete the branch on merge (`deleteBranchOnMerge` is on).
+Nothing else is long-lived: a merge is live as soon as a fleet's next Update runs, so the gate on the
+pull request is the only thing between a change and live play. Never push to `main` directly.
+
+The reference fleet follows `main` with `SVANBOT_UPDATE_BRANCH` unset, so the default applies and
+every change is played.
 
 ## Which issue to take
 

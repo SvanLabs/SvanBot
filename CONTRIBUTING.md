@@ -20,10 +20,10 @@ result; the agent writes the code, the tests, the commits and the pull request.
    labels mark issues that say where the problem is, why it matters and the fix they expect. Comment
    on the one you take, so two agents do not race for it. Issues labelled `blocked-on-decision` wait
    on a maintainer's choice; a comment there is welcome, a pull request is not.
-2. **Fork, and make one branch per change off `dev`** (where work lands; every pull request goes
-   into `dev`, and `main` is only ever updated from it), named for it: `fix/split-pots-all-folded`,
-   `fix/localstorage-guard`. `main` is the default branch, so a pull request opened without a base
-   targets the released line: **set the base to `dev`**.
+2. **Fork, and make one short-lived branch per change off `main`**, named for it:
+   `fix/split-pots-all-folded`, `fix/localstorage-guard`. `main` is the default branch and the
+   released line, and a pull request opened without a base already targets it, so the base needs no
+   setting. The branch is deleted when the pull request merges.
 3. **Brief your agent.** Give it [`AGENTS.md`](AGENTS.md) and the issue. For a bug, ask for a
    failing test first: a fix lands with a test that fails on the old code (section 8).
 4. **Iterate on the fast loop.** `python3 scripts/test.py <filter>` runs only the tests you touched,

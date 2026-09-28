@@ -29,6 +29,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One branch: `main`.** The `dev` branch and the promotion machinery between it and `main` are
+  removed — `scripts/promote.sh`, `scripts/tests/promote.sh`, `.github/workflows/promote.yml` and
+  the ruleset on `dev`. Every pull request now targets `main`, which is both the default branch and
+  the released line, so a merge reaches live play at a fleet's next Update rather than at a
+  promotion. `AGENTS.md`, `CONTRIBUTING.md`, `README.md`, `llms.txt`, `docs/RELEASE.md` and the
+  workflows that checked out `dev` by name are updated with it.
+
 - **The dashboard and the public TV serve their own static files** (#349). Both listeners served
   `web/dist` through `tower-http`'s `ServeDir`/`ServeFile`, which was the only path in this workspace
   to `mime_guess`. The replacement is `crates/deps/static` — which file a request path names under a

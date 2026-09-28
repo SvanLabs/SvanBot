@@ -26,12 +26,9 @@ The dashboard is then at `http://127.0.0.1:5000` (host and port come from `.env`
 they say. There is no account, no signup and no cloud service: the whole system is these processes on
 this box.
 
-The clone lands on `main`, the default branch — the released line, which moves only when `dev` is
-promoted to it. Work lands on `dev`: pull requests go there, and a pull request opened without a base
-targets `main`, so name `dev`. Updates follow one branch, `SVANBOT_UPDATE_BRANCH` (`main` by
-default), so `scripts/update.sh` fast-forwards a fresh clone onto the released line; an install that
-should follow development instead sets `SVANBOT_UPDATE_BRANCH=dev` in `.env` (the reference fleet
-does exactly that).
+The clone lands on `main`, the default branch and the released line. Every pull request targets
+`main`, and a pull request opened without a base already does. Updates follow one branch,
+`SVANBOT_UPDATE_BRANCH` (`main` by default, `SVANBOT_UPDATE_REMOTE` default `origin`).
 
 That is one command to a working fleet, but **the first build is the wait** — a full workspace compile
 and a `cargo test` on the reference CPU, not two minutes. Later runs are incremental.
@@ -75,18 +72,18 @@ speed-only change must reproduce the reference simulation exactly. The gate enfo
 
 ## Docs
 
-These are the docs as `dev` has them — the branch a change is made against, and where your pull
-request goes. `main`, the released line the clone landed on, is promoted from it.
+These are the docs as `main` has them — the branch the clone landed on, where a change is made
+against, and where your pull request goes.
 
-- [AGENTS.md](https://github.com/SvanLabs/SvanBot/blob/dev/AGENTS.md): the engineering brief — layout, the two hard invariants, the style the gate enforces.
-- [docs/README.md](https://github.com/SvanLabs/SvanBot/blob/dev/docs/README.md): the documentation map; which document answers which question.
-- [docs/OPERATIONS.md](https://github.com/SvanLabs/SvanBot/blob/dev/docs/OPERATIONS.md): the runbook — updates, backups, restore, fault drills, moving a checkout onto this repository.
-- [docs/ARCHITECTURE.md](https://github.com/SvanLabs/SvanBot/blob/dev/docs/ARCHITECTURE.md): processes, crates, and the path a decision takes.
-- [docs/GUIDE.md](https://github.com/SvanLabs/SvanBot/blob/dev/docs/GUIDE.md): the control room, panel by panel.
-- [docs/LESSONS.md](https://github.com/SvanLabs/SvanBot/blob/dev/docs/LESSONS.md): why the rules exist, as escaped defects.
-- [docs/RELEASE.md](https://github.com/SvanLabs/SvanBot/blob/dev/docs/RELEASE.md): how a version is cut and published.
-- [CONTRIBUTING.md](https://github.com/SvanLabs/SvanBot/blob/dev/CONTRIBUTING.md): the standard a change is held to, every MUST marked.
-- [README.md](https://github.com/SvanLabs/SvanBot/blob/dev/README.md): the human front page — highlights, architecture diagrams, quick start.
+- [AGENTS.md](https://github.com/SvanLabs/SvanBot/blob/main/AGENTS.md): the engineering brief — layout, the two hard invariants, the style the gate enforces.
+- [docs/README.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/README.md): the documentation map; which document answers which question.
+- [docs/OPERATIONS.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/OPERATIONS.md): the runbook — updates, backups, restore, fault drills, moving a checkout onto this repository.
+- [docs/ARCHITECTURE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/ARCHITECTURE.md): processes, crates, and the path a decision takes.
+- [docs/GUIDE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/GUIDE.md): the control room, panel by panel.
+- [docs/LESSONS.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/LESSONS.md): why the rules exist, as escaped defects.
+- [docs/RELEASE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/RELEASE.md): how a version is cut and published.
+- [CONTRIBUTING.md](https://github.com/SvanLabs/SvanBot/blob/main/CONTRIBUTING.md): the standard a change is held to, every MUST marked.
+- [README.md](https://github.com/SvanLabs/SvanBot/blob/main/README.md): the human front page — highlights, architecture diagrams, quick start.
 
 ## Runtime data
 

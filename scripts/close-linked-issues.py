@@ -2,11 +2,11 @@
 """Close the issues a merged pull request names (#410); run by `close-linked-issues.yml`.
 
 GitHub interprets a closing keyword in a pull request description only when the pull request targets
-the repository's *default* branch. That is `main` here, every pull request targets `dev`, so
-`Closes #<issue>` — which `.github/pull_request_template.md`, `CONTRIBUTING.md` and the maintainer
-workflow all ask for — made no link and closed nothing. An issue whose fix had landed stayed open, and
-the maintainer's rule, "the oldest open `agent-friendly` issue that no pull request closes yet", could
-pick the same work a second time.
+the repository's *default* branch. That is `main` here, and while work landed on `dev` every pull
+request went there instead, so `Closes #<issue>` — which `.github/pull_request_template.md`,
+`CONTRIBUTING.md` and the maintainer workflow all ask for — made no link and closed nothing. An issue
+whose fix had landed stayed open, and the maintainer's rule, "the oldest open `agent-friendly` issue
+that no pull request closes yet", could pick the same work a second time.
 
 The keywords and the references are the ones GitHub documents, so a description that closed an issue
 before the default branch moved closes it again here:

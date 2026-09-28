@@ -1,9 +1,9 @@
 # Closes the issues a merged pull request names (#410).
 #
 # GitHub interprets a closing keyword in a pull request description only when the pull request targets
-# the repository's *default* branch — "The pull request must be on the default branch" — and the
-# default branch here is `main` while every pull request targets `dev`. So `Closes #<issue>`, which
-# `.github/pull_request_template.md`, `CONTRIBUTING.md` and `claude-maintainer.yml` all ask for, made
+# the repository's *default* branch — "The pull request must be on the default branch". While work
+# landed on `dev` and every pull request went there instead, `Closes #<issue>` — which
+# `.github/pull_request_template.md`, `CONTRIBUTING.md` and `claude-maintainer.yml` all ask for — made
 # no link and closed nothing: PR #409 merged into `dev` with `Closes #408` in its body and #408 stayed
 # open. The loss is not cosmetic — the maintainer's rule is "the oldest open `agent-friendly` issue
 # that no pull request closes yet", tested with `gh pr list`, which lists open pull requests only, so
@@ -34,10 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # The script is `dev`'s: it is fixed there and promoted from there, and a checkout with no
-          # `ref:` would take the default branch, where a fix to it would have to be promoted before it
-          # could run. The same reason `promote.yml` names the branch it works.
-          ref: dev
+          # Name the branch the script is fixed on. A checkout with no `ref:` would take the
+          # repository default, which is `main` — the same branch — so this is belt and braces,
+          # kept because a fork can move its own default.
+          ref: main
 
       - name: SvanLabs app token
         id: app-token
