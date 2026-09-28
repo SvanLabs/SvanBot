@@ -53,6 +53,17 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
     // A completed fresh-deal rejection is never offered to the experiment pair again.
     let mut ledger = search_ledger::load(store, &run.champion_version, run.refit_rowid);
     ledger.confirm_rejected.insert(transition_key(knob, old, new));
+    // The result is discarded, not stored: `confirm_rejected` holds only the key, so a key that
+    // comes back costs the full confirmation again. Record the measurement beside the key so the
+    // question "does a rejected candidate ever return?" has data behind it before anything is
+    // built to answer it.
+    tracing::info!(
+        "cycle {cycle}: confirmation rejected {knob} {old:.3}->{new:.3} over {} hands ({:+.2} bb/100, 95% {:+.2}..{:+.2})",
+        confirm.hands,
+        confirm.mean_bb * 100.0,
+        confirm.lower_95() * 100.0,
+        confirm.upper_95() * 100.0
+    );
     if let Err(err) = search_ledger::save(store, &ledger) {
         tracing::warn!("cycle {cycle}: rejection ledger not saved ({err})");
     }
