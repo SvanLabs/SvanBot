@@ -4,6 +4,16 @@ use sv10_cards::cards::{Card, CardMask};
 use sv10_cards::range::{NUM_COMBOS, Range, combo_mask};
 use sv10_rng::{Rng, RngExt};
 
+/// Attempts a rejection-sampled deal may take per sample before it gives up (#383).
+///
+/// A deal is rejected when two opponents' independently drawn combos share a card, so the acceptance
+/// rate falls as opponents are added. Measured (#388), seven opponents or fewer fill every request
+/// well inside 20 attempts per sample, eight with a narrow range returned 1510 of 2500 at 20, and ten
+/// came back short in every configuration tried. The budget is only spent where a request cannot be
+/// filled: a configuration that never exhausts 20 draws exactly the same deals at 200, so this moves
+/// no result a six-max table produces.
+pub(super) const ATTEMPTS_PER_SAMPLE: usize = 200;
+
 /// Cumulative sampler over a range with fixed dead cards already removed.
 pub struct ComboSampler {
     /// Cumulative weights and their combo indices, kept apart so the search scans plain `f64`s.

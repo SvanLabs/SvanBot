@@ -29,6 +29,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A full-ring deal set arrives complete** (#383). The Monte Carlo loops behind every equity — the
+  shared deals a decision prices its candidates on, and the per-range fallback — gave up after 20
+  attempts per sample and returned what they had without saying so. A deal is rejected when two
+  opponents' drawn combos share a card, so sparse ranges are the hard case: nine opponents returned
+  2053 of the 2500 deals asked for, ten returned 299. The budget is 200 attempts per sample now, paid
+  only where a request cannot be filled — milliseconds at a full ring, and nothing at all at six-max,
+  where the loop never reaches 20, so the golden snapshot and the six-max fill test are unchanged.
+
 - **The maintainer job builds from a cache** (#363). `claude-maintainer.yml` — the twice-daily run
   that fixes the oldest open `agent-friendly` issue — compiled the workspace from nothing every time,
   because unlike the `gate` job it restored no cache: a cold `npm ci` and a cold compile before the
