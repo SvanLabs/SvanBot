@@ -128,11 +128,17 @@ pub fn progress_view(progress: &Value, timings: &Value, now: f64) -> Value {
         _ => 0.0,
     };
     let started = progress["started"].as_f64();
+    // A finished run's elapsed is how long it took, not how long ago it ended (issue #320): `updated`
+    // is the last save, which for `installed` and `failed` is the end of the run, and the panel reads
+    // this field as a duration ("in 237m 27s" for a pipeline whose own stages total 1m 19s). A
+    // `running` run has no end to freeze, so it counts from `started` to now as it always did, and a
+    // record with no `updated` (written before the field existed) keeps that reading too.
+    let ended = (state != "running").then(|| progress["updated"].as_f64()).flatten();
     json!({
         "state": state,
         "stages": stages,
         "percent": (percent * 10.0f64).round() / 10.0,
-        "elapsed": started.map(|t| ((now - t).max(0.0) * 10.0).round() / 10.0),
+        "elapsed": started.map(|t| ((ended.unwrap_or(now) - t).max(0.0) * 10.0).round() / 10.0),
         "eta": (state == "running").then(|| left.round()),
         "from": progress["from"],
         "commit": progress["commit"],

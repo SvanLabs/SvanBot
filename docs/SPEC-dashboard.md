@@ -80,7 +80,9 @@ opponents with any correction. A store read error answers 500. Panel: `web/src/i
   state: pending|running|done|failed, seconds, expected}], percent, elapsed, eta, from, commit, message,
   swap: {target, fleet, fleet_done, learner, analyst, workers: [{bot, commit}]}, bots_playing,
   bots_total, log}`. Stages: fetch, snapshot, lint, test, build, dashboard, install (a release run by
-  hand has no fetch); `percent` and `eta` weigh them by the last successful run's times
+  hand has no fetch); `elapsed` is the time since the run started while it runs, and the run's own
+  duration once it has ended (`installed`/`failed`, from the progress file's `updated`);
+  `percent` and `eta` weigh them by the last successful run's times
   (`artifacts/release-timings.json`), else defaults for the i7-4770K. The swap is confirmed by each
   process reporting its build: this process (`fleet`), the learner and analyst status, worker heartbeats.
 - `GET /api/releases/log`: the 64 KB tail of `artifacts/release.log` (kept for tools).
