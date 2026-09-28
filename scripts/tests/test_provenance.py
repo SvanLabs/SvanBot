@@ -115,16 +115,37 @@ class Provenance(unittest.TestCase):
         self.commit("fix\n\nGenerated-by: claude-code/opus-5\n")
         body = self.root / "body.md"
         body.write_text("## Motivation\nNone.\n")
-        code, err = self.run_check("--pr-body", str(body))
+        code, err = self.run_check("--pr-body", str(body), "--pr-author", "someone")
         self.assertEqual(code, 1)
         self.assertIn("pull request body", err)
         body.write_text("## Motivation\nNone.\n\nGenerated-by: claude-code/opus-5\n")
-        code, err = self.run_check("--pr-body", str(body))
+        code, err = self.run_check("--pr-body", str(body), "--pr-author", "someone")
         self.assertEqual(code, 0, err)
 
-    def test_a_missing_pull_request_body_is_reported(self):
+    def test_a_bot_opened_pull_request_is_exempt(self):
+        # The same exemption `test_a_bot_authored_commit_is_exempt` covers: Dependabot's pull request
+        # is Dependabot's, and the login that opened it names the system (#367).
+        self.commit("chore(deps): bump serde", author="dependabot[bot]")
+        body = self.root / "body.md"
+        body.write_text("Bumps the actions group with 6 updates.\n")
+        code, err = self.run_check("--pr-body", str(body), "--pr-author", "dependabot[bot]")
+        self.assertEqual(code, 0, err)
+
+    def test_an_empty_author_exempts_nothing(self):
+        # An unset login must not be read as a bot: no GitHub login is empty, so an empty one only
+        # ever means the login did not reach the gate, and exempting it would exempt everyone.
         self.commit("fix\n\nGenerated-by: claude-code/opus-5\n")
-        code, err = self.run_check("--pr-body", str(self.root / "absent.md"))
+        body = self.root / "body.md"
+        body.write_text("## Motivation\nNone.\n")
+        code, err = self.run_check("--pr-body", str(body), "--pr-author", "")
+        self.assertEqual(code, 1)
+        self.assertIn("pull request body", err)
+
+    def test_a_missing_pull_request_body_is_reported(self):
+        # Checked before the exemption: a body that never arrived means the gate checked nothing,
+        # whoever opened the pull request.
+        self.commit("chore(deps): bump serde", author="dependabot[bot]")
+        code, err = self.run_check("--pr-body", str(self.root / "absent.md"), "--pr-author", "dependabot[bot]")
         self.assertEqual(code, 1)
         self.assertIn("not found", err)
 

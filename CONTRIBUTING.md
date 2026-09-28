@@ -127,8 +127,10 @@ renders it in the commit view.
 
 `scripts/provenance.py check` is the gate: it walks the commits in a range and fails listing the ones
 that name no system, and `scripts/check.sh` runs it, so a commit or a pull request that skips the line
-does not merge. Merge commits are skipped — they carry no content of their own — and a commit whose
-author is already `<name>[bot]` is exempt, because the author field has already named it.
+does not merge. Merge commits are skipped — they carry no content of their own — and an artifact whose
+author is already `<name>[bot]` is exempt, because the author field has already named it. That covers
+a bot-opened pull request as well as a bot-authored commit: Dependabot's pull request body is
+Dependabot's, and the login GitHub reports for whoever opened it says so.
 
 `AI-PROVENANCE.md` is the roster of systems on record, read from the same trailers, and
 `scripts/provenance.py report --check` keeps it current — it fails when a system has commits that the
