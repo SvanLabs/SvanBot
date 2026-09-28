@@ -156,12 +156,12 @@ release-build 86 s, test-build 44 s, run concurrently. `scripts/release.sh:136` 
 over-budget log that `docs/LESSONS.md:46` asks for, and `scripts/build-lock.sh` already names a
 held build lock. The 519 s that the speed issue leads with was a cargo build lock, not a build.
 
-### 3.8 The working tree does not compile
+### 3.8 The working tree did not compile
 
-`crates/libs/store/src/packed.rs:308` iterates `for (rowid, text) in &rows` where `rows` is already
-`&[(i64, String)]`. `cargo check -p sv10-store` fails with `E0277: &&[(i64, String)] is not an
-iterator`. The fix is one character. Until it is fixed the checkout cannot build and
-`scripts/update.sh` cannot install from it. This was fixed as #458 before this document was
+`crates/libs/store/src/packed.rs:308` iterated `for (rowid, text) in &rows` where `rows` is already
+`&[(i64, String)]`. `cargo check -p sv10-store` failed with `E0277: &&[(i64, String)] is not an
+iterator`. The fix was one character. Until it was fixed the checkout could not build and
+`scripts/update.sh` could not install from it. This was fixed as #458 before this document was
 committed; it is recorded here because it is what Phase 0 started from.
 
 ### 3.9 The portfolio is five copies of one policy
@@ -176,9 +176,11 @@ short-lived branch that is deleted on merge.
 
 ### Phase 0 — ground truth and trunk
 
-**Scope.** Fix the one-character compile break so the tree builds. Retarget and land #456 and #457
-against `main` (they close #15 and #315). Delete the four local branches whose content is already in
-`main`. Delete the `dev` branch, its ruleset, `scripts/promote.sh`, `scripts/tests/promote.sh` and
+**Scope.** The first three items are done, and are recorded here because they are where the program
+started: the one-character compile break, fixed as #458; and #456 and #457, retargeted onto `main`
+and merged as `9c56cbf` and `685147c` (they close #15 and #315). Delete the four local branches whose
+content is already in `main`. Delete the `dev` branch, its ruleset, `scripts/promote.sh`,
+`scripts/tests/promote.sh` and
 `.github/workflows/promote.yml` — **workflow first, branch second**, because the workflow checks out
 `ref: dev` and would fail on every run after the branch is gone. Rewrite the branch sections of
 `AGENTS.md` (including the false claim at line 33 that the reference fleet tracks `dev`),
