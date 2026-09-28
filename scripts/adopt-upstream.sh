@@ -152,12 +152,24 @@ if [ -n "$(git -C "$dir" status --porcelain)" ]; then
   say "the tree is not clean: the lines below are files the branch does not have"
   git -C "$dir" status --porcelain | sed 's/^/   /'
 fi
+# release.sh records the short hash, so both sides are resolved to a full one before comparing.
 installed=$(cat "$dir/target/release/.sv10-installed-commit" 2>/dev/null || echo none)
 head=$(git -C "$dir" rev-parse HEAD)
-[ "$installed" = "$head" ] || say "installed build is $installed, the checkout is on $head — the release did not install"
+if [ "$(git -C "$dir" rev-parse --verify --quiet "$installed^{commit}" || true)" != "$head" ]; then
+  say "installed build is $installed, the checkout is on ${head:0:7} — the release did not install"
+fi
+# A file the old head tracked under artifacts/ and the branch does not is removed by the move itself,
+# like any other tracked file the branch lacks; only an entry git never owned is a real loss.
+git -C "$dir" ls-tree --name-only "$before" -- artifacts/ | sed 's|^artifacts/||' | sort >"$backup/artifacts-tracked.txt"
 if [ -s "$backup/artifacts-missing.txt" ]; then
-  say "artifacts/ lost these entries during the move (they were not touched by it — check by hand):"
-  sed 's/^/   /' "$backup/artifacts-missing.txt"
+  if grep -qxFf "$backup/artifacts-tracked.txt" "$backup/artifacts-missing.txt"; then
+    say "artifacts/ files the old head tracked and the branch does not (recoverable from refs/adopt/):"
+    grep -xFf "$backup/artifacts-tracked.txt" "$backup/artifacts-missing.txt" | sed 's/^/   /'
+  fi
+  if grep -qvxFf "$backup/artifacts-tracked.txt" "$backup/artifacts-missing.txt"; then
+    say "artifacts/ lost these untracked entries during the move, which never touches them — check by hand:"
+    grep -vxFf "$backup/artifacts-tracked.txt" "$backup/artifacts-missing.txt" | sed 's/^/   /'
+  fi
 else
   say "artifacts/ intact: the same $(wc -l <"$backup/artifacts-after.txt") top-level entries as before the move"
 fi
