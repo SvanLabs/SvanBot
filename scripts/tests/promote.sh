@@ -41,10 +41,29 @@ case "$1 $2" in
   "repo view") echo "${TEST_REPO:-SvanLabs/SvanBot}" ;;
   "pr list")   [ -f "$TEST_STATE/pr" ] && cat "$TEST_STATE/pr" || true ;;
   "pr create")
-    echo 377 > "$TEST_STATE/pr"
-    body=""
-    while [ $# -gt 0 ]; do [ "$1" = --body-file ] && body="$2"; shift; done
+    # GitHub's own rule, and the answer the real service is on record giving: a pull request whose
+    # head has no commit the base lacks is refused outright, `No commits between main and dev`
+    # (createPullRequest), observed on 2026-09-28 04:28. A stub that answers success for whatever it
+    # is asked is a *more capable* GitHub than the one this script talks to, and a suite standing on
+    # it cannot tell a script that opens a valid promotion pull request from one that asks for a
+    # pull request it will never get. The fixture has both branches, so the stub can know what
+    # GitHub knows. See docs/LESSONS.md 44 for the same mistake from the other side.
+    body="" head="" base=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) body="$2" ;;
+        --head) head="$2" ;;
+        --base) base="$2" ;;
+      esac
+      shift
+    done
     [ -n "$body" ] || { echo "stub gh: pr create without --body-file" >&2; exit 9; }
+    [ -n "$head" ] && [ -n "$base" ] || { echo "stub gh: pr create without --head/--base" >&2; exit 9; }
+    if [ "$(git -C "${TEST_GIT_DIR:-$PWD}" rev-list --count "origin/$head" --not "origin/$base")" = 0 ]; then
+      echo "pull request create failed: GraphQL: No commits between $base and $head (createPullRequest)" >&2
+      exit 1
+    fi
+    echo 377 > "$TEST_STATE/pr"
     cp "$body" "$TEST_STATE/body"
     echo "https://example.invalid/pull/377" ;;
   "pr view")   [ "$(cat "$TEST_STATE/armed" 2>/dev/null || echo false)" = true ] && echo true || echo false ;;
@@ -55,7 +74,7 @@ STUB
 chmod +x "$t/bin/gh"
 
 run() { (cd "$t/work" && PATH="$t/bin:$PATH" TEST_CALLS="$t/calls" TEST_STATE="$t/state" \
-  "${@:2}" bash scripts/promote.sh "${1:-}"); }
+  TEST_GIT_DIR="$t/work" "${@:2}" bash scripts/promote.sh "${1:-}"); }
 # Only the call log: `$t/state` is the stand-in for GitHub, and a pull request that was opened
 # stays open across runs unless a test means to change it.
 reset() { rm -f "$t/calls"; }
@@ -184,5 +203,51 @@ fi
 out=$(run "") || fail "a main holding what dev holds failed: $out"
 [ -z "$(mutations)" ] || fail "an already-current main changed something: $(mutations)"
 case "$out" in *"already holds what dev holds"*) ;; *) fail "an already-current main was not recognised: $out";; esac
+
+# 10. `main` carries content of its own, and every commit on `dev` is already on it. That is a
+#     conflict resolved on `main` instead of on `dev`: the merge commit itself holds the resolution,
+#     so the commit that carries the content is a merge and the stray check — which counts non-merge
+#     commits only — cannot see it. The trees differ, so the currency check does not fire either.
+#     There is nothing to promote: `dev` has no commit `main` lacks, which is precisely the state
+#     GitHub refuses with `No commits between main and dev`. A script that asks anyway gets a red
+#     run and no information, and before this case the stub answered it as success, so the suite
+#     could not have told.
+reset
+rm -f "$t/state/pr" "$t/state/armed"
+git -C "$t/gen" fetch -q origin
+# `dev` moves on, so the merge below has something to bring in and really is a merge.
+git -C "$t/gen" checkout -q dev
+echo six > "$t/gen/i" && git -C "$t/gen" add -A && git -C "$t/gen" commit -qm six
+git -C "$t/gen" -c push.negotiate=false push -q origin dev
+# `main` merges `dev`, and the merge commit carries a file `dev` does not have — what resolving the
+# conflict on the wrong side leaves behind.
+git -C "$t/gen" checkout -q -B main origin/main
+git -C "$t/gen" merge -q --no-ff --no-commit origin/dev
+echo resolved-on-main > "$t/gen/both" && git -C "$t/gen" add -A
+git -C "$t/gen" commit -qm "Merge branch 'dev' into main"
+git -C "$t/gen" -c push.negotiate=false push -q origin main
+git -C "$t/gen" checkout -q dev
+git -C "$t/work" fetch -q origin
+# The fixture asserts it built that shape before anything is said about the script: `dev` on `main`
+# (nothing to promote), no stray commit, and two trees that still differ. Any one of the three being
+# wrong means this case would pass without exercising the state it exists for.
+[ "$(git -C "$t/work" rev-list --count origin/dev --not origin/main)" = 0 ] ||
+  fail "the fixture did not reproduce the real shape: dev has a commit main does not"
+[ "$(git -C "$t/work" rev-list --no-merges --count origin/main --not origin/dev)" = 0 ] ||
+  fail "the fixture did not reproduce the real shape: main carries a stray non-merge commit"
+[ -n "$(git -C "$t/work" diff origin/main origin/dev)" ] ||
+  fail "the fixture did not reproduce the real shape: the two trees are equal"
+# And that the stub now stands in for a GitHub that refuses this pull request, which is the half of
+# this case that is about the fixture rather than the script.
+if (cd "$t/work" && PATH="$t/bin:$PATH" TEST_CALLS="$t/direct-calls" TEST_STATE="$t/state" \
+    TEST_GIT_DIR="$t/work" gh pr create --repo SvanLabs/SvanBot --base main --head dev \
+    --title t --body-file /dev/null) 2>"$t/err"; then
+  fail "the stub accepted a pull request GitHub refuses"
+fi
+grep -q "No commits between main and dev" "$t/err" || fail "the stub refused with the wrong reason: $(cat "$t/err")"
+if run "" >/dev/null 2>"$t/err"; then fail "a main carrying its own content was promoted"; fi
+[ -z "$(mutations)" ] || fail "a main carrying its own content was sent to pr create: $(mutations)"
+grep -q "content of its own" "$t/err" || fail "the refusal did not say why: $(cat "$t/err")"
+grep -q "both" "$t/err" || fail "the refusal did not name the file main carries: $(cat "$t/err")"
 
 echo "promote tests: ok"
