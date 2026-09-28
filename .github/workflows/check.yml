@@ -1,4 +1,4 @@
-# The gate, on every pull request and every push to main.
+# The gate, on every pull request and every push to dev (where work lands) and main (what the fleet runs).
 #
 # `scripts/check.sh full` here is the same command a contributor runs locally, so a red run in CI and
 # a red run at the desk are the same failure with the same fix. That is deliberate: a workflow that
@@ -19,7 +19,7 @@ on:
     # say so rather than by omission.
     types: [opened, synchronize, reopened, edited]
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 concurrency:
