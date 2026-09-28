@@ -221,7 +221,7 @@ mod tests {
         history.insert_page("A", &page).unwrap();
         for i in 0..30 {
             store
-                .insert_decision("A", &format!("h{i}"), "flop", "call", None, 0.4, 100, 20, 2.0, &json!({"opponents": 1}).to_string())
+                .insert_decision("A", &format!("h{i}"), "flop", "call", None, Some(0.4), 100, 20, 2.0, &json!({"opponents": 1}).to_string())
                 .unwrap();
         }
         let mut cursors = Cursors::start();

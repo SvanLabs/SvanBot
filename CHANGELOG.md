@@ -29,6 +29,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A draw that cannot fill its budget refuses to answer** (#424). The equity loop returned the mean of
+  whatever it scored, so a request for 2,500 deals was answered from 17 of them, and a draw that scored
+  nothing answered `0.0` — the same number as "hero never wins". #383 raised the rejection-sampling
+  budget to 200 attempts per sample, which fixed the reachable cases; the cliff stayed, because the
+  budget is finite and the caller's ask is not: on the issue's sparse-range harness eleven opponents
+  return 1,700 deals of the 2,500 asked for, thirteen return 63, and nothing said so. A draw that
+  scores fewer deals than it was asked for now reports no measurement, and a decision that cannot
+  measure its equity refuses the spot — the safe action, check where the rules allow it and fold
+  otherwise, with `equity: None` — instead of pricing its candidates on a zero. The refusal is
+  recorded as a NULL equity, which every reader already treats as unavailable (`--` in `review all`,
+  a dash in the dashboard), and the offline generators, whose draws cannot be short, say so with
+  `expect` instead. Six-max play never reaches the budget and is unchanged.
+
 - **A full-ring deal set arrives complete** (#383). The Monte Carlo loops behind every equity — the
   shared deals a decision prices its candidates on, and the per-range fallback — gave up after 20
   attempts per sample and returned what they had without saying so. A deal is rejected when two

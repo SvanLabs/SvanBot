@@ -172,11 +172,47 @@ fn decisions_are_legal_and_finite_from_any_reachable_state() {
             }
             Action::AllIn => assert!(legal.max_raise_to.is_some() || !legal.can_check, "seed {seed}: all-in not offered"),
         }
-        assert!(d.equity.is_finite() && (0.0..=1.0).contains(&d.equity), "seed {seed}: equity {}", d.equity);
+        // #424: a spot the draw cannot measure is refused rather than priced on 0.0, so a measured
+        // decision's equity is a share and a refused one carries none.
+        assert!(d.equity.is_none_or(|e| (0.0..=1.0).contains(&e)), "seed {seed}: equity {:?}", d.equity);
         for c in &d.candidates {
             assert!(c.ev.is_finite() && c.fold_prob.is_finite() && c.equity_called.is_finite(), "seed {seed}: {c:?}");
         }
         // The engine accepts what the policy chose.
+        let mut after = h.clone();
+        after.apply(d.action).unwrap_or_else(|e| panic!("seed {seed}: engine rejected {:?}: {e}", d.action));
+    });
+}
+
+/// #424: a spot whose equity cannot be measured is refused rather than priced on `0.0`, which reads
+/// as "hero never wins". The refusal is the safe action — check where the rules allow it, fold
+/// otherwise — with no equity and a reason that says why. A zero-sample budget asks for no
+/// measurement at all, which reaches the refusal without a table whose ranges collide on every deal
+/// (that case is pinned in the equity crate's own tests).
+#[test]
+fn a_decision_with_no_equity_measurement_takes_the_safe_action() {
+    let models = ModelStore::default();
+    let params = Params { samples: 0, ..Default::default() };
+    for_cases(30, |seed, rng| {
+        let mut h = random_hand(rng);
+        for _ in 0..rng.random_range(0..12) {
+            if h.is_finished() {
+                break;
+            }
+            let a = random_action(&h.legal(), rng);
+            h.apply(a).unwrap();
+        }
+        let Some(actor) = h.actor() else { return };
+        let names: Vec<String> = (0..h.seats.len()).map(|i| format!("p{i}")).collect();
+        let sit = Situation::from_hand(&h, actor, &names);
+        let legal = h.legal();
+        let d = decide(&sit, &models, &params, rng);
+        assert_eq!(d.equity, None, "seed {seed}: a draw asked for no samples still answered");
+        let safe = if legal.can_check { Action::Check } else { Action::Fold };
+        assert_eq!(d.action, safe, "seed {seed}: a refused decision did not take the safe action");
+        assert!(d.reason.contains("no equity measurement"), "seed {seed}: reason is {:?}", d.reason);
+        assert_eq!(d.chosen.action, d.action_name, "seed {seed}: the chosen candidate is not the action sent");
+        // The refusal is still a decision the engine accepts.
         let mut after = h.clone();
         after.apply(d.action).unwrap_or_else(|e| panic!("seed {seed}: engine rejected {:?}: {e}", d.action));
     });

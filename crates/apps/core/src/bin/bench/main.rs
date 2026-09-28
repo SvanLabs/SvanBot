@@ -233,7 +233,8 @@ fn live_suite(fx: &Fixture, spots: &[Situation]) -> Value {
         let d = decide_with(sit, &fx.models, &params, fx.nn.as_deref(), &mut rng);
         ms.push(t.elapsed().as_secs_f64() * 1000.0);
         fnv(&mut h, format!("{:?}", d.action).as_bytes());
-        fnv(&mut h, &d.equity.to_bits().to_le_bytes());
+        // A refused decision has no equity to fold into the checksum; NaN keeps the field in it (#424).
+        fnv(&mut h, &d.equity.unwrap_or(f64::NAN).to_bits().to_le_bytes());
         streets[sit.board.len().saturating_sub(2).min(3)] += 1;
     }
     let total: f64 = ms.iter().sum();
@@ -321,7 +322,10 @@ fn micro_suite() -> Value {
     let mut rng = SmallRng::seed_from_u64(42);
     let samples = 2_000_000;
     let t = Instant::now();
-    let eq = sv10_core::equity::equity_vs_ranges(hole, &board, &[&full], samples, &mut rng);
+    // One opponent on a full range accepts nearly every deal, so a short draw here is a fault in
+    // the harness rather than a throughput to report (#424).
+    let eq =
+        sv10_core::equity::equity_vs_ranges(hole, &board, &[&full], samples, &mut rng).expect("2M samples against one full range fill");
     let equity_sps = samples as f64 / t.elapsed().as_secs_f64();
     fnv(&mut h, &eq.to_bits().to_le_bytes());
     // RNG.

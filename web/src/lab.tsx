@@ -90,7 +90,7 @@ export function LeakFinder() {
   </div>;
 }
 
-interface RangeOpp { seat: number; name: string; position: string; grid: number[]; share: number[]; top: { hand: string; share: number }[]; equity: number; equity_se?: number; profile: { hands: number; vpip: number; pfr: number; confidence: number } }
+interface RangeOpp { seat: number; name: string; position: string; grid: number[]; share: number[]; top: { hand: string; share: number }[]; equity: number | null; equity_se?: number | null; profile: { hands: number; vpip: number; pfr: number; confidence: number } }
 interface Ranges { available: boolean; hole?: string[]; board?: string[]; street?: string; pot?: number; to_call?: number; position?: string; equity_vs_all?: number | null; equity_vs_all_se?: number | null; samples?: number; opponents?: RangeOpp[]; range_model?: string }
 
 /** 13x13 heatmap: pairs on the diagonal, suited above, offsuit below. `names` is the engine's own

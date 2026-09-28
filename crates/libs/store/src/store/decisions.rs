@@ -200,7 +200,10 @@ impl Store {
         street: &str,
         action: &str,
         amount: Option<i64>,
-        equity: f64,
+        // The equity the decision was priced on, or `None` when the draw could not measure one and
+        // the decision was refused (#424): stored as NULL, which the readers already read as "no
+        // measurement" (`COALESCE(equity, -1)` in `postflop_decisions`).
+        equity: Option<f64>,
         pot: i64,
         to_call: i64,
         latency_ms: f64,

@@ -305,7 +305,7 @@ export function useAutoPlay(length: number, step: number, setStep: (n: number) =
   return useMemo(() => ({ playing, setPlaying, speed, setSpeed }), [playing, speed]);
 }
 
-interface LiveEvent { type: string; ts: number; slot: number; bot: string; seat?: number; name?: string; action?: string; amount?: number | null; street?: string; pot?: number; cards?: string[]; net?: number | null; winners?: string[]; equity?: number; latency_ms?: number; hand_id?: string }
+interface LiveEvent { type: string; ts: number; slot: number; bot: string; seat?: number; name?: string; action?: string; amount?: number | null; street?: string; pot?: number; cards?: string[]; net?: number | null; winners?: string[]; equity?: number | null; latency_ms?: number; hand_id?: string }
 
 export function ActionTicker({ selectedSlot }: { selectedSlot?: number }) {
   const [events, setEvents] = useState<LiveEvent[]>([]);
@@ -323,7 +323,7 @@ export function ActionTicker({ selectedSlot }: { selectedSlot?: number }) {
     switch (e.type) {
       case 'action': return <><b><PlayerName name={e.name}/></b> {e.action?.replace('_', ' ')}{e.amount ? <> to <b>{fmt(e.amount)}</b></> : null}</>;
       case 'board': return <>{String(e.street).toUpperCase()} <MiniCards cards={e.cards || []} /></>;
-      case 'decision': return <><b><PlayerName name={e.bot}/></b> decided <b>{e.action?.replace('_', ' ')}</b>{e.amount ? ` ${fmt(e.amount)}` : ''} · equity {Math.round((e.equity || 0) * 100)}% · {fmt(e.latency_ms, 1)} ms</>;
+      case 'decision': return <><b><PlayerName name={e.bot}/></b> decided <b>{e.action?.replace('_', ' ')}</b>{e.amount ? ` ${fmt(e.amount)}` : ''}{e.equity == null ? ' · no equity measurement' : ` · equity ${Math.round(e.equity * 100)}%`} · {fmt(e.latency_ms, 1)} ms</>;
       case 'result': return <><b><PlayerName name={e.bot}/></b> {e.net == null ? 'hand over' : e.net > 0 ? 'won' : e.net < 0 ? 'lost' : 'broke even'} <b className={(e.net || 0) < 0 ? 'negative' : 'positive'}>{e.net ? sgn(e.net) : ''}</b>{e.winners?.length ? ` · winner ${e.winners.join(', ')}` : ''}</>;
       default: return e.type;
     }

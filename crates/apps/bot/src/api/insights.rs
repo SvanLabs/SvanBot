@@ -367,14 +367,14 @@ pub(super) async fn ranges(State(s): State<Arc<Shared>>, Path(slot): Path<usize>
                 "share": grid.iter().map(|g| g / total).collect::<Vec<_>>(),
                 "top": top.iter().take(8).map(|(c, _)| json!({"hand": sv10_core::range::class_name(*c), "share": grid[*c] / total})).collect::<Vec<_>>(),
                 "equity": equity,
-                "equity_se": equity_se(equity, RANGE_EXPLORER_SAMPLES),
+                "equity_se": equity.map(|e| equity_se(e, RANGE_EXPLORER_SAMPLES)),
                 "profile": {"hands": profile.hands, "vpip": profile.vpip, "pfr": profile.pfr, "confidence": profile.confidence},
             }));
         }
         let combined = if all.is_empty() {
             None
         } else {
-            Some(sv10_core::equity::equity_vs_ranges_parallel(sit.hole, &sit.board, &all, RANGE_EXPLORER_SAMPLES, chunks, &mut rng))
+            sv10_core::equity::equity_vs_ranges_parallel(sit.hole, &sit.board, &all, RANGE_EXPLORER_SAMPLES, chunks, &mut rng)
         };
         json!({
             "available": true,

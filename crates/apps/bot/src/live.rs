@@ -20,7 +20,10 @@ pub struct DecisionView {
     pub street: String,
     pub action: String,
     pub amount: Option<i64>,
-    pub equity: f64,
+    /// Hero's equity against the estimated ranges; `None` when the draw could not measure one and
+    /// the decision was refused (#424). Every dashboard reader treats a missing value as
+    /// unavailable rather than as a zero.
+    pub equity: Option<f64>,
     pub pot_odds: f64,
     pub pot: i64,
     pub to_call: i64,

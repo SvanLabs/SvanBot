@@ -160,7 +160,10 @@ pub fn fleet_report(store: &Store, bb: f64, which: String, losers: usize, bots: 
                         )
                     })
                     .collect();
-                line.push_str(&format!("  <= eq {:.2} [{}]", d["equity"].as_f64().unwrap_or(0.0), cands.join(", ")));
+                // A refused decision recorded no equity (#424): printing it as 0.00 would read as
+                // "hero never wins", the same lie the refusal removed from the policy.
+                let eq = d["equity"].as_f64().map_or("--".to_string(), |e| format!("{e:.2}"));
+                line.push_str(&format!("  <= eq {eq} [{}]", cands.join(", ")));
             }
             println!("{line}");
         }

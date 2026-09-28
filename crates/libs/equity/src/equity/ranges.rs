@@ -8,15 +8,29 @@ use sv10_rng::{Rng, RngExt};
 
 /// Monte Carlo share of the pot hero wins at showdown against every opponent
 /// range simultaneously (ties split). Empty opponent ranges are treated as random.
-pub fn equity_vs_ranges<R: Rng>(hero: [Card; 2], board: &[Card], opponents: &[&Range], samples: usize, rng: &mut R) -> f64 {
+///
+/// `None` when the draw cannot answer for the deals it was asked for: it scored none at all, or it
+/// ran out of attempts before it scored `samples` of them (#424). A draw that fell short is not a
+/// slightly worse number — measured on sparse mutually-colliding ranges, eleven opponents yield
+/// 1700 of 2500 samples and thirteen yield 63 — and only the caller knows whether the spot is
+/// priced on the answer or merely informed by it. The decision path refuses the spot; offline
+/// table builders that cannot be short say so where they call this. The `0.0` this used to answer
+/// with read as "hero never wins", a claim no deal supports.
+pub fn equity_vs_ranges<R: Rng>(hero: [Card; 2], board: &[Card], opponents: &[&Range], samples: usize, rng: &mut R) -> Option<f64> {
     equity_vs_ranges_counted(hero, board, opponents, samples, rng).0
 }
 
 /// [`equity_vs_ranges`] with the number of deals it actually scored: the average is taken over the
 /// deals that were accepted, so a draw that runs out of attempts answers from fewer of them, and
-/// returning the count is what lets a test see that (#383). `None` is never returned — the equity
-/// is `0.0` when a draw accepted nothing at all.
-fn equity_vs_ranges_counted<R: Rng>(hero: [Card; 2], board: &[Card], opponents: &[&Range], samples: usize, rng: &mut R) -> (f64, usize) {
+/// returning the count is what lets a test see that (#383) and hold the refusal to its reason
+/// (#424). `samples == 0` asks for no measurement, and gets none.
+fn equity_vs_ranges_counted<R: Rng>(
+    hero: [Card; 2],
+    board: &[Card],
+    opponents: &[&Range],
+    samples: usize,
+    rng: &mut R,
+) -> (Option<f64>, usize) {
     let hero_mask = hero[0].bit() | hero[1].bit();
     let board_mask = board.iter().fold(0u64, |m, c| m | c.bit());
     let dead = hero_mask | board_mask;
@@ -72,11 +86,13 @@ fn equity_vs_ranges_counted<R: Rng>(hero: [Card; 2], board: &[Card], opponents: 
         }
         n += 1;
     }
-    (if n == 0 { 0.0 } else { won / n as f64 }, n)
+    ((samples > 0 && n == samples).then(|| won / n as f64), n)
 }
 
 /// [`equity_vs_ranges`] split over `chunks` parallel jobs, one seed per chunk drawn from `rng`, averaged by
 /// each chunk's sample share; reproducible for a given `rng` and `chunks`. `chunks <= 1` is `equity_vs_ranges`.
+/// Refuses whenever the chunks together did not fill the ask: a chunk that fell short keeps its full
+/// share of the average today, which is how one twelfth of the deals still reads as all of them (#424).
 pub fn equity_vs_ranges_parallel<R: Rng>(
     hero: [Card; 2],
     board: &[Card],
@@ -84,30 +100,35 @@ pub fn equity_vs_ranges_parallel<R: Rng>(
     samples: usize,
     chunks: usize,
     rng: &mut R,
-) -> f64 {
+) -> Option<f64> {
     use rayon::prelude::*;
     use sv10_rng::SeedableRng;
     if chunks <= 1 {
         return equity_vs_ranges(hero, board, opponents, samples, rng);
     }
     let seeds: Vec<u64> = (0..chunks).map(|_| rng.random::<u64>()).collect();
-    let (sum, weight) = seeds
+    let parts: Vec<(Option<f64>, usize)> = seeds
         .par_iter()
         .enumerate()
         .map(|(i, seed)| {
             let share = samples / chunks + usize::from(i < samples % chunks);
             let e = equity_vs_ranges(hero, board, opponents, share, &mut sv10_rng::rngs::SmallRng::seed_from_u64(*seed));
-            (e * share as f64, share as f64)
+            (e, share)
         })
-        .collect::<Vec<_>>()
-        .into_iter()
-        .fold((0.0, 0.0), |(a, b), (x, w)| (a + x, b + w));
-    if weight > 0.0 { sum / weight } else { 0.0 }
+        .collect();
+    // Only chunks that filled their share are averaged, and their shares have to add up to the whole
+    // ask: a chunk that refused leaves a hole no other chunk's answer can stand in for.
+    let (sum, weight) = parts.iter().fold((0.0, 0usize), |(sum, w), (e, share)| match e {
+        Some(v) => (sum + v * *share as f64, w + share),
+        None => (sum, w),
+    });
+    (samples > 0 && weight == samples).then(|| sum / weight as f64)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sv10_cards::range::combos;
     use sv10_rng::SeedableRng;
 
     /// A range with `density` of its combos live and most of them light: the sparse, overlapping
@@ -141,6 +162,19 @@ mod tests {
         out
     }
 
+    /// A range holding exactly one combo: the narrowest an opponent's estimate can be, and the
+    /// shape that leaves a draw nothing to accept when several opponents are pinned to it.
+    fn pinned(x: &str, y: &str) -> Range {
+        let (x, y) = (Card::parse(x).unwrap(), Card::parse(y).unwrap());
+        let mut r = Range::empty();
+        for (i, &(a, b)) in combos().cards.iter().enumerate() {
+            if (a, b) == (x, y) || (a, b) == (y, x) {
+                r.w[i] = 1.0;
+            }
+        }
+        r
+    }
+
     /// This is what the decision path falls back to when the shared deal set cannot answer, and it
     /// draws through the same rejection loop: at 20 attempts per sample a nine-handed table over
     /// sparse ranges averaged fewer than the 2500 deals it was asked for (#383).
@@ -152,7 +186,38 @@ mod tests {
         let (hero, board) = ([dealt[0], dealt[1]], &dealt[2..]);
         let ranges: Vec<Range> = (0..9).map(|_| sparse(&mut meta, 0.02)).collect();
         let refs: Vec<&Range> = ranges.iter().collect();
-        let (_, scored) = equity_vs_ranges_counted(hero, board, &refs, samples, &mut sv10_rng::rngs::SmallRng::seed_from_u64(7));
+        let (equity, scored) = equity_vs_ranges_counted(hero, board, &refs, samples, &mut sv10_rng::rngs::SmallRng::seed_from_u64(7));
         assert_eq!(scored, samples, "a nine-handed draw scored {scored} of {samples} deals");
+        assert!(equity.is_some(), "a draw that filled its budget answered {equity:?}");
+    }
+
+    /// Twenty opponents pinned to one combo between them: every deal collides with the first
+    /// opponent and the draw accepts nothing at all. That used to answer `0.0`, which reads as
+    /// "hero never wins" where the truth is that nothing was measured (#424).
+    #[test]
+    fn a_draw_that_scores_nothing_refuses_instead_of_answering_zero() {
+        let hero = [Card::parse("2c").unwrap(), Card::parse("7d").unwrap()];
+        let opp = pinned("As", "Ks");
+        let refs: Vec<&Range> = (0..20).map(|_| &opp).collect();
+        let (equity, scored) = equity_vs_ranges_counted(hero, &[], &refs, 200, &mut sv10_rng::rngs::SmallRng::seed_from_u64(3));
+        assert_eq!(scored, 0, "twenty opponents on one combo scored {scored} deals");
+        assert_eq!(equity, None, "a draw that scored nothing answered {equity:?}");
+    }
+
+    /// The tail of #424's table: fourteen opponents on sparse ranges push the rejection sampler far
+    /// enough that it accepts a fraction of the deals it was asked for. The count is the whole
+    /// reason the answer is refused — 2,500 samples asked for, seventeen scored, and the old answer
+    /// averaged those seventeen as if they were all of them.
+    #[test]
+    fn a_draw_that_cannot_fill_its_budget_refuses() {
+        let samples = 2_500;
+        let mut meta = sv10_rng::rngs::SmallRng::seed_from_u64(12_644);
+        let dealt = cards(&mut meta, 5);
+        let (hero, board) = ([dealt[0], dealt[1]], &dealt[2..]);
+        let ranges: Vec<Range> = (0..14).map(|_| sparse(&mut meta, 0.02)).collect();
+        let refs: Vec<&Range> = ranges.iter().collect();
+        let (equity, scored) = equity_vs_ranges_counted(hero, board, &refs, samples, &mut sv10_rng::rngs::SmallRng::seed_from_u64(7));
+        assert!(scored < samples, "this harness has to stay short of the budget to test the refusal; it scored {scored}");
+        assert_eq!(equity, None, "a short draw answered {equity:?} from {scored} of {samples} deals");
     }
 }
