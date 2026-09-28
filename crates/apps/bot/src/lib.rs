@@ -14,6 +14,7 @@ pub mod hostcheck;
 pub mod identity;
 pub mod installs;
 pub mod jobs;
+pub mod knobs;
 pub mod learner;
 pub mod live;
 pub mod livefits;
