@@ -120,3 +120,46 @@ test('a saved build can be rolled back to, with the same progress and play conti
   await expect(box.locator('li.running')).toContainText('Restore saved build');
   await expect(box.getByText(/5 of 5 bots playing/)).toBeVisible();
 });
+
+// 0320: one panel, two runs. A failed check must date the commit list instead of passing it off as
+// today's, and the mechanism's own wording must not be the message.
+test('a failed check dates the list and says what to do, not the mechanism', async ({ page }) => {
+  const checked = Date.now() / 1000 - 240;
+  await page.route('**/api/releases', route => route.fulfill({ json: { ...releases, remote: {
+    source: 'origin/main', commit: 'ccccccc', behind: 2, checked_at: checked, fetched_at: checked - 4 * 3600,
+    error: 'update: could not fetch origin/main (network or credentials); nothing changed',
+  } } }));
+  await page.route('**/api/releases/progress', route => route.fulfill({ json: progress('idle') }));
+  await page.goto('/');
+  const panel = page.locator('.updates-panel');
+  await expect(panel.getByText(/^check failed/)).toBeVisible();
+  await expect(panel.getByText(/checked 4 min ago/)).toBeVisible();
+  // The line names what an operator can act on, and keeps the tool's words in the tooltip.
+  await expect(panel.getByText(/GitHub could not be reached from this host/)).toBeVisible();
+  await expect(panel.locator('p.negative')).toHaveAttribute('title', /could not fetch origin\/main/);
+  // And the list below it is dated as the last successful fetch, not as today's.
+  await expect(panel.getByText(/This list is the one the last successful check fetched — 4 h ago\. Today's commits are not in it\./)).toBeVisible();
+});
+
+// 0320: the run that finished and the run that cannot start are different runs, and the panel has to
+// say which is which — the checkout is a playing machine, so "commit or discard" is not the message.
+test('a blocked next update is named apart from the run that finished', async ({ page }) => {
+  const done = progress('installed', {
+    percent: 100, elapsed: 79, finished_at: Date.now() / 1000 - 300, commit: 'ccccccc',
+    stages: ['fetch', 'snapshot', 'build', 'test', 'dashboard', 'install'].map(n => stage(n, 'done', 10, 10)),
+    swap: { target: 'ccccccc', fleet: 'ccccccc', fleet_done: true, learner: 'ccccccc', analyst: 'ccccccc', workers: [] },
+  });
+  await page.route('**/api/releases', route => route.fulfill({ json: { ...releases, dirty: true } }));
+  await page.route('**/api/releases/progress', route => route.fulfill({ json: done }));
+  await page.goto('/');
+  const panel = page.locator('.updates-panel');
+  await expect(panel.getByText('Next update')).toBeVisible();
+  const blocked = panel.getByText('Blocked — uncommitted build inputs');
+  await expect(blocked).toBeVisible();
+  await expect(blocked).toHaveAttribute('title', /will not start while crates\/, web\/ or Cargo files have uncommitted changes/);
+  // The card above is the run that already finished, and says when.
+  await expect(panel.getByText('Update complete')).toBeVisible();
+  await expect(panel.getByText('aaaaaaa → ccccccc in 1m 19s · finished 5 min ago')).toBeVisible();
+  // An update cannot start from a dirty tree, so the button stays disabled.
+  await expect(panel.getByRole('button', { name: 'Update', exact: true })).toBeDisabled();
+});

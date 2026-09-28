@@ -141,6 +141,9 @@ pub fn progress_view(progress: &Value, timings: &Value, now: f64) -> Value {
         "stages": stages,
         "percent": (percent * 10.0f64).round() / 10.0,
         "elapsed": started.map(|t| ((ended.unwrap_or(now) - t).max(0.0) * 10.0).round() / 10.0),
+        // When a finished run ended, so the panel can date it instead of leaving a bare duration
+        // that the next line of the panel contradicts (issue #320).
+        "finished_at": ended,
         "eta": (state == "running").then(|| left.round()),
         "from": progress["from"],
         "commit": progress["commit"],
