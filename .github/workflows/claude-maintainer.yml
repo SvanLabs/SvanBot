@@ -1,8 +1,9 @@
 # Keeps the repository moving when no one is at a keyboard (#19).
 #
 # Twice a day Claude takes the oldest open `agent-friendly` issue that no pull request closes yet,
-# fixes it on a branch, runs the gate and opens a pull request with auto-merge on. The ruleset on
-# `main` requires the `check` job, so nothing lands unless the full gate is green.
+# fixes it on a branch cut from `dev`, runs the gate and opens a pull request into `dev` (the default
+# branch) with auto-merge on. The ruleset on `dev` and `main` requires the `check` job, so nothing
+# lands unless the full gate is green.
 name: Claude maintainer
 
 on:

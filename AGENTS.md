@@ -17,6 +17,14 @@ is `CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
    why, `Closes #<issue>` in its own paragraph, and `Generated-by:` last (section 0).
 7. **Open the pull request** from the template, with the same `Generated-by:` line in the body.
 
+## Branches
+
+`dev` is the default branch and where all work lands: cut your branch from `dev` and open the pull
+request into `dev` (squash merge). `main` is what the fleet installs — `scripts/update.sh` fetches
+`origin/main` — and moves only when `dev` is promoted to it by a pull request from `dev` into `main`,
+merged with a merge commit so the two histories stay one. Never open a feature pull request into
+`main`.
+
 ## Which issue to take
 
 Every open issue carries one readiness label. Take an `agent-friendly` one: it names the files, says
