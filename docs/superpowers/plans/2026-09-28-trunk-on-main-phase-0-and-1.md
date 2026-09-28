@@ -23,6 +23,14 @@
 - **Never regenerate the golden snapshot to make a red test pass.** Phase 1 changes no behaviour, so the golden file must not move.
 - **`main`'s ruleset allows `merge` commits only** (`allowed_merge_methods: ["merge"]`); `dev`'s allows `squash` only. Until the ruleset is changed, pull requests into `main` merge with `--merge`.
 - **A red `claude-review` job is not a blocker.** `.github/workflows/claude-code-review.yml` authenticates with an `ANTHROPIC_API_KEY` that is currently empty or quota-exhausted, so the job fails with `"api_error_status": 429` (`You've hit your session limit`) without ever reading the diff. It is **not** a required status — the ruleset on `main` requires only `check` — and it cannot re-run on its own, because it triggers on `[opened, synchronize, ready_for_review, reopened]` and a base retarget is an `edited` event. Merge when `check`, `gate` and `web` pass, and note the red job in your report as an infrastructure observation. **Stop** if any of those three fails, or if `claude-review` reports a finding about the diff rather than an API error — the distinction matters, and reading the job log is how you tell them apart.
+- **A pull request body must never carry a closing keyword for an issue it does not close.**
+  `scripts/close-linked-issues.yml` runs `scripts/close-linked-issues.py` over the merged body and
+  closes every issue a `closes`/`fixes`/`resolves #N` phrase names — including one inside a sentence
+  that only *describes* future work. On 2026-09-28 a body reading "Task 6 closes #347, #18 and #15"
+  closed #347 at merge, as `COMPLETED`, with none of the decision record the ruling required. Write
+  "Task 6 disposes of #347" or name the resulting state; never the keyword, unless you mean it. Check
+  before opening: `python3 scripts/close-linked-issues.py --repo SvanLabs/SvanBot --body-file <body> --check`
+  prints what it would close.
 
 ## Review Focus
 
@@ -40,7 +48,10 @@ The spec implies these conditions and no task's tests exercise them. Each is pin
 
 ### Task 1: Make the tree build again
 
-The working tree does not compile. Every other task is blocked on it.
+**Status: DONE.** Landed as #458 — commit `fdb6070`, merge `a6122ce`.
+
+This is where Phase 0 started: the working tree did not compile and every other task was blocked on
+it. The steps below are kept as the record of what was done, not as work to do again.
 
 **Files:**
 - Modify: `crates/libs/store/src/packed.rs:308`
@@ -137,7 +148,10 @@ Note: this branch is cut from `origin/main`, not from the current working branch
 
 ### Task 2: Land the two open pull requests onto `main`
 
-PRs #456 (`scripts/setup.sh` builds through `scripts/release.sh`) and #457 (the wiring-table `installed` predicate, closing #315) both target `dev`. Retarget them before anything deletes `dev`.
+**Status: DONE.** #456 merged as `9c56cbf`, #457 as `685147c`. Both had to land before anything
+deletes `dev`, which is why this came second.
+
+PRs #456 (`scripts/setup.sh` builds through `scripts/release.sh`) and #457 (the wiring-table `installed` predicate, closing #315) both targeted `dev`. Retarget them before anything deletes `dev`.
 
 **Files:**
 - Modify (via PR #456): `scripts/setup.sh`
@@ -202,7 +216,10 @@ This task changes no file locally. It is recorded as done when `origin/main` hol
 
 ### Task 3: Land the design spec on `main`
 
-The spec is written and untracked. It lands on `main` as the first commit of the new trunk model.
+**Status: DONE.** Landed as #459 — merge `8b0465f`. The review corrections to both documents followed
+in #460 (`0bfd699`) and #461 (`b0bd5e4`).
+
+The spec was written and untracked. It landed on `main` as the first commit of the new trunk model.
 
 **Files:**
 - Create: `docs/superpowers/specs/2026-09-28-trunk-on-main-and-the-strength-program-design.md`
@@ -418,9 +435,19 @@ with:
 
 - [ ] **Step 7: Rewrite `README.md`**
 
-Replace the paragraph spanning **lines 330-337**, from `The button fast-forwards the checkout onto **one branch**` through `installed build (#394).` Line 338 is blank and line 339 is `</details>`; leave both. The replacement keeps the `#394` sentence's meaning:
+**First edit.** Replace the paragraph spanning **lines 330-337**, from `The button fast-forwards the checkout onto **one branch**` through `installed build (#394).` Line 338 is blank and line 339 is `</details>`; leave both. The replacement keeps the `#394` sentence's meaning:
 
-Then make a **second** edit further down the same file. Lines **376-379** are a separate contribution-instructions paragraph that names the branch model too:
+```markdown
+The button fast-forwards the checkout onto **one branch**: `SVANBOT_UPDATE_BRANCH`, `main` by
+default. `main` is the default branch and the released line, so a fresh `git clone` lands on it and
+keeps updating from it, and every merge reaches live play at the next Update. An install that must
+not follow the released line — a staging box, a fork — sets `SVANBOT_UPDATE_BRANCH=<branch>` in
+`.env` to follow that branch instead.
+```
+
+Leave the `SVANBOT_UPDATE_BRANCH` row of the configuration table (line 351) unchanged: its default is still `main`, which is what it says.
+
+**Second edit.** Further down the same file, lines **376-379** are a separate contribution-instructions paragraph that names the branch model too:
 
 ```markdown
 2. **Fork, and make a branch off `dev`** named for the change — `fix/split-pots-all-folded`,
@@ -436,18 +463,6 @@ Replace those four lines with:
    `fix/split-pots-all-folded`, `docs/…`. `main` is the default branch and the released line, and
    every pull request goes into it, so the base needs no setting.
 ```
-
-Both edits are in the first replacement below; here is that first one:
-
-```markdown
-The button fast-forwards the checkout onto **one branch**: `SVANBOT_UPDATE_BRANCH`, `main` by
-default. `main` is the default branch and the released line, so a fresh `git clone` lands on it and
-keeps updating from it, and every merge reaches live play at the next Update. An install that must
-not follow the released line — a staging box, a fork — sets `SVANBOT_UPDATE_BRANCH=<branch>` in
-`.env` to follow that branch instead.
-```
-
-Leave the `SVANBOT_UPDATE_BRANCH` row of the configuration table (line 351) unchanged: its default is still `main`, which is what it says.
 
 - [ ] **Step 8: Rewrite `llms.txt`**
 
@@ -559,7 +574,7 @@ Three workflows check out `dev` by name. One is deleted in Step 2. The other two
           # kept because a fork can move its own default.
 ```
 
-**`.github/workflows/claude-maintainer.yml`** — five sites:
+**`.github/workflows/claude-maintainer.yml`** — four sites:
 
 1. Lines 47-51. A comment above the same `ref: dev` reasons about promotion merges:
 
@@ -758,21 +773,9 @@ These comments are public. Post them only when the operator has confirmed the wo
 
 - [ ] **Step 1: Record the decision on #347 and close it**
 
-```bash
-gh issue comment 347 --body "$(cat <<'EOF'
-Decision: neither seam is built now. Piece 1, the log-capture helper, landed in #452 and unblocked
-every site that could already be made to fail. Piece 2 — a way for `sv10-bot` to force a store write
-to fail — is deferred until a call site actually needs it: the smaller of the two designs is still
-machinery for three call sites that have not asked for it.
-
-Closing with the decision recorded rather than leaving it open: nothing is left to choose, so none of
-the three readiness labels applies. Reopen this if a call site needs the seam.
-
-Generated-by: claude-code/deepseek-flash
-EOF
-)"
-gh issue close 347 --reason "not planned"
-```
+Expected: #347 reads `CLOSED` / `NOT_PLANNED` and its newest comment is the decision text. Both were
+applied by the controller on 2026-09-28; if either is missing, the record is wrong — report it, do not
+re-apply it.
 
 - [ ] **Step 2: Post the decision that unblocks #334**
 
@@ -820,7 +823,7 @@ Then comment the hypothesis the investigation produced, so whoever picks it up s
 
 ```bash
 gh issue comment 319 --body "$(cat <<'EOF'
-Investigation note. Three mechanical explanations were verified in the pricing path, all of which
+Investigation note. Four mechanical explanations were verified in the pricing path, all of which
 produce this panel's exact shape without any river bug:
 
 - `crates/libs/policy/src/policy/mod.rs:199` bans the raise outright on the river once one aggressive
@@ -828,6 +831,8 @@ produce this panel's exact shape without any river bug:
 - `crates/libs/policy/src/policy/responses.rs` builds every postflop raise target from
   `params.bet_sizes` alone, which `crates/libs/policy/src/policy/params.rs:123` sets to
   `[0.33, 0.55, 0.8, 1.2]`; a non-jam raise above 1.2x pot is not expressible.
+- `crates/libs/policy/src/policy/responses.rs` clamps the top of the menu: any target within 70% of
+  the maximum legal raise becomes a jam, so the largest sizes collapse into one.
 - `crates/libs/policy/src/policy/mod.rs:360` computes the check branch from two outcomes only, with
   a hard-coded 0.66 bet, and has no raise term.
 
@@ -857,22 +862,16 @@ EOF
 - [ ] **Step 6: Close #15**
 
 Its fix landed as #456, which made `scripts/setup.sh` build through `scripts/release.sh` instead of
-writing `target/release` directly.
+writing `target/release` directly, and #15 is `CLOSED` / `COMPLETED` for exactly that reason — the
+closure is correct, so this step verifies it rather than repeating it.
 
-```bash
-gh issue close 15 --reason completed --comment "$(cat <<'EOF'
-Closed: `scripts/setup.sh` now builds through `scripts/release.sh`, so setup no longer writes
-`target/release` and no longer strands the next release (merged as #456).
-
-Generated-by: claude-code/deepseek-flash
-EOF
-)"
-```
+Expected: #15 reads `CLOSED` / `COMPLETED`. It was closed on 2026-09-28; if it is open, the record is
+wrong — report it, do not re-apply it.
 
 - [ ] **Step 7: Verify the board state**
 
-Every close in this task runs before this step, because the count this asserts is the state the
-closes produce.
+This task closes only #18 and relabels #334, #17 and #319; #347 and #15 were closed on 2026-09-28 and
+#315 closed when #457 merged. The count this asserts is the state those actions produce.
 
 ```bash
 issues=$(gh issue list --state open --json number,labels)
@@ -887,8 +886,8 @@ echo "$issues" | jq -e '
 ```
 
 Expected: **four** open issues — #363, #334, #319, #17 — every one labelled `agent-friendly`, and
-none labelled `blocked-on-decision`. #315 closed when #457 merged; #18, #347 and #15 closed in this
-task.
+none labelled `blocked-on-decision`. #315 closed when #457 merged, and #347 and #15 closed on
+2026-09-28; #18 is the only issue this task closes.
 
 ---
 
