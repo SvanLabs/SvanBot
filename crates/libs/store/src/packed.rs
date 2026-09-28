@@ -278,15 +278,27 @@ pub fn train_bytes(samples: &[String]) -> Vec<u8> {
 /// dictionary now that one exists, in one transaction. Returns (rows packed, last rowid seen); a
 /// last rowid of `None` means the column is done.
 pub fn compact_batch(conn: &Connection, codec: &Codec, column: Column, after: i64, limit: usize) -> Result<(usize, Option<i64>)> {
-    let (table, col, fill) = (column.table, column.column, column.fill);
+    let rows = compact_candidates(conn, codec, column, after, limit)?;
+    compact_rows(conn, codec, column, &rows)
+}
+
+/// The rows [`compact_batch`] would pack, read on any connection. On a column already packed this
+/// scans to the end of the table and finds nothing — 8 s on a restored 760 MB store, which under the
+/// write lock stalled every hand insert — so a caller with a reader runs it there.
+pub fn compact_candidates(conn: &Connection, codec: &Codec, column: Column, after: i64, limit: usize) -> Result<Vec<(i64, String)>> {
+    let (table, col) = (column.table, column.column);
     let repack =
         if codec.has_dictionary(column) { format!(" OR (typeof({col}) = 'blob' AND substr({col}, 4, 1) = x'00')") } else { String::new() };
-    let rows: Vec<(i64, String)> = {
-        let mut st = conn.prepare(&format!(
-            "SELECT rowid, {col} FROM {table} WHERE rowid > ?1 AND (typeof({col}) = 'text'{repack}) ORDER BY rowid LIMIT ?2"
-        ))?;
-        st.query_map(params![after, limit as i64], |r| Ok((r.get(0)?, codec.text(r.get_ref(1)?)?)))?.collect::<rusqlite::Result<_>>()?
-    };
+    let mut st = conn.prepare(&format!(
+        "SELECT rowid, {col} FROM {table} WHERE rowid > ?1 AND (typeof({col}) = 'text'{repack}) ORDER BY rowid LIMIT ?2"
+    ))?;
+    Ok(st.query_map(params![after, limit as i64], |r| Ok((r.get(0)?, codec.text(r.get_ref(1)?)?)))?.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Pack `rows` from [`compact_candidates`] on the write connection; returns rows written and the
+/// cursor to continue after (`None`: nothing left).
+pub fn compact_rows(conn: &Connection, codec: &Codec, column: Column, rows: &[(i64, String)]) -> Result<(usize, Option<i64>)> {
+    let (table, col, fill) = (column.table, column.column, column.fill);
     let Some(last) = rows.last().map(|r| r.0) else { return Ok((0, None)) };
     let tx = conn.unchecked_transaction()?;
     {
@@ -294,7 +306,7 @@ pub fn compact_batch(conn: &Connection, codec: &Codec, column: Column, after: i6
         let mut up = tx.prepare(&format!(
             "UPDATE {table} SET {fill}{col} = ?1 WHERE rowid = ?2 AND (typeof({col}) = 'text' OR substr({col}, 4, 1) = x'00')"
         ))?;
-        for (rowid, text) in &rows {
+        for (rowid, text) in rows {
             up.execute(params![codec.pack(&tx, column, text), rowid])?;
         }
     }
