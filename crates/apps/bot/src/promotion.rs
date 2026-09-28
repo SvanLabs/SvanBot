@@ -7,7 +7,9 @@
 //! stalled. Confirmation now runs in chunks up to [`CONFIRM_CHUNKS`] with a Haybittle–Peto
 //! design. It stops early for futility (which never raises the false-promotion rate) or for
 //! overwhelming evidence (z ≥ [`EARLY_Z`]). Every promotion also requires the 95% lower bound to
-//! clear the minimum worthwhile edge, keeping the overall one-sided error close to nominal 2.5%.
+//! clear the minimum worthwhile edge. An early promotion needs that plus z ≥ [`EARLY_Z`], so the
+//! overall one-sided error is that of a sequential design with [`CONFIRM_CHUNKS`] looks rather than
+//! the error of a single look.
 
 use sv10_core::sim::PairedResult;
 
@@ -141,7 +143,8 @@ mod tests {
     fn interim_looks_stop_for_futility_or_overwhelming_evidence_only() {
         assert_eq!(verdict(&res(-0.5, 2.0), 1), Verdict::Reject(Reason::NotAhead));
         assert_eq!(verdict(&res(0.2, 0.3), 2), Verdict::Reject(Reason::UpperBelowBar));
-        // Nominally significant (z = 2.5) at an interim look is not enough.
+        // Lower bound +1.08 bb/100 clears the bar, but the shifted z is (5.0 - 1.0) / 2.0 = 2.0:
+        // promising at an interim look, not the overwhelming evidence an early promotion needs.
         assert_eq!(verdict(&res(5.0, 2.0), 2), Verdict::Continue);
         assert_eq!(verdict(&res(9.0, 2.0), 1), Verdict::Promote);
     }
