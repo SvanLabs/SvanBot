@@ -81,13 +81,18 @@ jobs:
             3. Run `scripts/check.sh full`. If it fails and you cannot fix it, stop and comment on the
                issue with what you found instead of opening a pull request.
             4. Commit in the shape CONTRIBUTING.md describes, ending with
-               `Generated-by: claude-code/claude-fable-5-1`, push, and open a pull request from
+               `Generated-by: claude-code/claude-opus-5`, push, and open a pull request from
                .github/pull_request_template.md with `Closes #<issue>` and the same Generated-by line.
             5. Turn on auto-merge: `gh pr merge <number> --auto --squash`.
 
             Never commit keys, email addresses or home-directory paths. A behaviour change to the bot
             needs a paired simulation (`sim paired`) in the pull request, as AGENTS.md says; if you
             cannot provide one, comment on the issue instead of opening the pull request.
+
+            A commit whose `Generated-by:` names a system that is not yet in AI-PROVENANCE.md reddens
+            the provenance check on the first pull request that carries it; section 0 of
+            CONTRIBUTING.md says how that file is regenerated, and regenerating it belongs in that
+            pull request.
           claude_args: |
-            --model claude-fable-5-1
+            --model claude-opus-5
             --allowedTools "Bash,Read,Edit,Write,Glob,Grep"
