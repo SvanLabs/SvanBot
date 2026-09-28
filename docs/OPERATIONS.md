@@ -397,7 +397,26 @@ again by git itself if a tracked file has uncommitted edits the move would overw
 the checkout is left exactly as it was. A `release.sh` failure afterwards resets the checkout to the
 commit it started on — the same recovery every other update has, so the source on disk still matches
 the installed build. After one adoption, every later Update is the ordinary fast-forward on this
-branch. Verify it took:
+branch.
+
+**The scripted bootstrap.** A checkout whose own `update.sh` predates the adoption path cannot adopt
+itself, and one carrying uncommitted edits is refused. `scripts/adopt-upstream.sh`, run from a
+checkout of this repository, sets the stage for it:
+
+```bash
+scripts/adopt-upstream.sh --dir /path/to/fleet --dry-run   # what it would revert; changes nothing
+scripts/adopt-upstream.sh --dir /path/to/fleet [--backup DIR]
+```
+
+It refuses while `artifacts/release.lock` exists, and exits without changes if the checkout is already
+on the branch. Otherwise it writes a mode-700 backup (default `adopt-backup-<UTC stamp>` beside the
+checkout): `repo.bundle` (every ref), `worktree.tar.gz` (tracked and untracked source, ignored paths
+left out), `uncommitted.patch`, `env`, and inventories of `artifacts/` before and after. Only then does
+it revert the uncommitted tracked edits, rename `origin` to `private` and point `origin` here, and run
+this repository's `update.sh` from an untracked copy inside the checkout with
+`SVANBOT_ADOPT_UPSTREAM=1` — the same adoption described above, not a second copy of it. It does not
+copy `artifacts/`; nothing in the move touches it. The by-hand recipe above remains for a checkout
+that is already clean and already has a current `update.sh`. Verify it took:
 
 ```bash
 git remote -v                                      # origin is this repository
