@@ -165,9 +165,10 @@ pub(super) async fn handle(
                 if !seat.leaving() {
                     let quality = table_quality(shared, tracker, &bot.name);
                     let stack = tracker.hero_seat.and_then(|h| tracker.seats.get(&h)).map(|s| s.stack).unwrap_or(0);
-                    let (since_switch, since_topup) = {
+                    let (since_switch, since_topup, balance) = {
                         let b = shared.bots[slot].read();
-                        (b.last_table_switch.map(|t| t.elapsed()), b.last_topup.map(|t| t.elapsed()))
+                        let balance = balance_from(None, b.season.as_ref()).map(|(balance, _)| balance);
+                        (b.last_table_switch.map(|t| t.elapsed()), b.last_topup.map(|t| t.elapsed()), balance)
                     };
                     let chosen = between_hands(&HandEnd {
                         moves_ok: shared.season_clock.read().table_moves_allowed(Instant::now()),
@@ -179,6 +180,8 @@ pub(super) async fn handle(
                         stack,
                         bb: tracker.bb,
                         bank_stack_bb: shared.config.bank_stack_bb,
+                        bank_until_chips: shared.config.bank_until_chips,
+                        total_chips: balance.map(|b| b + stack),
                         max_buy_in: shared.config.max_buy_in,
                     });
                     if let Some(chosen) = chosen {

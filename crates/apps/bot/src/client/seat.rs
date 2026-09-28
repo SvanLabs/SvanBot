@@ -99,6 +99,10 @@ pub(super) struct HandEnd<'a> {
     pub bb: i64,
     /// `bank_stack_bb` from the config (0 = no banking).
     pub bank_stack_bb: i64,
+    /// `bank_until_chips` from the config (0 = no ceiling).
+    pub bank_until_chips: i64,
+    /// Off-table balance plus table stack, from the last balance on record (`None` = not known yet).
+    pub total_chips: Option<i64>,
     /// `max_buy_in` from the config.
     pub max_buy_in: i64,
 }
@@ -128,7 +132,7 @@ pub(super) fn between_hands(h: &HandEnd) -> Option<Move> {
     {
         return Some(Move::Tough(q.summary.clone()));
     }
-    if should_bank(h.stack, h.bb, h.bank_stack_bb) {
+    if should_bank(h.stack, h.bb, h.bank_stack_bb) && !past_bank_ceiling(h.total_chips, h.bank_until_chips) {
         return Some(Move::Bank);
     }
     if !within(h.since_topup, 600) && h.stack > 0 && h.stack < h.max_buy_in * 35 / 100 {
@@ -140,6 +144,12 @@ pub(super) fn between_hands(h: &HandEnd) -> Option<Move> {
 /// Whether a table stack is deep enough to bank (`bank_bb` big blinds or more; 0 disables).
 fn should_bank(stack: i64, bb: i64, bank_bb: i64) -> bool {
     bank_bb > 0 && bb > 0 && stack >= bank_bb * bb
+}
+
+/// Whether the bot is far enough ahead to stop banking: its total chips have reached the ceiling.
+/// An unknown total banks as before, by table stack alone.
+fn past_bank_ceiling(total_chips: Option<i64>, until: i64) -> bool {
+    until > 0 && total_chips.is_some_and(|t| t >= until)
 }
 
 /// Whether a short stack's top-up is worth a rejoin: the off-table balance funds at least twice
@@ -167,6 +177,8 @@ mod tests {
             stack: 5_000,
             bb: 20,
             bank_stack_bb: 2_000,
+            bank_until_chips: 500_000,
+            total_chips: None,
             max_buy_in: 5_000,
         }
     }
@@ -179,6 +191,19 @@ mod tests {
         assert!(!should_bank(39_999, 20, 2_000));
         assert!(!should_bank(105_098, 20, 0), "0 disables banking");
         assert!(!should_bank(105_098, 0, 2_000), "no blind known yet");
+    }
+
+    #[test]
+    fn banking_stops_once_the_total_reaches_the_ceiling() {
+        let q = table(1, 0, 3, false);
+        let deep = |total: Option<i64>| between_hands(&HandEnd { stack: 50_000, total_chips: total, ..end(&q) });
+        assert_eq!(deep(Some(120_000)), Some(Move::Bank), "early: bank");
+        assert_eq!(deep(Some(499_999)), Some(Move::Bank));
+        assert_eq!(deep(Some(500_000)), None, "at the ceiling the deep stack stays on the table");
+        assert_eq!(deep(Some(900_000)), None);
+        assert_eq!(deep(None), Some(Move::Bank), "an unknown total banks by table stack, as before");
+        let no_ceiling = HandEnd { stack: 50_000, total_chips: Some(900_000), bank_until_chips: 0, ..end(&q) };
+        assert_eq!(between_hands(&no_ceiling), Some(Move::Bank), "0 = no ceiling");
     }
 
     #[test]

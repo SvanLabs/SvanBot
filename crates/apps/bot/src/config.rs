@@ -17,10 +17,13 @@ pub struct Config {
     /// leaderboard (0 disables): tables without one are left and re-queued.
     pub seek_top_rank: i64,
     /// Bank winnings: once our table stack reaches this many big blinds, leave after the hand and
-    /// rejoin with a fresh buy-in (`SVANBOT_BANK_STACK_BB`, 0 disables). The score counts chips on
-    /// and off the table alike, and past 2,000 bb the per-hand swing tripled with no better win
-    /// rate (2026-09-23), so banking protects the rank for free.
+    /// rejoin with a fresh buy-in (`SVANBOT_BANK_STACK_BB`, 0 disables). Banking early builds the
+    /// balance while it is small.
     pub bank_stack_bb: i64,
+    /// Stop banking once the bot's total chips (off-table balance plus table stack) reach this
+    /// (`SVANBOT_BANK_UNTIL_CHIPS`, 0 = no ceiling): a bot that far ahead keeps a deep stack on the
+    /// table for the big hands, as the operator decided on 2026-09-28.
+    pub bank_until_chips: i64,
     pub web_host: String,
     pub web_port: u16,
     /// The public TV listener (`SVANBOT_TV_PORT`, 0 = off): a second surface that serves the table
@@ -78,7 +81,9 @@ const BUY_IN: Setting = Setting { key: "SVANBOT_BUY_IN", default: 5_000, min: 1_
 const SEEK_TOP_RANK: Setting = Setting { key: "SVANBOT_SEEK_TOP_RANK", default: 30, min: 0, max: 1_000 };
 /// Bank winnings at this many big blinds (0 disables). Bounded so `bank_bb * bb` in the hand loop
 /// cannot overflow: an operator's `4000000000000000000` parsed and panicked the frame loop (0250).
-const BANK_STACK_BB: Setting = Setting { key: "SVANBOT_BANK_STACK_BB", default: 2_000, min: 0, max: 100_000 };
+const BANK_STACK_BB: Setting = Setting { key: "SVANBOT_BANK_STACK_BB", default: 1_000, min: 0, max: 100_000 };
+/// Stop banking once the bot's chips on and off the table reach this total (0 = bank at any total).
+const BANK_UNTIL_CHIPS: Setting = Setting { key: "SVANBOT_BANK_UNTIL_CHIPS", default: 500_000, min: 0, max: 1_000_000_000_000 };
 /// Deepest hand the server exports per bot (0 = unlimited).
 const EXPORT_CAP: Setting = Setting { key: "SVANBOT_EXPORT_CAP", default: 20_000, min: 0, max: 10_000_000 };
 /// The dashboard's port.
@@ -89,7 +94,7 @@ const TV_PORT: Setting = Setting { key: "SVANBOT_TV_PORT", default: 0, min: 0, m
 const FLEET_SIZE: Setting = Setting { key: "SVANBOT_RUNTIME__FLEET_SIZE", default: 10, min: 1, max: 10 };
 
 /// Every numeric setting, so the gate can hold each one to the same rule.
-const SETTINGS: [Setting; 7] = [BUY_IN, SEEK_TOP_RANK, BANK_STACK_BB, EXPORT_CAP, WEB_PORT, TV_PORT, FLEET_SIZE];
+const SETTINGS: [Setting; 8] = [BUY_IN, SEEK_TOP_RANK, BANK_STACK_BB, BANK_UNTIL_CHIPS, EXPORT_CAP, WEB_PORT, TV_PORT, FLEET_SIZE];
 
 /// Every numeric setting's value in force, read once. [`SETTINGS`] is the single list, so a setting
 /// cannot be added without a declared range and the test that holds it there.
@@ -136,6 +141,7 @@ impl Config {
             max_buy_in: n[BUY_IN.key],
             seek_top_rank: n[SEEK_TOP_RANK.key],
             bank_stack_bb: n[BANK_STACK_BB.key],
+            bank_until_chips: n[BANK_UNTIL_CHIPS.key],
             archive_dir: var("SVANBOT_ARCHIVE_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("artifacts").join("archive")),
             export_cap: n[EXPORT_CAP.key],
             web_host: var("SVANBOT_WEB__HOST").unwrap_or_else(|| "127.0.0.1".into()),
