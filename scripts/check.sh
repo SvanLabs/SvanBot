@@ -35,6 +35,19 @@ step_end() {
 }
 step() { step_end; printf '== %s\n' "$*"; step_name="$*"; step_t=$(date +%s); }
 fail() { printf 'check.sh: %s\n' "$*" >&2; exit 1; }
+# Run one suite with its output kept, and show the end of it when it fails. Every suite below writes
+# its detail to stdout or stderr, and the gate used to discard both: on 2026-09-28 a push to `main`
+# failed inside the tool tests and the whole of the log was the `== tickets lint + tool tests` header
+# and `##[error]Process completed with exit code 1`, which says a run is red and not which test made
+# it so — the same defect #338 and #398 filed against the workflows that reported only `is_error`.
+suite_log() { mkdir -p "$CARGO_TARGET_DIR"; printf '%s' "$CARGO_TARGET_DIR/check-suite.log"; }
+run_suite() {
+  local name="$1" log; shift
+  log=$(suite_log)
+  "$@" >"$log" 2>&1 && return 0
+  tail -30 "$log" >&2
+  fail "$name"
+}
 # Idle CPU priority: compiles take only what live play leaves.
 idle() { if command -v chrt >/dev/null; then nice -n 19 chrt -i 0 "$@"; else nice -n 19 "$@"; fi; }
 
@@ -134,17 +147,18 @@ case "$mode" in
     # build directory it would wait on that lock (57 s of an 85 s gate, 0334), so it runs after it.
     pack_test=scripts/tests/test_pack.py
     [ -z "$test_build_pid" ] || pack_test=
-    python3 -m unittest -q scripts/tests/test_tickets.py scripts/tests/test_fleet_check.py scripts/tests/test_monitor.py $pack_test scripts/tests/test_docs_check.py scripts/tests/test_progress.py scripts/tests/test_provenance.py scripts/tests/test_test_runner.py 2>/dev/null || fail "ticket, fleet-check, codec, runner, docs-check and provenance tool tests (python3 -m unittest scripts/tests/test_pack.py ...)"
+    run_suite "ticket, fleet-check, codec, runner, docs-check and provenance tool tests (python3 -m unittest scripts/tests/test_pack.py ...)" \
+      python3 -m unittest -q scripts/tests/test_tickets.py scripts/tests/test_fleet_check.py scripts/tests/test_monitor.py $pack_test scripts/tests/test_docs_check.py scripts/tests/test_progress.py scripts/tests/test_provenance.py scripts/tests/test_test_runner.py
     step "docs name only paths and commands that exist"
     python3 scripts/docs-check.py 2>/dev/null || { python3 scripts/docs-check.py | head -20 >&2; fail "docs drift (scripts/docs-check.py)"; }
-    bash scripts/tests/release-rollback.sh >/dev/null 2>&1 || fail "release/rollback tests (run bash scripts/tests/release-rollback.sh)"
-    bash scripts/tests/keepalive.sh >/dev/null 2>&1 || fail "keepalive tests (run bash scripts/tests/keepalive.sh)"
-    bash scripts/tests/update.sh >/dev/null 2>&1 || fail "update tests (run bash scripts/tests/update.sh)"
-    bash scripts/tests/adopt-upstream.sh >/dev/null 2>&1 || fail "adopt-upstream tests (run bash scripts/tests/adopt-upstream.sh)"
-    bash scripts/tests/file-size.sh >/dev/null 2>&1 || fail "file-size tests (run bash scripts/tests/file-size.sh)"
-    bash scripts/tests/promote.sh >/dev/null 2>&1 || fail "promote tests (run bash scripts/tests/promote.sh)"
-    bash scripts/tests/build-lock.sh >/dev/null 2>&1 || fail "build-lock tests (run bash scripts/tests/build-lock.sh)"
-    bash scripts/tests/units.sh >/dev/null 2>&1 || fail "systemd unit tests (run bash scripts/tests/units.sh)"
+    run_suite "release/rollback tests (run bash scripts/tests/release-rollback.sh)" bash scripts/tests/release-rollback.sh
+    run_suite "keepalive tests (run bash scripts/tests/keepalive.sh)" bash scripts/tests/keepalive.sh
+    run_suite "update tests (run bash scripts/tests/update.sh)" bash scripts/tests/update.sh
+    run_suite "adopt-upstream tests (run bash scripts/tests/adopt-upstream.sh)" bash scripts/tests/adopt-upstream.sh
+    run_suite "file-size tests (run bash scripts/tests/file-size.sh)" bash scripts/tests/file-size.sh
+    run_suite "promote tests (run bash scripts/tests/promote.sh)" bash scripts/tests/promote.sh
+    run_suite "build-lock tests (run bash scripts/tests/build-lock.sh)" bash scripts/tests/build-lock.sh
+    run_suite "systemd unit tests (run bash scripts/tests/units.sh)" bash scripts/tests/units.sh
     [ "$mode" = lint ] && { step_end; step "ok (lint, $(($(date +%s) - check_t0)) s)"; exit 0; }
     [ "$mode" = deep ] && export SV10_PROP_CASES=100000
     step "workspace tests${SV10_PROP_CASES:+ (property cases $SV10_PROP_CASES)}"
