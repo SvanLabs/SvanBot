@@ -165,6 +165,9 @@ fresh-deal confirmation. Do not loosen that to make an experiment fit.
   for the layering on its own. `.claude/settings.json` runs the provenance check as soon as a commit
   lands, which is a better moment to find out than CI. None of it overrides what is written here —
   where the two disagree, this file and `docs/CONTRIBUTING.md` are the rule.
+- Matt Pocock's engineering skills are configured for every agent (Claude Code on either provider,
+  Codex, OpenCode): tracker, labels and domain layout in `docs/agents/`. `CLAUDE.md` carries the
+  same pointer for sessions that start there.
 
 ## 7. If you are an agent opening a pull request
 
