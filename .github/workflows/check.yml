@@ -87,6 +87,11 @@ jobs:
       # environment and out to a file, and only the constant path reaches `GITHUB_ENV` — a
       # description containing `$(…)` or a backtick would otherwise run here.
       #
+      # `SVANBOT_PR_AUTHOR` is the login that opened the pull request. It is what exempts a
+      # bot-opened pull request from naming a system, the same way the author field exempts a
+      # bot-authored commit, and it is carried the same way for the same reason: a login is chosen
+      # by its owner, so it is data, not script text.
+      #
       # On a push or a manual run there is no body, the variable is never set, and the commits-only
       # branch is what runs. Setting the variable job-wide instead would be worse than unusable: it
       # would name a file that no step wrote, and `scripts/check.sh` treats a named body as one that
@@ -95,9 +100,11 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
           echo "SVANBOT_PR_BODY=$RUNNER_TEMP/pr-body.md" >> "$GITHUB_ENV"
+          echo "SVANBOT_PR_AUTHOR=$PR_AUTHOR" >> "$GITHUB_ENV"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -125,6 +132,13 @@ jobs:
           # green gate said nothing about it. Say so here, at the point of use, instead of passing.
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ ! -f "${SVANBOT_PR_BODY:-}" ]; then
             echo "::error::SVANBOT_PR_BODY is unset or names no file: the pull request body did not reach the gate"
+            exit 1
+          fi
+          # Every pull request has an author too, so an empty one means the same thing: the step above
+          # did not do its job, and the gate would report a system-less body for a bot-opened pull
+          # request that is meant to be exempt (#367).
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -z "${SVANBOT_PR_AUTHOR:-}" ]; then
+            echo "::error::SVANBOT_PR_AUTHOR is unset: the author that exempts a bot-opened pull request did not reach the gate"
             exit 1
           fi
           bash scripts/check.sh full
