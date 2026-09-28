@@ -7,7 +7,9 @@
 #                                restore a verified release snapshot (the dashboard's Roll back button,
 #                                0239); the fleet hot-swaps to it like to any install
 # Branch: SVANBOT_UPDATE_BRANCH (default main), remote: SVANBOT_UPDATE_REMOTE (default origin).
-# Refuses a checkout with uncommitted build inputs or local commits the branch does not contain.
+# Refuses a checkout with uncommitted build inputs, and one whose commits are on no remote at all.
+# A checkout ahead of the update branch with every commit on a remote branch is not that: nothing is
+# installed, nothing moves, and the run reports what is true rather than a failure (#394).
 # A checkout that shares no history with the branch at all is a different repository, and moves onto
 # it only with SVANBOT_ADOPT_UPSTREAM=1 (see adopt_upstream below).
 # If the release fails, the checkout is moved back to the commit it was on, so the source on disk
@@ -124,14 +126,45 @@ adopt_upstream() {
   echo "adopted $remote/$branch at $(git rev-parse --short "$target")"
 }
 
+# This checkout is ahead of the update branch (#394). Two different situations wear that shape, and
+# the guard below is about one of them:
+#
+#   - the commits are on a remote branch: the checkout is simply further along a line than the branch
+#     the Update button follows — moved onto `dev` while `.env` still names `main`, or already holding
+#     the promotion `main` is waiting for. Nothing is at risk and nothing needs installing: the branch
+#     this install follows catches up on its own.
+#   - the commits are on no remote at all: unfinished work, which a move onto the branch would leave
+#     behind a branch tip. That is what "update by hand" was written for, and it still refuses.
+#
+# The two are told apart by asking the question directly. A checkout's own branch may not have been
+# fetched since it last moved (the fleet fetches only the update branch), so when the commits look
+# local and the checkout is on some other branch, that one branch is fetched once and asked again.
+ahead_updates() {
+  local ahead unshared current
+  ahead=$(git rev-list --count "$target..$before")
+  unshared=$(git rev-list --count "$target..$before" --not --remotes)
+  current=$(git symbolic-ref --quiet --short HEAD || true)
+  if [ "$unshared" != 0 ] && [ -n "$current" ] && [ "$current" != "$branch" ]; then
+    timeout "${SVANBOT_UPDATE_FETCH_TIMEOUT:-120}" git fetch --quiet "$remote" "$current" || true
+    unshared=$(git rev-list --count "$target..$before" --not --remotes)
+  fi
+  if [ "$unshared" != 0 ]; then
+    echo "update: this checkout has commits that $remote/$branch does not contain; update by hand" >&2
+    progress fail fetch "local commits not on $remote/$branch"
+    exit 1
+  fi
+  echo "update: this checkout is $ahead commit(s) ahead of $remote/$branch, and every one of them is on $remote/${current:-none}; nothing to install"
+  echo "update: $remote/$branch catches up when that line is promoted — set SVANBOT_UPDATE_BRANCH=$current in .env to follow it here instead"
+  progress current "this checkout is $ahead commit(s) ahead of $remote/$branch; nothing to install (follow it with SVANBOT_UPDATE_BRANCH=$current)"
+  exit 0
+}
+
 if [ "$before" != "$target" ]; then
   if git merge-base --is-ancestor "$before" "$target"; then
     git merge --ff-only --quiet "$target"
     echo "fast-forwarded $(git rev-parse --short "$before") -> $(git rev-parse --short "$target") ($(git rev-list --count "$before..$target") commits)"
   elif git merge-base "$before" "$target" >/dev/null 2>&1; then
-    echo "update: this checkout has commits that $remote/$branch does not contain; update by hand" >&2
-    progress fail fetch "local commits not on $remote/$branch"
-    exit 1
+    ahead_updates
   else
     adopt_upstream
   fi

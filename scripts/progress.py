@@ -5,6 +5,8 @@
   progress.py stage NAME              close the running stage, open NAME
   progress.py fail [STAGE] [MESSAGE]  the run failed (in STAGE, default the running one)
   progress.py installed COMMIT        the run installed COMMIT; stage durations become the next ETA
+  progress.py current MESSAGE         there was nothing to install (the checkout is ahead of the
+                                      update branch); MESSAGE says why, and no stage ever ran
 
 State: artifacts/release-progress.json, written atomically. Timings of the last successful run per
 stage: artifacts/release-timings.json (the dashboard weights the bar and estimates the time left
@@ -96,6 +98,14 @@ def main(argv: list[str]) -> int:
             st["stages"].append({"name": stage, "state": "failed", "started": now, "seconds": 0.0})
         st["state"] = "failed"
         st["message"] = argv[2] if len(argv) > 2 else st.get("message")
+    elif cmd == "current" and len(argv) >= 2:
+        # Nothing was installed and nothing failed (#394): the checkout is already ahead of the
+        # branch this install follows, so the run has nothing to do. `installed` would claim a build,
+        # `fail` would claim a fault, and the dashboard shows this one with its message and no bar.
+        close_running(st, now)
+        st["state"] = "current"
+        st["commit"] = None
+        st["message"] = argv[1]
     elif cmd == "installed" and len(argv) >= 2:
         close_running(st, now)
         st["state"] = "installed"

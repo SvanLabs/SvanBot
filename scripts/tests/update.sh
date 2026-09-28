@@ -145,4 +145,34 @@ push f
 [ "$(git -C "$t/box2" rev-parse HEAD)" = "$(git -C "$t/dev" rev-parse HEAD)" ] || fail "the update after an adoption did not fast-forward"
 grep -q "fast-forwarded" "$t/box2/artifacts/release.log" || fail "the update after an adoption was not a fast-forward"
 
+# 10. A checkout ahead of the update branch with every commit on a remote branch (#394): the shape a
+# fresh clone has between a merge on `dev` and its promotion to `main`. Nothing is at risk and
+# nothing needs installing, so it is neither a failure nor an install, and the message says which
+# branch line the checkout is on and how to follow it.
+git clone -q "$t/origin.git" "$t/ahead" 2>/dev/null
+mkdir -p "$t/ahead/artifacts"
+git -C "$t/ahead" checkout -q -b dev
+echo 'fn only_on_dev() {}' > "$t/ahead/crates/only-dev.rs"
+git -C "$t/ahead" add -A && git -C "$t/ahead" commit -qm "the next dev merge"
+git -C "$t/ahead" -c push.negotiate=false push -q origin HEAD:dev
+ahead_head=$(git -C "$t/ahead" rev-parse HEAD)
+(cd "$t/ahead" && SV10_RELEASE_SCRIPT="$t/release-ok.sh" bash scripts/update.sh >/dev/null) || fail "a checkout ahead on its own branch was reported as failed"
+[ "$(git -C "$t/ahead" rev-parse HEAD)" = "$ahead_head" ] || fail "a checkout ahead of the update branch moved"
+ahead_state=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["state"], d.get("commit") or "-", ",".join(s["name"]+":"+s["state"] for s in d["stages"]))' "$t/ahead/artifacts/release-progress.json")
+# The fetch ran; nothing after it did, and no build was installed.
+[[ "$ahead_state" == "current - fetch:done" ]] || fail "progress after an ahead-of-branch run: $ahead_state"
+grep -q "SVANBOT_UPDATE_BRANCH=dev" "$t/ahead/artifacts/release.log" || fail "the run does not say how to follow the checkout's own branch"
+grep -q "== stub release" "$t/ahead/artifacts/release.log" && fail "an ahead-of-branch run built something"
+
+# The same shape without a remote holding the commits is still the guard's case: work nothing else
+# has must not be moved aside.
+echo 'fn unpushed() {}' > "$t/ahead/crates/unpushed.rs"
+git -C "$t/ahead" add -A && git -C "$t/ahead" commit -qm "not pushed anywhere"
+unpushed_head=$(git -C "$t/ahead" rev-parse HEAD)
+if (cd "$t/ahead" && SV10_RELEASE_SCRIPT="$t/release-ok.sh" bash scripts/update.sh >/dev/null 2>&1); then
+  fail "a checkout with commits on no remote was updated"
+fi
+[ "$(git -C "$t/ahead" rev-parse HEAD)" = "$unpushed_head" ] || fail "a checkout with unpushed commits moved"
+grep -q "local commits" "$t/ahead/artifacts/release-progress.json" || fail "no reason given for the refusal"
+
 echo "update tests: ok"

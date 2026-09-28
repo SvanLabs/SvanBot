@@ -29,5 +29,23 @@ class StartingPoint(unittest.TestCase):
             self.assertEqual((st["from"], st["commit"]), ("aaaaaaa", "bbbbbbb"))
 
 
+class NothingToInstall(unittest.TestCase):
+    def test_a_run_with_nothing_to_install_is_neither_installed_nor_failed(self):
+        # #394: a checkout ahead of the update branch has no build to install and no fault to report.
+        # `installed` would name a commit that was never built and `fail` would colour the card red,
+        # so the run ends in its own state, carrying the sentence that says why.
+        with tempfile.TemporaryDirectory() as d:
+            mod = load({"SV10_PROGRESS_DIR": d, "SV10_INSTALLED_MARKER": str(Path(d) / "absent")})
+            self.assertEqual(mod.main(["start"]), 0)
+            self.assertEqual(mod.main(["stage", "fetch"]), 0)
+            self.assertEqual(mod.main(["current", "ahead of main; nothing to install"]), 0)
+            st = json.loads((Path(d) / "release-progress.json").read_text())
+            self.assertEqual(st["state"], "current")
+            self.assertIsNone(st["commit"])
+            self.assertEqual(st["message"], "ahead of main; nothing to install")
+            # The fetch stage closed rather than being left running for the panel to spin on.
+            self.assertEqual([(s["name"], s["state"]) for s in st["stages"]], [("fetch", "done")])
+
+
 if __name__ == "__main__":
     unittest.main()
