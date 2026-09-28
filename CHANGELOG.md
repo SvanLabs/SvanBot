@@ -29,6 +29,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`main` is the repository's default branch** (#402). It was `dev`, so the front page and a fresh
+  `git clone` showed the branch work lands on. `main` — the released line, promoted from a green
+  `dev` — is what a visitor and a new install should land on. Work still lands on `dev`, every pull
+  request still goes into it, and `claude-maintainer.yml` checks `dev` out by name now that the
+  default branch is no longer the one it works.
 - **`main` keeps itself current** (#370). `main` is the released line — what everyone who installs
   SvanBot runs and updates from — and it moved only when someone remembered to open the promotion
   pull request, so it drifted: it was promoted once and was behind again within the hour.
