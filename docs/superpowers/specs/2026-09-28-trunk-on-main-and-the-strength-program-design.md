@@ -185,8 +185,10 @@ content is already in `main`. Delete the `dev` branch, its ruleset, `scripts/pro
 `ref: dev` and would fail on every run after the branch is gone. Rewrite the branch sections of
 `AGENTS.md` (including the false claim at line 33 that the reference fleet tracks `dev`),
 `CONTRIBUTING.md`, `docs/README.md`, `docs/RELEASE.md`, `docs/OPERATIONS.md`, `README.md`,
-`llms.txt`, `.env.example`, the push trigger in `.github/workflows/check.yml` and the two places in
-`scripts/update.sh` that hardcode the branch-line message. Post the
+`llms.txt`, `.env.example`, `.github/dependabot.yml` (every entry pins the branch it fetches from) and
+`CHANGELOG.md` (one entry recording the removal, not a rewrite of the existing ones), the push trigger
+in `.github/workflows/check.yml` and the two places in `scripts/update.sh` that hardcode the
+branch-line message. Post the
 four decision comments on the blocked issues, relabel #334 and #17 `agent-friendly`, give #319
 the readiness label it is missing, close #18, close #347 with its decision recorded, and close #15.
 Change the `main` ruleset to allow squash merges.

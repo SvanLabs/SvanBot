@@ -196,7 +196,7 @@ gh pr merge 456 --merge
 gh pr merge 457 --merge
 ```
 
-`--merge` and not `--squash`: `main`'s ruleset allows `merge` commits only. Squash becomes available once the ruleset is changed, which needs repository admin and is not in this plan.
+`--merge` and not `--squash`: `main`'s ruleset allows `merge` commits only, and it stays that way until Task 11 switches it — deliberately, because that switch needs repository admin and every other task in this plan merges with `--merge`.
 
 - [ ] **Step 5: Verify both merged and `main` moved**
 
@@ -317,7 +317,7 @@ One change, because `scripts/docs-check.py` couples them: deleting `scripts/prom
 
 **Files:**
 - Delete: `.github/workflows/promote.yml`, `scripts/promote.sh`, `scripts/tests/promote.sh`
-- Modify: `scripts/check.sh:150,165`; `.github/workflows/check.yml` (push trigger); `.github/workflows/close-linked-issues.yml:37-40`; `.github/workflows/claude-maintainer.yml:3-7,47-51,139,141-143`; `AGENTS.md:20-34`; `CONTRIBUTING.md:23-26`; `README.md:330-337,376-379`; `llms.txt:29-34,78-89`; `docs/RELEASE.md:10-46`; `docs/LESSONS.md:203-235`; `.env.example:40-43`; `scripts/update.sh:156-157`
+- Modify: `scripts/check.sh:150,165`; `.github/workflows/check.yml` (push trigger); `.github/workflows/close-linked-issues.yml:37-40`; `.github/workflows/claude-maintainer.yml:3-7,47-51,139,141-143`; `.github/dependabot.yml:6-9,15,23,31`; `AGENTS.md:20-34`; `CONTRIBUTING.md:23-26`; `README.md:9,330-337,376-379`; `llms.txt:29-34,78-89`; `docs/RELEASE.md:10-46`; `docs/LESSONS.md:203-218`; `CHANGELOG.md` (one new entry under `### Changed`, nothing else); `.env.example:40-43`; `scripts/update.sh:156-157`
 - **Not** modified, verified during prework: `docs/OPERATIONS.md` (no branch-model text), `docs/README.md` (branch-agnostic), `scripts/tests/update.sh` (its assertion is about the fixture's own branch, not the repository's)
 
 **Interfaces:**
@@ -464,6 +464,14 @@ Replace those four lines with:
    every pull request goes into it, so the base needs no setting.
 ```
 
+**Third edit.** Line **9** is the CI badge, and its URL carries the branch as a query parameter — `?branch=dev` — which no prose sweep for a branch name will see:
+
+```markdown
+[![CI](https://img.shields.io/github/actions/workflow/status/SvanLabs/SvanBot/check.yml?branch=dev&label=CI&style=flat-square)](https://github.com/SvanLabs/SvanBot/actions/workflows/check.yml)
+```
+
+Change `?branch=dev` to `?branch=main` and leave the rest of the line alone. Left as it is, the badge renders `no status` once `dev` is gone.
+
 - [ ] **Step 8: Rewrite `llms.txt`**
 
 Replace lines 29-34 so they read:
@@ -522,23 +530,27 @@ Every hit is unrelated to the branch model: `npm run dev`, `target/dev`, `script
 
 Expected: no edit. If you find a `dev`-branch or promotion-branch sentence that this list does not cover, the list is wrong — edit that sentence and say so in your report rather than rewording anything else. Do not search for the word "promotion" and act on its hits; in this file it usually means the learner.
 
-- [ ] **Step 11: Neutralise the two `LESSONS.md` entries that name the deleted script**
+- [ ] **Step 11: Neutralise the `LESSONS.md` entry that names the deleted script**
 
-Entries 44 and 45 (lines 203-235) each open by quoting `scripts/promote.sh` in backticks, and `docs/LESSONS.md` is in `scripts/docs-check.live`, so those backticks fail the check once the file is gone. The entries are a historical record and must not be rewritten — wrap the path references in the check's off-block and add one line above entry 44:
+**Only entry 44** quotes `scripts/promote.sh` (at line 204), and `docs/LESSONS.md` is in `scripts/docs-check.live`, so that backtick fails the check once the file is gone. Entry 45 does not quote it: its `dev` references sit inside backticks carrying no `crates/`/`scripts/`/`web/`/`docs/`/`.claude/` prefix, and `scripts/docs-check.py` matches only backticked paths with one of those prefixes — so entry 45 stays checked.
+
+Entry 44 is a historical record and must not be rewritten. Wrap entry 44 alone in the check's off-block, adding one line above it:
 
 ```markdown
-The entries below describe `scripts/promote.sh` and its tests, deleted on 2026-09-28 when the
-repository moved to trunk-based work on `main`. The lessons are about the mistakes, not the script.
+The entry below describes the promotion script and its tests, deleted on 2026-09-28 when the
+repository moved to trunk-based work on `main`. The lesson is about the mistake, not the script.
 <!-- docs-check: off -->
 ```
 
-and close it after entry 45 with:
+and close it immediately after entry 44's last line with:
 
 ```markdown
 <!-- docs-check: on -->
 ```
 
-The boundary is exact: entry 45's last line of prose is **line 235** (`the answer: containment of *content* is \`git rev-list --count dev --not main\` being zero.`), line 236 is blank, and line 237 begins entry 46. Close the off-block between lines 235 and 236 — before the blank line, not after it — so entry 46 is checked again. Verify by re-reading the boundary and running the check at Step 15.
+Write that note without backticks around the script's name. It sits above the off marker, where the check still reads the line, and a backticked `scripts/…` path there is the same problem the off-block exists to solve.
+
+The boundary is exact: entry 44 opens at **line 203** and its last line of prose is **line 218** (`look at the call instead of at the answer.`). Line 219 is blank and line 220 begins entry 45. Close the off-block between lines 218 and 219 — before the blank line, not after it — so entry 45 is checked again. Verify by re-reading the boundary and running the check at Step 17.
 
 - [ ] **Step 12: Fix the two shell sites that hardcode the branch line**
 
@@ -642,7 +654,39 @@ Lines 40-43 describe the branch as the released line that moves when `dev` is pr
 # SVANBOT_UPDATE_BRANCH=main
 ```
 
-- [ ] **Step 15: Run the coupling checks before the full gate**
+- [ ] **Step 15: Repoint `.github/dependabot.yml`**
+
+Three entries carry `target-branch: dev`, on lines 15, 23 and 31. When `dev` is deleted every Dependabot job errors and dependency pull requests stop arriving — silently, because nothing Dependabot does turns a check red anywhere a human would see it. Change all three to:
+
+```yaml
+    target-branch: main
+```
+
+Keep the lines rather than deleting them: naming the branch was a deliberate choice (#402) and should survive the rename. The comment above them, on lines 6-9, explains the pin in terms of `dev` and has to be rewritten with it:
+
+```yaml
+# `target-branch: main` on every entry, kept explicit rather than removed: Dependabot opens against
+# the repository's default branch when it is not told otherwise, and that default is `main` — the
+# released line — so naming it changes nothing today. It is named because a fork can move its own
+# default, and because #402 asked for the target to be a visible choice rather than an inherited one.
+```
+
+- [ ] **Step 16: Record the removal in `CHANGELOG.md`**
+
+Its 24 `dev`/`promote.sh` references all sit inside `## [Unreleased]` (lines 8-232), which is the *next release's* notes — so the next release would announce a branch and a script that no longer exist. They are not historical the way the older sections are. **Do not rewrite them**: every one describes a change that really happened.
+
+Add one new entry, as the first item under `### Changed` (line 30) — that is where this file puts changes to how the project works, and a removal is not an addition:
+
+```markdown
+- **One branch: `main`.** The `dev` branch and the promotion machinery between it and `main` are
+  removed — `scripts/promote.sh`, `scripts/tests/promote.sh`, `.github/workflows/promote.yml` and
+  the ruleset on `dev`. Every pull request now targets `main`, which is both the default branch and
+  the released line, so a merge reaches live play at a fleet's next Update rather than at a
+  promotion. `AGENTS.md`, `CONTRIBUTING.md`, `README.md`, `llms.txt`, `docs/RELEASE.md` and the
+  workflows that checked out `dev` by name are updated with it.
+```
+
+- [ ] **Step 17: Run the coupling checks before the full gate**
 
 ```bash
 cd /home/administrator/SvanBot
@@ -650,17 +694,17 @@ python3 scripts/docs-check.py && echo "docs-check ok"
 grep -rn "promote\.sh\|promote\.yml" --include='*.md' --include='*.sh' --include='*.yml' . | grep -v '^./target' | grep -v '^./docs/superpowers' | grep -v CHANGELOG
 ```
 
-Expected: `docs-check: 26 documents, 0 problem(s)`, and the grep returns only the off-blocked `LESSONS.md` entries and comments that are not backticked paths.
+Expected: `docs-check: 26 documents, 0 problem(s)`, and the grep returns only the off-blocked `LESSONS.md` entry and comments that are not backticked paths.
 
-- [ ] **Step 16: Run the full gate**
+- [ ] **Step 18: Run the full gate**
 
 ```bash
 scripts/check.sh full
 ```
 
-Expected: PASS. If it fails on a path, the document naming it was missed in steps 5-14.
+Expected: PASS. If it fails on a path, the document naming it was missed in steps 5-16.
 
-- [ ] **Step 17: Commit, push and merge**
+- [ ] **Step 19: Commit, push and merge**
 
 ```bash
 git add -A
@@ -870,24 +914,32 @@ wrong — report it, do not re-apply it.
 
 - [ ] **Step 7: Verify the board state**
 
-This task closes only #18 and relabels #334, #17 and #319; #347 and #15 were closed on 2026-09-28 and
-#315 closed when #457 merged. The count this asserts is the state those actions produce.
+Derive the expected set here rather than remembering it. Take the open issues the tracker reports at
+the moment this step runs and remove what this task disposes of — #18, the only issue it closes.
+Nothing else is touched: #315 went with #457's merge, and #347 and #15 were closed on 2026-09-28, so
+all three are already absent from the list. #463 was filed after this plan was written, is outside
+this program, and is expected to stay open.
+
+The count in this step has been wrong twice — once at seven, once at four — for the same reason both
+times: it was written from what the plan meant to close rather than from the tracker. If the
+assertion below fails, the listing is the fact and this plan's list is what needs correcting.
 
 ```bash
 issues=$(gh issue list --state open --json number,labels)
 echo "$issues" | jq '.[] | "\(.number)\t\(.labels|map(.name)|join(","))"'
 echo "$issues" | jq -e '
-  ([.[].number] | sort) == [17, 319, 334, 363]
+  ([.[].number] | sort) == [17, 319, 334, 363, 463]
   and all(.[]; (.labels | map(.name) | index("agent-friendly")) != null)
   and all(.[]; (.labels | map(.name) | index("blocked-on-decision")) == null)
 ' >/dev/null \
-  && echo "board ok: four open, every one agent-friendly, none blocked-on-decision" \
-  || { echo "board WRONG: the listing above is not four open issues all labelled agent-friendly"; exit 1; }
+  && echo "board ok: five open, every one agent-friendly, none blocked-on-decision" \
+  || { echo "board WRONG: the listing above is not the five open issues named below"; exit 1; }
 ```
 
-Expected: **four** open issues — #363, #334, #319, #17 — every one labelled `agent-friendly`, and
-none labelled `blocked-on-decision`. #315 closed when #457 merged, and #347 and #15 closed on
-2026-09-28; #18 is the only issue this task closes.
+Expected: **five** open issues — #363, #334, #319, #17 and #463 — every one labelled
+`agent-friendly`, and none labelled `blocked-on-decision`. #315 closed when #457 merged, and #347 and
+#15 closed on 2026-09-28; #18 is the only issue this task closes, and #463 is outside this program
+and stays open.
 
 ---
 
@@ -903,17 +955,23 @@ none labelled `blocked-on-decision`. #315 closed when #457 merged, and #347 and 
 
 Invoke the `verify-install` skill. It answers which commit the fleet is playing, whether it matches the checkout, and which builds can be rolled back to.
 
-- [ ] **Step 2: Confirm the three commits agree, and that `main` is the only line**
+- [ ] **Step 2: Bring the fleet up to `origin/main`, then confirm the three commits agree**
+
+The fleet is not on `origin/main` and has not been: a read-only audit on 2026-09-28 found it playing `0dcf680`, and `origin/main` has moved well past it since. Nothing resets it — the fleet simply has not run an Update. Until it does, every measurement describes `0dcf680` and not today's tree, so update first and confirm afterwards.
 
 ```bash
 cd /home/administrator/SvanBot
 git fetch origin --prune
-cat artifacts/release-progress.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("installed:", d["commit"], d["state"])'
-git rev-parse --short origin/main
+installed=$(python3 -c 'import json;print(json.load(open("artifacts/release-progress.json"))["commit"])')
+echo "installed:   $installed"
+echo "origin/main: $(git rev-parse --short origin/main)"
+echo "behind:      $(git rev-list --count "$installed"..origin/main) commit(s)"
 git branch -r
 ```
 
-Expected: the installed commit and `origin/main` are the same commit, and the remote branch list contains no `dev`.
+Then bring it up: **Dashboard → Releases & updates → Update**, or `scripts/update.sh` from this checkout. Wait for the run to report `installed`, then run the block above again.
+
+Expected after the update: the installed commit and `origin/main` are the same commit, the "behind" count is 0, and the remote branch list contains no `dev`. Before the update the fleet plays `0dcf680` — any measurement taken against it describes that commit, not the tree this plan has been building.
 
 - [ ] **Step 3: Confirm nothing reached `main` except through a pull request**
 
@@ -1203,6 +1261,75 @@ Generated-by: claude-code/deepseek-flash"
 
 ---
 
+### Task 11: Switch `main` to squash merges
+
+The last action of the program, and deliberately last: Tasks 4, 8, 9 and 10 merge with `--merge`
+because `main`'s ruleset currently permits merge commits only (`allowed_merge_methods: ["merge"]`).
+Setting it to `["squash"]` before they run would fail them.
+
+**Files:** none. This is a GitHub settings change.
+
+**Interfaces:**
+- Consumes: Tasks 4-10 merged.
+- Produces: nothing.
+
+- [ ] **Step 1: Confirm every pull request in the program has merged**
+
+```bash
+cd /home/administrator/SvanBot
+git fetch origin --prune && git log --oneline origin/main -1
+gh pr list --state open
+```
+
+Expected: no open pull request whose base is `main`.
+
+- [ ] **Step 2: Probe whether the token can do this at all**
+
+```bash
+gh api repos/SvanLabs/SvanBot/rulesets --jq '.[] | {id, name}'
+```
+
+The ruleset is `main — the released line`, id `24096316`. The token is a GitHub App installation
+token and reports `"admin":false` on this repository. If Step 3 returns `403` or `Resource not
+accessible by integration`, do it in the GitHub UI — Settings → Rules → Rulesets → `main — the
+released line` → the pull-request rule → Merge methods → allow **Squash** only — and record that the
+human did it.
+
+- [ ] **Step 3: Set the merge methods**
+
+```bash
+gh api -X PATCH repos/SvanLabs/SvanBot/rulesets/24096316 \
+  -f 'rules[][type]=pull_request' 2>/dev/null
+gh api repos/SvanLabs/SvanBot/rulesets/24096316 --jq '.rules[] | select(.type=="pull_request") | .parameters.allowed_merge_methods'
+```
+
+The PATCH above is a placeholder shape and will not work as written: ruleset updates replace the whole
+`rules` array, so read the current ruleset first and send it back with only
+`allowed_merge_methods` changed. Do that, do not guess:
+
+```bash
+gh api repos/SvanLabs/SvanBot/rulesets/24096316 > /tmp/ruleset.json
+python3 - <<'PY'
+import json
+d = json.load(open("/tmp/ruleset.json"))
+for r in d["rules"]:
+    if r["type"] == "pull_request":
+        r["parameters"]["allowed_merge_methods"] = ["squash"]
+json.dump({"rules": d["rules"]}, open("/tmp/ruleset-patched.json", "w"))
+PY
+gh api -X PUT repos/SvanLabs/SvanBot/rulesets/24096316 --input /tmp/ruleset-patched.json
+```
+
+- [ ] **Step 4: Verify**
+
+```bash
+gh api repos/SvanLabs/SvanBot/rulesets/24096316 --jq '.rules[] | select(.type=="pull_request") | .parameters.allowed_merge_methods'
+```
+
+Expected: `["squash"]`.
+
+---
+
 ## Self-Review
 
 Run after the plan is written, against the spec.
@@ -1221,6 +1348,7 @@ Run after the plan is written, against the spec.
 | `promotion.rs:87` shifted z + test pinning it | 8 |
 | Correct `docs/SPEC-learner.md:230` | 9 |
 | Log the discarded confirmation evidence | 10 |
+| Change `main`'s ruleset to allow squash merges (SPEC:190) | 11 |
 | CI `cache-workspace-crates` and the duplicate `target/dev` path | **not in this plan** — Phase 2 of the spec |
 | Phase 3-5 | not in this plan, by decision 6 |
 
