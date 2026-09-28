@@ -29,6 +29,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The front-page highlight cards point at their evidence** (#331). The five cards under Highlights
+  read like a pitch: a latency range with no instrument, a think-time capability with no "when", and
+  "zero-downtime" doing work that "the bots keep playing" does better. Each card is now one claim
+  with the file, test or command that holds it up named inline — the `live` suite of `bench` and the
+  published table for the latency, `calibrate` and the held-out install rule for the models,
+  `crates/apps/bot/src/promotion.rs` for the gate, the invariant tests in
+  `crates/apps/bot/src/client/decide.rs` and `crates/libs/store/src/integrity.rs` for safety, and
+  `scripts/update.sh` for updates.
+
 - **A draw that cannot fill its budget refuses to answer** (#424). The equity loop returned the mean of
   whatever it scored, so a request for 2,500 deals was answered from 17 of them, and a draw that scored
   nothing answered `0.0` — the same number as "hero never wins". #383 raised the rejection-sampling
