@@ -29,6 +29,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The maintainer job builds from a cache** (#363). `claude-maintainer.yml` — the twice-daily run
+  that fixes the oldest open `agent-friendly` issue — compiled the workspace from nothing every time,
+  because unlike the `gate` job it restored no cache: a cold `npm ci` and a cold compile before the
+  agent did anything, `full took 227 s` where the same job warm takes `121 s`. It restores the gate's
+  two caches now, and with them the gate's `RUSTFLAGS` baseline (#330): a cache carries `target/`
+  between runners and `.cargo/config.toml` compiles for the host doing the compiling, so caching this
+  job without that line would have brought back the SIGILL it was fixed for.
 - **`main` is the repository's default branch** (#402). It was `dev`, so the front page and a fresh
   `git clone` showed the branch work lands on. `main` — the released line, promoted from a green
   `dev` — is what a visitor and a new install should land on. Work still lands on `dev` and every
