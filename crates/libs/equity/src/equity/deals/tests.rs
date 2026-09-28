@@ -89,3 +89,39 @@ fn optimized_deals_reproduce_the_reference_bit_for_bit() {
     }
     assert!(exact_seen >= 10, "the exact enumeration must be exercised ({exact_seen} cases)");
 }
+
+/// The Monte Carlo path rejects a deal when two opponents' combos share a card, and gives up after
+/// 20 attempts per sample — so a table with enough opponents returns *fewer deals than it was asked
+/// for*, silently, which is a quieter measurement rather than a wrong one (#383). Measured, the
+/// boundary sits between 7 and 8 opponents: at k <= 7 every configuration tried returned every
+/// sample, and at 8 a narrow range can return 1510 of 2500.
+///
+/// This project's table is six-max, so hero plus five opponents is the shape that has to hold, and
+/// it holds with margin. Pinning it here is what makes a change that eats the margin visible: the
+/// day the deals come back short at a table we actually play, this fails instead of the equity
+/// quietly getting noisier.
+#[test]
+fn a_six_max_table_gets_every_sample_it_asked_for() {
+    let samples = 2_500;
+    for seed in 0..24u64 {
+        let mut meta = SmallRng::seed_from_u64(seed * 7919 + 11);
+        // A narrow range is the harder case: two opponents both concentrated on the same cards
+        // collide more often than two full ranges, so the density sweep runs to the sparse end.
+        for density in [0.02, 0.1, 0.5, 1.0] {
+            for board_len in [0, 3, 5] {
+                let dealt = cards(&mut meta, 2 + board_len);
+                let (hero, board) = ([dealt[0], dealt[1]], &dealt[2..]);
+                let ranges: Vec<Range> = (0..5).map(|_| range(&mut meta, density)).collect();
+                let refs: Vec<&Range> = ranges.iter().collect();
+                let d = SharedDeals::new(hero, board, &refs, samples, &mut SmallRng::seed_from_u64(seed));
+                assert_eq!(
+                    d.hero_rank.len(),
+                    samples,
+                    "seed {seed}, density {density}, board {board_len}: a six-max deal returned {} of {samples}",
+                    d.hero_rank.len()
+                );
+                assert!(!d.is_exact(), "a five-opponent deal is never the exact enumeration");
+            }
+        }
+    }
+}
