@@ -69,3 +69,20 @@ invariants and the crate layering, and a boundary checker for the layering rule 
 `.claude/skills/` holds the procedures that are not one command: `verify-install` (which commit is
 the fleet actually playing, and does it match the checkout?) and `restore-store` (put runtime data
 back from an archive, without ever writing over a live `artifacts/`).
+
+## Agent skills
+
+Matt Pocock's engineering skills are configured for this repo. Issues live as GitHub issues,
+worked with the `gh` CLI as `svanlabs[bot]`.
+
+### Issue tracker
+
+GitHub issues via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles map 1:1 to same-named labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `docs/CONTEXT.md` plus `docs/adr/`, consumed lazily. See `docs/agents/domain.md`.
