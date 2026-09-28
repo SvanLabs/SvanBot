@@ -136,7 +136,13 @@ case "$mode" in
     ;;
   full|deep|lint)
     step "cargo-deny (licenses, bans, sources)"
-    cargo deny check licenses bans sources 2>/dev/null || fail "cargo-deny"
+    # The failing command's own words belong in the log (#418): `2>/dev/null` hid them, so a runner
+    # without the binary reported the bare word `cargo-deny` and the run had to ask cargo which
+    # commands it has to learn `error: no such command: deny`. Quiet when it passes, as before.
+    if ! deny_log=$(cargo deny check licenses bans sources 2>&1); then
+      printf '%s\n' "$deny_log" | tail -20 >&2
+      fail "cargo-deny"
+    fi
     step "cargo-deny advisories"
     cargo deny check advisories 2>/dev/null || echo "   advisories failed or the RustSec database was unreachable; see: cargo deny check advisories"
     step "third-party notices current"
@@ -147,8 +153,8 @@ case "$mode" in
     # build directory it would wait on that lock (57 s of an 85 s gate, 0334), so it runs after it.
     pack_test=scripts/tests/test_pack.py
     [ -z "$test_build_pid" ] || pack_test=
-    run_suite "ticket, fleet-check, codec, runner, docs-check, provenance and linked-issue tool tests (python3 -m unittest scripts/tests/test_pack.py ...)" \
-      python3 -m unittest -q scripts/tests/test_tickets.py scripts/tests/test_fleet_check.py scripts/tests/test_monitor.py $pack_test scripts/tests/test_docs_check.py scripts/tests/test_progress.py scripts/tests/test_provenance.py scripts/tests/test_test_runner.py scripts/tests/test_close_linked_issues.py
+    run_suite "ticket, fleet-check, codec, runner, docs-check, provenance, workflow and linked-issue tool tests (python3 -m unittest scripts/tests/test_pack.py ...)" \
+      python3 -m unittest -q scripts/tests/test_tickets.py scripts/tests/test_fleet_check.py scripts/tests/test_monitor.py $pack_test scripts/tests/test_docs_check.py scripts/tests/test_progress.py scripts/tests/test_provenance.py scripts/tests/test_test_runner.py scripts/tests/test_close_linked_issues.py scripts/tests/test_workflows.py
     step "docs name only paths and commands that exist"
     python3 scripts/docs-check.py 2>/dev/null || { python3 scripts/docs-check.py | head -20 >&2; fail "docs drift (scripts/docs-check.py)"; }
     run_suite "release/rollback tests (run bash scripts/tests/release-rollback.sh)" bash scripts/tests/release-rollback.sh

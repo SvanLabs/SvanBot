@@ -75,6 +75,24 @@ jobs:
         with:
           cache-directories: |
             target/dev
+            artifacts/tables
+      # `cloud-setup.sh` installs cargo-deny into `~/.cargo/bin`, and no cache held it: every runner
+      # downloaded it again, inside the agent's session (#418). Just the one binary rather than the
+      # directory, because rustup keeps its own shims there. The key names the installer, so a change
+      # to how cargo-deny is obtained takes a fresh cache instead of restoring the old binary.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-${{ hashFiles('scripts/cloud-setup.sh') }}
+
+      # What `scripts/check.sh` needs and this job did not install: cargo-deny, `web/node_modules`
+      # and `artifacts/tables` (the `gate` job has run this same step all along). Without it a fresh
+      # runner failed the gate at `error: no such command: deny` — an issue-independent red — and the
+      # agent's own reading of its prompt is to stop and comment instead of opening a pull request.
+      # The tables are why `artifacts/tables` is in the cache above: cloud-setup builds them when
+      # they are missing, about a minute, and paying that per run would be a regression against #363.
+      - name: Setup (cargo-deny, web deps, tables)
+        run: bash scripts/cloud-setup.sh
 
       - name: SvanLabs app token
         id: app-token
