@@ -114,6 +114,13 @@ if [ "${SKIP_TESTS:-0}" != 1 ]; then
   start_job lint "$DEV" no-commit scripts/check.sh lint
   start_job test-build "$DEV" no-commit cargo test --no-run --profile gate --workspace -q
 fi
+# The job below shares cargo's build lock with anything else building in this target directory.
+# Another cargo in this tree's `target/stage` — a benchmark, a one-off `--profile release` build —
+# holds `release/.cargo-lock`, and the job then reports that wait as build time having compiled
+# nothing at all: 498 s of the 2026-09-28 05:02 release, which no cache explains. Cargo names the
+# wait itself in one line, into a log the next release truncates; say it here, in the release log
+# the dashboard tails, so the wait is named while it is happening and not reconstructed afterwards.
+scripts/build-lock.sh "$STAGE/release" || true
 start_job release-build "$STAGE" with-commit cargo build --release --workspace --bins -q
 failed=0
 for i in "${!pids[@]}"; do
@@ -121,6 +128,14 @@ for i in "${!pids[@]}"; do
     secs=$(cat "$STAGE/${names[$i]}.secs" 2>/dev/null || echo 0)
     echo "   ${names[$i]} ok ($secs s)"
     over_budget "${names[$i]}" "$secs"
+    if [ "$secs" -gt "$BUDGET_SECS" ]; then
+      # The next release truncates this job's log, and that log is where cargo's own `Blocking
+      # waiting for file lock on build directory` lands — the one line that names a wait rather than
+      # a slow compile. A stage over budget keeps its log, so the reason outlives the release that
+      # suffered it (docs/LESSONS.md 46).
+      cp "${logs[$i]}" "$STAGE/${names[$i]}.over-budget.log"
+      echo "   ${names[$i]}: over budget, log kept at $STAGE/${names[$i]}.over-budget.log" >&2
+    fi
   else
     echo "== ${names[$i]} failed (log: ${logs[$i]})"; tail -30 "${logs[$i]}"; failed=1
   fi
