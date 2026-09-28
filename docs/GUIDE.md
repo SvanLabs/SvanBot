@@ -13,7 +13,7 @@ web control room. It runs on CPU only.
 | Understand what the control room is showing you | Section 10, The control room |
 | Understand how one decision is made | Sections 2 and 3, then sections 4 to 6 for the models and the learner |
 | Change a setting | Section 12, Configuration reference |
-| Change the code | Section 14, Development, and `CONTRIBUTING.md` in the repository, which walks a first pull request from issue to merge |
+| Change the code | Section 14, Development, and `docs/CONTRIBUTING.md` in the repository, which walks a first pull request from issue to merge |
 
 Every section stands on its own, and the contents below are in reading order for a newcomer.
 

@@ -48,7 +48,7 @@ on this, the `boundaries` subagent does it properly.
 
 **4. The gate's own rules.** The `Generated-by:` trailer on the commit and the pull request body;
 no placeholder markers; no file pushed over 500 lines without a split; a new third-party dependency
-justified, in `[workspace.dependencies]`, and `THIRD-PARTY-NOTICES.md` regenerated; documentation
+justified, in `[workspace.dependencies]`, and `docs/THIRD-PARTY-NOTICES.md` regenerated; documentation
 that names a moved path updated in the same change.
 
 ## How to report

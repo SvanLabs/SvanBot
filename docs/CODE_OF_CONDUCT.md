@@ -33,7 +33,7 @@ this project actually runs:
   that later reads the repository is out of order, however it was produced.
 - **Keep keys and private data out of public space.** No API keys, operator tokens, `.env`
   contents, database files, or log excerpts carrying credentials in an issue or a discussion. See
-  `SECURITY.md` for anything that involves a key.
+  `docs/SECURITY.md` for anything that involves a key.
 - **Do not use the tracker against a third party.** Do not name an opponent in a way that attaches
   a fitted exploitation number to a real person's handle, and do not use issues or discussions to
   harass another player. The fair-play rules in `README.md` are part of this code.
@@ -48,7 +48,7 @@ GitHub through someone's account.
 ## Reporting
 
 Reports go to the repository maintainers through a private GitHub channel: the **Report a
-vulnerability** form on the Security tab (`SECURITY.md` describes it for security reports; use the
+vulnerability** form on the Security tab (`docs/SECURITY.md` describes it for security reports; use the
 same private form for a conduct report and say that is what it is). Nothing in that thread is
 visible to anyone but the maintainers.
 

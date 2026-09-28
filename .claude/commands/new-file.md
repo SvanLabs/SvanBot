@@ -4,7 +4,7 @@ allowed-tools: Bash(scripts/check-file-size.sh:*), Bash(bash scripts/check-file-
 ---
 
 No Rust source file goes over **500 physical lines** — code, comments, blank lines and inline tests
-all count. `CONTRIBUTING.md` section 4 makes it a **MUST**: agents and reviewers read this code in
+all count. `docs/CONTRIBUTING.md` section 4 makes it a **MUST**: agents and reviewers read this code in
 pieces, and a file that has to be read whole to be understood is one neither can check.
 
 ## Check where a file stands

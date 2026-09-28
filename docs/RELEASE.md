@@ -1,7 +1,7 @@
 # Release process
 
 > **Read this when** you are tagging a version. **Before this:** the gate is green on the exact
-> commit (`scripts/check.sh full`). **Related:** [`CHANGELOG.md`](../CHANGELOG.md). · [All docs](README.md)
+> commit (`scripts/check.sh full`). **Related:** [`docs/CHANGELOG.md`](CHANGELOG.md). · [All docs](README.md)
 
 A release is a tagged commit on `main` that the gate passed, with a changelog entry and release
 notes. This document is the process; `scripts/check.sh` is the gate that decides whether a commit
@@ -27,7 +27,7 @@ to `ghcr.io/svanlabs/svanbot`. Running the workflow by hand with an existing tag
 | The tagged source | `git tag -a` on a commit the gate passed | the green CI run on that commit |
 | Portable bundle (`.tar.gz`) | the release workflow, `scripts/portable.sh` | `gh attestation verify <file> --repo SvanLabs/SvanBot`, and its `.sha256` |
 | Container image | the release workflow, `Dockerfile` | `gh attestation verify oci://ghcr.io/svanlabs/svanbot:<tag> --repo SvanLabs/SvanBot` |
-| `THIRD-PARTY-NOTICES.md` | `python3 scripts/notices.py` | `python3 scripts/notices.py --check` (part of the gate) |
+| `docs/THIRD-PARTY-NOTICES.md` | `python3 scripts/notices.py` | `python3 scripts/notices.py --check` (part of the gate) |
 | SBOM (CycloneDX 1.5) | `python3 scripts/notices.py --sbom target/sbom.cdx.json` | attached to the release by hand, when wanted |
 | Build identity | `scripts/release.sh`, which bakes the commit into `sv10_bot::BUILD_COMMIT` | `curl 127.0.0.1:5000/api/health` reports it |
 
@@ -45,14 +45,14 @@ are the parts where a small sample can pass by luck.
 
 Two things the gate cannot check for you:
 
-- **A behaviour change needs a paired simulation**, not a unit test. `CONTRIBUTING.md` §8 is the
+- **A behaviour change needs a paired simulation**, not a unit test. `docs/CONTRIBUTING.md` §8 is the
   rule and `docs/OPERATIONS.md` describes the run.
 - **A performance change needs a measurement**, on the same machine, against the previous commit.
 
 ## Cutting the release
 
 1. Confirm the gate: `scripts/check.sh full`, on a clean checkout of the commit.
-2. Move the `[Unreleased]` entries in `CHANGELOG.md` under a dated heading for the new version,
+2. Move the `[Unreleased]` entries in `docs/CHANGELOG.md` under a dated heading for the new version,
    and merge that as a pull request. The release notes are generated from the merged pull requests,
    so the changelog entry is for readers who never open GitHub.
 3. Tag the merge commit and push the tag:

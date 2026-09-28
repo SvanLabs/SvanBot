@@ -9,4 +9,4 @@ contact_links:
     url: https://github.com/SvanLabs/SvanBot/security/advisories/new
     about: >-
       A private advisory thread only the maintainers can read. Use it for anything involving a key
-      or a token, and say so in the report. Never a public issue. See SECURITY.md.
+      or a token, and say so in the report. Never a public issue. See docs/SECURITY.md.

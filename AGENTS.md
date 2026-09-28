@@ -2,7 +2,7 @@
 
 If you are an AI agent working in this repository, read this file first. It is the short version:
 what the project is, how to build it, and the rules that a change has to satisfy. The full standard
-is `CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
+is `docs/CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
 
 ## Your loop, start to finish
 
@@ -13,7 +13,7 @@ is `CONTRIBUTING.md`; the reasons behind the rules are in `docs/LESSONS.md`.
    `python3 scripts/test.py <filter>`.
 4. **Make the change**, and update every document that names what you changed (section 5).
 5. **Run `scripts/check.sh full`.** Green here is green in CI.
-6. **Commit in the shape `CONTRIBUTING.md` describes** — `<area>: <what it does>`, a body that says
+6. **Commit in the shape `docs/CONTRIBUTING.md` describes** — `<area>: <what it does>`, a body that says
    why, `Closes #<issue>` in its own paragraph, and `Generated-by:` last (section 0).
 7. **Open the pull request** from the template, with the same `Generated-by:` line in the body.
 
@@ -147,7 +147,7 @@ fresh-deal confirmation. Do not loosen that to make an experiment fit.
   open an issue.
 - **Every dependency must be permissive.** `deny.toml` fails the build on anything else. If you
   reach for a new crate, explain why one in the workspace will not do.
-- **`THIRD-PARTY-NOTICES.md` is generated.** Run `python3 scripts/notices.py` after a dependency
+- **`docs/THIRD-PARTY-NOTICES.md` is generated.** Run `python3 scripts/notices.py` after a dependency
   change; the gate fails when it is stale.
 
 ## 6. Working in this repository
@@ -164,7 +164,7 @@ fresh-deal confirmation. Do not loosen that to make an experiment fit.
   there to delegate to: a reviewer that knows the invariants and the layering, and a boundary checker
   for the layering on its own. `.claude/settings.json` runs the provenance check as soon as a commit
   lands, which is a better moment to find out than CI. None of it overrides what is written here —
-  where the two disagree, this file and `CONTRIBUTING.md` are the rule.
+  where the two disagree, this file and `docs/CONTRIBUTING.md` are the rule.
 
 ## 7. If you are an agent opening a pull request
 

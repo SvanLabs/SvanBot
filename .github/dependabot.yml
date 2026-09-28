@@ -1,6 +1,6 @@
 # Dependency updates, grouped and capped so they arrive as a few reviewable pull requests rather than
 # one per crate. Dependabot's commits are authored `dependabot[bot]`, which the provenance gate exempts
-# (scripts/provenance.py). A Cargo.lock change also moves THIRD-PARTY-NOTICES.md: if the notices check
+# (scripts/provenance.py). A Cargo.lock change also moves docs/THIRD-PARTY-NOTICES.md: if the notices check
 # is red on one of these, `python3 scripts/notices.py` regenerates it.
 #
 # `target-branch: main` on every entry, kept explicit rather than removed: Dependabot opens against

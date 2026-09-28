@@ -11,7 +11,7 @@ A performance change is not a change until it has a number.
 > measurement taken on the same machine against the previous commit. A speed claim with no number
 > behind it is not a change, and neither is a strategy change with no simulation.
 
-`CONTRIBUTING.md` section 9 makes it a **MUST**, and the reason is `docs/LESSONS.md` 1, 3 and 6:
+`docs/CONTRIBUTING.md` section 9 makes it a **MUST**, and the reason is `docs/LESSONS.md` 1, 3 and 6:
 several optimisations that looked obviously right measured as no gain, and this machine is shared, so
 a before and an after measured an hour apart differ by load rather than by code.
 

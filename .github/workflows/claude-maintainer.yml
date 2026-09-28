@@ -125,7 +125,7 @@ jobs:
           allowed_bots: "svanlabs"
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           prompt: |
-            You maintain ${{ github.repository }}. Read AGENTS.md and CONTRIBUTING.md first and follow them exactly.
+            You maintain ${{ github.repository }}. Read AGENTS.md and docs/CONTRIBUTING.md first and follow them exactly.
 
             1. List open issues labelled `agent-friendly`, oldest first. Skip any that an open pull request
                already closes (`gh pr list --search "<number> in:body"`). Take the first remaining one.
@@ -134,7 +134,7 @@ jobs:
                when it is a bug. Keep the change to that one issue.
             3. Run `scripts/check.sh full`. If it fails and you cannot fix it, stop and comment on the
                issue with what you found instead of opening a pull request.
-            4. Commit in the shape CONTRIBUTING.md describes, ending with
+            4. Commit in the shape docs/CONTRIBUTING.md describes, ending with
                `Generated-by: claude-code/claude-opus-5`, push, and open a pull request into `main`
                from .github/pull_request_template.md with `Closes #<issue>` and the same Generated-by
                line — plain `gh pr create`, since the base GitHub offers by default is `main`, the
@@ -145,9 +145,9 @@ jobs:
             needs a paired simulation (`sim paired`) in the pull request, as AGENTS.md says; if you
             cannot provide one, comment on the issue instead of opening the pull request.
 
-            A commit whose `Generated-by:` names a system that is not yet in AI-PROVENANCE.md reddens
+            A commit whose `Generated-by:` names a system that is not yet in docs/AI-PROVENANCE.md reddens
             the provenance check on the first pull request that carries it; section 0 of
-            CONTRIBUTING.md says how that file is regenerated, and regenerating it belongs in that
+            docs/CONTRIBUTING.md says how that file is regenerated, and regenerating it belongs in that
             pull request.
           claude_args: |
             --model claude-opus-5

@@ -54,7 +54,7 @@ true, and a green check is not a claim about who wrote the code.
   enforces, and how a change is reviewed.
 - `docs/LESSONS.md` — why the rules are what they are, as mistakes this project already paid for.
   Most of `AGENTS.md` is in there with a better explanation.
-- `CONTRIBUTING.md` — the standard a change is held to, with every **MUST** marked.
+- `docs/CONTRIBUTING.md` — the standard a change is held to, with every **MUST** marked.
 - `docs/ARCHITECTURE.md` — processes, crates and the decision path; `docs/OPERATIONS.md` is the
   runbook.
 

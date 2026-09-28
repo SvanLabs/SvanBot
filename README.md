@@ -28,8 +28,8 @@
 > working under a human operator's direction — and so are the **issues, pull requests and review
 > comments**. Every commit, issue and pull request carries a `Generated-by: <tool>/<model>` line
 > naming the system that produced it; `AGENTS.md` states the rule and
-> [`CONTRIBUTING.md`](CONTRIBUTING.md) §0 states what this project accepts.
-> [`AI-PROVENANCE.md`](AI-PROVENANCE.md) is the roster of systems on record, generated from those
+> [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) §0 states what this project accepts.
+> [`docs/AI-PROVENANCE.md`](docs/AI-PROVENANCE.md) is the roster of systems on record, generated from those
 > trailers and checked by the gate — and it says there what such a roster does not prove.
 >
 > Changes pass the automated gate described below, but **no line-by-line human review is
@@ -55,7 +55,7 @@ Find the row that fits you. Each one is a short path, read in order, and says wh
 |---|---|---|
 | 🎮 **Run a fleet** on your own machine | [Quick start](#-quick-start) → [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | the control room at `http://127.0.0.1:5000` shows your bots seated |
 | 🔍 **Understand how it plays** | [How a decision is made](#-how-a-decision-is-made) → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → [`docs/GUIDE.md`](docs/GUIDE.md) | you can follow one decision from the table state to the action sent |
-| 🛠️ **Make your first change** | [Your first pull request](#-your-first-pull-request) → [`CONTRIBUTING.md`](CONTRIBUTING.md) | CI is green on your pull request |
+| 🛠️ **Make your first change** | [Your first pull request](#-your-first-pull-request) → [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | CI is green on your pull request |
 | 🤖 **You are an AI agent** | [`llms.txt`](llms.txt) for the running-it-in-one-command path, then [`AGENTS.md`](AGENTS.md) and the issue you were given | `scripts/check.sh full` passes and your pull request names you |
 
 Not sure which one? The [documentation map](docs/README.md) lists every document with the question
@@ -361,7 +361,7 @@ it from an archive you supply.
 
 You are welcome here, and **you are expected to bring an agent**. Every change in this repository
 is made by an AI coding agent that a person directs — Claude Code, Codex, Aider, whichever you use —
-and hand-written contributions are declined however good they are ([`CONTRIBUTING.md`](CONTRIBUTING.md) §0).
+and hand-written contributions are declined however good they are ([`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) §0).
 Directing the agent well is the contribution.
 
 1. **Pick an issue.** Start with
@@ -426,15 +426,15 @@ Ground rules, each learned the hard way ([`docs/LESSONS.md`](docs/LESSONS.md) ha
 |---|---|
 | Point an AI agent at this repository | 🤖 [`llms.txt`](llms.txt) — the whole project in one page, written for a model to act on |
 | See every document and the question it answers | 🗺️ [`docs/README.md`](docs/README.md) — the documentation map |
-| See which AI systems are on record for this repository | 🏷️ [`AI-PROVENANCE.md`](AI-PROVENANCE.md) — the roster, generated from the commit trailers |
+| See which AI systems are on record for this repository | 🏷️ [`docs/AI-PROVENANCE.md`](docs/AI-PROVENANCE.md) — the roster, generated from the commit trailers |
 | Run, update, back up or troubleshoot a fleet | 🧰 [`docs/OPERATIONS.md`](docs/OPERATIONS.md) |
 | Use the control room and understand what it shows | 📖 [`docs/GUIDE.md`](docs/GUIDE.md) — also the dashboard's `/docs` page |
 | Understand the processes, the crates and the decision path | 🏛️ [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Know why a rule exists before you change it | 📝 [`docs/LESSONS.md`](docs/LESSONS.md) |
-| Look up a term — flagship bot, fleet, season record | 📘 [`CONTEXT.md`](CONTEXT.md) |
+| Look up a term — flagship bot, fleet, season record | 📘 [`docs/CONTEXT.md`](docs/CONTEXT.md) |
 | Work on the protocol, the store, the learner or the dashboard API | 🔌 [`SPEC-protocol`](docs/SPEC-protocol.md) · 💾 [`SPEC-data`](docs/SPEC-data.md) · 🧠 [`SPEC-learner`](docs/SPEC-learner.md) · 🖥️ [`SPEC-dashboard`](docs/SPEC-dashboard.md) |
 | Cut a release | 📦 [`docs/RELEASE.md`](docs/RELEASE.md) |
-| Ask a question or report a vulnerability | 💬 [`SUPPORT.md`](SUPPORT.md) · 🔒 [`SECURITY.md`](SECURITY.md) |
+| Ask a question or report a vulnerability | 💬 [`docs/SUPPORT.md`](docs/SUPPORT.md) · 🔒 [`docs/SECURITY.md`](docs/SECURITY.md) |
 
 ## ♟️ Fair play
 
@@ -449,7 +449,7 @@ API keys stay out of source control, and the pre-commit hook refuses them.
 ## 📄 License
 
 Dual-licensed under [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE), at your option.
-Third-party components are listed in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+Third-party components are listed in [`docs/THIRD-PARTY-NOTICES.md`](docs/THIRD-PARTY-NOTICES.md).
 
 <div align="center">
 <sub>♣️ Built to top the leaderboard by maximising expected chips, through the gates, never by gambling. ♦️</sub>

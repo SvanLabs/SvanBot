@@ -185,7 +185,7 @@
     `scripts/check-file-size.sh` refuses outright — it is not grandfathered in
     `scripts/file-size-baseline.txt`, and `--baseline` is an operator decision precisely so that a file
     born oversized cannot be blessed into it. The same batch was the first to move the dependency set
-    since the notices were generated, so `THIRD-PARTY-NOTICES.md` went stale under it, and a rustfmt
+    since the notices were generated, so `docs/THIRD-PARTY-NOTICES.md` went stale under it, and a rustfmt
     drift sat in a file (`learner/search/tests.rs`) that no one had reason to look at again.
     *Rule*: before the full gate, run its cheap checks over the whole batch —
     `scripts/check-file-size.sh`, `cargo fmt --all --check`, `scripts/notices.py --check`,

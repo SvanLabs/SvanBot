@@ -24,7 +24,7 @@ result; the agent writes the code, the tests, the commits and the pull request.
    `fix/split-pots-all-folded`, `fix/localstorage-guard`. `main` is the default branch and the
    released line, and a pull request opened without a base already targets it, so the base needs no
    setting. The branch is deleted when the pull request merges.
-3. **Brief your agent.** Give it [`AGENTS.md`](AGENTS.md) and the issue. For a bug, ask for a
+3. **Brief your agent.** Give it [`AGENTS.md`](../AGENTS.md) and the issue. For a bug, ask for a
    failing test first: a fix lands with a test that fails on the old code (section 8).
 4. **Iterate on the fast loop.** `python3 scripts/test.py <filter>` runs only the tests you touched,
    in seconds, and `scripts/check.sh commit` is what the pre-commit hook runs.
@@ -133,7 +133,7 @@ author is already `<name>[bot]` is exempt, because the author field has already 
 a bot-opened pull request as well as a bot-authored commit: Dependabot's pull request body is
 Dependabot's, and the login GitHub reports for whoever opened it says so.
 
-`AI-PROVENANCE.md` is the roster of systems on record, read from the same trailers, and
+`docs/AI-PROVENANCE.md` is the roster of systems on record, read from the same trailers, and
 `scripts/provenance.py report --check` keeps it current — it fails when a system has commits that the
 document does not list, so a system's first commit is a red gate until the file is regenerated. It
 compares the set of systems and not the counts beside them: a count moves with every commit, and a
@@ -298,7 +298,7 @@ Because agents and reviewers read this code in pieces:
 ## 9. Dependencies and performance
 
 - **MUST**: a new third-party dependency needs a stated reason, goes into `[workspace.dependencies]`,
-  passes `cargo deny` (licenses, bans, sources, advisories) and updates `THIRD-PARTY-NOTICES.md`
+  passes `cargo deny` (licenses, bans, sources, advisories) and updates `docs/THIRD-PARTY-NOTICES.md`
   (`scripts/notices.py`). Prefer std or our own `deps/` crates.
 - **MUST**: no performance change without a measurement (LESSONS 1, 3, 6): state the benchmark and the
   numbers in the commit or ticket; document performance-sensitive decisions where they live.
