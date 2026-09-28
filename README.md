@@ -315,6 +315,11 @@ flowchart LR
 A failed run changes nothing, and the checkout returns to where it was. **Roll back to a saved
 build** uses the same bar. `scripts/update.sh` does the same from a terminal.
 
+The button fast-forwards the checkout onto **one branch**: `SVANBOT_UPDATE_BRANCH`, `main` by default
+— the released line, which moves only when `dev` is promoted to it. A fresh `git clone` lands on
+`dev`, the default branch where work lands, so an install that should follow development instead sets
+`SVANBOT_UPDATE_BRANCH=dev` in `.env` (the reference fleet does exactly that).
+
 </details>
 
 <details>
@@ -327,6 +332,7 @@ All settings live in `.env` (gitignored, mode 600; see `.env.example`).
 | `SVANBOT_WEB__HOST` | Dashboard bind address | `127.0.0.1` |
 | `SVANBOT_WEB_PORT` | Dashboard port | `5000` |
 | `SVANBOT_WEB__OPERATOR_TOKEN` | Required before the dashboard is reachable from other machines | unset |
+| `SVANBOT_UPDATE_BRANCH` | Branch the Update button fetches and fast-forwards to | `main` |
 | `SVANBOT_ARCHIVE_DIR` | Second-disk directory for archives and the hourly backup mirror | `artifacts/archive` |
 
 Without an operator token the dashboard accepts changes only on a loopback address. Runtime data —
