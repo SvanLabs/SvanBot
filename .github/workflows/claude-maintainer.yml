@@ -55,6 +55,11 @@ jobs:
           # claude[bot] or a person's account.
           bot_id: "334763394"
           bot_name: "svanlabs[bot]"
+          # The action refuses a run whose actor is a bot unless the bot is named here. A dispatch from
+          # the SvanLabs app is exactly that: it failed with `Workflow initiated by non-human actor:
+          # svanlabs (type: Bot)`. The review and triage workflows carry the same line for the runs the
+          # app starts on their events.
+          allowed_bots: "svanlabs"
           github_token: ${{ steps.app-token.outputs.token || github.token }}
           prompt: |
             You maintain ${{ github.repository }}. Read AGENTS.md and CONTRIBUTING.md first and follow them exactly.
