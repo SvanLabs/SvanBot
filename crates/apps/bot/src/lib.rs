@@ -47,6 +47,8 @@ pub mod seasons;
 pub mod setup;
 pub mod stories;
 pub mod tasks;
+#[cfg(test)]
+pub(crate) mod testlog;
 pub mod watchdog;
 
 // Extracted crates live at their own paths (`sv10_store::<module>`, `sv10_rt`, `sv10_venue::<module>`);

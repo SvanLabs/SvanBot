@@ -86,6 +86,27 @@ fn backup_rotation_keeps_the_newest_copies_and_their_seals() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// #326 made a copy that will not rotate out say so; #347 is the log capture that lets a test read it.
+#[test]
+fn a_backup_that_cannot_be_rotated_out_is_reported_and_a_clean_rotation_is_silent() {
+    let stuck = dir("rotate-stuck");
+    // The oldest "copy" is a directory, which `remove_file` refuses as it would a busy one.
+    std::fs::create_dir(stuck.join("svanbot10-2026092410.db")).unwrap();
+    for h in 11..14 {
+        std::fs::write(stuck.join(format!("svanbot10-20260924{h}.db")), "x").unwrap();
+    }
+    let ((), log) = crate::testlog::capture(|| super::backup::rotate_backups_keeping(&stuck, 3, 1));
+    assert!(log.contains("could not rotate out") && log.contains("svanbot10-2026092410.db"), "{log}");
+
+    let clean = dir("rotate-clean");
+    for h in 10..14 {
+        std::fs::write(clean.join(format!("svanbot10-20260924{h}.db")), "x").unwrap();
+    }
+    let ((), log) = crate::testlog::capture(|| super::backup::rotate_backups_keeping(&clean, 3, 1));
+    assert_eq!(log, "", "a rotation that worked has nothing to report");
+    let _ = (std::fs::remove_dir_all(&stuck), std::fs::remove_dir_all(&clean));
+}
+
 #[test]
 fn hourly_backups_are_moved_to_the_second_disk_and_keep_the_newest() {
     let d = dir("mirror");
