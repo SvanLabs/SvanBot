@@ -97,6 +97,8 @@ DEV=target/dev
 mkdir -p "$DEV"
 # Only the shipped build carries the commit id: cargo tracks SVANBOT_COMMIT, so exporting it to lint
 # and the test build recompiled sv10-bot in both on every release (60 s of a one-file release).
+# `scripts/tests/test_build_env.py` pins those call sites, so a job added here that builds into the
+# gate's cache cannot quietly carry the commit (#329).
 start_job() {
   local name=$1 dir=$2 commit_id=$3; shift 3
   (
