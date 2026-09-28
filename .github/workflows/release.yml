@@ -28,11 +28,11 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - run: cd web && npm ci
@@ -42,7 +42,7 @@ jobs:
           f=$(ls target/dist/*.tar.gz)
           (cd target/dist && sha256sum "$(basename "$f")" > "$(basename "$f").sha256")
           echo "file=$f" >> "$GITHUB_OUTPUT"
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ steps.out.outputs.file }}
       - run: gh release upload "$TAG" "${{ steps.out.outputs.file }}" "${{ steps.out.outputs.file }}.sha256" --clobber
@@ -58,7 +58,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'pull_request' && github.sha || env.TAG }}
       # The container artifact only exists from the commit that added the Dockerfile, and a tag can
@@ -85,16 +85,16 @@ jobs:
             echo "this tag built from that ref would not be this release."
           } >> "$GITHUB_STEP_SUMMARY"
       - if: steps.dockerfile.outputs.present == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - if: steps.dockerfile.outputs.present == 'true' && github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - if: steps.dockerfile.outputs.present == 'true'
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -108,7 +108,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - if: steps.dockerfile.outputs.present == 'true' && github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/svanlabs/svanbot
           subject-digest: ${{ steps.push.outputs.digest }}

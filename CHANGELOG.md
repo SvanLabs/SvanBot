@@ -24,10 +24,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`main` keeps itself current** (#370). `main` is the released line — what everyone who installs
+  SvanBot runs and updates from — and it moved only when someone remembered to open the promotion
+  pull request, so it drifted: it was promoted once and was behind again within the hour.
+  `scripts/promote.sh` now keeps a promotion pull request open with auto-merge armed, and
+  `.github/workflows/promote.yml` runs it whenever `dev`'s gate goes green, so `main` follows green
+  `dev` by itself and never carries a build that failed.
 - The Claude workflows act as the SvanLabs GitHub App (`svanlabs[bot]`) (#355).
 
 ### Fixed
 
+- **Every Dependabot pull request carried a failed review check** (#375). GitHub withholds Actions
+  secrets from a workflow a bot triggered, so `CLAUDE_CODE_OAUTH_TOKEN` reached the review empty and
+  the run died on a credential it was never given. The check was red on every dependency bump and
+  said nothing about the bump. The review job is now skipped for a Dependabot-opened pull request;
+  the gate still checks the bump.
 - **A fleet set to `dev` could not install a release** (#365). The gate's update test builds a fixture
   whose origin has only `main`, and its list of ambient variables to clear missed the three settings
   `scripts/update.sh` reads for where it fetches from. With `SVANBOT_UPDATE_BRANCH=dev` exported — what
