@@ -10,8 +10,11 @@ export async function request<T>(path: string, body?: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  const data = await response.json().catch(() => ({ detail: 'Request failed' }));
-  if (!response.ok) throw new Error((data as { detail?: string }).detail || `Request failed (${response.status})`);
+  const data = await response.json().catch(() => {
+    if (response.ok) throw new Error(`Invalid JSON response (${path})`);
+    return null;
+  });
+  if (!response.ok) throw new Error((data as { detail?: string } | null)?.detail || `Request failed (${response.status})`);
   return data as T;
 }
 

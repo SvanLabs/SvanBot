@@ -542,7 +542,8 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Docs | This documentation |
 | Bot setup (Settings → Open bot setup, or `#setup`) | Add, rename, reorder, switch off or remove bots, paste and check API keys, set the maximum buy-in and table seeking; saves to `.env` and restarts the fleet between turns |
 
-Big wins pop up as toasts in the corner.
+Big wins pop up as toasts in the corner. An unreadable API response is reported as a failed read
+in its panel instead of being rendered as data.
 
 ---
 
