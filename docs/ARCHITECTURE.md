@@ -13,6 +13,8 @@ SQLite storage, React dashboard. User-facing guide: `docs/GUIDE.md` (served on t
 dashboard). Planning and decisions: the issue tracker, <https://github.com/SvanLabs/SvanBot/issues>.
 Specs: `SPEC-protocol.md`, `SPEC-data.md`, `SPEC-learner.md`; runbook `OPERATIONS.md`.
 
+The simulator reopens betting after cumulative short all-ins when the increase since an actor's last matched street bet reaches the last full raise. Raise rights are actor-specific; the minimum increment remains the last full raise.
+
 ## Processes
 
 ```
@@ -37,7 +39,7 @@ docs page from `diagram:` fences in `docs/GUIDE.md`; keep the two in step.
 
 | Process | Binary | Role |
 |---|---|---|
-| Fleet | `sv10-bot` | One tokio task per bot: connect, seat, track the table, decide, act; stores hands before models; serves the dashboard API; hourly checked backups; replay records of big decisions; a hand in progress when the process exits (hot swap or stop) is saved for the next one, which settles it from the resync replay's `hand_result` — stored once, with its real net. Split mode (`SVANBOT_FLEET=split`) runs one head process (dashboard, background tasks, canonical models via the hand tailer) plus one worker per bot (`SVANBOT_WORKER=1` + `SVANBOT_ONLY=name`): workers write hand rows, heartbeat `bot.live.<name>` every 5 s and obey `bot.want.<name>`; default is the single all-in-one process |
+| Fleet | `sv10-bot` | One tokio task per bot: connect, seat, track the table, decide, act; stores hands before models; serves the dashboard API; hourly checked backups; replay records of big decisions; a hand in progress when the process exits (hot swap or stop) is saved for the next one, which settles it from the resync replay's `hand_result` — stored once, with its real net. Earlier unrelated replay results keep that saved start available until its matching result arrives. Split mode (`SVANBOT_FLEET=split`) runs one head process (dashboard, background tasks, canonical models via the hand tailer) plus one worker per bot (`SVANBOT_WORKER=1` + `SVANBOT_ONLY=name`): workers write hand rows, heartbeat `bot.live.<name>` every 5 s and obey `bot.want.<name>`; default is the single all-in-one process |
 | Learner | `learner` | Clone-fitted opponent population, neural response model training, successive-halving champion/challenger search, daily range refit via `calibrate`; refreshes run on the hands as they arrive, champion searches paced by new hands and an operator-set cooldown; every job a stored run taken in steps of at most ~2 min (`sv10_bot::learner`) |
 | Analyst | `analyst` | Measures the wiring table daily when idle (`wiring.v1`). Re-solves every live decision from the `audit_queue` with a deep search (10x the live budget, 16M samples on every core on the i7-4770K) and records whether the live choice matched and the EV it gave up under the record's own parameters, self-calibration included, which is post-pricing tactics and never a pricing error (`decision_audit`); when the queue is empty it re-runs the newest big-spot replays under a changed champion — the champion's knobs at the **recorded decision's own prices and live-fitted set**, adopted through the one `Params` method the promotion contract shares (`adopt_recorded_local`), so the only thing that varies against the recorded action is the knob set (previously the re-solve ran on `params.v1` alone, which by that same contract carries no live fits, so the flip rate over-attributed disagreement to the champion) — over a sample pinned to the current replay version (`REPLAY_VERSION`: a pre-v3 record carries no per-opponent corrections), in slices of at most 100 s between audit batches; it stores the drift summary in `analyst.drift` once complete, naming the basis tag, the budget (the analyst's 10x, the one deliberate difference from the recorded action), the population (replay ids, window, version mix, rows the filter dropped) and where the prices came from, and re-measures rather than accepting a row whose tag is missing or older — `review drift` prints that row and says whether it is current or due (the number is read against a standing threshold); never changes play |
 | Ingest | `ingest` | Imports other data sources into the corpus (archive frames, PHH files; read-only sources, resumable batches) and A/B-measures a source on the neural model |
@@ -96,7 +98,7 @@ sv10-cards ─┬─ sv10-equity ─┐
 | `sv10-venue` (protocol logic, no network) | `tracker` (openpoker frames → situations/hands, `replay`), `statehash` (server `state_hash` verification) |
 | `sv10-store` (persistence) | `store` (SQLite: hands, decisions, replay records, calibration, kv, events; digests), `packed` (compressed cold JSON columns: codec, dictionaries, compaction batches, data format), `integrity` (checks, sealed backups, quarantine/restore), `archive` (daily/weekly/monthly archives, manifests, verified restore) |
 | `sv10-rt` (runtime helpers, no third-party runtime) | `.env` loader, v4 ids, `statvfs` free space |
-| `sv10-bot` (I/O, drivers; uses `sv10-rt`, `sv10-store`, `sv10-venue` at their own paths, no re-export fan) | `client` (openpoker connection; `client::seat` owns the seat lifecycle and the between-hands table moves), `setup` (dashboard bot setup → `.env`), `replay` (big-decision records and bit-exact re-runs), `history` (server exports, corpus, model import), `compaction` (packs stored cold JSON in the background, VACUUMs `history.db`), `neural`, `livefits` (the one module every live fit goes through: refit, load, install, report), `foldcal` + `raisewar` (the fits), `pacing` (learner cycle gate), `installs` (everything live play installs from the store — promoted params, neural and range models, compute profile, live fits, per-opponent corrections — with one rule: a failed read keeps what is installed, and dependent read failures leave profile changes pending for retry), `jobs` (background job runner that logs a panicking job by name, and any job over the two-minute budget), `learner` (the learner's refresh and search as stored steps), `watchdog` (autonomy watchdog: learner, analyst, fold calibration, backup and the experiment poller's heartbeats against their limits, logged on each change), `margins` (calibration at the decision margin), `playersize` (per-opponent river sizing tells, store side); the statistics they share are in `sv10-stats`; `tasks` (periodic jobs), `api/*` (dashboard), `analysis`, `headtohead`, `reputation`, `guide`, `config`, `live` |
+| `sv10-bot` (I/O, drivers; uses `sv10-rt`, `sv10-store`, `sv10-venue` at their own paths, no re-export fan) | `client` (openpoker connection; `client::seat` owns the seat lifecycle and the between-hands table moves), `setup` (dashboard bot setup → `.env`), `replay` (big-decision records and bit-exact re-runs), `history` (server exports, corpus, model import), `compaction` (packs stored cold JSON in the background, VACUUMs `history.db`), `neural`, `livefits` (the one module every live fit goes through: refit, load, install, report), `foldcal` + `raisewar` (the fits), `pacing` (learner cycle gate), `installs` (everything live play installs from the store — promoted params, neural and range models, compute profile, live fits, per-opponent corrections — with one rule: a failed read keeps what is installed, including either key of the network-specific response correction; dependent read failures leave profile changes pending for retry), `jobs` (background job runner that logs a panicking job by name, and any job over the two-minute budget), `learner` (the learner's refresh and search as stored steps), `watchdog` (autonomy watchdog: learner, analyst, fold calibration, backup and the experiment poller's heartbeats against their limits, logged on each change), `margins` (calibration at the decision margin), `playersize` (per-opponent river sizing tells, store side); the statistics they share are in `sv10-stats`; `tasks` (periodic jobs), `api/*` (dashboard), `analysis`, `headtohead`, `reputation`, `guide`, `config`, `live` |
 
 Clean `cargo build --release --workspace --bins` (no LTO, 256 codegen units, incremental): about
 3 min on this box at 8 idle-priority threads; a one-file change rebuilds in ~16 s.
@@ -132,6 +134,9 @@ counts the share over the fleet's own decisions).
    the champion). The two pair bots swap arms every 120 hands.
 2. On `your_turn`, `tracker.situation` builds a `Situation`; `policy::decide_with` runs on a blocking
    thread with an 8 s timeout (fallback: legal check/fold).
+   Missing local decision state sends that safe action immediately and then requests one resync
+   per table/hand. The sent token stays answered, so an incomplete snapshot cannot double-act or
+   create a resync loop; recovered cards and seats are available to later turns.
 3. `decide_with` first returns uncallable chips to their owner (`Situation::without_uncallable`),
    reconstructs each opponent's range (`oprange`), samples shared deals (live: `tuning.live_samples`,
    640x the learner's budget on a reference-speed machine, scaled down on slower ones (up to 1.6M samples, about 190 ms p50; previously 160x), dealt in one seeded chunk per logical core by `SharedDeals::new_parallel` (heads-up with a flop or later, when every opponent combo × board completion fits the budget, the deals are the exact enumeration instead, each weighted by its combo's range weight: the river always, the turn and flop live; zero sampling noise and faster) and
@@ -165,9 +170,13 @@ counts the share over the fleet's own decisions).
 5. The decision's full inputs (`ReplayRecord`) go to `audit_queue` for the analyst; big spots also to `replays`.
 6. `hand_result` → hand row stored (with digest, and for an experiment hand its `hand_provenance`
    row in the same transaction) → opponent models updated, except after a treatment hand, which also
-   writes no self-calibration samples.
+   writes no self-calibration samples. A result for a hand the seated hero only watched still updates
+   the table and its between-hands lifecycle, but is not stored, counted, emitted as a hero result or
+   used to learn the fleet's image. Dealt players, private cards or a hero action establish participation;
+   a played hand with an unknown net remains stored rather than being mistaken for a watched hand.
 
-**Opponent tallies are recency-weighted**: each live observation first decays that player's
+**Opponent tallies are recency-weighted**: schema recovery preserves the configured half-life
+before replaying stored hands. Each live observation first decays that player's
 decision tallies by `0.5^(1/1000)` (`ModelStore::half_life_hands`, `OPPONENT_HALF_LIFE_HANDS`); hand
 counts and the population prior are not decayed. `review opponent-adapt` scores the newer half of the
 stored hands under a range of half-lives and prints each one's gain over all-time tallies. The image
@@ -199,7 +208,7 @@ of our own play decays on the same cadence, so it describes how we have been pla
 - **Learner**: each successive-halving round plays the champion once per table and schedules every
   (candidate, table) run on one rayon pool (`sim::paired_eval_many`, bit-identical to separate
   `paired_eval` calls). Neural response features are extracted sequentially in chronological order:
-  each hand sees only profiles observed before it, then advances those profiles.
+  each hand sees only profiles observed before it, then advances those profiles. Training stack features include posted blinds from each seat's first preflop record, including a big-blind check, matching the live chips-behind context.
 
 ## Season scope in the dashboard
 
@@ -232,3 +241,5 @@ earned across a rollover.
   their baselines on held-out live data.
 - External archives are opened read-only and immutable; every database is integrity-checked before use.
 - Speed-only changes must reproduce `sim paired` results exactly on a fixed seed.
+
+Showdown-win tallies include a seat winning any main or side pot. Shown ranks are compared only against seats covering that pot; unreconstructable contributions leave this tally unobserved.

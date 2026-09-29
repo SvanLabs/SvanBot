@@ -65,6 +65,8 @@ pub fn resolve(store: &Store, bots: &[BotConfig], aliases: &str) -> HashMap<Stri
                 known.push(name.clone());
             }
         }
+        known.retain(|name| name != &bot.name);
+        known.insert(0, bot.name.clone());
         if known != before
             && let Err(e) = store.put_kv(&key, &serde_json::to_string(&known).unwrap_or_default())
         {
@@ -119,6 +121,12 @@ mod tests {
         assert_eq!(resolve(&s, &[bot("SvanBotV10", "key-main")], "")["SvanBotV10"], ["SvanBotV10", "SvanBotV7"]);
         // A future rename in .env needs no setting at all: the key links the names.
         assert_eq!(resolve(&s, &[bot("SvanBotV11", "key-main")], "")["SvanBotV11"], ["SvanBotV11", "SvanBotV10", "SvanBotV7"]);
+        let current = current_names(&s);
+        for name in ["SvanBotV7", "SvanBotV10", "SvanBotV11"] {
+            assert_eq!(current[name], "SvanBotV11", "CLI identity must follow the same rename as the dashboard");
+        }
+        resolve(&s, &[bot("SvanBotV10", "key-main")], "");
+        assert_eq!(current_names(&s)["SvanBotV11"], "SvanBotV10", "renaming back also moves the current name to the front");
     }
 
     #[test]

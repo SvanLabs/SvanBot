@@ -1,5 +1,4 @@
 # path lines — files over 500 lines when the limit was adopted (may shrink, never grow)
-crates/apps/bot/src/api/insights.rs 740
 crates/apps/bot/src/api/state.rs 939
 crates/apps/bot/src/bin/review.rs 546
 crates/apps/bot/src/raisewar.rs 520

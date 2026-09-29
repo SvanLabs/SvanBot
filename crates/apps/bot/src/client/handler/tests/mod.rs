@@ -436,6 +436,7 @@ async fn a_state_hash_mismatch_is_counted_and_keeps_a_truthful_verdict() {
     assert_eq!(incidents[1].verdict, "STALE", "a replayed frame is still told apart from a divergence");
 }
 
+mod participation;
 mod recover;
 
 /// Spec (reconnection-idempotency, recovery loop guard): only a *player* resync ends recovery. After an

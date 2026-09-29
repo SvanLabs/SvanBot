@@ -64,7 +64,8 @@ pub fn recover_models(store: &store::Store, models: &mut ModelStore) -> Result<(
     if models.schema < sv10_core::model::MODEL_SCHEMA {
         // New statistics were added: rebuild everything from the stored hand history.
         let rows = store.hands_after(0)?;
-        let mut rebuilt = ModelStore { schema: sv10_core::model::MODEL_SCHEMA, ..Default::default() };
+        let mut rebuilt =
+            ModelStore { schema: sv10_core::model::MODEL_SCHEMA, half_life_hands: models.half_life_hands, ..Default::default() };
         for (rowid, bot, summary) in &rows {
             if let Ok(h) = serde_json::from_str::<sv10_core::model::HandSummary>(summary) {
                 rebuilt.observe_own_hand(&h, bot, 1.0);
@@ -95,6 +96,20 @@ pub fn recover_models(store: &store::Store, models: &mut ModelStore) -> Result<(
 #[cfg(test)]
 mod tests {
     use sv10_store::store::HandRow;
+
+    #[test]
+    fn rebuilding_an_old_checkpoint_keeps_the_configured_recency() {
+        use sv10_core::model::{MODEL_SCHEMA, ModelStore};
+        use sv10_store::store::Store;
+        let d = std::env::temp_dir().join(format!("sv10-rebuild-recency-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let store = Store::open(&d.join("svanbot10.db")).unwrap();
+        let mut models = ModelStore { schema: MODEL_SCHEMA - 1, half_life_hands: crate::OPPONENT_HALF_LIFE_HANDS, ..Default::default() };
+        super::recover_models(&store, &mut models).unwrap();
+        assert_eq!(models.schema, MODEL_SCHEMA);
+        assert_eq!(models.half_life_hands, crate::OPPONENT_HALF_LIFE_HANDS);
+    }
 
     #[test]
     fn fold_new_hands_advances_the_watermark_past_bad_rows() {

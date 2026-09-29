@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
-import { readLocal } from './storage';
+import { readLocal, writeLocal } from './storage';
 
 /** Table sounds (0181), synthesised with WebAudio so there are no asset files. Off by default; the
  * header toggle is remembered per browser. The selected bot's table plays card flicks, chips on bets
@@ -89,7 +89,7 @@ export function SoundToggle({ selectedSlot, bigBlind }: { selectedSlot?: number;
   const toggle = () => {
     const next = !on;
     setOn(next);
-    try { localStorage.setItem(KEY, next ? 'on' : 'off'); } catch { /* private mode: session only */ }
+    writeLocal(KEY, next ? 'on' : 'off');
     if (next) sounds.win(); // the click unlocks audio and previews it
   };
   return <button className={`icon-button sound-toggle ${on ? 'on' : ''}`} title={on ? 'Sound on' : 'Sound off'} aria-label={on ? 'Turn table sounds off' : 'Turn table sounds on'} aria-pressed={on} onClick={toggle}>
