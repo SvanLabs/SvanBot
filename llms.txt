@@ -18,7 +18,7 @@ reference machine — anything newer is faster.
 git clone https://github.com/SvanLabs/SvanBot.git && cd SvanBot
 scripts/setup.sh                     # toolchains, .env (mode 600, random dashboard password), build, test
 $EDITOR .env                         # put the key in SVANBOT_API_KEY, and a bot name
-scripts/start.sh                     # fleet + learner + dashboard
+scripts/start.sh                     # fleet + learner + analyst + dashboard
 ```
 
 The dashboard is then at `http://127.0.0.1:5000` (host and port come from `.env`; the password is the
@@ -29,6 +29,10 @@ this box.
 The clone lands on `main`, the default branch and the released line. Every pull request targets
 `main`, and a pull request opened without a base already does. Updates follow one branch,
 `SVANBOT_UPDATE_BRANCH` (`main` by default, `SVANBOT_UPDATE_REMOTE` default `origin`).
+Merging a tested pull request makes its changes available to the fleet's next Update. Use the
+dashboard's Update button or `scripts/update.sh` to build, test and install from a clean checkout;
+processes hot-swap at safe points. Confirm the installed build with `/api/health`. A merge alone
+does not mean a running fleet has installed it, and a version tag is not needed for this update path.
 
 That is one command to a working fleet, but **the first build is the wait** — a full workspace compile
 and a `cargo test` on the reference CPU, not two minutes. Later runs are incremental.
@@ -46,14 +50,22 @@ These are the mistakes an agent makes here, in the order they are usually made.
 
 1. **Never build into `target/release` while a fleet is running.** A release build lands in the
    directory live processes hot-swap from, so an untested build reaches play. Use
-   `CARGO_TARGET_DIR=target/dev cargo build` — every script here already defaults to it.
+   `CARGO_TARGET_DIR=target/dev cargo build --release` for an isolated release build. Keep
+   `target/dev` relative to the checkout doing the build; never share Cargo output across worktrees.
+   Use an isolated checkout when the running fleet's source has someone else's uncommitted changes.
 2. **`SVANBOT_API_KEY` lives in `.env` only.** It is gitignored and the pre-commit hook refuses a
-   commit containing a key. Never put it in a file, an issue, a pull request or a log you paste.
+   commit containing a key. Keep credentials out of tracked files, issues, pull requests and logs
+   you paste; do not print authentication tokens when checking your GitHub identity.
 3. **`scripts/check.sh full` is the gate, and it is also CI.** A red run here and a red run there are
-   the same failure with the same fix. Run it before pushing, not after.
-4. **Every commit and pull request needs `Generated-by: <tool>/<model>`** in the footer/body — e.g.
+   the same failure with the same fix. Run it on the exact committed head before pushing.
+   It typechecks browser specs but does not run them: web changes also need `npm run build` and
+   `npx playwright test --workers=2` from `web/`, against a freshly built isolated bot binary.
+   Use `scripts/check.sh deep` for engine, evaluator, learner or broad audit changes; it raises
+   the property-test budget to 100,000 cases.
+4. **Every commit, issue and pull request needs `Generated-by: <tool>/<model>`** in the footer/body — e.g.
    `Generated-by: claude-code/claude-opus-5`. `scripts/provenance.py check` enforces it and the gate
-   runs that check, so an artifact without the line does not merge.
+   runs that check, so an artifact without the line does not merge. SvanLabs automation uses
+   svanlabs[bot] (GitHub app/svanlabs), including issue claims, commits and merges.
 5. **`.cargo/config.toml` compiles for the machine doing the compiling** (`-C target-cpu=native`).
    That is right for a fleet that only runs where it was built and wrong anywhere the binary travels;
    `Dockerfile` and `scripts/portable.sh` override it, and anything shipped must.
@@ -67,8 +79,21 @@ crate layering that a change must not break. `docs/LESSONS.md` explains why the 
 are, as mistakes this project has already paid for. `docs/README.md` maps every document to the
 question it answers.
 
-A change to the decision path or to stored data needs a paired simulation on identical cards, and a
-speed-only change must reproduce the reference simulation exactly. The gate enforces the rest.
+Start from an `agent-friendly` issue, read its named code, and claim it before working. File verified
+findings with their evidence; unresolved strategy hypotheses stay separate from reproducible bugs.
+Write the failing regression first for a bug, then run the targeted test while fixing it. Keep one
+change in one layer and one short-lived branch from `main`; open its pull request into `main`.
+The tracker and domain conventions live in `docs/agents/issue-tracker.md` and `docs/agents/domain.md`.
+
+Poker libraries under `crates/libs/` do not access the network, database or clock;
+application drivers under `crates/apps/` own live I/O.
+The dashboard API contract is `web/src/types.ts`. Every outgoing action must be in `valid_actions`
+and echo the authoritative `hand_id` and `turn_token`.
+
+A behavior change needs a paired simulation on identical cards; a performance change needs a
+same-machine comparison against the previous commit. Explain each intended golden snapshot change
+before regenerating it. Learned parameter promotion still requires a 95% lower bound above
++1 bb/100 in sequential fresh-deal confirmation; an audit does not bypass this gate.
 
 ## Docs
 
@@ -83,6 +108,7 @@ against, and where your pull request goes.
 - [docs/LESSONS.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/LESSONS.md): why the rules exist, as escaped defects.
 - [docs/RELEASE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/RELEASE.md): how a version is cut and published.
 - [docs/CONTRIBUTING.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/CONTRIBUTING.md): the standard a change is held to, every MUST marked.
+- [docs/agents/issue-tracker.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/agents/issue-tracker.md): issue readiness, claims and shared decision tickets.
 - [README.md](https://github.com/SvanLabs/SvanBot/blob/main/README.md): the human front page — highlights, architecture diagrams, quick start.
 
 ## Runtime data
@@ -91,3 +117,10 @@ No databases, no archives, no player data and no screenshots of live play are in
 `scripts/fetch-data.sh` restores runtime data from an archive an operator supplies. An agent starting
 from a fresh clone has an empty store, which is the normal first-boot state — the fleet will fetch
 hands from the venue as it plays.
+
+For a running fleet, inspect SQLite with a read-only, WAL-aware connection and a read transaction;
+never use immutable mode on a live database. Use a frozen snapshot for reproducible hand analysis.
+Count hands the bot actually played, retain recorded result availability, and merge historical bot
+aliases under the current identity. When asked for the latest hands per bot, select each bot's
+cohort independently. Missing evidence is not a measured zero, and descriptive calibration gaps
+are not proof that a proposed strategy change wins chips.
