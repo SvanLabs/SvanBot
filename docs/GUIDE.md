@@ -544,6 +544,7 @@ A profile changes compute only, never strategy. The live budget never drops belo
 
 Big wins pop up as toasts in the corner. When browser storage is blocked or full, workspace
 preferences still apply for the current visit; they cannot be remembered after a reload.
+An unreadable API response is reported as a failed read in its panel instead of being rendered as data.
 
 ---
 
