@@ -203,16 +203,16 @@ pub fn tripwires(hands: &[(String, HandSummary)]) -> Vec<Tripwire> {
 }
 
 /// Load every recorded hand of the fleet in time order: (bot, ended_at, net, summary).
-fn load(store: &Store, fleet: &[String]) -> Vec<(String, String, i64, HandSummary)> {
+fn load(store: &Store, fleet: &[String]) -> anyhow::Result<Vec<(String, String, i64, HandSummary)>> {
     let mut all = Vec::new();
     for bot in fleet {
-        for row in store.recent_hands(bot, 10_000_000).unwrap_or_default() {
+        for row in store.recent_hands(bot, 10_000_000)? {
             let (Some(net), Ok(h)) = (row.net, serde_json::from_str::<HandSummary>(&row.summary)) else { continue };
             all.push((bot.clone(), row.ended_at, net, h));
         }
     }
     all.sort_by(|a, b| a.1.cmp(&b.1));
-    all
+    Ok(all)
 }
 
 /// The full leak-finder report.
@@ -227,8 +227,8 @@ pub fn report(
     calibration: Option<&Value>,
     bb: f64,
     season: Option<&crate::season::CurrentSeason>,
-) -> Value {
-    let hands = load(store, fleet);
+) -> anyhow::Result<Value> {
+    let hands = load(store, fleet)?;
     let total = hands.len() as f64;
     let mut lines: HashMap<String, (String, Tally)> = HashMap::new();
     let mut outcomes: HashMap<String, (String, Tally)> = HashMap::new();
@@ -294,7 +294,7 @@ pub fn report(
     season_summary["scoped"] = json!(season.is_some());
     season_summary["number"] = json!(season.and_then(|s| s.number));
     season_summary["started_at"] = json!(season.map(|s| s.started_at));
-    json!({
+    Ok(json!({
         "hands": total as i64,
         "season": season_summary,
         "overall": {"bb100": overall.mean() / bb * 100.0, "low_bb100": (overall.mean() - overall.half_width(1.96)) / bb * 100.0, "high_bb100": (overall.mean() + overall.half_width(1.96)) / bb * 100.0, "chips": overall.sum as i64},
@@ -307,7 +307,7 @@ pub fn report(
         "opponents": opp,
         "suggestions": suggestions,
         "updated": chrono::Utc::now().timestamp(),
-    })
+    }))
 }
 
 /// Rule-based study notes from the findings: each names the evidence, the likely cause, and

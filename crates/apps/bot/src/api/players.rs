@@ -140,11 +140,11 @@ const MIN_SEAT_HANDS: f64 = 150.0;
 pub(super) async fn player_card(State(s): State<Arc<Shared>>, Path(name): Path<String>) -> Response {
     let standing = leaderboard_entry(&name).await;
     let shared = s.clone();
-    let card = off_runtime(move || {
+    let card = off_runtime(move || -> Result<Option<Value>, ApiError> {
         let ours: Vec<String> = shared.bots.iter().map(|b| b.read().name.clone()).collect();
         let is_us = ours.contains(&name);
         let mut card = if is_us {
-            let summaries: Vec<HandSummary> = snapshot_read("own hands", shared.store.recent_hands(&name, OWN_CARD_HANDS))
+            let summaries: Vec<HandSummary> = store_read("own hands", shared.store.recent_hands(&name, OWN_CARD_HANDS))?
                 .iter()
                 .filter_map(|h| serde_json::from_str(&h.summary).ok())
                 .collect();
@@ -156,9 +156,9 @@ pub(super) async fn player_card(State(s): State<Arc<Shared>>, Path(name): Path<S
             scouting(&shared.models.read(), &name)
         };
         let known = shared.models.read().players.contains_key(&name);
-        let hands = snapshot_read("hands with player", shared.store.hands_with_player(&name));
+        let hands = store_read("hands with player", shared.store.hands_with_player(&name))?;
         if !known && !is_us && hands.is_empty() {
-            return None;
+            return Ok(None);
         }
         card["name"] = json!(name);
         card["avatar_url"] = json!(shared.avatars.read().get(&name).and_then(|a| crate::avatar_url(&shared.config.rest_base, a)));
@@ -172,10 +172,10 @@ pub(super) async fn player_card(State(s): State<Arc<Shared>>, Path(name): Path<S
             crate::headtohead::read_one(&shared.head_to_head.read(), &name, MIN_SEAT_HANDS, shared.big_blind()).unwrap_or(Value::Null)
         };
         card["ours"] = json!(is_us);
-        Some(card)
+        Ok(Some(card))
     })
     .await;
-    match card {
+    match card.and_then(|r| r) {
         Err(r) => r.into_response(),
         Ok(Some(mut c)) => {
             c["leaderboard"] = standing.unwrap_or(Value::Null);

@@ -96,6 +96,12 @@ key, keeps the bots stopped and points every endpoint at a closed local port, so
 openpoker.ai or the live databases. Run the complete Playwright suite after each web change;
 the full repository gate typechecks the browser tests but does not execute them.
 
+Dashboard report requests answer HTTP 500 when their stored evidence cannot be read, including
+accuracy, calibration, fleet results, highlights, stories, scout cards and leak analysis. Missing
+evidence remains an ordinary empty report; corrupt calibration JSON is an error. The
+`./target/release/review leaks` command propagates the same read failure instead of printing an
+empty report.
+
 The results monitor attributes opponent transfers separately for main and side pots. When
 unequal-commitment winners cannot be ranked from the recorded showdown, it skips that hand
 for opponent attribution; the bot’s recorded total result remains available.
