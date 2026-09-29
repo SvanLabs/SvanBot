@@ -96,6 +96,10 @@ key, keeps the bots stopped and points every endpoint at a closed local port, so
 openpoker.ai or the live databases. Run the complete Playwright suite after each web change;
 the full repository gate typechecks the browser tests but does not execute them.
 
+The results monitor attributes opponent transfers separately for main and side pots. When
+unequal-commitment winners cannot be ranked from the recorded showdown, it skips that hand
+for opponent attribution; the bot’s recorded total result remains available.
+
 Portable and offline builds:
 
 Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
