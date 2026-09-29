@@ -167,7 +167,8 @@ counts the share over the fleet's own decisions).
    row in the same transaction) → opponent models updated, except after a treatment hand, which also
    writes no self-calibration samples.
 
-**Opponent tallies are recency-weighted**: each live observation first decays that player's
+**Opponent tallies are recency-weighted**: schema recovery preserves the configured half-life
+before replaying stored hands. Each live observation first decays that player's
 decision tallies by `0.5^(1/1000)` (`ModelStore::half_life_hands`, `OPPONENT_HALF_LIFE_HANDS`); hand
 counts and the population prior are not decayed. `review opponent-adapt` scores the newer half of the
 stored hands under a range of half-lives and prints each one's gain over all-time tallies. The image
