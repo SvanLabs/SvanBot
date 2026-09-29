@@ -527,7 +527,7 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Decision strip | Latest action and reasoning, equity, pot odds, hand category, opponent model inputs |
 | Why this move | Bar chart of the expected chips of every option considered — hover for fold odds |
 | Fleet race | Cumulative profit of every bot on one chart; click names to toggle |
-| Starting hand library | 13×13 grid of hands the live policy opens by position (BB: defends vs a button open) |
+| Starting hand library | 13×13 grid of hands the live policy opens by position (BB: defends vs a button open). Failed reads are named, the last good grid is kept with a stale warning, and login retries immediately |
 | Recent hands | Last hands with cards and net; click to replay |
 | Hand replay | Step through a hand or press play (1x/2x/4x) |
 | Opponent intelligence | Every opponent's style, sample size and key stats; click for the full profile |
