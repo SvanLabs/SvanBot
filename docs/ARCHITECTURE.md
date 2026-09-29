@@ -232,3 +232,5 @@ earned across a rollover.
   their baselines on held-out live data.
 - External archives are opened read-only and immutable; every database is integrity-checked before use.
 - Speed-only changes must reproduce `sim paired` results exactly on a fixed seed.
+
+Independent paired-evaluation results pool through `crates/libs/policy/src/sim/result.rs`. A zero-hand result adds no evidence; two empty results retain an infinite standard error rather than a precise or NaN interval.
