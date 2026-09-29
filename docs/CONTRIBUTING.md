@@ -36,9 +36,10 @@ result; the agent writes the code, the tests, the commits and the pull request.
 
 6. **Open the pull request** from the template. Put `Generated-by: <tool>/<model>` in the body, as
    well as in every commit footer, and `Closes #<issue>` so the issue closes when it merges.
-7. **Answer the review.** CI runs the gate on every pull request, and pull requests from this
-   repository's own branches also get an automatic Claude review. Fix what they find with new
-   commits rather than a force-push, so the conversation still points at the right lines.
+7. **Run local review and answer findings.** CI runs the gate on every pull request. Use
+   `python3 scripts/local-review.py origin/main` on your computer with your chosen coding agent;
+   `docs/agents/local-review.md` describes the workflow. Hosted model automation is removed.
+   Fix findings with new commits rather than a force-push, so review keeps pointing at the right lines.
 
 ## Commit messages
 

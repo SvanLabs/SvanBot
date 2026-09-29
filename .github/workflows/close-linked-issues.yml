@@ -3,7 +3,7 @@
 # GitHub interprets a closing keyword in a pull request description only when the pull request targets
 # the repository's *default* branch — "The pull request must be on the default branch". While work
 # landed on `dev` and every pull request went there instead, `Closes #<issue>` — which
-# `.github/pull_request_template.md`, `docs/CONTRIBUTING.md` and `claude-maintainer.yml` all ask for — made
+# `.github/pull_request_template.md`, `docs/CONTRIBUTING.md` both ask for — made
 # no link and closed nothing: PR #409 merged into `dev` with `Closes #408` in its body and #408 stayed
 # open. The loss is not cosmetic — the maintainer's rule is "the oldest open `agent-friendly` issue
 # that no pull request closes yet", tested with `gh pr list`, which lists open pull requests only, so
