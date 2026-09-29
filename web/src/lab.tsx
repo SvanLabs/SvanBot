@@ -135,7 +135,7 @@ export function RangeExplorer({ slot, decisionKey }: { slot?: number; decisionKe
   const ranges = usePoll<Ranges>(slot == null ? null : `/bots/${slot}/ranges`, 20000, decisionKey);
   const { data } = ranges;
   const [pick, setPick] = useState(0);
-  if (!data?.available || !data.opponents?.length) return <p className="footnote">Ranges appear after the bot's next decision against live opponents.</p>;
+  if (!data?.available || !data.opponents?.length) return <><StaleNote poll={ranges}/>{!ranges.error && <p className="footnote">Ranges appear after the bot's next decision against live opponents.</p>}</>;
   const opp = data.opponents[Math.min(pick, data.opponents.length - 1)];
   const grid = names
     ? <RangeGrid grid={opp.grid} share={opp.share} names={names}/>

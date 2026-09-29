@@ -348,6 +348,9 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flag = |f: &str| args.iter().position(|a| a == f).and_then(|i| args.get(i + 1)).cloned();
     let repeat: usize = flag("--repeat").and_then(|v| v.parse().ok()).unwrap_or(1);
+    if repeat == 0 {
+        die("--repeat must be at least 1");
+    }
     let fixture_path = flag("--fixture").unwrap_or_else(|| "artifacts/bench-fixture.json".into());
     let suite =
         args.iter().find(|a| ["learner", "live", "micro", "draw", "all"].contains(&a.as_str())).cloned().unwrap_or_else(|| "all".into());
