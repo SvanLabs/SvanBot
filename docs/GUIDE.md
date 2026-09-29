@@ -542,7 +542,8 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Docs | This documentation |
 | Bot setup (Settings → Open bot setup, or `#setup`) | Add, rename, reorder, switch off or remove bots, paste and check API keys, set the maximum buy-in and table seeking; saves to `.env` and restarts the fleet between turns |
 
-Big wins pop up as toasts in the corner.
+Big wins pop up as toasts in the corner. When browser storage is blocked or full, workspace
+preferences still apply for the current visit; they cannot be remembered after a reload.
 
 ---
 

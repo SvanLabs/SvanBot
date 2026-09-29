@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { StaleNote, usePoll } from './api';
 import { PlayerName } from './playername';
 import { SUITS, fmt } from './format';
-import { readLocal } from './storage';
+import { readLocal, writeLocal } from './storage';
 import type { AccuracyState, DecisionReport as Report, Grade, WiringState } from './types';
 
 /** Decision grades (0220): the analyst's deep re-solves graded chess-style, and a quiz on real decisions. */
@@ -91,7 +91,7 @@ function loadScore(): Score {
   // The read itself cannot throw (storage.ts); the parse still can on a value that is not JSON.
   try { return {answered: 0, accuracySum: 0, streak: 0, best: 0, ...JSON.parse(readLocal(SCORE_KEY) || '{}')}; } catch { return {answered: 0, accuracySum: 0, streak: 0, best: 0}; }
 }
-function saveScore(s: Score) { try { localStorage.setItem(SCORE_KEY, JSON.stringify(s)); } catch { /* storage unavailable: score lasts this visit */ } }
+function saveScore(s: Score) { writeLocal(SCORE_KEY, JSON.stringify(s)); }
 const label = (o: QuizOption, bb: number) => o.action === 'raise' && o.amount != null ? `Raise to ${fmt(o.amount / bb, 1, true)} bb` : o.action === 'all_in' ? 'All in' : o.action[0].toUpperCase() + o.action.slice(1);
 
 export function QuizPage() {
