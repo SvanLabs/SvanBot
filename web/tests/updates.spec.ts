@@ -37,6 +37,43 @@ async function mockReleases(page: Page, runs: object[]) {
   await page.route('**/api/releases/progress', route => route.fulfill({ json: runs[Math.min(i++, runs.length - 1)] }));
 }
 
+test('release data recovers immediately after an operator session opens', async ({ page }) => {
+  let ready = false;
+  await page.route('**/api/releases', route => ready
+    ? route.fulfill({ json: releases })
+    : route.fulfill({ status: 503, json: { detail: 'release data temporarily unavailable' } }));
+  await page.route('**/api/releases/snapshots', route => ready
+    ? route.fulfill({ json: { snapshots: [{ commit: 'ccccccc', current: false, readable: true }] } })
+    : route.fulfill({ status: 503, json: { detail: 'snapshots temporarily unavailable' } }));
+  await page.route('**/api/releases/progress', route => ready
+    ? route.fulfill({ json: progress('failed', { message: 'sandbox previous run failed' }) })
+    : route.fulfill({ status: 503, json: { detail: 'progress temporarily unavailable' } }));
+  await page.goto('/');
+  const panel = page.locator('[data-widget="updates"]');
+  await expect(panel).toContainText('Release data unavailable');
+  ready = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('sv-session')));
+  await expect(panel).toContainText('2 updates to install');
+  await expect(panel).toContainText('Roll back to a saved build (1)');
+  await expect(panel).toContainText('sandbox previous run failed');
+});
+
+test('release refresh failure keeps the last reading and names it stale', async ({ page }) => {
+  let failed = false;
+  await page.clock.install();
+  await page.route('**/api/releases', route => failed
+    ? route.fulfill({ status: 503, json: { detail: 'release refresh unavailable' } })
+    : route.fulfill({ json: releases }));
+  await page.goto('/');
+  const panel = page.locator('[data-widget="updates"]');
+  await expect(panel).toContainText('2 updates to install');
+  failed = true;
+  await page.clock.fastForward(30001);
+  await expect(panel).toContainText('release refresh unavailable');
+  await expect(panel).toContainText('showing data from');
+  await expect(panel).toContainText('2 updates to install');
+});
+
 test('an available update names its commits and asks before installing', async ({ page }) => {
   await mockReleases(page, [progress('idle')]);
   await page.goto('/');
@@ -95,16 +132,16 @@ test('a failed update names the stage and says the fleet kept playing', async ({
 
 test('a saved build can be rolled back to, with the same progress and play continuing', async ({ page }) => {
   const rolling = progress('running', { percent: 40, elapsed: 8, eta: 12, stages: [stage('restore', 'running', 8, 20)] });
+  let posted: unknown = null;
   await page.route('**/api/releases', route => route.fulfill({ json: releases }));
-  let started = false;
-  await page.route('**/api/releases/progress', route => route.fulfill({ json: started ? rolling : progress('idle') }));
+  // Reading progress cannot start a rollback: only the command below advances this fixture.
+  await page.route('**/api/releases/progress', route => route.fulfill({ json: posted ? rolling : progress('idle') }));
   await page.route('**/api/releases/snapshots', route => route.fulfill({ json: { running: false, snapshots: [
     { commit: 'bbbbbbb', subject: 'feat: the build before', installed_at: '2026-09-26T01:30:28+02:00', current: false, readable: true },
     { commit: 'aaaaaaa', subject: 'feat: before', installed_at: '2026-09-25T00:00:08+02:00', current: true, readable: true },
     { commit: '9999999', subject: 'feat: before compression', installed_at: '2026-09-20T00:00:08+02:00', current: false, readable: false },
   ] } }));
-  let posted: unknown = null;
-  await page.route('**/api/releases/rollback', route => { posted = route.request().postDataJSON(); started = true; return route.fulfill({ json: { started: true } }); });
+  await page.route('**/api/releases/rollback', route => { posted = route.request().postDataJSON(); return route.fulfill({ json: { started: true } }); });
   await page.goto('/');
   const panel = page.locator('.updates-panel');
   await panel.getByText('Roll back to a saved build (2)').click();

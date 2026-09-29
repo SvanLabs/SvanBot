@@ -295,7 +295,10 @@ impl Hand {
         let max_to = s.bet + s.stack;
         let others_can_act = self.seats.iter().enumerate().any(|(i, o)| i != seat && o.can_act());
         let (mut min_raise_to, mut max_raise_to) = (None, None);
-        if s.can_raise && max_to > self.current_bet && others_can_act {
+        // The street bet is this actor's last matched level. Multiple short all-ins
+        // reopen only after the accumulated increase reaches the last full raise.
+        let raise_rights = s.can_raise || to_call >= self.last_full_raise;
+        if raise_rights && max_to > self.current_bet && others_can_act {
             let min_to = self.current_bet + self.last_full_raise;
             min_raise_to = Some(min_to.min(max_to));
             max_raise_to = Some(max_to);

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, Check, CircleDashed, History, LoaderCircle, RefreshCw, TriangleAlert, X } from 'lucide-react';
 import type { HealthState, ReleaseProgress, ReleasesState, ReleaseStage, SavedBuild } from './types';
-import { request, SESSION_EVENT, StaleNote } from './api';
+import { request, SESSION_EVENT, StaleNote, usePoll } from './api';
 import { time } from './format';
 
 const call = request;
@@ -97,8 +97,8 @@ export function UpdateProgress({ progress }: { progress: ReleaseProgress }) {
 /** Releases and one-click updates: what an update would bring from GitHub, the guarded trigger, and
  * live progress through build, tests, install and the hot swap. */
 export function UpdatesPanel() {
-  const [data, setData] = useState<ReleasesState | null>(null);
-  const [failed, setFailed] = useState(false);
+  const releasePoll = usePoll<ReleasesState>('/releases', 30_000);
+  const data = releasePoll.data;
   const [confirming, setConfirming] = useState(false);
   const [checking, setChecking] = useState(false);
   const [progress, setProgress] = useState<ReleaseProgress | null>(null);
@@ -116,19 +116,17 @@ export function UpdatesPanel() {
     setSaved(v.snapshots); setSavedError(null); setSavedAt(Date.now());
   }).catch((e: unknown) => setSavedError(e instanceof Error ? e.message : String(e)));
 
-  const load = () => call<ReleasesState>('/releases').then(v => { setData(v); setFailed(false); }).catch(() => setFailed(true));
+  const load = releasePoll.refresh;
   const loadProgress = () => call<ReleaseProgress>('/releases/progress').then(v => {
     setProgress(v); setProgressError(null); setProgressAt(Date.now()); return v;
   }).catch((e: unknown) => { setProgressError(e instanceof Error ? e.message : String(e)); return null; });
   useEffect(() => {
-    load();
     loadSaved();
     // A reload mid-update picks the run up again: progress lives on the server.
     loadProgress();
-    const session = () => { loadSaved(); loadProgress(); };
+    const session = () => { loadSaved(); void loadProgress(); };
     window.addEventListener(SESSION_EVENT, session);
-    const id = window.setInterval(load, 30_000);
-    return () => { window.clearInterval(id); window.removeEventListener(SESSION_EVENT, session); };
+    return () => window.removeEventListener(SESSION_EVENT, session);
   }, []);
 
   useEffect(() => {
@@ -199,7 +197,7 @@ export function UpdatesPanel() {
     }
   };
 
-  if (!data) return <p className="footnote">{failed ? 'Release data unavailable.' : 'Loading releases…'}</p>;
+  if (!data) return <><StaleNote poll={releasePoll}/><p className="footnote">{releasePoll.error ? 'Release data unavailable.' : 'Loading releases…'}</p></>;
   const remote = data.remote;
   const pending = data.behind;
   const groups: [string, typeof data.changelog][] = [];
@@ -212,6 +210,7 @@ export function UpdatesPanel() {
   // message is the whole point of the state and has to stay on screen (#394).
   const showProgress = progress && progress.state !== 'idle' && (active || progress.state === 'failed' || progress.state === 'installed' || progress.state === 'current');
   return <div className="updates-panel">
+    <StaleNote poll={releasePoll}/>
     {reloadPrompt && <div className="connection-banner" role="alert">The dashboard backend updated — <button className="text-button" onClick={() => window.location.reload()}>reload to match it</button>.</div>}
     <div className="health-list">
       <div><span>Installed</span><b className="mono">{data.installed.commit || 'unknown'}{data.installed.subject ? ` · ${data.installed.subject.length > 60 ? `${data.installed.subject.slice(0, 59)}…` : data.installed.subject}` : ''}</b></div>

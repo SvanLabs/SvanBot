@@ -371,3 +371,70 @@ fn chance_correction_averages_to_zero_over_every_turn_and_river() {
     assert!(nonzero > count / 4, "the correction must depend on the cards ({nonzero}/{count})");
     assert!((sum / count as f64).abs() < 1e-9, "mean correction {} over {count} deals", sum / count as f64);
 }
+
+#[test]
+fn cumulative_short_all_ins_reopen_at_a_full_raise_for_each_actor() {
+    for (last_all_in, expected_min) in [(179, None), (180, Some(260))] {
+        let mut rng = SmallRng::seed_from_u64(701);
+        let mut hand = Hand::new(&[1000, 130, last_all_in, 1000], 0, 10, 20, &mut rng);
+        hand.apply(Action::RaiseTo(100)).unwrap();
+        hand.apply(Action::Call).unwrap();
+        hand.apply(Action::AllIn).unwrap();
+        hand.apply(Action::AllIn).unwrap();
+        assert_eq!(hand.actor(), Some(3));
+        assert_eq!(hand.legal().min_raise_to, expected_min);
+        if expected_min.is_some() {
+            hand.apply(Action::RaiseTo(260)).unwrap();
+            assert!(hand.history.last().unwrap().full_raise);
+        }
+    }
+}
+
+#[test]
+fn cumulative_reopening_uses_each_players_last_call_level() {
+    let mut rng = SmallRng::seed_from_u64(702);
+    // First actor 3 raises100; 4 calls100; 0 shoves130; 1 calls130; 2 shoves180.
+    let mut hand = Hand::new(&[130, 1000, 180, 1000, 1000], 0, 10, 20, &mut rng);
+    for action in [Action::RaiseTo(100), Action::Call, Action::AllIn, Action::Call, Action::AllIn] {
+        hand.apply(action).unwrap();
+    }
+    assert_eq!(hand.actor(), Some(3));
+    assert_eq!(hand.legal().min_raise_to, Some(260));
+    hand.apply(Action::Call).unwrap();
+    assert_eq!(hand.actor(), Some(4));
+    assert_eq!(hand.legal().min_raise_to, Some(260));
+    hand.apply(Action::Call).unwrap();
+    assert_eq!(hand.actor(), Some(1));
+    assert_eq!(hand.legal().call_amount, 50);
+    assert_eq!(hand.legal().min_raise_to, None);
+}
+
+#[test]
+fn cumulative_short_all_ins_reopen_postflop_and_reset_on_next_street() {
+    let mut rng = SmallRng::seed_from_u64(703);
+    let mut hand = Hand::new(&[200, 1000, 1000, 150], 0, 10, 20, &mut rng);
+    for action in [Action::Call, Action::Call, Action::Call, Action::Check] {
+        hand.apply(action).unwrap();
+    }
+    assert_eq!(hand.street, Street::Flop);
+    // Seats1 and2 bet/call100; 3 shoves130; 0 shoves180.
+    for action in [Action::RaiseTo(100), Action::Call, Action::AllIn, Action::AllIn] {
+        hand.apply(action).unwrap();
+    }
+    // Opening bet100 means 80 accumulated is still short.
+    assert_eq!(hand.actor(), Some(1));
+    assert_eq!(hand.legal().min_raise_to, None);
+    hand.apply(Action::Call).unwrap();
+    hand.apply(Action::Call).unwrap();
+    assert_eq!(hand.street, Street::Turn);
+    assert_eq!(hand.legal().min_raise_to, Some(20));
+
+    let mut hand = Hand::new(&[220, 1000, 1000, 150], 0, 10, 20, &mut rng);
+    for action in
+        [Action::Call, Action::Call, Action::Call, Action::Check, Action::RaiseTo(100), Action::Call, Action::AllIn, Action::AllIn]
+    {
+        hand.apply(action).unwrap();
+    }
+    assert_eq!(hand.actor(), Some(1));
+    assert_eq!(hand.legal().min_raise_to, Some(300));
+}
