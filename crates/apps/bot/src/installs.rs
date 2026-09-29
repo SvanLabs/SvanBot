@@ -13,7 +13,7 @@ use sv10_core::policy::Params;
 use sv10_store::store::Store;
 
 /// One watched store key: the value last read successfully.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Watched {
     key: &'static str,
     /// `None` until the first successful read; then the stored value (`Some(None)` = absent).
@@ -117,8 +117,10 @@ impl Installs {
 
     /// Compute profile (0187): the live Monte Carlo budget follows the dashboard's profile.
     fn refresh_profile(&mut self, shared: &Shared) -> anyhow::Result<()> {
-        let Some(profile_json) = self.profile.changed(&shared.store)? else { return Ok(()) };
+        let mut pending = self.profile.clone();
+        let Some(profile_json) = pending.changed(&shared.store)? else { return Ok(()) };
         let hardware = shared.store.get_kv(crate::HARDWARE_PROFILE_KEY)?;
+        self.profile = pending;
         let logical = hardware
             .as_deref()
             .and_then(|h| serde_json::from_str::<serde_json::Value>(h).ok())
@@ -304,5 +306,38 @@ mod tests {
             assert_eq!(shared.models.read().response_ratios.get("nit"), Some(&[1.5, 0.75, 1.0]));
             assert!(shared.log.lock().iter().any(|l| l.message == "store readable again"));
         }
+    }
+}
+
+#[cfg(test)]
+mod profile_retry_tests {
+    use super::*;
+
+    #[test]
+    fn unchanged_profile_retries_after_hardware_read_recovers() {
+        let shared = Shared::for_test("profile-hardware-retry", &["A"]);
+        let hardware = r#"{"logical_cores":8,"tuning":{"live_samples":4000,"decision_samples":1000}}"#;
+        shared.store.put_kv(crate::HARDWARE_PROFILE_KEY, hardware).unwrap();
+        shared.params.write().samples = 4000;
+        let mut installs = Installs::after_startup(&shared.store);
+        installs.refresh(&shared);
+        shared
+            .store
+            .put_kv(crate::profile::PROFILE_KEY, r#"{"name":"quiet","live_scale":0.25,"learner_threads":2,"analyst_threads":1}"#)
+            .unwrap();
+        let writer = rusqlite::Connection::open(shared.config.artifacts.join("svanbot10.db")).unwrap();
+        writer.execute("UPDATE kv SET value=x'00' WHERE key=?1", [crate::HARDWARE_PROFILE_KEY]).unwrap();
+        installs.refresh(&shared);
+        assert_eq!(shared.params.read().samples, 4000);
+        installs.refresh(&shared);
+        assert_eq!(shared.log.lock().iter().filter(|l| l.level == "warn" && l.message.contains("store unreadable")).count(), 1);
+        shared.store.put_kv(crate::HARDWARE_PROFILE_KEY, hardware).unwrap();
+        installs.refresh(&shared);
+        assert_eq!(
+            shared.params.read().samples,
+            1000,
+            "the unchanged operator profile must still install after the dependent read recovers"
+        );
+        assert!(shared.log.lock().iter().any(|l| l.message == "store readable again"));
     }
 }
