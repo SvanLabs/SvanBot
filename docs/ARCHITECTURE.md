@@ -240,3 +240,5 @@ earned across a rollover.
   their baselines on held-out live data.
 - External archives are opened read-only and immutable; every database is integrity-checked before use.
 - Speed-only changes must reproduce `sim paired` results exactly on a fixed seed.
+
+Showdown-win tallies include a seat winning any main or side pot. Shown ranks are compared only against seats covering that pot; unreconstructable contributions leave this tally unobserved.

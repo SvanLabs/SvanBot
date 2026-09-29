@@ -16,6 +16,12 @@ use sv10_engine::engine::{ActionKind, Street};
 /// Chips each dealt-in seat put into the pot, uncalled chips returned, or `None` when the rebuild
 /// does not reproduce the stored `pot`.
 pub fn contributions(hand: &HandSummary, pot: i64) -> Option<HashMap<usize, i64>> {
+    let out = reconstructed_contributions(hand)?;
+    (out.values().sum::<i64>() == pot).then_some(out)
+}
+
+/// Rebuild eligible contribution levels from a complete summary, including uncalled refunds.
+pub(crate) fn reconstructed_contributions(hand: &HandSummary) -> Option<HashMap<usize, i64>> {
     let mut seats: Vec<usize> = hand.players.iter().map(|p| p.0).collect();
     seats.sort_unstable();
     if seats.len() < 2 {
@@ -38,7 +44,8 @@ pub fn contributions(hand: &HandSummary, pot: i64) -> Option<HashMap<usize, i64>
         let chips = match (hand.history.get(i + 1), r.kind) {
             (Some(next), _) => next.pot_before - r.pot_before,
             (None, ActionKind::Fold | ActionKind::Check) => 0,
-            (None, ActionKind::AllIn) => stack(r.seat).checked_sub(out.get(&r.seat).copied().unwrap_or(0))?,
+            (None, ActionKind::AllIn) if r.to > 0 => r.to.checked_sub(r.bet_before)?,
+            (None, ActionKind::AllIn) => stacks.get(&r.seat)?.checked_sub(out.get(&r.seat).copied().unwrap_or(0))?,
             (None, _) => r.to - r.bet_before,
         };
         if chips < 0 || !out.contains_key(&r.seat) {
@@ -52,7 +59,7 @@ pub fn contributions(hand: &HandSummary, pot: i64) -> Option<HashMap<usize, i64>
         let top = out.iter().find(|(_, c)| **c == sorted[0]).map(|(s, _)| *s)?;
         out.insert(top, sorted[1]);
     }
-    (out.values().sum::<i64>() == pot).then_some(out)
+    Some(out)
 }
 
 /// Chips `hero_seat` won from (positive) or lost to (negative) other seats, rebuilt per pot.
