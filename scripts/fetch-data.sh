@@ -5,7 +5,7 @@
 # Default: the two live databases. `--all` also restores backups, release snapshots, tables/logs and
 # screenshots. `--derived` instead fetches the public derived set (aggregates + schema, #17) into
 # `artifacts/derived/` for analysis: it never touches the live databases and the fleet may run.
-# Refuses while the fleet runs or when a database already exists, unless FORCE=1.
+# Refuses while a known fleet writer or restart supervisor runs. FORCE=1 only bypasses existing data.
 # Snapshots are made with sqlite `.backup` + zstd (see the release notes).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -30,10 +30,15 @@ if [ "$derived" = 1 ]; then
   exit 0
 fi
 
-if [ -f artifacts/bot.pid ] && kill -0 "$(cat artifacts/bot.pid)" 2>/dev/null; then
-  echo "the fleet is running (artifacts/bot.pid); stop it first" >&2
-  exit 1
-fi
+for writer_pidfile in artifacts/bot.pid artifacts/head.pid artifacts/worker-*.pid     artifacts/supervisor.pid artifacts/head-supervisor.pid     artifacts/learner.pid artifacts/learner-supervisor.pid     artifacts/analyst.pid artifacts/analyst-supervisor.pid; do
+  [ -f "$writer_pidfile" ] || continue
+  writer_pid=$(cat "$writer_pidfile")
+  [[ "$writer_pid" =~ ^[0-9]+$ ]] || continue
+  if kill -0 "$writer_pid" 2>/dev/null; then
+    echo "a fleet writer or supervisor is running ($writer_pidfile); stop it first" >&2
+    exit 1
+  fi
+done
 if [ -f artifacts/svanbot10.db ] && [ "${FORCE:-0}" != 1 ]; then
   echo "artifacts/svanbot10.db exists; rerun with FORCE=1 to overwrite" >&2
   exit 1

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Disk and memory report for the target machine (0227): database bytes per table, backups, tables,
-snapshots, logs, and free space per mount. Read-only: databases are opened `mode=ro&immutable=1`.
+snapshots, logs, and free space per mount. Read-only: live databases are opened `mode=ro` with a WAL-aware read transaction.
 
   scripts/resource-report.py [ROOT]      default: the repository root
   scripts/resource-report.py --json      machine-readable (the dashboard's host check reads it, 0241)
@@ -32,7 +32,8 @@ def tree_bytes(path: Path) -> int:
 
 def db_tables(path: Path) -> list[tuple[str, int]]:
     try:
-        c = sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True)
+        c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        c.execute("BEGIN")
         rows = c.execute("SELECT name, SUM(pgsize) FROM dbstat GROUP BY name ORDER BY 2 DESC").fetchall()
         free = c.execute("PRAGMA freelist_count").fetchone()[0] * c.execute("PRAGMA page_size").fetchone()[0]
         c.close()

@@ -110,3 +110,19 @@ fn table_slices_pool_to_the_whole_evaluation() {
     assert!(whole[0].differing > 0, "the test needs a challenger that changes outcomes");
     assert_eq!(PairedSums::default().result().hands, 0);
 }
+
+#[test]
+fn empty_paired_results_do_not_poison_independent_pooling() {
+    let measured = PairedResult { hands: 1000, mean_bb: 0.03, se_bb: 0.005, differing: 100 };
+    let empty = PairedResult::default();
+    for pooled in [empty.combine(&measured), measured.combine(&empty)] {
+        assert_eq!((pooled.hands, pooled.differing), (1000, 100));
+        assert_eq!(pooled.mean_bb, measured.mean_bb);
+        assert_eq!(pooled.se_bb, measured.se_bb);
+        assert_eq!(pooled.lower_95(), measured.lower_95());
+    }
+    let pooled = empty.combine(&empty);
+    assert_eq!(pooled.hands, 0);
+    assert_eq!(pooled.mean_bb, 0.0);
+    assert_eq!(pooled.se_bb, f64::INFINITY);
+}

@@ -7,6 +7,5 @@ crates/deps/pack/src/deflate.rs 603
 crates/libs/model/src/oprange/mod.rs 588
 crates/libs/policy/src/policy/mod.rs 705
 crates/libs/policy/src/policy/responses.rs 572
-crates/libs/policy/src/sim.rs 524
 crates/libs/store/src/archive.rs 750
 crates/libs/venue/src/tracker/mod.rs 533
