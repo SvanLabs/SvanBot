@@ -31,7 +31,7 @@ import { scopeLabel, Performance, Autonomy, ExperimentCard, ExperimentModePanel,
 import { Replay, StartingHands } from './panels';
 import { IntelPanel } from './intel';
 import { TimelinePanel } from './timeline';
-import { readLocal } from './storage';
+import { readLocal, writeLocal } from './storage';
 
 /** openpoker.ai's per-table route is `/arena/<table id>` (operator, 2026-09-27). It supersedes 0298,
  *  which probed `/table/<id>` and `/tables` and concluded no per-table route existed: neither is the
@@ -78,7 +78,7 @@ function App() {
     const saved = readLocal('svan-table-theme');
     return saved === 'felt' || saved === 'midnight' ? saved : 'arena';
   });
-  const changeTheme = (theme: TableTheme) => { setTableTheme(theme); localStorage.setItem('svan-table-theme', theme); };
+  const changeTheme = (theme: TableTheme) => { setTableTheme(theme); writeLocal('svan-table-theme', theme); };
   const [arranging,setArranging] = useState(false);
   const [view,setView] = useState(loadView);
   const eventRef = useRef<EventSource | null>(null);
@@ -93,7 +93,7 @@ function App() {
       if (!target) return;
       setSelected(target.slot);
       setWatchAll(false);
-      try { localStorage.setItem('svan-slot', String(target.slot)); } catch { /* storage unavailable */ }
+      writeLocal('svan-slot', String(target.slot));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     window.addEventListener(SELECT_BOT_EVENT, select);
@@ -214,7 +214,7 @@ function App() {
   return <div className={`app ${compact ? 'compact' : ''} `}>
     <WinToasts bots={snapshot?.bots || []}/>
     <PlayerCardHost bots={snapshot?.bots || []} onReplay={openReplayFor}/>
-    <DashboardHeader bots={snapshot?.bots || []} selectedSlot={bot?.slot} connected={connected} onSelect={slot=>{setSelected(slot);localStorage.setItem('svan-slot',String(slot));}} onSettings={()=>setSettings(true)}/>
+    <DashboardHeader bots={snapshot?.bots || []} selectedSlot={bot?.slot} connected={connected} onSelect={slot=>{setSelected(slot);writeLocal('svan-slot',String(slot));}} onSettings={()=>setSettings(true)}/>
     <div className="workspace-header"><div className="breadcrumb"><span>WORKSPACE</span><ChevronRight size={12}/><b>{watchAll ? 'Fleet overview' : bot?.name || 'Control room'}</b><span className="environment-tag">OPENPOKER · VIRTUAL CHIPS</span></div><div className="workspace-tools"><button className={watchAll ? 'text-button active' : 'text-button'} onClick={()=>setWatchAll(!watchAll)}><LayoutGrid size={13}/>{watchAll ? 'Focus table' : 'Watch all'}</button><button className={arranging ? 'text-button active' : 'text-button'} aria-pressed={arranging} onClick={()=>setArranging(!arranging)}><Grip size={13}/>{arranging ? 'Arranging…' : 'Arrange widgets'}</button><span className="updated">{snapshot ? `Updated ${time(snapshot.updated, { seconds: true })}` : 'Waiting for server'}</span></div></div>
     {loginRequired && <form className="error-banner" onSubmit={event=>{event.preventDefault();setLoginAttempt(value=>value+1);}}><label>Operator token <input type="password" autoComplete="off" aria-label="Operator token" value={operatorToken} onChange={event=>setOperatorToken(event.target.value)}/></label><button className="button" type="submit">Unlock control room</button><span>Use SVANBOT_WEB__OPERATOR_TOKEN from .env. Plain HTTP is supported; keep the token private.</span></form>}
     {error && <div className="error-banner" role="alert"><WifiOff size={15}/>{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
@@ -262,7 +262,7 @@ function App() {
       ]}/>
       <footer><span><Spade size={12}/> SVANBOT <span className="footer-separator">/</span> Built on proven control-room foundations.</span><span>LOCAL CONTROL ROOM</span></footer>
     </main>
-    {settings && <div className="modal-backdrop" onClick={()=>setSettings(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Settings" onClick={event=>event.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">YOUR WORKSPACE</span><h2>Control room settings</h2></div><button className="icon-button" aria-label="Close settings" onClick={()=>setSettings(false)}><X/></button></div><div className="settings-row"><div><strong>Compact layout</strong><p>Fit more information on your screen.</p></div><button className={`toggle ${compact ? 'on':''}`} role="switch" aria-checked={compact} aria-label="Compact layout" onClick={()=>{setCompact(!compact);localStorage.setItem('svan-compact',String(!compact));}}><i/></button></div><div className="settings-row"><div><strong>Automatic training</strong><p>Evaluate challengers automatically, even while tables are stopped.</p></div><button className={`toggle ${snapshot?.training.automatic ? 'on':''}`} role="switch" aria-checked={!!snapshot?.training.automatic} aria-label="Automatic training" onClick={()=>trainingCommand('automatic',{enabled:!snapshot?.training.automatic})}><i/></button></div><div className="settings-details"><div><span>Configured bots</span><b>{snapshot?.config.configured_slots}</b></div><div><span>Buy-in</span><b>{format(snapshot?.config.buy_in)} chips</b></div><div><span>Automatic rebuy</span><b>{snapshot?.config.auto_rebuy ? 'Enabled':'Disabled'}</b></div><div><span>Credentials</span><b>Server-side .env</b></div></div><div className="settings-row"><div><strong>Bot setup</strong><p>Add or remove bots, paste API keys, switch bots off, set the buy-in.</p></div><a className="button" href="#setup" onClick={()=>setSettings(false)}>Open bot setup</a></div><p className="footnote">Pause finishes the current hand before leaving. Stop requests an immediate departure. Strategy promotions take effect on the next hand.</p></section></div>}
+    {settings && <div className="modal-backdrop" onClick={()=>setSettings(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Settings" onClick={event=>event.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">YOUR WORKSPACE</span><h2>Control room settings</h2></div><button className="icon-button" aria-label="Close settings" onClick={()=>setSettings(false)}><X/></button></div><div className="settings-row"><div><strong>Compact layout</strong><p>Fit more information on your screen.</p></div><button className={`toggle ${compact ? 'on':''}`} role="switch" aria-checked={compact} aria-label="Compact layout" onClick={()=>{setCompact(!compact);writeLocal('svan-compact',String(!compact));}}><i/></button></div><div className="settings-row"><div><strong>Automatic training</strong><p>Evaluate challengers automatically, even while tables are stopped.</p></div><button className={`toggle ${snapshot?.training.automatic ? 'on':''}`} role="switch" aria-checked={!!snapshot?.training.automatic} aria-label="Automatic training" onClick={()=>trainingCommand('automatic',{enabled:!snapshot?.training.automatic})}><i/></button></div><div className="settings-details"><div><span>Configured bots</span><b>{snapshot?.config.configured_slots}</b></div><div><span>Buy-in</span><b>{format(snapshot?.config.buy_in)} chips</b></div><div><span>Automatic rebuy</span><b>{snapshot?.config.auto_rebuy ? 'Enabled':'Disabled'}</b></div><div><span>Credentials</span><b>Server-side .env</b></div></div><div className="settings-row"><div><strong>Bot setup</strong><p>Add or remove bots, paste API keys, switch bots off, set the buy-in.</p></div><a className="button" href="#setup" onClick={()=>setSettings(false)}>Open bot setup</a></div><p className="footnote">Pause finishes the current hand before leaving. Stop requests an immediate departure. Strategy promotions take effect on the next hand.</p></section></div>}
     {replay && <Replay hand={replay.hand} events={replay.events} onClose={()=>setReplay(undefined)}/>}
   </div>;
 }
