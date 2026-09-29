@@ -132,6 +132,9 @@ counts the share over the fleet's own decisions).
    the champion). The two pair bots swap arms every 120 hands.
 2. On `your_turn`, `tracker.situation` builds a `Situation`; `policy::decide_with` runs on a blocking
    thread with an 8 s timeout (fallback: legal check/fold).
+   Missing local decision state sends that safe action immediately and then requests one resync
+   per table/hand. The sent token stays answered, so an incomplete snapshot cannot double-act or
+   create a resync loop; recovered cards and seats are available to later turns.
 3. `decide_with` first returns uncallable chips to their owner (`Situation::without_uncallable`),
    reconstructs each opponent's range (`oprange`), samples shared deals (live: `tuning.live_samples`,
    640x the learner's budget on a reference-speed machine, scaled down on slower ones (up to 1.6M samples, about 190 ms p50; previously 160x), dealt in one seeded chunk per logical core by `SharedDeals::new_parallel` (heads-up with a flop or later, when every opponent combo × board completion fits the budget, the deals are the exact enumeration instead, each weighted by its combo's range weight: the river always, the turn and flop live; zero sampling noise and faster) and
