@@ -245,3 +245,11 @@ earned across a rollover.
 Showdown-win tallies include a seat winning any main or side pot. Shown ranks are compared only against seats covering that pot; unreconstructable contributions leave this tally unobserved.
 
 Independent paired-evaluation results pool through `crates/libs/policy/src/sim/result.rs`. A zero-hand result adds no evidence; two empty results retain an infinite standard error rather than a precise or NaN interval.
+
+Runtime hardware sizing respects enclosing cgroup-v2 memory limits and remaining headroom.
+The default learner workers and live deal chunks reserve 40% of available RAM and budget
+256 MiB per worker, with one worker on small or unknown machines. These are conservative
+scheduling defaults, not a guarantee against OOM. Sample counts, evaluation sizes and promotion
+confidence thresholds are unchanged. Explicit compute profiles remain operator overrides.
+The memory field reports effective capacity; the suggested bot count uses current headroom
+and does not silently remove configured bots.
