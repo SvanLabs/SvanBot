@@ -95,6 +95,9 @@ Toolchain: Rust 1.98.1 pinned in `rust-toolchain.toml`, Node 26, React 19.3, Vit
 key, keeps the bots stopped and points every endpoint at a closed local port, so the tests never touch
 openpoker.ai or the live databases. 72 browser tests across 12 spec files, all passing.
 
+Database resource measurements from `scripts/resource-report.py` use a read-only, WAL-aware
+transaction, so committed table pages are included while the fleet is running.
+
 Portable and offline builds:
 
 ```
