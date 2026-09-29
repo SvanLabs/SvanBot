@@ -301,17 +301,24 @@ pub fn compact_rows(conn: &Connection, codec: &Codec, column: Column, rows: &[(i
     let (table, col, fill) = (column.table, column.column, column.fill);
     let Some(last) = rows.last().map(|r| r.0) else { return Ok((0, None)) };
     let tx = conn.unchecked_transaction()?;
+    let mut written = 0;
     {
-        // The value is re-checked unchanged, so a row rewritten meanwhile is left for the next pass.
+        // Read under the transaction: SQLite cannot promote a snapshot invalidated by another
+        // writer, so a value checked here cannot be overwritten from a stale candidate.
+        let mut current =
+            tx.prepare(&format!("SELECT {col} FROM {table} WHERE rowid = ?1 AND (typeof({col}) = 'text' OR substr({col}, 4, 1) = x'00')"))?;
         let mut up = tx.prepare(&format!(
             "UPDATE {table} SET {fill}{col} = ?1 WHERE rowid = ?2 AND (typeof({col}) = 'text' OR substr({col}, 4, 1) = x'00')"
         ))?;
         for (rowid, text) in rows {
-            up.execute(params![codec.pack(&tx, column, text), rowid])?;
+            let now = current.query_row([rowid], |r| codec.text(r.get_ref(0)?)).optional()?;
+            if now.as_deref() == Some(text.as_str()) {
+                written += up.execute(params![codec.pack(&tx, column, text), rowid])?;
+            }
         }
     }
     tx.commit()?;
-    Ok((rows.len(), Some(last)))
+    Ok((written, Some(last)))
 }
 
 /// Rows of `column` still stored as text.

@@ -4,10 +4,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p artifacts/logs
 PIDFILE=artifacts/supervisor.pid
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-  echo "Already running (supervisor pid $(cat "$PIDFILE"))."
-  exit 0
-fi
+for supervisor_pidfile in "$PIDFILE" artifacts/head-supervisor.pid artifacts/worker-*-supervisor.pid; do
+  [ -f "$supervisor_pidfile" ] || continue
+  supervisor_pid=$(cat "$supervisor_pidfile")
+  if kill -0 "$supervisor_pid" 2>/dev/null; then
+    echo "Already running (supervisor pid $supervisor_pid)."
+    exit 0
+  fi
+done
 # Only scripts/release.sh writes target/release (LESSONS 31): a missing build, or REBUILD=1, goes
 # through it (tests, then build, install with a recorded commit), never a bare cargo build (0239).
 if [ ! -x target/release/sv10-bot ] || [ ! -x target/release/tables ] || [ ! -f web/dist/index.html ] || [ "${REBUILD:-0}" = "1" ]; then

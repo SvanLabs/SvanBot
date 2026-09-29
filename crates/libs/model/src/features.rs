@@ -241,6 +241,13 @@ pub fn named_samples_from_hand_for(
             street_bet.clear();
             street_aggressor = None;
         }
+        // Histories omit blind posts, but the first preflop record retains them.
+        // Seed before sampling, including a blind that checks and adds no chips.
+        if street == Street::Preflop && !street_bet.contains_key(&rec.seat) {
+            let posted = rec.bet_before.max(0);
+            invested.insert(rec.seat, posted);
+            street_bet.insert(rec.seat, posted);
+        }
         let Some(name) = names.get(&rec.seat) else { continue };
         if !exclude.contains(name) && stacks.contains_key(&rec.seat) {
             let profile = models.profile(name);
@@ -388,5 +395,41 @@ mod tests {
         assert_eq!(prior_postflop_calls(&hand.history, 0, Street::Turn), 1);
         assert_eq!(prior_postflop_calls(&hand.history, 0, Street::River), 2);
         assert_eq!(prior_postflop_calls(&hand.history, 1, Street::River), 1);
+    }
+}
+
+#[cfg(test)]
+mod blind_stack_tests {
+    use super::*;
+    use sv10_engine::engine::{Action, Hand};
+    use sv10_rng::{SeedableRng, rngs::SmallRng};
+
+    #[test]
+    fn training_stack_features_match_engine_chips_after_blinds_and_checks() {
+        let mut rng = SmallRng::seed_from_u64(801);
+        let mut hand = Hand::new(&[200; 3], 0, 10, 20, &mut rng);
+        let mut contexts = Vec::new();
+        for action in [Action::Call, Action::Call, Action::Check, Action::Check, Action::Check, Action::Check] {
+            let actor = hand.actor().unwrap();
+            let stack = hand.seats[actor].stack;
+            let pot = hand.pot();
+            contexts.push((actor, (1.0 + stack as f32 / pot as f32).ln()));
+            hand.apply(action).unwrap();
+        }
+        let summary = HandSummary {
+            players: (0..3).map(|i| (i, format!("p{i}"))).collect(),
+            button: 0,
+            bb: 20,
+            history: hand.history.clone(),
+            board: hand.board.clone(),
+            stacks: vec![(0, 200), (1, 200), (2, 200)],
+            shown: vec![],
+        };
+        let samples = named_samples_from_hand_for(&summary, &ModelStore::default(), &[], ResponseFeatureSet::PRODUCTION);
+        assert_eq!(samples.len(), contexts.len());
+        for ((name, sample, _), (actor, expected)) in samples.iter().zip(contexts) {
+            assert_eq!(name, &format!("p{actor}"));
+            assert!((sample.x[7] - expected).abs() < 1e-6, "{name}: training {} versus actual engine {expected}", sample.x[7]);
+        }
     }
 }
