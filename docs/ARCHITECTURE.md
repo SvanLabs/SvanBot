@@ -165,7 +165,10 @@ counts the share over the fleet's own decisions).
 5. The decision's full inputs (`ReplayRecord`) go to `audit_queue` for the analyst; big spots also to `replays`.
 6. `hand_result` → hand row stored (with digest, and for an experiment hand its `hand_provenance`
    row in the same transaction) → opponent models updated, except after a treatment hand, which also
-   writes no self-calibration samples.
+   writes no self-calibration samples. A result for a hand the seated hero only watched still updates
+   the table and its between-hands lifecycle, but is not stored, counted, emitted as a hero result or
+   used to learn the fleet's image. Dealt players, private cards or a hero action establish participation;
+   a played hand with an unknown net remains stored rather than being mistaken for a watched hand.
 
 **Opponent tallies are recency-weighted**: each live observation first decays that player's
 decision tallies by `0.5^(1/1000)` (`ModelStore::half_life_hands`, `OPPONENT_HALF_LIFE_HANDS`); hand
