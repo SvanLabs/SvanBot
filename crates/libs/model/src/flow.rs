@@ -55,39 +55,141 @@ pub fn contributions(hand: &HandSummary, pot: i64) -> Option<HashMap<usize, i64>
     (out.values().sum::<i64>() == pot).then_some(out)
 }
 
-/// Chips `hero_seat` won from (positive) or lost to (negative) every other dealt-in seat, from
-/// the reconciled `contributions` and the pot `winners` (names). Between a winner and a loser the
-/// transfer is the smaller of their contributions (neither can win more than it covered), split
-/// evenly when several players won; two winners or two losers move nothing between them. `None`
-/// when the hand does not reconcile, hero was not dealt in or no winner was dealt in.
+/// Chips `hero_seat` won from (positive) or lost to (negative) other seats, rebuilt per pot.
+/// Ordinary ties use the global winner names. Side pots with several eligible winner names need
+/// a complete board and those winners' shown cards to rank them; unavailable attribution is
+/// `None`, as is an unreconciled pot or a hero who was not dealt in. Transfers split fractionally
+/// between tied winners, excluding odd-chip rounding.
 pub fn flow_to_hero(hand: &HandSummary, pot: i64, winners: &[&str], hero_seat: usize) -> Option<Vec<(usize, f64)>> {
     let c = contributions(hand, pot)?;
-    let hero = *c.get(&hero_seat)?;
+    c.get(&hero_seat)?;
     let won: Vec<usize> = hand.players.iter().filter(|(_, n)| winners.contains(&n.as_str())).map(|p| p.0).collect();
-    if won.is_empty() {
+    let folded = |seat| hand.history.iter().any(|r| r.seat == seat && r.kind == ActionKind::Fold);
+    if won.is_empty() || won.iter().any(|&s| folded(s)) {
         return None;
     }
-    let share = won.len() as f64;
-    let hero_won = won.contains(&hero_seat);
-    Some(
-        hand.players
-            .iter()
-            .filter(|(s, _)| *s != hero_seat)
-            .map(|&(s, _)| {
-                let chips = match (hero_won, won.contains(&s)) {
-                    (true, false) => c[&s].min(hero) as f64 / share,
-                    (false, true) => -(hero.min(c[&s]) as f64) / share,
+    let mut levels: Vec<i64> = c.values().copied().filter(|&v| v > 0).collect();
+    levels.sort_unstable();
+    levels.dedup();
+    // Unequal winner commitments can mean different winners of main and side pots.
+    // Smaller folded contributions alone do not make an ordinary global tie ambiguous.
+    let side_pots = won.iter().any(|s| c[s] != c[&won[0]]);
+    let mut flows: HashMap<usize, f64> = hand.players.iter().filter(|(s, _)| *s != hero_seat).map(|&(s, _)| (s, 0.0)).collect();
+    let mut paid = Vec::new();
+    let mut previous = 0;
+    for level in levels {
+        let contributors: Vec<usize> = hand.players.iter().filter(|(s, _)| c[s] >= level).map(|p| p.0).collect();
+        let mut eligible: Vec<usize> = won.iter().copied().filter(|s| c[s] >= level).collect();
+        if eligible.is_empty() {
+            return None;
+        }
+        if side_pots && eligible.len() > 1 {
+            if hand.board.len() != 5 {
+                return None;
+            }
+            let board = hand.board.iter().fold(0, |m, c| m | c.bit());
+            let ranked: Vec<(usize, u32)> = eligible
+                .iter()
+                .map(|&s| {
+                    let hole = hand.shown.iter().find(|(seat, _)| *seat == s)?.1;
+                    Some((s, sv10_cards::eval::eval(board | hole[0].bit() | hole[1].bit())))
+                })
+                .collect::<Option<_>>()?;
+            let best = ranked.iter().map(|r| r.1).max()?;
+            eligible = ranked.into_iter().filter(|r| r.1 == best).map(|r| r.0).collect();
+        }
+        paid.extend(eligible.iter().copied());
+        let chips = (level - previous) as f64 / eligible.len() as f64;
+        let hero_won = eligible.contains(&hero_seat);
+        if contributors.contains(&hero_seat) {
+            for seat in contributors.into_iter().filter(|&s| s != hero_seat) {
+                let other_won = eligible.contains(&seat);
+                *flows.get_mut(&seat)? += match (hero_won, other_won) {
+                    (true, false) => chips,
+                    (false, true) => -chips,
                     _ => 0.0,
                 };
-                (s, chips)
-            })
-            .collect(),
-    )
+            }
+        }
+        previous = level;
+    }
+    // A recorded global winner must win at least one reconstructed pot.
+    if won.iter().any(|s| !paid.contains(s)) {
+        return None;
+    }
+    Some(hand.players.iter().filter_map(|(s, _)| flows.get(s).map(|&v| (*s, v))).collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn side_pot() -> HandSummary {
+        hand(
+            r#"{"players":[[0,"hero"],[1,"short"],[2,"other"]],"button":0,"bb":20,"stacks":[[0,1000],[1,100],[2,1000]],"history":[{"seat":0,"street":"Preflop","kind":"AllIn","to":1000,"pot_before":30,"to_call_before":20,"bet_before":0,"full_raise":true},{"seat":1,"street":"Preflop","kind":"AllIn","to":100,"pot_before":1030,"to_call_before":990,"bet_before":10,"full_raise":false},{"seat":2,"street":"Preflop","kind":"AllIn","to":1000,"pot_before":1120,"to_call_before":980,"bet_before":20,"full_raise":false}],"board":["2c","3d","7h","9s","Tc"],"shown":[[0,["Kh","Kc"]],[1,["Ah","Ac"]],[2,["Qh","Qc"]]]}"#,
+        )
+    }
+
+    #[test]
+    fn side_pot_flows_reconcile_with_exact_engine_settlement() {
+        let h = side_pot();
+        let board = h.board.iter().fold(0, |m, c| m | c.bit());
+        let values: Vec<_> = h.shown.iter().map(|(_, hole)| sv10_cards::eval::eval(board | hole[0].bit() | hole[1].bit())).collect();
+        let payouts = sv10_engine::engine::split_pots(&[1000, 100, 1000], &[false; 3], &values, 0);
+        assert_eq!(payouts, [1800, 300, 0]);
+        for (hero, expected) in [(0, 800.0), (1, 200.0), (2, -1000.0)] {
+            let flows = flow_to_hero(&h, 2100, &["hero", "short"], hero).unwrap();
+            assert_eq!(flows.iter().map(|f| f.1).sum::<f64>(), expected);
+        }
+        let flows: HashMap<_, _> = flow_to_hero(&h, 2100, &["hero", "short"], 0).unwrap().into_iter().collect();
+        assert_eq!((flows[&1], flows[&2]), (-100.0, 900.0));
+    }
+
+    #[test]
+    fn ambiguous_side_pot_winners_without_cards_are_unavailable() {
+        let mut h = side_pot();
+        h.shown.clear();
+        assert_eq!(flow_to_hero(&h, 2100, &["hero", "short"], 0), None);
+        // A single global winner eligible for every pot needs no cards to identify it.
+        let flow = flow_to_hero(&h, 2100, &["hero"], 0).unwrap();
+        assert_eq!(flow.iter().map(|f| f.1).sum::<f64>(), 1100.0);
+        h = side_pot();
+        h.shown.retain(|p| p.0 != 1);
+        assert_eq!(flow_to_hero(&h, 2100, &["hero", "short"], 0), None, "one missing winner's cards leaves allocation unknown");
+        h = side_pot();
+        h.board.pop();
+        assert_eq!(flow_to_hero(&h, 2100, &["hero", "short"], 0), None, "the river is required to compare hands");
+    }
+
+    #[test]
+    fn multiple_side_pots_and_a_tied_last_pot_reconcile_for_every_seat() {
+        let mut h = side_pot();
+        h.players = (0..4).map(|s| (s, format!("p{s}"))).collect();
+        h.stacks = vec![(0, 100), (1, 200), (2, 300), (3, 300)];
+        h.shown = [["Ah", "Ac"], ["Kh", "Kc"], ["Qh", "Qc"], ["Qd", "Qs"]]
+            .into_iter()
+            .enumerate()
+            .map(|(s, cards)| (s, cards.map(|c| sv10_cards::cards::Card::parse(c).unwrap())))
+            .collect();
+        let mut pot = 30;
+        h.history = h
+            .stacks
+            .iter()
+            .map(|&(s, amount)| {
+                let mut r = h.history[0].clone();
+                r.seat = s;
+                r.to = amount;
+                r.bet_before = [0, 10, 20, 0][s];
+                r.pot_before = pot;
+                pot += amount - r.bet_before;
+                r
+            })
+            .collect();
+        for (hero, net) in [(0, 300.0), (1, 100.0), (2, -200.0), (3, -200.0)] {
+            let flows = flow_to_hero(&h, 900, &["p0", "p1", "p2", "p3"], hero).unwrap();
+            assert_eq!(flows.iter().map(|f| f.1).sum::<f64>(), net);
+        }
+    }
 
     /// A live hand as stored (2026-09-24): hero (seat 4, big blind) moves all in on the flop with
     /// an `AllIn` record carrying no amount, seat 5 raises to 4,629 and only 2,000 of it is called.

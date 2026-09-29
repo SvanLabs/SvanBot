@@ -370,7 +370,9 @@ a run of rejections reads as a reason rather than a wall.
   (proven top finishers or solid tight-aggressive stats). With no soft opponent and mostly tough
   ones it leaves after the hand and rejoins the lobby (at most once every 20 minutes).
   **Head-to-head results** (the chips that moved between us and each opponent in the hands they
-  were dealt into, recomputed every 15 minutes) override style guesses: an opponent who
+  were dealt into, recomputed every 15 minutes) override style guesses. Side-pot transfers use
+  recorded showdown ranks when winner names alone cannot identify each pot; hands without that
+  evidence are excluded from attribution. Tied transfers exclude odd-chip rounding. An opponent who
   beats us over 300+ hands at 95% confidence, corrected for the number of opponents tested, is
   always tough. `review` prints the table.
 - **Controls** — Start / Pause (finish the hand, then leave) / Stop from the dashboard.
