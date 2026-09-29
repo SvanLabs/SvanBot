@@ -13,6 +13,8 @@ SQLite storage, React dashboard. User-facing guide: `docs/GUIDE.md` (served on t
 dashboard). Planning and decisions: the issue tracker, <https://github.com/SvanLabs/SvanBot/issues>.
 Specs: `SPEC-protocol.md`, `SPEC-data.md`, `SPEC-learner.md`; runbook `OPERATIONS.md`.
 
+The simulator reopens betting after cumulative short all-ins when the increase since an actor's last matched street bet reaches the last full raise. Raise rights are actor-specific; the minimum increment remains the last full raise.
+
 ## Processes
 
 ```
@@ -132,6 +134,9 @@ counts the share over the fleet's own decisions).
    the champion). The two pair bots swap arms every 120 hands.
 2. On `your_turn`, `tracker.situation` builds a `Situation`; `policy::decide_with` runs on a blocking
    thread with an 8 s timeout (fallback: legal check/fold).
+   Missing local decision state sends that safe action immediately and then requests one resync
+   per table/hand. The sent token stays answered, so an incomplete snapshot cannot double-act or
+   create a resync loop; recovered cards and seats are available to later turns.
 3. `decide_with` first returns uncallable chips to their owner (`Situation::without_uncallable`),
    reconstructs each opponent's range (`oprange`), samples shared deals (live: `tuning.live_samples`,
    640x the learner's budget on a reference-speed machine, scaled down on slower ones (up to 1.6M samples, about 190 ms p50; previously 160x), dealt in one seeded chunk per logical core by `SharedDeals::new_parallel` (heads-up with a flop or later, when every opponent combo × board completion fits the budget, the deals are the exact enumeration instead, each weighted by its combo's range weight: the river always, the turn and flop live; zero sampling noise and faster) and
@@ -165,7 +170,10 @@ counts the share over the fleet's own decisions).
 5. The decision's full inputs (`ReplayRecord`) go to `audit_queue` for the analyst; big spots also to `replays`.
 6. `hand_result` → hand row stored (with digest, and for an experiment hand its `hand_provenance`
    row in the same transaction) → opponent models updated, except after a treatment hand, which also
-   writes no self-calibration samples.
+   writes no self-calibration samples. A result for a hand the seated hero only watched still updates
+   the table and its between-hands lifecycle, but is not stored, counted, emitted as a hero result or
+   used to learn the fleet's image. Dealt players, private cards or a hero action establish participation;
+   a played hand with an unknown net remains stored rather than being mistaken for a watched hand.
 
 **Opponent tallies are recency-weighted**: each live observation first decays that player's
 decision tallies by `0.5^(1/1000)` (`ModelStore::half_life_hands`, `OPPONENT_HALF_LIFE_HANDS`); hand

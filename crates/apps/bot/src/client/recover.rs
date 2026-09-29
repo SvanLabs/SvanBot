@@ -4,6 +4,20 @@
 
 use super::*;
 
+/// Recover impossible local decision state after the legal fallback has been queued. Keep the
+/// token answered, and request at most once per table/hand: resync can restore private state for
+/// later turns, but an incomplete snapshot must not feed a request loop.
+pub(super) fn resync_missing_state(shared: &Shared, slot: usize, tracker: &TableTracker, conn: &Conn, hand: &str) {
+    let Some(table) = &tracker.table_id else { return };
+    let key = (table.clone(), hand.to_string());
+    let mut bot = shared.bots[slot].write();
+    if bot.missing_state_resync.as_ref() != Some(&key)
+        && conn.send(json!({"type": "resync_request", "table_id": table, "last_table_seq": tracker.last_table_seq.max(0)}))
+    {
+        bot.missing_state_resync = Some(key);
+    }
+}
+
 /// Store a finished hand and feed it to the opponent models and the fleet's image of our own play
 /// (0321); a treatment-arm experiment hand is stored with its provenance and kept out of both and out
 /// of the self-calibration table (0291). Returns the stored row.

@@ -103,26 +103,79 @@ def contributions(s, pot):
     return out if sum(out.values()) == pot else None
 
 
+def showdown_rank(board, hole):
+    """Comparable seven-card rank, or None when the recorded cards are incomplete or invalid."""
+    from itertools import combinations
+    cards = list(board) + list(hole)
+    if len(board) != 5 or len(hole) != 2 or len(set(cards)) != 7:
+        return None
+    if any(len(card) != 2 or card[0] not in '23456789TJQKA' or card[1] not in 'cdhs' for card in cards):
+        return None
+    parsed = [('23456789TJQKA'.index(card[0]) + 2, card[1]) for card in cards]
+
+    def five_rank(five):
+        values = sorted((value for value, _ in five), reverse=True)
+        groups = sorted(((values.count(value), value) for value in set(values)), reverse=True)
+        flush = len({suit for _, suit in five}) == 1
+        straight = (5 if values == [14, 5, 4, 3, 2] else values[0]) if (
+            len(set(values)) == 5 and (values[0] - values[-1] == 4 or values == [14, 5, 4, 3, 2])) else None
+        if flush and straight:
+            return (8, straight)
+        if groups[0][0] == 4:
+            return (7, groups[0][1], groups[1][1])
+        if [count for count, _ in groups] == [3, 2]:
+            return (6, groups[0][1], groups[1][1])
+        if flush:
+            return (5, *values)
+        if straight:
+            return (4, straight)
+        if groups[0][0] == 3:
+            return (3, groups[0][1], *sorted((value for count, value in groups if count == 1), reverse=True))
+        pairs = sorted((value for count, value in groups if count == 2), reverse=True)
+        if len(pairs) == 2:
+            return (2, *pairs, next(value for count, value in groups if count == 1))
+        if pairs:
+            return (1, *pairs, *sorted((value for count, value in groups if count == 1), reverse=True))
+        return (0, *values)
+
+    return max(five_rank(five) for five in combinations(parsed, 5))
+
+
 def flow_to_hero(s, pot, winners, hero):
-    """{seat: chips hero won from it (negative: lost to it)}, or None (mirrors `flow_to_hero`)."""
+    """Per-pot opponent transfers; None when contribution or side-pot evidence is insufficient."""
     c = contributions(s, pot)
     if c is None or hero not in c:
         return None
-    won = [x for x, n in s["players"] if n in winners]
-    if not won:
+    won = [seat for seat, name in s['players'] if name in winners]
+    folded = {record['seat'] for record in s.get('history', []) if record['kind'] == 'Fold'}
+    if not won or folded.intersection(won):
         return None
-    out = {}
-    for x, _ in s["players"]:
-        if x == hero:
-            continue
-        if hero in won and x not in won:
-            out[x] = min(c[x], c[hero]) / len(won)
-        elif x in won and hero not in won:
-            out[x] = -min(c[hero], c[x]) / len(won)
-        else:
-            out[x] = 0.0
-    return out
-
+    side_pots = len({c[seat] for seat in won}) > 1
+    shown = dict(s.get('shown', []))
+    out = {seat: 0.0 for seat, _ in s['players'] if seat != hero}
+    paid = set()
+    previous = 0
+    for level in sorted({amount for amount in c.values() if amount > 0}):
+        contributors = {seat for seat in c if c[seat] >= level}
+        eligible = [seat for seat in won if c[seat] >= level]
+        if not eligible:
+            return None
+        if side_pots and len(eligible) > 1:
+            ranks = {seat: showdown_rank(s.get('board', []), shown.get(seat, [])) for seat in eligible}
+            if any(rank is None for rank in ranks.values()):
+                return None
+            best = max(ranks.values())
+            eligible = [seat for seat in eligible if ranks[seat] == best]
+        paid.update(eligible)
+        chips = (level - previous) / len(eligible)
+        if hero in contributors:
+            for seat in contributors - {hero}:
+                if hero in eligible and seat not in eligible:
+                    out[seat] += chips
+                elif seat in eligible and hero not in eligible:
+                    out[seat] -= chips
+        previous = level
+    return out if set(won).issubset(paid) else None
 
 def toughest(ledger, min_hands, k=3):
     """The `k` opponents we do worst against once each one's biggest pot is set aside (0209)."""

@@ -36,7 +36,7 @@ pub fn recent(store: &Store, bot: &str, n: usize) -> Result<String> {
         let sum: f64 = window.iter().map(f).sum();
         let sq: f64 = window.iter().map(|r| f(r) * f(r)).sum();
         let mean = sv10_stats::moments::mean(len, sum);
-        let half = 1.96 * sv10_stats::moments::half_width(len, sum, sq, 1.96);
+        let half = sv10_stats::moments::half_width(len, sum, sq, 1.96);
         (mean / bb * 100.0, half / bb * 100.0)
     };
     let (net_bb, net_hw) = stats(&net_of);
@@ -309,6 +309,35 @@ fn decision_category(store: &Store, r: &sv10_store::store::AuditResult) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recent_reports_95_percent_intervals_from_stored_results() {
+        use sv10_store::store::HandRow;
+        let dir = std::env::temp_dir().join(format!("sv10-recent-interval-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("hands.db")).unwrap();
+        for (i, (net, ev)) in [(-20, -10.0), (20, 10.0)].into_iter().enumerate() {
+            let id = format!("h{i}");
+            store
+                .insert_hand(&HandRow {
+                    bot: "A".into(),
+                    hand_id: id.clone(),
+                    ended_at: format!("2026-09-29T00:00:0{i}Z"),
+                    net: Some(net),
+                    summary: r#"{"bb":20}"#.into(),
+                    ..Default::default()
+                })
+                .unwrap();
+            store.set_ev_nets(&[("A".into(), id, ev)]).unwrap();
+        }
+        // Population SD is 20 chips for net, 10 for EV. In bb/100 the 95% half-widths
+        // are 1.96 * SD / sqrt(2) / 20 * 100 = 138.59 and 69.30 respectively.
+        let report = recent(&store, "A", 2).unwrap();
+        assert!(report.contains("net +0.0 bb/100 (95% -139..+139)"), "{report}");
+        assert!(report.contains("all-in EV +0.0 bb/100 (95% -69..+69)"), "{report}");
+        drop(store);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     fn graded(version: Option<u32>, gap: f64) -> Graded {
         (
