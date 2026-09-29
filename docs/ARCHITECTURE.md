@@ -243,3 +243,5 @@ earned across a rollover.
 - Speed-only changes must reproduce `sim paired` results exactly on a fixed seed.
 
 Showdown-win tallies include a seat winning any main or side pot. Shown ranks are compared only against seats covering that pot; unreconstructable contributions leave this tally unobserved.
+
+Independent paired-evaluation results pool through `crates/libs/policy/src/sim/result.rs`. A zero-hand result adds no evidence; two empty results retain an infinite standard error rather than a precise or NaN interval.
