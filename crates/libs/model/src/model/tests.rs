@@ -229,3 +229,60 @@ fn named_players_keep_their_own_stats_when_they_swap_seats() {
     assert_eq!((alice.hands, alice.vpip.opp, alice.vpip.hit, alice.pfr.hit), (2.0, 2.0, 2.0, 2.0));
     assert_eq!((bob.hands, bob.vpip.opp, bob.vpip.hit, bob.pfr.hit), (2.0, 2.0, 0.0, 0.0));
 }
+
+#[test]
+fn winning_a_side_pot_counts_as_winning_part_of_the_showdown() {
+    let card = |s: &str| Card::parse(s).unwrap();
+    let seats = vec![
+        Hand::seat_state(1000, [card("Kh"), card("Kd")]),
+        Hand::seat_state(100, [card("Ah"), card("Ad")]),
+        Hand::seat_state(1000, [card("Qh"), card("Qd")]),
+    ];
+    let mut hand = Hand::with_cards(seats, [card("2c"), card("3s"), card("7d"), card("8c"), card("9s")], 0, 10, 20);
+    hand.apply(Action::AllIn).unwrap();
+    hand.apply(Action::AllIn).unwrap();
+    hand.apply(Action::Call).unwrap();
+    assert_eq!(hand.net(), vec![800, 200, -1000]);
+    let mut summary = summary(&hand);
+    summary.stacks = vec![(0, 1000), (1, 100), (2, 1000)];
+    let mut models = ModelStore::default();
+    models.observe(&summary, None);
+    assert_eq!(models.players["p0"].won_showdown.hit, 1.0, "the second-best hand won the side pot");
+    assert_eq!(models.players["p1"].won_showdown.hit, 1.0);
+    assert_eq!(models.players["p2"].won_showdown.hit, 0.0);
+}
+
+#[test]
+fn tied_side_pot_winners_count_and_unknown_contributions_are_not_guessed() {
+    let card = |s: &str| Card::parse(s).unwrap();
+    let mut hand = Hand::with_cards(
+        vec![
+            Hand::seat_state(1000, [card("Kh"), card("Kd")]),
+            Hand::seat_state(100, [card("Ah"), card("Ad")]),
+            Hand::seat_state(1000, [card("Kc"), card("Ks")]),
+        ],
+        [card("2c"), card("3s"), card("7d"), card("8c"), card("9s")],
+        0,
+        10,
+        20,
+    );
+    for action in [Action::AllIn, Action::AllIn, Action::Call] {
+        hand.apply(action).unwrap();
+    }
+    let mut known = summary(&hand);
+    known.stacks = vec![(0, 1000), (1, 100), (2, 1000)];
+    let mut models = ModelStore::default();
+    models.observe(&known, None);
+    for name in ["p0", "p1", "p2"] {
+        assert_eq!(models.players[name].won_showdown.hit, 1.0);
+    }
+    // The server's amount-free all-in needs a starting stack to reconcile.
+    known.history.last_mut().unwrap().kind = ActionKind::AllIn;
+    known.history.last_mut().unwrap().to = 0;
+    known.stacks.clear();
+    let mut models = ModelStore::default();
+    models.observe(&known, None);
+    for name in ["p0", "p1", "p2"] {
+        assert_eq!(models.players[name].won_showdown.opp, 0.0);
+    }
+}

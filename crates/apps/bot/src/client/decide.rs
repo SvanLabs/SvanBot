@@ -136,6 +136,7 @@ pub(super) async fn act(
     }
     let started = Instant::now();
     let sit = tracker.situation(msg, &legal);
+    let missing_state = sit.is_none();
     let sit_for_view = sit.clone();
     // The hand's policy was fixed at hand start (or here, for a hand joined by resync).
     let policy = crate::experiment::latch(shared, slot, &hand_id);
@@ -230,6 +231,9 @@ pub(super) async fn act(
     } else {
         // Not recorded as answered: after the reconnect the resynced turn is answered again.
         shared.log(&bot.name, "warn", format!("action {name} for hand {hand_id} not sent: writer closed"));
+    }
+    if sent && missing_state {
+        recover::resync_missing_state(shared, slot, tracker, conn, &hand_id);
     }
     if sent
         && let Some((record, net, big)) = replay

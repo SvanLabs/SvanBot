@@ -48,3 +48,21 @@ test('the dashboard renders when every localStorage read throws', async ({ page 
 
   expect(errors, `uncaught page errors: ${errors.map(error => error.message).join('; ')}`).toHaveLength(0);
 });
+
+test('dashboard preferences still change when browser storage throws', async ({ page }) => {
+  const errors: Error[] = [];
+  page.on('pageerror', error => errors.push(error));
+  await denyStorage(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Felt', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Felt', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Minimize Live table', exact: true }).click();
+  await expect(page.locator('[data-widget="table"] .panel-content')).toBeHidden();
+  await page.getByRole('button', { name: 'Expand Live table', exact: true }).click();
+  await page.getByRole('button', { name: 'Open settings' }).click();
+  await page.getByRole('switch', { name: 'Compact layout' }).click();
+  await expect(page.getByRole('switch', { name: 'Compact layout' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.locator('.bot-tabs button').first().click();
+  expect(errors, `uncaught preference errors: ${errors.map(error => error.message).join('; ')}`).toHaveLength(0);
+});

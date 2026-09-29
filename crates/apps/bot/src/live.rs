@@ -170,6 +170,10 @@ pub struct BotLive {
     /// [`crate::client::MAX_REJECT_RESYNCS`] per hand, so a persistent rejection cannot loop.
     #[serde(skip)]
     pub reject_resyncs: (Option<String>, u32),
+    /// Last table/hand whose missing decision state requested recovery: at most one snapshot
+    /// per hand, so an incomplete resync cannot loop while the safe action still meets the deadline.
+    #[serde(skip)]
+    pub missing_state_resync: Option<(String, String)>,
     /// Unix seconds when our current turn began (None when not our turn).
     pub turn_started: Option<f64>,
     /// Hand and token of the last action accepted by the connection writer.

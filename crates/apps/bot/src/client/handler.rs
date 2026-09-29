@@ -158,7 +158,14 @@ pub(super) async fn handle(
                 recover::resume_open_hand(shared, bot, tracker, &hand_id);
             }
             if let Some(f) = tracker.hand_result(msg) {
-                let row = recover::store_finished(shared, slot, bot, tracker, &f);
+                // A seated hero can watch other players finish a hand before being dealt in.
+                // Missing net alone is not nonparticipation: a genuinely played resynced hand
+                // may lack its starting stack, so use dealt players, private cards or actions.
+                let played = f.hero_hole.is_some()
+                    || f.hero_seat.is_some_and(|hero| {
+                        f.summary.players.iter().any(|(seat, _)| *seat == hero) || f.summary.history.iter().any(|r| r.seat == hero)
+                    });
+                let row = played.then(|| recover::store_finished(shared, slot, bot, tracker, &f));
                 tracker.hands_at_table += 1;
                 // Table moves (seat::between_hands): seek top bots, leave tough tables, bank a very deep
                 // stack, top up a short one. Near the season end a re-queue can only lose the seat.
@@ -188,6 +195,11 @@ pub(super) async fn handle(
                         move_tables(shared, slot, bot, http, tracker, conn, seat, chosen, stack).await;
                     }
                 }
+                let Some(row) = row else {
+                    tracker.pending_calibration.clear();
+                    sync_live(shared, slot, tracker);
+                    return None;
+                };
                 if let Some(final_stack) = f.hero_final_stack
                     && tracker.bb > 0
                 {
