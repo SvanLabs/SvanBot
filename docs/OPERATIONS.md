@@ -98,6 +98,8 @@ the full repository gate typechecks the browser tests but does not execute them.
 
 Portable and offline builds:
 
+Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
+
 ```
 scripts/portable.sh        # x86-64-v2 + v3 binaries, scripts, dashboard, docs -> target/dist/*.tar.gz (32 MB, needs glibc >= MANIFEST)
 scripts/install.sh         # in the unpacked bundle: picks v3/v2 from /proc/cpuinfo flags, installs into target/release, creates .env
