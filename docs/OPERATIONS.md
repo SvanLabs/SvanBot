@@ -16,7 +16,7 @@ All commands run from the repository root. Binaries live in `target/release/`.
 
 | Task | Command |
 |---|---|
-| Start fleet + learner + dashboard | `scripts/start.sh` (builds if binaries are missing; `REBUILD=1` forces) |
+| Start fleet + learner + dashboard | `scripts/start.sh` (returns when a single, head, or worker supervisor is running; otherwise builds if binaries are missing; `REBUILD=1` forces) |
 | Stop everything | `scripts/stop.sh [--hold 30m\|8h\|forever]`: the keepalive leaves the fleet down for the hold (default 30 min); `systemctl --user stop svanbot10` holds forever; `scripts/start.sh` clears it |
 | Keepalive | `scripts/keepalive.sh` restarts `svanbot10.service` when no supervisor runs, no hold is in force and no release holds the lock; decisions in `artifacts/logs/keepalive.log`, `KEEPALIVE_DRY=1` to check. Install once: `scripts/units.sh && systemctl --user enable --now svanbot10-keepalive.timer` |
 | Rename a bot | Change its name in `.env` (`SVANBOT_MAIN_NAME` / `BOT_n_NAME`) and restart. Its season stays one record because each start links the names under the API key. For names used before that record existed, set `SVANBOT_ALIASES=New:Old[,New2:Old2]` once. The server export labels older hands with the new name, so fleet-check matches export rows by hand id |
