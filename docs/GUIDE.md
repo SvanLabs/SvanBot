@@ -51,7 +51,8 @@ password, builds everything optimized for your CPU, builds the dashboard, runs t
 the hardware profile the bot will tune itself to.
 
 **Without a Rust toolchain** (any x86-64 Linux with glibc at least the bundle's `MANIFEST`): unpack
-a bundle built by `scripts/portable.sh` and run `scripts/install.sh`. It installs the x86-64-v3
+a bundle built by `scripts/portable.sh` and run `scripts/install.sh`. The bundle includes the
+analyst process enabled by default fleet startup. It installs the x86-64-v3
 build on CPUs with AVX2/BMI2/FMA (within ~1% of a native build) and x86-64-v2 otherwise, and creates
 `.env`. **Offline source builds**: `scripts/vendor.sh` once while online, then
 `cargo build --release --offline --config .cargo/vendor.toml`.
@@ -370,7 +371,9 @@ a run of rejections reads as a reason rather than a wall.
   (proven top finishers or solid tight-aggressive stats). With no soft opponent and mostly tough
   ones it leaves after the hand and rejoins the lobby (at most once every 20 minutes).
   **Head-to-head results** (the chips that moved between us and each opponent in the hands they
-  were dealt into, recomputed every 15 minutes) override style guesses: an opponent who
+  were dealt into, recomputed every 15 minutes) override style guesses. Side-pot transfers use
+  recorded showdown ranks when winner names alone cannot identify each pot; hands without that
+  evidence are excluded from attribution. Tied transfers exclude odd-chip rounding. An opponent who
   beats us over 300+ hands at 95% confidence, corrected for the number of opponents tested, is
   always tough. `review` prints the table.
 - **Controls** — Start / Pause (finish the hand, then leave) / Stop from the dashboard.
@@ -513,14 +516,14 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Panel | What it shows |
 |-------|---------------|
 | Views | Tabs under the header (Live, Opponents, Learning, Results, System, All) show the widgets for one job in your own arrangement; the last tab is remembered, and arrow keys move between tabs |
-| Releases & updates | **Update** fetches the latest `main`, runs the full gate, builds and installs with a stage-by-stage progress bar and time left, while showing that the bots keep playing; each process hot-swaps between turns. A failure names the stage and changes nothing. **Roll back to a saved build** uses the same bar; a build that cannot read the compressed databases is marked instead of offered |
+| Releases & updates | **Update** fetches the latest `main`, runs the full gate, builds and installs with a stage-by-stage progress bar and time left, while showing that the bots keep playing; each process hot-swaps between turns. A failure names the stage and changes nothing. Failed release-data reads retain the last good reading with a stale warning; login reloads release data, saved builds and previous-run progress immediately. **Roll back to a saved build** uses the same bar; a build that cannot read the compressed databases is marked instead of offered |
 | Host check | Read-only facts about this machine (CPU and microcode, huge pages, memory, free space on the SSD and the archive disk, SSD TRIM), each marked ok, attention or context, with the exact command to fix anything off |
 | Arrange widgets | Every panel is a widget: **Arrange widgets** (workspace bar) shows a bar on each; drag it (mouse or touch) to any column and position, or use the arrows; hide a widget and bring it back from the bar; **Reset layout** restores the default. The layout is saved per browser and survives releases (new panels land in their default column) |
 | Header tabs | Each bot with a live status dot; click to focus it |
 | Overview | Table stack, net winnings, hands played, decision latency |
 | Signal rail | Decision time, sampling error, strategy source, training state |
 | Live table | Seats, stacks, bets, dealer button, board, pot, action labels and countdown; Start/Pause/Stop. Arena (default) follows OpenPoker's charcoal oval, black/red rail, cream cards and dark seat plates, with card deals, chip bets, acting-seat pulses and result-driven winner/payout effects. Felt and Midnight remain available. Selection applies to the focused table and Watch all, persists in this browser, and respects reduced motion. Tables adapt to their panel width, including moved widgets and fleet tiles; narrow panels use two seat rows and a two-column decision-stat layout to keep cards, bets and values readable. |
-| Range explorer | Each live opponent's estimated range at our last decision as a 13×13 heatmap (brighter = more likely per combo), our equity against each range and against all of them, their most likely hands |
+| Range explorer | Each live opponent's estimated range at our last decision as a 13×13 heatmap (brighter = more likely per combo), our equity against each range and against all of them, their most likely hands. A failed read is named; switching bots clears the previous bot’s ranges |
 | Live action | Every action, board card, decision and result pushed the instant it happens (this bot / all bots) |
 | Leak finder | All recorded hands analysed: advice ranked by severity, costliest and best lines (our action sequence per street with 95% intervals), how hands ended, results by position, head-to-head by opponent, the exploitation check (do opponents bet into us more while we over-fold vs MDF?) and the cumulative trend |
 | Self-calibration | Predicted vs realized value per spot and the corrections the bot applies to itself |
@@ -528,7 +531,7 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Why this move | Bar chart of the expected chips of every option considered — hover for fold odds |
 | Fleet race | Cumulative profit of every bot on one chart; click names to toggle |
 | Starting hand library | 13×13 grid of hands the live policy opens by position (BB: defends vs a button open). Failed reads are named, the last good grid is kept with a stale warning, and login retries immediately |
-| Recent hands | Last hands with cards and net; click to replay |
+| Recent hands | Last hands with cards and net; click to replay. Reads load independently from opponent profiles, failed reads are named, and changing bots clears the previous bot’s rows |
 | Hand replay | Step through a hand or press play (1x/2x/4x) |
 | Opponent intelligence | Every opponent's style, sample size and key stats; click for the full profile |
 | Season race | Live leaderboard with our bots highlighted, rank movement, gap to #1, time left |
@@ -542,7 +545,9 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Docs | This documentation |
 | Bot setup (Settings → Open bot setup, or `#setup`) | Add, rename, reorder, switch off or remove bots, paste and check API keys, set the maximum buy-in and table seeking; saves to `.env` and restarts the fleet between turns |
 
-Big wins pop up as toasts in the corner.
+Big wins pop up as toasts in the corner. When browser storage is blocked or full, workspace
+preferences still apply for the current visit; they cannot be remembered after a reload.
+An unreadable API response is reported as a failed read in its panel instead of being rendered as data.
 
 ---
 
