@@ -175,7 +175,8 @@ counts the share over the fleet's own decisions).
    used to learn the fleet's image. Dealt players, private cards or a hero action establish participation;
    a played hand with an unknown net remains stored rather than being mistaken for a watched hand.
 
-**Opponent tallies are recency-weighted**: each live observation first decays that player's
+**Opponent tallies are recency-weighted**: schema recovery preserves the configured half-life
+before replaying stored hands. Each live observation first decays that player's
 decision tallies by `0.5^(1/1000)` (`ModelStore::half_life_hands`, `OPPONENT_HALF_LIFE_HANDS`); hand
 counts and the population prior are not decayed. `review opponent-adapt` scores the newer half of the
 stored hands under a range of half-lives and prints each one's gain over all-time tallies. The image
