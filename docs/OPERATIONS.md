@@ -106,6 +106,12 @@ The results monitor attributes opponent transfers separately for main and side p
 unequal-commitment winners cannot be ranked from the recorded showdown, it skips that hand
 for opponent attribution; the bot’s recorded total result remains available.
 
+Database resource measurements from `scripts/resource-report.py` use a read-only, WAL-aware
+transaction, so committed table pages are included while the fleet is running.
+
+Build comparisons with `scripts/build-ab.py` retain compiler output and the diagnostic log path
+when a build exceeds its timeout, including runs that produced only one output stream.
+
 Portable and offline builds:
 
 Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
@@ -224,6 +230,10 @@ is significant, so the effect is real and the interval is contention noise. The 
 | Import a PHH tree / measure a source | `./target/release/ingest phh <dir> <source> --dry-run`; `SVANBOT10_ROOT=<copy of artifacts parent> ./target/release/ingest neural-ab <source> 3` |
 | Import archived frames | `./target/release/ingest archive <dir> --dry-run`, then without `--dry-run` (idempotent, resumable) |
 | Refit range model | `./target/release/calibrate 20000` (`CALIBRATE_CORPUS=1` to measure the corpus; `CALIBRATE_START=live CALIBRATE_FREEZE=a,b` starts from the live fitted set with fields held, a dry run for shape-term A/B tests; `CALIBRATE_LINES=1` reports range calibration per postflop line type; every fit logs the held-out likelihood split by the shown player's largest bet — under 1.5x, 1.5–4x, 4x+ pot — so a size term shows where it helps) |
+
+GitHub runtime restores with `scripts/fetch-data.sh` also require fleet writers and their restart
+supervisors to be stopped, including split workers, learner, and analyst. `FORCE=1` permits
+overwriting existing databases but never bypasses this guard; `--derived` remains safe while the fleet runs.
 
 ## Cleanliness
 
