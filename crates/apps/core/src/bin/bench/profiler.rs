@@ -22,7 +22,16 @@ extern "C" fn on_prof(_sig: libc::c_int, _info: *mut libc::siginfo_t, ctx: *mut 
     // SAFETY: the kernel passes a valid `ucontext_t` to an SA_SIGINFO handler.
     let (rip, rbp) = unsafe {
         let uc = &*(ctx as *const libc::ucontext_t);
-        (uc.uc_mcontext.gregs[libc::REG_RIP as usize] as u64, uc.uc_mcontext.gregs[libc::REG_RBP as usize] as u64)
+        #[cfg(target_arch = "x86_64")]
+        let registers = (uc.uc_mcontext.gregs[libc::REG_RIP as usize] as u64, uc.uc_mcontext.gregs[libc::REG_RBP as usize] as u64);
+        #[cfg(target_arch = "aarch64")]
+        let registers = (uc.uc_mcontext.pc, uc.uc_mcontext.regs[29]);
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let registers = {
+            let _ = uc;
+            (0, 0)
+        };
+        registers
     };
     let mut ret = 0u64;
     if rbp != 0 && rbp.is_multiple_of(8) {
@@ -43,6 +52,10 @@ extern "C" fn on_prof(_sig: libc::c_int, _info: *mut libc::siginfo_t, ctx: *mut 
 
 /// Start sampling every `interval_us` of process CPU time.
 pub fn start(interval_us: i64) {
+    if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+        eprintln!("Sampling profiler supports Linux x86-64 and AArch64; sampling is unavailable on this architecture.");
+        return;
+    }
     // SAFETY: installs a handler that is async-signal-safe (see the module docs) and arms a timer.
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();

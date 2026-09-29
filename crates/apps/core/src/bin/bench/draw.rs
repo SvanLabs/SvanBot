@@ -93,12 +93,29 @@ fn select_loop(rng: &mut SmallRng, used: &mut CardMask) -> Card {
 /// is [`block_pdep`], which inlines these two instructions.
 ///
 /// SAFETY: the caller has checked `bmi2` at runtime (`_pdep_u64` is `#[target_feature]`).
+#[cfg(target_arch = "x86_64")]
 fn select_pdep(rng: &mut SmallRng, used: &mut CardMask) -> Card {
     let free = !*used & FREE52;
     let j = rng.random_range(0..free.count_ones() as u8);
     let bit = unsafe { core::arch::x86_64::_pdep_u64(1u64 << j, free) };
     *used |= bit;
     Card(bit.trailing_zeros() as u8)
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn select_pdep(rng: &mut SmallRng, used: &mut CardMask) -> Card {
+    select_loop(rng, used)
+}
+
+fn bmi2_available() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        std::arch::is_x86_feature_detected!("bmi2")
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        false
+    }
 }
 
 /// The shipped loop with its collision test removed: one draw per card, nothing data-dependent. It
@@ -138,6 +155,7 @@ fn block(draw: impl Fn(&mut SmallRng, &mut CardMask) -> Card, seed: u64, masks: 
 ///
 /// SAFETY: the caller has checked `bmi2` at runtime.
 #[target_feature(enable = "bmi2")]
+#[cfg(target_arch = "x86_64")]
 unsafe fn block_pdep(seed: u64, masks: &[CardMask]) -> (f64, u64) {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut acc = 0u64;
@@ -159,6 +177,11 @@ unsafe fn block_pdep(seed: u64, masks: &[CardMask]) -> (f64, u64) {
     (t.elapsed().as_secs_f64() * 1e9 / (2 * PASSES * masks.len()) as f64, acc)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
+unsafe fn block_pdep(seed: u64, masks: &[CardMask]) -> (f64, u64) {
+    block(select_loop, seed, masks)
+}
+
 /// The BMI2 arm must be the twin's algorithm — same stream in, same card out, always a free card —
 /// or the comparison measures two different draws. Every run checks it (the bench bin has no test
 /// harness of its own, 0226, so the check lives in the tool and holds in the build being measured).
@@ -167,7 +190,7 @@ unsafe fn block_pdep(seed: u64, masks: &[CardMask]) -> (f64, u64) {
 /// fills up — where a draw over the free cards has no card to give, and `random_range(0..0)` panics
 /// — is not reachable there.
 fn pdep_agrees_with_twin(start: CardMask) -> bool {
-    if !std::arch::is_x86_feature_detected!("bmi2") {
+    if !bmi2_available() {
         return true;
     }
     let (mut a, mut b) = (SmallRng::seed_from_u64(0x0354), SmallRng::seed_from_u64(0x0354));
@@ -226,7 +249,7 @@ fn median(xs: &[f64]) -> f64 {
 
 /// One density: every arm over `rounds` rounds, each ratio paired round by round against `reject`.
 fn cell(k: usize, rounds: usize, masks: &[CardMask]) -> Value {
-    let pdep = std::arch::is_x86_feature_detected!("bmi2");
+    let pdep = bmi2_available();
     let mut ns: [Vec<f64>; 5] = std::array::from_fn(|_| Vec::with_capacity(rounds));
     let mut checksums = [0u64; 5];
     for round in 0..rounds {
@@ -302,7 +325,7 @@ pub fn run(rounds: usize) -> Value {
     out.insert("rounds".into(), json!(rounds));
     out.insert("sub_blocks_per_arm_per_round".into(), json!(SUBS));
     out.insert("cards_per_sub_block".into(), json!(2 * MASKS * PASSES));
-    out.insert("bmi2".into(), json!(std::arch::is_x86_feature_detected!("bmi2")));
+    out.insert("bmi2".into(), json!(bmi2_available()));
     out.insert("pdep_agrees_with_select_loop".into(), json!(pdep_agrees_with_twin(masks[0])));
     out.insert("k1".into(), cell(1, rounds, &masks));
     out.insert("k2".into(), cell(2, rounds, &start_masks(2, MASKS)));

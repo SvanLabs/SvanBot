@@ -530,3 +530,9 @@ carrying equity, and the public stream does not carry them), no scouting reports
 TV is a label, not a button — the read behind it is the model's opinion of a named person), and no
 exit link (there is nowhere to exit to). Setting the port back to `0` or unsetting it leaves the
 dashboard untouched.
+
+Source installations support Linux x86-64 and AArch64. The benchmark's BMI2 arm is selected
+only on x86-64 with runtime support; other CPUs use the existing scalar fallback and report
+BMI2 as unavailable. The sampling profiler reads the matching Linux x86-64 or AArch64 signal
+context. Other architectures report sampling unavailable rather than inventing a measurement.
+An ARM workspace cross-check verifies compilation; runtime measurements require real ARM hardware.
