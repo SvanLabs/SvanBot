@@ -20,7 +20,7 @@ for level in v2 v3; do
   # RUSTFLAGS sets the instruction set for this build, overriding the workspace default.
   RUSTFLAGS="-C target-cpu=x86-64-$level" nice -n 10 cargo build --release --workspace --bins --target-dir "target/dist-$level"
   mkdir -p "$out/bin/x86-64-$level"
-  for b in sv10-bot learner sim probe tables review calibrate ingest archive; do
+  for b in sv10-bot learner analyst sim probe tables review calibrate ingest archive; do
     cp "target/dist-$level/release/$b" "$out/bin/x86-64-$level/"
   done
   # Debug info stays in target/dist-*; the bundle ships stripped binaries.

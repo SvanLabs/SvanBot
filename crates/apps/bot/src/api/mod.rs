@@ -35,6 +35,9 @@ mod timeline;
 mod tv;
 mod wiring;
 
+#[cfg(test)]
+mod report_failures;
+
 use control::*;
 use games::*;
 use hands::*;
@@ -69,6 +72,7 @@ async fn host(State(s): State<Arc<Shared>>) -> Result<Json<Value>, ApiError> {
 }
 
 /// A request the server answers with an error response (boxed: a `Response` is large).
+#[derive(Debug)]
 pub(super) struct ApiError(Box<Response>);
 
 impl From<Response> for ApiError {
@@ -93,6 +97,13 @@ fn server_error(what: &str, e: impl std::fmt::Display) -> ApiError {
 /// A store read a handler needs: its error answers 500 (0222).
 fn store_read<T>(what: &str, r: Result<T>) -> Result<T, ApiError> {
     r.map_err(|e| server_error(&format!("store unreadable ({what})"), e))
+}
+
+/// Missing stored evidence is distinct from a failed read or an unreadable existing record.
+fn stored_json(s: &Shared, key: &str) -> Result<Option<Value>, ApiError> {
+    store_read(key, s.store.get_kv(key))?
+        .map(|raw| serde_json::from_str(&raw).map_err(|e| server_error(&format!("stored JSON unreadable ({key})"), e)))
+        .transpose()
 }
 
 /// A store read that feeds one figure of a larger snapshot: the snapshot still goes out, and the

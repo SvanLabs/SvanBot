@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, EyeOff, Grip, Plus, RotateCcw } from 'lucide-react';
-import { readLocal } from './storage';
+import { readLocal, writeLocal } from './storage';
 
 export type Column = 'left' | 'center' | 'right';
 export type Layout = Record<Column, string[]> & { hidden: string[] };
@@ -33,7 +33,7 @@ function sameLayout(left: Layout, right: Layout) {
 }
 
 function save(layout: Layout) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(layout)); } catch { /* storage unavailable: layout lasts this visit */ }
+  writeLocal(STORAGE_KEY, JSON.stringify(layout));
 }
 
 function locate(layout: Layout, id: string): [Column, number] | undefined {
@@ -91,7 +91,7 @@ export function loadView(): string {
 
 /** Tab bar for the dashboard views; `extra` names widgets the user placed that a view does not list. */
 export function ViewTabs({ view, onChange }: { view: string; onChange: (id: string) => void }) {
-  const select = (id: string) => { onChange(id); try { localStorage.setItem('svan-view', id); } catch { /* ignore */ } };
+  const select = (id: string) => { onChange(id); writeLocal('svan-view', id); };
   return <nav className="view-tabs" role="tablist" aria-label="Dashboard views">
     {VIEWS.map(v => <button key={v.id} role="tab" aria-selected={view === v.id} className={view === v.id ? 'active' : ''} onClick={() => select(v.id)}
       onKeyDown={e => {

@@ -127,7 +127,7 @@ pub(super) fn extract(hand: &HandSummary) -> HashMap<usize, PlayerStats> {
         }
     }
     let folded: Vec<usize> = hand.history.iter().filter(|r| r.kind == ActionKind::Fold).map(|r| r.seat).collect();
-    let showdown = hand.players.iter().filter(|(s, _)| !folded.contains(s)).count() > 1;
+    let showdown = hand.players.iter().filter(|(s, _)| seats.contains(s) && !folded.contains(s)).count() > 1;
     for seat in &saw_flop {
         let s = out.entry(*seat).or_default();
         let went = showdown && !folded.contains(seat);
@@ -141,13 +141,18 @@ pub(super) fn extract(hand: &HandSummary) -> HashMap<usize, PlayerStats> {
         let values: Vec<(usize, u32)> = hand
             .shown
             .iter()
-            .filter(|(s, _)| !folded.contains(s))
+            .filter(|(s, _)| seats.contains(s) && !folded.contains(s))
             .map(|(s, c)| (*s, sv10_cards::eval::eval(board_mask | c[0].bit() | c[1].bit())))
             .collect();
-        if values.len() >= 2 {
-            let best = values.iter().map(|(_, v)| *v).max().unwrap();
-            for (s, v) in &values {
-                out.entry(*s).or_default().won_showdown.add(*v == best);
+        if values.len() >= 2
+            && let Some(contributions) = crate::flow::reconstructed_contributions(hand)
+        {
+            for (seat, value) in &values {
+                let covered = contributions[seat];
+                if covered > 0 {
+                    let won = values.iter().all(|(other, rank)| contributions[other] < covered || rank <= value);
+                    out.entry(*seat).or_default().won_showdown.add(won);
+                }
             }
         }
         if let Some(agg) = last_river_aggressor

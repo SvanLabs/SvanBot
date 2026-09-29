@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { Gauge, Pause as PauseIcon, ChevronLeft, ChevronRight, Play, Spade, X } from 'lucide-react';
 import { useAutoPlay } from './fun';
 import type { Hand, ReplayEvent } from './types';
-import { format, api, Card, Panel } from './ui';
+import { format, Card, Panel } from './ui';
+import { StaleNote, usePoll } from './api';
 import { time } from './format';
 import { PlayerName } from './playername';
 
@@ -27,9 +28,8 @@ export function Replay({events, hand, onClose}: {events:ReplayEvent[];hand:Hand;
 }
 
 export function StartingHands({version}: {version?: string | number}) {
-  const [rows,setRows] = useState<{hand:string;score:number;open:boolean[]}[]>([]);
+  const poll = usePoll<{hand:string;score:number;open:boolean[]}[]>('/starting-hands', 60000, version);
+  const rows = poll.data ?? [];
   const [position,setPosition] = useState(0);
-  useEffect(()=>{let active=true; api<typeof rows>('/starting-hands').then(value=>{if(active)setRows(value);}).catch(()=>{if(active)setRows([]);});return ()=>{active=false;};},[version]);
-  return <Panel title="Starting hand library" icon={<Spade size={15}/>} aside={<span className="tag">169 HAND CLASSES</span>}><div className="position-tabs">{['UTG','HJ','CO','BTN','SB','BB'].map((label,index)=><button key={label} className={index===position?'active':''} onClick={()=>setPosition(index)}>{label}</button>)}</div><div className="range-grid">{rows.map(row=><span key={row.hand} className={row.open[position]?'range-open':''} title={`${row.hand}: score ${row.score.toFixed(3)} · ${row.open[position]?'in opening guide':'outside opening guide'}`}>{row.hand}</span>)}</div><p className="footnote">Six-seat first-in heuristic from the champion. Gold = opening guide. Facing raises, stack depth, pot odds and opponent ranges change the decision. This is not a solved optimal range.</p></Panel>;
+  return <Panel title="Starting hand library" icon={<Spade size={15}/>} aside={<span className="tag">169 HAND CLASSES</span>}><StaleNote poll={poll}/>{!poll.data && !poll.error && <p className="footnote">Loading the opening guide…</p>}<div className="position-tabs">{['UTG','HJ','CO','BTN','SB','BB'].map((label,index)=><button key={label} className={index===position?'active':''} onClick={()=>setPosition(index)}>{label}</button>)}</div><div className="range-grid">{rows.map(row=><span key={row.hand} className={row.open[position]?'range-open':''} title={`${row.hand}: score ${row.score.toFixed(3)} · ${row.open[position]?'in opening guide':'outside opening guide'}`}>{row.hand}</span>)}</div><p className="footnote">Six-seat first-in heuristic from the champion. Gold = opening guide. Facing raises, stack depth, pot odds and opponent ranges change the decision. This is not a solved optimal range.</p></Panel>;
 }
-
