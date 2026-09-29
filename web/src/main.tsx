@@ -25,7 +25,7 @@ import type { Bot, Hand, Opponent, ReplayEvent, Snapshot, TableBot } from './typ
 import { format, signed, percent, suitMap, dotClass, ThemeToggle, api, Card, Panel, Empty } from './ui';
 import { time, TURN_DEADLINE_S } from './format';
 import type { TableTheme } from './ui';
-import { announceSession } from './api';
+import { announceSession, StaleNote, usePoll } from './api';
 import { PokerTable, TvMode, DecisionStrip } from './table';
 import { scopeLabel, Performance, Autonomy, ExperimentCard, ExperimentModePanel, Season, Profile, SearchFunnel } from './training';
 import { Replay, StartingHands } from './panels';
@@ -66,8 +66,6 @@ function App() {
   const [operatorToken,setOperatorToken] = useState('');
   const [loginAttempt,setLoginAttempt] = useState(0);
   const [busy,setBusy] = useState(false);
-  const [hands,setHands] = useState<Hand[]>([]);
-  const [opponents,setOpponents] = useState<Opponent[]>([]);
   const [query,setQuery] = useState('');
   const [logQuery,setLogQuery] = useState('');
   const [settings,setSettings] = useState(false);
@@ -83,6 +81,10 @@ function App() {
   const [view,setView] = useState(loadView);
   const eventRef = useRef<EventSource | null>(null);
   const bot = snapshot?.bots.find(candidate => candidate.slot === selected) || snapshot?.bots[0];
+  const handsPoll = usePoll<Hand[]>(bot ? `/bots/${bot.slot}/hands` : null, 30000);
+  const opponentsPoll = usePoll<Opponent[]>(bot ? `/bots/${bot.slot}/opponents` : null, 30000);
+  const hands = handsPoll.data ?? [];
+  const opponents = opponentsPoll.data ?? [];
   // Every name on the page is clickable (0297): ours switch the dashboard to that bot, others open their scout view.
   registerNames((snapshot?.bots || []).map(b => b.name), opponents.map(o => o.name));
   const botsRef = useRef(snapshot?.bots || []);
@@ -160,19 +162,10 @@ function App() {
 
   useEffect(() => {
     if(!bot) return;
-    let cancelled = false;
-    const update = async () => {
-      try {
-        const [recent,players] = await Promise.all([api<Hand[]>(`/bots/${bot.slot}/hands`),api<Opponent[]>(`/bots/${bot.slot}/opponents`)]);
-        if(!cancelled) {setHands(recent);setOpponents(players);}
-      } catch(failure) {if(!cancelled) setError((failure as Error).message);}
-    };
-    void update();
     // Refresh when this bot finishes a hand (0211); the slow poll only covers a missed event.
-    const onHand = (event: Event) => { const e = (event as CustomEvent<{type: string; slot: number}>).detail; if (e.type === 'hand' && e.slot === bot.slot) void update(); };
+    const onHand = (event: Event) => { const e = (event as CustomEvent<{type: string; slot: number}>).detail; if (e.type === 'hand' && e.slot === bot.slot) { handsPoll.refresh(); opponentsPoll.refresh(); } };
     window.addEventListener('sv-live', onHand);
-    const interval = setInterval(update,30000);
-    return () => {cancelled = true;clearInterval(interval);window.removeEventListener('sv-live', onHand);};
+    return () => window.removeEventListener('sv-live', onHand);
   }, [bot?.slot]);
 
   async function command(action: string) {
@@ -248,8 +241,8 @@ function App() {
     {id:'leaks', title:'Leak finder', node:<Panel title="Leak finder" icon={<Search size={15}/>} aside={<span className="tag">ALL HANDS</span>}><LeakFinder/></Panel>},
     {id:'fleet-race', title:'Fleet race', node:<Panel title="Fleet race" icon={<Swords size={15}/>} aside={<span className="tag">ALL BOTS</span>}><FleetRace/></Panel>},
     {id:'starting-hands', title:'Starting hand library', node:<StartingHands version={snapshot?.training.champion.version}/>},
-    {id:'recent-hands', title:'Recent hands', node:<Panel title="Recent hands" icon={<History size={15}/>} aside={<span className="subtle">Click a hand to replay <ArrowUpRight size={11}/></span>}><div className="table-filter"><label><Search size={13}/><input aria-label="Search hands" placeholder="Search hands, cards, boards…" value={query} onChange={event=>setQuery(event.target.value)}/></label><span>{filteredHands.length} hands <ListFilter size={13}/></span></div><div className="data-table-wrap"><table className="data-table hands-table"><thead><tr><th>HAND / TIME</th><th>HOLE CARDS</th><th>BOARD</th><th>NET</th><th/></tr></thead><tbody>{filteredHands.slice(0,8).map(hand=><tr key={hand.id} onClick={()=>openReplay(hand)} tabIndex={0} onKeyDown={event=>{if(event.key==='Enter') void openReplay(hand);}}><td><b title={hand.hand_id}>#{hand.hand_id.slice(0,9).replace(/-$/,'')}</b><small>{time(hand.ts, { seconds: true })}</small></td><td><div className="inline-cards">{hand.hole.map((card,index)=><Card key={index} small card={card}/>)}</div></td><td><div className="board-text">{hand.board.map((card,index)=><span key={index} className={'hd'.includes(card[1])?'card-red':''}>{card[0]}{suitMap[card[1]]}</span>)}</div></td><td className={hand.net != null && hand.net < 0 ? 'negative':'positive'}>{signed(hand.net)}</td><td><ChevronRight size={14}/></td></tr>)}</tbody></table></div>{!filteredHands.length && <Empty title={query ? 'No matching hands' : 'Every hand tells a story'} detail={query ? 'Try another card or hand ID.' : 'Completed hands appear here with full action-by-action replay.'} icon={<History size={22}/>}/>}</Panel>},
-    {id:'opponents', title:'Opponent intelligence', node:<Panel title="Opponent intelligence" icon={<Users size={15}/>} aside={<span className="tag">{opponents.length} PROFILES</span>}><p className="footnote">Every player we have observed, most-seen first. Hands are counted from live tables plus downloaded history, older hands weighing less. Click a player for their scout view.</p><ul className="opponent-list">{opponents.slice(0,20).map(opponent=><li key={opponent.name}><button type="button" className="opponent-row" onClick={()=>openPlayerCard(opponent.name)}><span className="opponent-avatar" aria-hidden="true">{opponent.name.slice(0,1)}</span><span className="opponent-row-who"><b>{opponent.name}</b><small title={opponent.advice}>{opponent.style}</small></span><span className="opponent-row-stats">{(['vpip','pfr','aggression','fold_to_bet'] as const).map(metric=>{const est=opponent[metric]; const samples=est?.samples ?? est?.count; const hasInterval=est?.lower != null && est?.upper != null; const label=metric==='fold_to_bet'?'Folds to a bet':metric[0].toUpperCase()+metric.slice(1); return <span key={metric} title={est ? `${label}: ${percent(est.value)} over ${format(samples)} opportunities${hasInterval ? `; 95% interval ${percent(est.lower)}–${percent(est.upper)}` : ''}`:`No ${label} observations yet`}><small>{label}</small><b>{percent(est?.value)}</b></span>;})}</span><span className="opponent-row-hands"><b>{format(opponent.evidence_hands)}</b><small>hands observed</small></span><ChevronRight size={14} aria-hidden="true"/></button></li>)}</ul>{!opponents.length && <Empty title="Observe. Understand. Adapt." detail="Opponent profiles build from public actions, with sample counts and uncertainty." icon={<Users size={23}/>}/>}</Panel>},
+    {id:'recent-hands', title:'Recent hands', node:<Panel title="Recent hands" icon={<History size={15}/>} aside={<span className="subtle">Click a hand to replay <ArrowUpRight size={11}/></span>}><StaleNote poll={handsPoll}/><div className="table-filter"><label><Search size={13}/><input aria-label="Search hands" placeholder="Search hands, cards, boards…" value={query} onChange={event=>setQuery(event.target.value)}/></label><span>{filteredHands.length} hands <ListFilter size={13}/></span></div><div className="data-table-wrap"><table className="data-table hands-table"><thead><tr><th>HAND / TIME</th><th>HOLE CARDS</th><th>BOARD</th><th>NET</th><th/></tr></thead><tbody>{filteredHands.slice(0,8).map(hand=><tr key={hand.id} onClick={()=>openReplay(hand)} tabIndex={0} onKeyDown={event=>{if(event.key==='Enter') void openReplay(hand);}}><td><b title={hand.hand_id}>#{hand.hand_id.slice(0,9).replace(/-$/,'')}</b><small>{time(hand.ts, { seconds: true })}</small></td><td><div className="inline-cards">{hand.hole.map((card,index)=><Card key={index} small card={card}/>)}</div></td><td><div className="board-text">{hand.board.map((card,index)=><span key={index} className={'hd'.includes(card[1])?'card-red':''}>{card[0]}{suitMap[card[1]]}</span>)}</div></td><td className={hand.net != null && hand.net < 0 ? 'negative':'positive'}>{signed(hand.net)}</td><td><ChevronRight size={14}/></td></tr>)}</tbody></table></div>{!filteredHands.length && !handsPoll.error && <Empty title={query ? 'No matching hands' : 'Every hand tells a story'} detail={query ? 'Try another card or hand ID.' : 'Completed hands appear here with full action-by-action replay.'} icon={<History size={22}/>}/>}</Panel>},
+    {id:'opponents', title:'Opponent intelligence', node:<Panel title="Opponent intelligence" icon={<Users size={15}/>} aside={<span className="tag">{opponents.length} PROFILES</span>}><StaleNote poll={opponentsPoll}/><p className="footnote">Every player we have observed, most-seen first. Hands are counted from live tables plus downloaded history, older hands weighing less. Click a player for their scout view.</p><ul className="opponent-list">{opponents.slice(0,20).map(opponent=><li key={opponent.name}><button type="button" className="opponent-row" onClick={()=>openPlayerCard(opponent.name)}><span className="opponent-avatar" aria-hidden="true">{opponent.name.slice(0,1)}</span><span className="opponent-row-who"><b>{opponent.name}</b><small title={opponent.advice}>{opponent.style}</small></span><span className="opponent-row-stats">{(['vpip','pfr','aggression','fold_to_bet'] as const).map(metric=>{const est=opponent[metric]; const samples=est?.samples ?? est?.count; const hasInterval=est?.lower != null && est?.upper != null; const label=metric==='fold_to_bet'?'Folds to a bet':metric[0].toUpperCase()+metric.slice(1); return <span key={metric} title={est ? `${label}: ${percent(est.value)} over ${format(samples)} opportunities${hasInterval ? `; 95% interval ${percent(est.lower)}–${percent(est.upper)}` : ''}`:`No ${label} observations yet`}><small>{label}</small><b>{percent(est?.value)}</b></span>;})}</span><span className="opponent-row-hands"><b>{format(opponent.evidence_hands)}</b><small>hands observed</small></span><ChevronRight size={14} aria-hidden="true"/></button></li>)}</ul>{!opponents.length && !opponentsPoll.error && <Empty title="Observe. Understand. Adapt." detail="Opponent profiles build from public actions, with sample counts and uncertainty." icon={<Users size={23}/>}/>}</Panel>},
     {id:'season-race', title:'Season race', node:<Panel title="Season race" icon={<Crown size={15}/>} aside={<span className="tag">RANK TRACKING</span>}><SeasonRace/></Panel>},
     {id:'badges', title:'Badge race', node:<Panel title="Badge race" icon={<Crown size={15}/>} aside={<span className="tag">SEASON END</span>}><BadgeRace/></Panel>},
     {id:'stories', title:'Stories', node:<Panel title="Stories" icon={<Sparkles size={15}/>} aside={<span className="tag">RECAP</span>}><StoriesPanel/></Panel>},
