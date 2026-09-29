@@ -238,7 +238,11 @@ class Runner:
             out = proc.stdout + proc.stderr
             rc = proc.returncode
         except subprocess.TimeoutExpired as exc:
-            out = (exc.stdout or "") + (exc.stderr or "")
+            # TimeoutExpired retains bytes even when subprocess.run used text=True.
+            out = "".join(
+                stream.decode("utf-8", errors="replace") if isinstance(stream, bytes) else stream or ""
+                for stream in (exc.stdout, exc.stderr)
+            )
             rc = -9
         took = time.monotonic() - t0
         after = f"{loadavg()}/{concurrent_builds()}r"

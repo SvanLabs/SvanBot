@@ -109,6 +109,9 @@ for opponent attribution; the bot’s recorded total result remains available.
 Database resource measurements from `scripts/resource-report.py` use a read-only, WAL-aware
 transaction, so committed table pages are included while the fleet is running.
 
+Build comparisons with `scripts/build-ab.py` retain compiler output and the diagnostic log path
+when a build exceeds its timeout, including runs that produced only one output stream.
+
 Portable and offline builds:
 
 Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
