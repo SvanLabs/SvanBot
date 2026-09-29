@@ -202,3 +202,59 @@ test('a blocked next update is named apart from the run that finished', async ({
   // An update cannot start from a dirty tree, so the button stays disabled.
   await expect(panel.getByRole('button', { name: 'Update', exact: true })).toBeDisabled();
 });
+
+
+test('unavailable saved builds and progress are visible and recover when signed in', async ({ page }) => {
+  await page.route('**/api/releases', route => route.fulfill({ json: releases }));
+  let unavailable = true;
+  await page.route('**/api/releases/snapshots', route => unavailable
+    ? route.fulfill({ status: 503, json: { detail: 'Saved builds offline' } })
+    : route.fulfill({ json: { snapshots: [] } }));
+  await page.route('**/api/releases/progress', route => unavailable
+    ? route.fulfill({ status: 503, json: { detail: 'Progress offline' } })
+    : route.fulfill({ json: progress('failed', { message: 'Prior build failed' }) }));
+  await page.goto('/');
+  const panel = page.locator('.updates-panel');
+  await expect(panel.getByText(/Saved builds offline/)).toBeVisible();
+  await expect(panel.getByText(/Progress offline/)).toBeVisible();
+  unavailable = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('sv-session')));
+  await expect(panel.getByText(/Saved builds offline/)).toHaveCount(0);
+  await expect(panel.getByText(/Progress offline/)).toHaveCount(0);
+  await expect(panel.getByText(/Prior build failed/)).toBeVisible();
+});
+
+test('failed progress polling labels the retained update as stale', async ({ page }) => {
+  await page.clock.install();
+  await page.route('**/api/releases', route => route.fulfill({ json: releases }));
+  let fail = false;
+  await page.route('**/api/releases/progress', route => fail
+    ? route.fulfill({ status: 503, json: { detail: 'Progress refresh offline' } })
+    : route.fulfill({ json: progress('running', { percent: 60 }) }));
+  await page.goto('/');
+  const panel = page.locator('.updates-panel');
+  await expect(panel.getByRole('progressbar', { name: 'Update progress' })).toHaveAttribute('aria-valuenow', '60');
+  fail = true;
+  await page.clock.fastForward(2_100);
+  await expect(panel.getByText(/Progress refresh offline/)).toBeVisible();
+  await expect(panel.getByText(/showing data from/i)).toBeVisible();
+  await expect(panel.getByRole('progressbar', { name: 'Update progress' })).toHaveAttribute('aria-valuenow', '60');
+});
+
+test('a failed saved-build refresh labels the retained rollback list as stale', async ({ page }) => {
+  await page.route('**/api/releases', route => route.fulfill({ json: releases }));
+  await page.route('**/api/releases/progress', route => route.fulfill({ json: progress('idle') }));
+  let fail = false;
+  await page.route('**/api/releases/snapshots', route => fail
+    ? route.fulfill({ status: 503, json: { detail: 'Saved build refresh offline' } })
+    : route.fulfill({ json: { snapshots: [{ commit: 'ddddddd', subject: 'Prior safe build', current: false }] } }));
+  await page.goto('/');
+  const panel = page.locator('.updates-panel');
+  await panel.locator('.saved-builds summary').click();
+  await expect(panel.getByText(/Prior safe build/)).toBeVisible();
+  fail = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('sv-session')));
+  await expect(panel.getByText(/Saved build refresh offline/)).toBeVisible();
+  await expect(panel.getByText(/showing data from/i)).toBeVisible();
+  await expect(panel.getByText(/Prior safe build/)).toBeVisible();
+});
