@@ -225,6 +225,10 @@ is significant, so the effect is real and the interval is contention noise. The 
 | Import archived frames | `./target/release/ingest archive <dir> --dry-run`, then without `--dry-run` (idempotent, resumable) |
 | Refit range model | `./target/release/calibrate 20000` (`CALIBRATE_CORPUS=1` to measure the corpus; `CALIBRATE_START=live CALIBRATE_FREEZE=a,b` starts from the live fitted set with fields held, a dry run for shape-term A/B tests; `CALIBRATE_LINES=1` reports range calibration per postflop line type; every fit logs the held-out likelihood split by the shown player's largest bet — under 1.5x, 1.5–4x, 4x+ pot — so a size term shows where it helps) |
 
+GitHub runtime restores with `scripts/fetch-data.sh` also require fleet writers and their restart
+supervisors to be stopped, including split workers, learner, and analyst. `FORCE=1` permits
+overwriting existing databases but never bypasses this guard; `--derived` remains safe while the fleet runs.
+
 ## Cleanliness
 
 | Task | Command |
