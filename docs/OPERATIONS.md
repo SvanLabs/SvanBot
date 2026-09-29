@@ -93,7 +93,8 @@ shipped binaries carry the commit id and build in `target/stage`) and runs them 
 Toolchain: Rust 1.98.1 pinned in `rust-toolchain.toml`, Node 26, React 19.3, Vite 8, TypeScript 7.
 `scripts/web-test-server.sh` runs the dev `sv10-bot` in a throwaway root on port 5099. It uses a fake
 key, keeps the bots stopped and points every endpoint at a closed local port, so the tests never touch
-openpoker.ai or the live databases. 72 browser tests across 12 spec files, all passing.
+openpoker.ai or the live databases. Run the complete Playwright suite after each web change;
+the full repository gate typechecks the browser tests but does not execute them.
 
 Portable and offline builds:
 

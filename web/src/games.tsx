@@ -25,17 +25,12 @@ function GradeBar({report}: {report: Report}) {
 }
 
 export function AccuracyPanel() {
-  const [data, setData] = useState<AccuracyState>();
-  useEffect(() => {
-    let cancelled = false;
-    const load = () => fetch('/api/accuracy').then(r => r.ok ? r.json() : undefined).then(d => { if (!cancelled && d) setData(d); }).catch(() => undefined);
-    void load();
-    const id = window.setInterval(load, 120_000);
-    return () => { cancelled = true; window.clearInterval(id); };
-  }, []);
-  if (!data) return <p className="subtle">Loading decision grades…</p>;
-  if (!data.fleet.decisions) return <p className="subtle">No big decision has been re-solved by the analyst in the last {data.days} days.</p>;
+  const poll = usePoll<AccuracyState>('/accuracy', 120_000);
+  const data = poll.data;
+  if (!data) return <><StaleNote poll={poll}/>{!poll.error && <p className="subtle">Loading decision grades…</p>}</>;
+  if (!data.fleet.decisions) return <><StaleNote poll={poll}/><p className="subtle">No big decision has been re-solved by the analyst in the last {data.days} days.</p></>;
   return <div className="gr-panel">
+    <StaleNote poll={poll}/>
     <div className="gr-hero"><b>{fmt(data.fleet.accuracy, 1, true)}<small>%</small></b><span>ACCURACY · {fmt(data.fleet.decisions, 0, true)} decisions re-solved in {data.days} days · {fmt(data.fleet.mean_loss_bb, 3, true)} bb lost per decision</span></div>
     <GradeBar report={data.fleet}/>
     <div className="gr-legend">{GRADES.map((g, i) => <span key={g}><i className={`gr-${g}`}/>{GRADE_LABEL[g]} {fmt(data.fleet.grades[i], 0, true)}</span>)}</div>
