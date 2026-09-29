@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [10.0.2] - 2026-09-29
+
+The fleet's supervision, observability and data story: fresh installs start on boot, the public
+table costs one projection per tick, decision-loss rows name their repeating shapes, and data
+releases publish scrubbed aggregates instead of nothing. Plus a faster strength sort, the
+raise-wars floors as a knob, and two process corrections. Nothing here changes the decision
+path or the stored data, and the golden snapshot is unchanged.
+
 ### Added
 
 - **Banking follows the bot's chip stack** (#359). Below 500k chips, counting the off-table balance plus the table stack,
@@ -26,6 +34,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   any home directory gets units pointing at itself and moving one is a re-render instead of an edit.
   `scripts/units.sh --check` names any installed unit that is missing or was rendered elsewhere, and
   `scripts/status.sh` reports it.
+- **Decision-loss rows name their shapes** (#319). Every row's evidence carries its (live →
+  deep) shapes, most frequent first, so a repeat reads as one shape repeating instead of
+  unrelated hands, with what the deep branch was priced at.
+- **The public set for a data release** (#17). `archive export-derived --to DIR` writes
+  `schema.sql`, `aggregates.json` and `SHA256SUMS` — counts, summaries and table definitions,
+  scrubbed of keys, emails and paths and failing closed — and `fetch-data.sh --derived`
+  fetches it without touching the live databases. Never raw opponent hands.
+- **Matt Pocock's engineering skills, configured** (#474). The 25 promoted skills work in
+  OpenCode, Claude Code and Codex, and `docs/agents/` records the repo side they read:
+  GitHub as the issue tracker, the default triage labels and the single-context domain layout.
 
 ### Changed
 
@@ -176,6 +194,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `.github/workflows/promote.yml` runs it whenever a `check` on `dev` finishes (#404), so `main`
   follows `dev` by itself and never carries a build that failed.
 - The Claude workflows act as the SvanLabs GitHub App (`svanlabs[bot]`) (#355).
+- **Setup installs and enables the systemd units** (#463). `scripts/setup.sh` runs
+  `scripts/units.sh --setup` after a successful release — the fleet service and the keepalive,
+  archive and cleanup timers where systemd answers, one honest skip line where none does —
+  so a reboot no longer leaves the fleet down with nothing to bring it back.
+- **One TV projection per slot and tick** (#334). The public stream projected every dirty slot
+  once per connection; the first due connection now projects and caches, the rest read the
+  entry while it is fresh, so ten spectators cost one projection per tick.
+- **A faster strength sort** (#363). The eval-pair sorts behind river strengths are a 4-pass
+  radix sort: identical floats, ~1.19x learner throughput on the paired harness.
+- **The no-bluff-raise-wars floors are a knob** (#472). The equity floors became a tunable
+  parameter with a rejection log beside each failed confirmation.
+- **The provenance roster knows every system** (#480). A new `Generated-by:` system is a red
+  gate until `scripts/provenance.py report` names it; the roster now includes it.
+- **`CARGO_TARGET_DIR` stays in its own checkout** (#481). A foreign cache shared into the
+  live checkout ran stale test binaries against a deleted tree and blocked the update; the
+  rule is now stated where the build rules live.
 
 ### Fixed
 
