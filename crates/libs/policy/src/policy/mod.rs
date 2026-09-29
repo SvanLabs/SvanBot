@@ -194,11 +194,9 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
         };
         side + eq_all_in * main
     };
-    // No bluff raise wars: once a street has two raises, only raise with real equity.
-    let street_raises = sit.history.iter().filter(|h| h.street == sit.street && aggressive(h)).count();
-    let raise_allowed = !(sit.street != Street::Preflop && street_raises >= 2 && eq < 0.55)
-        && !(sit.street == Street::River && street_raises >= 1 && eq < 0.5);
-    let targets = if raise_allowed { raise_targets(sit, params, ip, eq) } else { Vec::new() };
+    // No bluff raise wars: once a street has two raises, only raise with real equity (the guard is
+    // `Params::raise_allowed`, whose floors `params.raise_gate` scales).
+    let targets = if params.raise_allowed(sit, eq) { raise_targets(sit, params, ip, eq) } else { Vec::new() };
     for to in targets {
         let add = (to - hero.bet) as f64;
         let prices = response_pricing.for_raise_to(&responders, to);

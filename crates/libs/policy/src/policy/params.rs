@@ -1,6 +1,9 @@
 //! Strategy parameters: the knobs the learner tunes and promotes.
 
 use serde::{Deserialize, Serialize};
+use sv10_engine::engine::Street;
+use sv10_engine::situation::Situation;
+use sv10_model::model::aggressive;
 
 /// Strategy parameters: the knobs the learner tunes and promotes (serialized as the live champion).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -69,6 +72,11 @@ pub struct Params {
     /// Weight of the check lookahead (an opponent behind bets; hero calls or folds against the
     /// narrowed betting range, 0103) in the check value; 0 = one-street realization only.
     pub check_lookahead: f64,
+    /// Multiplier on the equity floor below which a raise is banned once the street has already been
+    /// raised (0157's no-bluff-raise-wars guard): 1.0 is the shipped floor — 0.55 with two raises on a
+    /// postflop street, 0.5 on the river after one. 0 frees the raise at any equity, which is the
+    /// river ceiling the Phase 3 strength work measures ([`Params::raise_allowed`]).
+    pub raise_gate: f64,
     /// Weight of the image our own observed play gives the pricing (0321): the range opponents read
     /// us for (`ModelStore::hero_seen_view`) is built from the fleet's tallies for our seat instead
     /// of the population rates, scaled by this. 0 = the population view, as before 0321.
@@ -139,6 +147,7 @@ impl Default for Params {
             preflop_raise_risk: 0.0,
             profile_response_weight: 0.0,
             check_lookahead: 0.0,
+            raise_gate: 1.0,
             hero_image: 0.0,
             fold_logit_shift: [0.0; 3],
             river_jam_call_shift: 0.0,
@@ -152,6 +161,17 @@ impl Default for Params {
 }
 
 impl Params {
+    /// Whether hero may raise on this street at all (0157): no bluff raise wars — once a postflop
+    /// street has two raises, or the river one, only a hand above the equity floor may raise. Both
+    /// floors are scaled by [`Params::raise_gate`], so 1.0 is the shipped 0.55 / 0.5 and 0 removes the
+    /// gate; the river ceiling the Phase 3 strength work names is this predicate, and it lives next to
+    /// the field that scales it rather than in the (500-line-frozen) `policy/mod.rs`.
+    pub fn raise_allowed(&self, sit: &Situation, eq: f64) -> bool {
+        let street_raises = sit.history.iter().filter(|h| h.street == sit.street && aggressive(h)).count();
+        !(sit.street != Street::Preflop && street_raises >= 2 && eq < 0.55 * self.raise_gate)
+            && !(sit.street == Street::River && street_raises >= 1 && eq < 0.5 * self.raise_gate)
+    }
+
     /// Adopt a learner-promoted champion: every strategy knob comes from `promoted`, while the
     /// Monte Carlo budget (`samples`, `deal_chunks`) and the live-fitted state (`ev_bias`, `ev_bias_pot_cap`,
     /// `range`, `fold_logit_shift`, `river_jam_call_shift`, `deep_call_shift`, `preflop_fold_logit_shift`, `overbet_call_shift`, `overbet_call_slope`) stay local to this process. The promotion contract lives here, next to the
@@ -211,6 +231,46 @@ impl Params {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_raise_gate_floors_default_to_the_shipped_guard_and_scale_with_the_knob() {
+        // Phase 3 river ceiling: the two floors in "no bluff raise wars" were literals, so "on the
+        // river, once anyone has raised, a hand under 0.5 equity may never raise" was a fixed ceiling
+        // rather than one the learner can price. 1.0 must be the shipped guard and 0 must free it.
+        use sv10_engine::engine::{ActionKind, ActionRecord};
+        let raise = |street| ActionRecord {
+            seat: 1,
+            street,
+            kind: ActionKind::Raise,
+            to: 200,
+            pot_before: 100,
+            to_call_before: 0,
+            bet_before: 0,
+            full_raise: true,
+            think_ms: None,
+            street_open: false,
+        };
+        let river = sv10_engine::situation::fixtures::uncallable_overshove();
+        assert_eq!(river.street, Street::River);
+        let shipped = Params::default();
+        assert_eq!(shipped.raise_gate, 1.0, "the shipped guard is the field's default");
+        assert!(shipped.raise_allowed(&river, 0.0), "no raise on the street yet: the river clause cannot fire");
+        let mut faced = river.clone();
+        faced.history = vec![raise(Street::River)];
+        assert!(!shipped.raise_allowed(&faced, 0.49), "the shipped river floor bans a raise under 0.5");
+        assert!(shipped.raise_allowed(&faced, 0.51), "and leaves one above it alone");
+        assert!(Params { raise_gate: 0.0, ..shipped.clone() }.raise_allowed(&faced, 0.0), "a zeroed gate frees it");
+        assert!(Params { raise_gate: 0.98, ..shipped.clone() }.raise_allowed(&faced, 0.49), "a relaxed one at its floor");
+        let mut two = river.clone();
+        two.street = Street::Turn;
+        two.history = vec![raise(Street::Turn), raise(Street::Turn)];
+        assert!(!shipped.raise_allowed(&two, 0.54), "two raises on a postflop street hold the 0.55 floor");
+        assert!(Params { raise_gate: 0.0, ..shipped.clone() }.raise_allowed(&two, 0.0));
+        let mut preflop = river.clone();
+        preflop.street = Street::Preflop;
+        preflop.history = vec![raise(Street::Preflop), raise(Street::Preflop)];
+        assert!(shipped.raise_allowed(&preflop, 0.0), "the guard is postflop only");
+    }
 
     #[test]
     fn promotion_adopts_knobs_but_keeps_local_budget_and_fits() {
