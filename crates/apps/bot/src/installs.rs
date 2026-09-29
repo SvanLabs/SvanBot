@@ -259,4 +259,50 @@ mod tests {
         let installs_logged = shared.log.lock().iter().filter(|l| l.message.starts_with("promoted strategy")).count();
         assert_eq!(installs_logged, 1);
     }
+    #[test]
+    fn failed_response_correction_key_reads_preserve_installed_ratios() {
+        for (tag, broken_key) in [("residual-key-error", crate::nnresidual::NN_RESIDUAL_KEY), ("net-key-error", NN_KEY)] {
+            let shared = fixture(tag);
+            let net = StoredNet {
+                net: sv10_core::nn::Mlp::new(&[sv10_core::features::N_FEATURES, 48, 24, 3], 7),
+                active: true,
+                paired_poker_approved: true,
+                training_contract: crate::neural::RESPONSE_TRAINING_CONTRACT.into(),
+                val_loss: 0.5,
+                baseline_loss: 0.6,
+                train_samples: 1000,
+                val_samples: 200,
+                trained_at: 5.0,
+            };
+            let fit = crate::nnresidual::ResidualFit {
+                net_trained_at: 5.0,
+                active: true,
+                ratios: [("nit".to_string(), [2.0, 0.5, 1.0])].into_iter().collect(),
+                ..Default::default()
+            };
+            shared.store.put_kv(NN_KEY, &serde_json::to_string(&net).unwrap()).unwrap();
+            shared.store.put_kv(crate::nnresidual::NN_RESIDUAL_KEY, &serde_json::to_string(&fit).unwrap()).unwrap();
+            let mut installs = Installs::after_startup(&shared.store);
+            installs.refresh(&shared);
+            assert_eq!(shared.models.read().response_ratios.get("nit"), Some(&[2.0, 0.5, 1.0]));
+            let old = shared.store.get_kv(broken_key).unwrap().unwrap();
+            let writer = rusqlite::Connection::open(shared.config.artifacts.join("svanbot10.db")).unwrap();
+            writer.execute("UPDATE kv SET value = x'00' WHERE key = ?1", [broken_key]).unwrap();
+            assert!(shared.store.get_kv(broken_key).is_err());
+            installs.refresh(&shared);
+            assert_eq!(
+                shared.models.read().response_ratios.get("nit"),
+                Some(&[2.0, 0.5, 1.0]),
+                "a failed key read must preserve the installed correction"
+            );
+            installs.refresh(&shared);
+            assert_eq!(shared.log.lock().iter().filter(|l| l.level == "warn" && l.message.contains("store unreadable")).count(), 1);
+            shared.store.put_kv(broken_key, &old).unwrap();
+            let updated = crate::nnresidual::ResidualFit { ratios: [("nit".to_string(), [1.5, 0.75, 1.0])].into_iter().collect(), ..fit };
+            shared.store.put_kv(crate::nnresidual::NN_RESIDUAL_KEY, &serde_json::to_string(&updated).unwrap()).unwrap();
+            installs.refresh(&shared);
+            assert_eq!(shared.models.read().response_ratios.get("nit"), Some(&[1.5, 0.75, 1.0]));
+            assert!(shared.log.lock().iter().any(|l| l.message == "store readable again"));
+        }
+    }
 }

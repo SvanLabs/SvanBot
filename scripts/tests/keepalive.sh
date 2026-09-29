@@ -9,7 +9,7 @@ cleanup() { [ -z "$sleeper" ] || kill "$sleeper" 2>/dev/null || true; rm -rf "$r
 trap cleanup EXIT
 fail() { echo "keepalive test: $*" >&2; exit 1; }
 mkdir -p "$root/scripts" "$root/artifacts"
-cp "$repo_root/scripts/keepalive.sh" "$repo_root/scripts/stop.sh" "$root/scripts/"
+cp "$repo_root/scripts/keepalive.sh" "$repo_root/scripts/stop.sh" "$repo_root/scripts/start.sh" "$root/scripts/"
 decide() { KEEPALIVE_DRY=1 "$root/scripts/keepalive.sh"; }
 
 [ "$(decide)" = "fleet down, restarting" ] || fail "a down fleet with no hold was not restarted"
@@ -39,3 +39,28 @@ exec 8> "$root/artifacts/release-operation.lock"; flock -n 8
 [ "$(decide)" = "fleet down, release in progress" ] || fail "restarted during a release operation"
 exec 8>&-
 echo "keepalive: ok"
+
+# Start must recognize both fleet layouts before building or launching processes.
+cat > "$root/scripts/release.sh" <<'SH'
+#!/usr/bin/env bash
+touch artifacts/unwanted-release
+exit 17
+SH
+chmod +x "$root/scripts/release.sh"
+rm -f "$root/artifacts/supervisor.pid"
+sleep 60 & sleeper=$!
+for pidfile in supervisor.pid head-supervisor.pid worker-bot1-supervisor.pid; do
+  echo "$sleeper" > "$root/artifacts/$pidfile"
+  "$root/scripts/start.sh" > "$root/start-output" 2>&1 || fail "start did not detect $pidfile"
+  [ ! -f "$root/artifacts/unwanted-release" ] || fail "start rebuilt a running fleet"
+  rm "$root/artifacts/$pidfile"
+done
+kill "$sleeper"; wait "$sleeper" 2>/dev/null || true; sleeper=
+echo "$((1 << 22))" > "$root/artifacts/head-supervisor.pid"
+if "$root/scripts/start.sh" > "$root/start-output" 2>&1; then
+  fail "a stale split supervisor prevented startup"
+else
+  [ "$?" = 17 ] || fail "stale split startup failed before the release fixture"
+fi
+[ -f "$root/artifacts/unwanted-release" ] || fail "stale split supervisor prevented release"
+echo "start supervisor detection: ok"

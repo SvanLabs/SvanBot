@@ -122,16 +122,19 @@ pub fn write_private_atomic(path: &Path, contents: &str) -> std::io::Result<()> 
 /// it over `path`, then fsync the directory. Meaningful for a file a later step verifies or reads
 /// back (issue #323): a plain `fs::write` reports success from the page cache, so a write the disk
 /// dropped is discovered when the file is read for real, and an interrupted one leaves half a file
-/// under the name a reader trusts.
+/// under the name a reader trusts. Concurrent callers own separate temporary files: the last
+/// rename wins, with one complete payload. Failures remove only this call's temporary.
 pub fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     write_atomic_mode(path, contents, None)
 }
 
 fn write_atomic_mode(path: &Path, contents: &str, mode: Option<u32>) -> std::io::Result<()> {
     use std::io::Write;
-    let tmp = path.with_extension("tmp-write");
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let name = path.file_name().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "file name required"))?;
     let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
+    opts.write(true).create_new(true);
     #[cfg(unix)]
     if let Some(mode) = mode {
         use std::os::unix::fs::OpenOptionsExt;
@@ -139,15 +142,33 @@ fn write_atomic_mode(path: &Path, contents: &str, mode: Option<u32>) -> std::io:
     }
     #[cfg(not(unix))]
     let _ = mode;
-    let mut f = opts.open(&tmp)?;
-    f.write_all(contents.as_bytes())?;
-    f.sync_all()?;
-    drop(f);
-    std::fs::rename(&tmp, path)?;
-    // The rename itself must be durable: without syncing the directory, a power cut can leave the
-    // old `.env` (or the old data-format marker) in place after a write we reported as done. This
-    // writes the API keys, so a lost rename means a fleet that restarts with none (0255).
-    sync_dir(path)
+    // Each call owns its staging file (#501): concurrent saves or destinations sharing a stem
+    // must never truncate or rename another writer's bytes. create_new also rejects stale files.
+    let (tmp, mut f) = loop {
+        let mut staging = name.to_os_string();
+        staging.push(format!(".{}.{}.tmp-write", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+        let tmp = path.with_file_name(staging);
+        match opts.open(&tmp) {
+            Ok(f) => break (tmp, f),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    };
+    let result = (|| {
+        f.write_all(contents.as_bytes())?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)?;
+        // The rename itself must be durable: without syncing the directory, a power cut can leave the
+        // old `.env` (or the old data-format marker) in place after a write we reported as done. This
+        // writes the API keys, so a lost rename means a fleet that restarts with none (0255).
+        sync_dir(path)
+    })();
+    if result.is_err() {
+        // Best-effort cleanup only: preserve the original write/rename/fsync failure for callers.
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// `fsync` one file. On Linux this is where a failed write to the disk surfaces (`EIO`): data the
@@ -239,6 +260,75 @@ pub fn free_bytes(_path: &Path) -> Option<u64> {
 #[cfg(test)]
 mod durable_tests {
     use super::*;
+
+    #[test]
+    fn concurrent_atomic_writes_to_same_stem_files_keep_their_own_contents() {
+        let dir = std::env::temp_dir().join(format!("sv10-rt-concurrent-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let gate = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let writes: Vec<_> = ["snapshot.json", "snapshot.txt"]
+            .into_iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let path = dir.join(name);
+                let gate = gate.clone();
+                std::thread::spawn(move || {
+                    let contents = char::from(b'A' + i as u8).to_string().repeat(10_000_000);
+                    gate.wait();
+                    write_atomic(&path, &contents).expect("distinct destinations must not share a staging file");
+                    assert!(std::fs::read_to_string(&path).unwrap() == contents, "each destination must hold its own whole payload");
+                })
+            })
+            .collect();
+        for write in writes {
+            write.join().unwrap();
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_atomic_write_never_reuses_a_preexisting_staging_file() {
+        let dir = std::env::temp_dir().join(format!("sv10-rt-unowned-staging-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("snapshot.json");
+        let unowned = path.with_extension("tmp-write");
+        std::fs::write(&unowned, "another writer owns these bytes").unwrap();
+        write_atomic(&path, "our complete snapshot").unwrap();
+        assert_eq!(std::fs::read_to_string(&unowned).unwrap(), "another writer owns these bytes");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "our complete snapshot");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn concurrent_atomic_writes_to_one_destination_leave_one_complete_payload() {
+        let dir = std::env::temp_dir().join(format!("sv10-rt-shared-destination-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("snapshot.json");
+        let gate = std::sync::Arc::new(std::sync::Barrier::new(2));
+        std::thread::scope(|scope| {
+            for byte in *b"AB" {
+                let (path, gate) = (&path, &gate);
+                scope.spawn(move || {
+                    let contents = char::from(byte).to_string().repeat(1_000_000);
+                    gate.wait();
+                    write_atomic(path, &contents).expect("each writer owns its staging file");
+                });
+            }
+        });
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(bytes.len(), 1_000_000);
+        assert!(bytes.iter().all(|b| *b == bytes[0]), "one whole write must win, without mixed bytes");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_atomic_write_cleans_up_its_temporary_after_a_failed_rename() {
+        let dir = std::env::temp_dir().join(format!("sv10-rt-failed-rename-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("destination")).unwrap();
+        assert!(write_atomic(&dir.join("destination"), "cannot replace a directory").is_err());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "only the original destination remains");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn a_durable_copy_reads_back_from_disk_after_eviction() {

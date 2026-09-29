@@ -85,6 +85,46 @@ class ChipFlow(unittest.TestCase):
         self.assertEqual(window["Bertabot"], 0.0)
 
 
+class SidePotFlow(unittest.TestCase):
+    @staticmethod
+    def hand():
+        return json.loads(r'''{"players":[[0,"hero"],[1,"short"],[2,"other"]],"button":0,"bb":20,"stacks":[[0,1000],[1,100],[2,1000]],"history":[{"seat":0,"street":"Preflop","kind":"AllIn","to":1000,"pot_before":30,"bet_before":0},{"seat":1,"street":"Preflop","kind":"AllIn","to":100,"pot_before":1030,"bet_before":10},{"seat":2,"street":"Preflop","kind":"AllIn","to":1000,"pot_before":1120,"bet_before":20}],"board":["2c","3d","7h","9s","Tc"],"shown":[[0,["Kh","Kc"]],[1,["Ah","Ac"]],[2,["Qh","Qc"]]]}''')
+
+    def test_engine_side_pot_settlement_reconciles_for_each_seat(self):
+        # Exact engine payouts [1800,300,0] on contributions [1000,100,1000].
+        hand = self.hand()
+        for hero, net in [(0, 800), (1, 200), (2, -1000)]:
+            with self.subTest(hero=hero):
+                flows = mon.flow_to_hero(hand, 2100, ['hero', 'short'], hero)
+                self.assertEqual(sum(flows.values()), net)
+        self.assertEqual(mon.flow_to_hero(hand, 2100, ['hero', 'short'], 0), {1: -100, 2: 900})
+
+    def test_insufficient_side_pot_evidence_is_not_fabricated(self):
+        hand = self.hand()
+        hand['shown'] = []
+        self.assertIsNone(mon.flow_to_hero(hand, 2100, ['hero', 'short'], 0))
+        self.assertEqual(sum(mon.flow_to_hero(hand, 2100, ['hero'], 0).values()), 1100)
+
+    def test_showdown_ranks_cover_all_categories_and_the_wheel(self):
+        cases = [
+            ('As Kd Qh 9c 7s 4d 2h', (0, 14, 13, 12, 9, 7)),
+            ('As Ad Qh 9c 7s 4d 2h', (1, 14, 12, 9, 7)),
+            ('As Ad Kh Kc 7s 4d 2h', (2, 14, 13, 7)),
+            ('As Ad Ah 9c 7s 4d 2h', (3, 14, 9, 7)),
+            ('As 2d 3h 4c 5s 9d Kh', (4, 5)),
+            ('As Qs 9s 7s 2s Kd 4h', (5, 14, 12, 9, 7, 2)),
+            ('As Ad Ah Kc Ks 4d 2h', (6, 14, 13)),
+            ('As Ad Ah Ac Ks 4d 2h', (7, 14, 13)),
+            ('As Ks Qs Js Ts 4d 2h', (8, 14)),
+        ]
+        for cards, expected in cases:
+            with self.subTest(cards=cards):
+                values = cards.split()
+                self.assertEqual(mon.showdown_rank(values[:5], values[5:]), expected)
+        self.assertIsNone(mon.showdown_rank(['As'] * 5, ['As', 'Kd']))
+        self.assertIsNone(mon.showdown_rank(['As', '2d', '3h', '4c'], ['5s', 'Kh']))
+
+
 class Nemesis(unittest.TestCase):
     def test_family_z_matches_the_rust_bound(self):
         self.assertAlmostEqual(mon.family_z(1), 1.96, places=2)

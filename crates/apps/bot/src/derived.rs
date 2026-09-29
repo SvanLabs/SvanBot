@@ -74,7 +74,7 @@ pub fn build_aggregates(store: &Store) -> Result<serde_json::Value> {
         .into_iter()
         .map(|(street, action, n)| serde_json::json!({"street": street, "action": action, "n": n}))
         .collect();
-    let audit = store.audit_summary(epoch).unwrap_or_default();
+    let audit = store.audit_summary(epoch)?;
     let calibration: Vec<serde_json::Value> = store
         .calibration_summary()?
         .into_iter()
@@ -164,6 +164,21 @@ pub fn export_derived(main: &Path, history: &Path, out: &Path, secrets: &SecretS
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unreadable_audit_evidence_stops_the_aggregate_export() {
+        let dir = std::env::temp_dir().join(format!("sv10-derived-audit-failure-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("svanbot10.db");
+        let store = Store::open(&path).unwrap();
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch("ALTER TABLE decision_audit RENAME COLUMN gap_bb TO unavailable_gap").unwrap();
+        assert!(build_aggregates(&store).is_err(), "unavailable audit evidence must not become a zero-filled public report");
+        let out = dir.join("out");
+        assert!(export_derived(&path, &dir.join("history.db"), &out, &SecretSet::from_dotenv(""), "").is_err());
+        assert!(!out.exists(), "no public files should be written after a query failure");
+    }
 
     /// The scrub names violation classes, never the values themselves.
     #[test]
