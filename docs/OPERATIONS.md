@@ -206,6 +206,11 @@ is significant, so the effect is real and the interval is contention noise. The 
 | Archive (second disk) | `svanbot10-archive.timer` runs `./target/release/archive run` at 04:30 into `SVANBOT_ARCHIVE_DIR` (`.env`; here `/backup-disk/svanbot10`, default `artifacts/archive`): weekly full, else a daily differential; the month's archive; keeps 14 daily / 8 weekly / 12 monthly. Install with `scripts/archive-timer.sh` |
 | Inspect archives | `./target/release/archive list`; `archive verify --deep` (all) or `archive verify weekly/2026-W38` |
 | Restore from the archive | `./target/release/archive restore daily/YYYY-MM-DD --to /tmp/restore` (never into `artifacts/`); then `scripts/stop.sh`, copy `svanbot10.db` and `history.db` over `artifacts/` (remove their `-wal`/`-shm`), `scripts/start.sh`. The code: `git clone /tmp/restore/repo.bundle` from a weekly or monthly |
+
+GitHub runtime restores with `scripts/fetch-data.sh` also require fleet writers and their restart
+supervisors to be stopped, including split workers, learner, and analyst. `FORCE=1` permits
+overwriting existing databases but never bypasses this guard; `--derived` remains safe while the fleet runs.
+
 | Data snapshot | Runtime data is not part of this repository: `svanbot10.db`/`history.db` via sqlite `.backup` + zstd, plus `backups`, `release-snapshots`, `misc` (tables, logs, season checks) and screenshots tarballs with `SHA256SUMS`, published as `data-YYYYMMDD` releases on a repository named in `SVANBOT_DATA_REPO`; `.env` never uploaded. Restore (fleet stopped): `scripts/fetch-data.sh` (`--all` for backups and snapshots; `FORCE=1` to overwrite). The public derived set for a release (aggregates + schema, never raw opponent hands) comes from `archive export-derived --to DIR`, scrubbed and failing closed; fetch it with `scripts/fetch-data.sh --derived` (fleet may run). Cloud sessions: `scripts/cloud-setup.sh` |
 | Quarantined files | `artifacts/quarantine/` (damaged databases moved aside, never deleted automatically) |
 | Import a PHH tree / measure a source | `./target/release/ingest phh <dir> <source> --dry-run`; `SVANBOT10_ROOT=<copy of artifacts parent> ./target/release/ingest neural-ab <source> 3` |
