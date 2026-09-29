@@ -86,6 +86,11 @@ running bot. That is the one genuinely dangerous mistake available here:
 CARGO_TARGET_DIR=target/dev cargo build --profile release
 ```
 
+**`CARGO_TARGET_DIR` stays inside its own checkout.** It is always the relative `target/dev`;
+never an absolute path and never another checkout's directory. Test binaries bake in
+`CARGO_MANIFEST_DIR`, and cargo's mtime fingerprints call a foreign binary fresh when the sources
+match — so a cache shared across checkouts runs tests against a deleted tree (#481).
+
 Run only the tests you touched while iterating — `python3 scripts/test.py <filter>` — and the whole
 suite once at the end. The full suite takes minutes; a single file takes seconds, and the loop
 matters more than the coverage when you are mid-change.
