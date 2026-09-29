@@ -3,6 +3,96 @@
 
 use super::*;
 
+#[tokio::test]
+async fn missing_state_turns_resync_once_per_hand_without_double_acting() {
+    let mut rig = Rig::new("missing-state-resync");
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.tracker.table_id = Some("t1".into());
+    rig.tracker.last_table_seq = 40;
+    assert!(rig.tracker.hole.is_none(), "the fixture has no decision state");
+    rig.feed(&conn, sequenced_turn("h1", "t1", 41)).await;
+    let drain = |rx: &mut mpsc::UnboundedReceiver<Value>| std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    let out = drain(&mut rx);
+    assert_eq!(out[0]["action"], "check", "the safe legal action goes first: {out:?}");
+    assert_eq!((out[0]["hand_id"].as_str(), out[0]["turn_token"].as_str()), (Some("h1"), Some("t1")));
+    assert!(
+        out.iter().any(|v| v["type"] == "resync_request" && v["table_id"] == "t1" && v["last_table_seq"] == 41),
+        "missing state must recover: {out:?}"
+    );
+    rig.feed(&conn, sequenced_turn("h1", "t1", 41)).await;
+    assert!(drain(&mut rx).is_empty(), "duplicate authority sends neither action nor recovery");
+    rig.feed(
+        &conn,
+        json!({"type": "resync_response", "replayed_events": [], "snapshot": {
+            "hand_id": "h1", "pot": 0, "board": [], "seats": [],
+            "hero": {"seat": 0, "turn_token": "t1", "valid_actions": [{"action": "check"}]}
+        }}),
+    )
+    .await;
+    assert!(drain(&mut rx).is_empty(), "same-token incomplete snapshot cannot double-act or resync-loop");
+    rig.feed(&conn, sequenced_turn("h1", "t2", 42)).await;
+    let out = drain(&mut rx);
+    assert_eq!(out.len(), 1, "a new token in the same broken hand stays bounded: {out:?}");
+    assert_eq!(out[0]["type"], "action");
+    rig.feed(&conn, sequenced_turn("h2", "t3", 43)).await;
+    let out = drain(&mut rx);
+    assert_eq!(out.iter().filter(|v| v["type"] == "resync_request").count(), 1, "a new hand can recover again: {out:?}");
+}
+
+#[tokio::test]
+async fn a_resync_restores_missing_cards_for_later_turns() {
+    let mut rig = Rig::new("missing-state-restored");
+    rig.shared.params.write().samples = 64;
+    rig.tracker.table_id = Some("t1".into());
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.feed(&conn, turn("t1")).await;
+    let _ = actions(&mut rx);
+    rig.feed(
+        &conn,
+        json!({"type": "resync_response", "role": "player", "replayed_events": [], "snapshot": {
+            "table_id": "t1", "hand_id": "h1", "street": "preflop", "pot": 30, "board": [], "big_blind": 20,
+            "seats": [{"seat": 0, "name": "A", "stack": 1980, "bet": 20, "in_hand": true},
+                      {"seat": 1, "name": "B", "stack": 1990, "bet": 10, "in_hand": true}],
+            "hero": {"seat": 0, "hole_cards": ["As", "Kd"], "turn_token": "t1", "valid_actions": [{"action": "check"}]}
+        }}),
+    )
+    .await;
+    assert!(rx.try_recv().is_err(), "already sent token stays answered after the snapshot");
+    assert!(rig.tracker.hole.is_some());
+    let mut next = turn("t2");
+    next["valid_actions"] = json!([{"action": "check"}]);
+    rig.feed(&conn, next).await;
+    let out = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert_eq!(out.len(), 1, "healthy state needs no new recovery request: {out:?}");
+    assert_eq!(out[0]["type"], "action");
+    assert_eq!(rig.shared.bots[0].read().decisions, 1, "later turn ran the real policy instead of missing-state fallback");
+}
+
+#[tokio::test]
+async fn a_failed_writer_does_not_consume_missing_state_recovery() {
+    let mut rig = Rig::new("missing-state-writer");
+    rig.tracker.table_id = Some("t1".into());
+    let (tx, rx) = mpsc::unbounded_channel();
+    drop(rx);
+    rig.feed(&Conn { out: tx }, turn("t1")).await;
+    assert!(rig.shared.bots[0].read().missing_state_resync.is_none());
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.feed(&conn, turn("t1")).await;
+    let out = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert_eq!(out.iter().filter(|v| v["type"] == "resync_request").count(), 1, "new writer retries unanswered authority: {out:?}");
+    rig.tracker.table_id = Some("t2".into());
+    rig.feed(&conn, turn("t2")).await;
+    let out = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert_eq!(
+        out.iter().filter(|v| v["type"] == "resync_request" && v["table_id"] == "t2").count(),
+        1,
+        "another table can recover the same hand id"
+    );
+}
+
 /// 0315: the release watch exits between hands while a hand is in progress; the new process never
 /// sees it end, so it was neither stored nor observed (5–10 hands a day). The hand is saved at
 /// exit, and the resync replay's `hand_result` settles it here: stored once, with its real net.
