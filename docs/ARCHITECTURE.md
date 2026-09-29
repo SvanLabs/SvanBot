@@ -13,6 +13,8 @@ SQLite storage, React dashboard. User-facing guide: `docs/GUIDE.md` (served on t
 dashboard). Planning and decisions: the issue tracker, <https://github.com/SvanLabs/SvanBot/issues>.
 Specs: `SPEC-protocol.md`, `SPEC-data.md`, `SPEC-learner.md`; runbook `OPERATIONS.md`.
 
+The simulator reopens betting after cumulative short all-ins when the increase since an actor's last matched street bet reaches the last full raise. Raise rights are actor-specific; the minimum increment remains the last full raise.
+
 ## Processes
 
 ```
