@@ -48,7 +48,7 @@ if [ -f MANIFEST ]; then
 fi
 
 mkdir -p target/release artifacts/logs artifacts/backups
-for b in sv10-bot learner sim probe tables review calibrate ingest archive; do
+for b in sv10-bot learner analyst sim probe tables review calibrate ingest archive; do
   [ -x "$src/$b" ] || continue
   # Copy then rename, like scripts/release.sh: running processes keep their inode and hot-swap.
   cp "$src/$b" "target/release/.$b.new" && mv -f "target/release/.$b.new" "target/release/$b"

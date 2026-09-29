@@ -51,7 +51,8 @@ password, builds everything optimized for your CPU, builds the dashboard, runs t
 the hardware profile the bot will tune itself to.
 
 **Without a Rust toolchain** (any x86-64 Linux with glibc at least the bundle's `MANIFEST`): unpack
-a bundle built by `scripts/portable.sh` and run `scripts/install.sh`. It installs the x86-64-v3
+a bundle built by `scripts/portable.sh` and run `scripts/install.sh`. The bundle includes the
+analyst process enabled by default fleet startup. It installs the x86-64-v3
 build on CPUs with AVX2/BMI2/FMA (within ~1% of a native build) and x86-64-v2 otherwise, and creates
 `.env`. **Offline source builds**: `scripts/vendor.sh` once while online, then
 `cargo build --release --offline --config .cargo/vendor.toml`.

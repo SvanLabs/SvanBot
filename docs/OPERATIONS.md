@@ -97,6 +97,8 @@ openpoker.ai or the live databases. 72 browser tests across 12 spec files, all p
 
 Portable and offline builds:
 
+Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
+
 ```
 scripts/portable.sh        # x86-64-v2 + v3 binaries, scripts, dashboard, docs -> target/dist/*.tar.gz (32 MB, needs glibc >= MANIFEST)
 scripts/install.sh         # in the unpacked bundle: picks v3/v2 from /proc/cpuinfo flags, installs into target/release, creates .env
