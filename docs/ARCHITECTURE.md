@@ -207,7 +207,7 @@ of our own play decays on the same cadence, so it describes how we have been pla
 - **Learner**: each successive-halving round plays the champion once per table and schedules every
   (candidate, table) run on one rayon pool (`sim::paired_eval_many`, bit-identical to separate
   `paired_eval` calls). Neural response features are extracted sequentially in chronological order:
-  each hand sees only profiles observed before it, then advances those profiles.
+  each hand sees only profiles observed before it, then advances those profiles. Training stack features include posted blinds from each seat's first preflop record, including a big-blind check, matching the live chips-behind context.
 
 ## Season scope in the dashboard
 
