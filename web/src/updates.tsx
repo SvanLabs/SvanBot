@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, Check, CircleDashed, History, LoaderCircle, RefreshCw, TriangleAlert, X } from 'lucide-react';
 import type { HealthState, ReleaseProgress, ReleasesState, ReleaseStage, SavedBuild } from './types';
-import { request } from './api';
+import { request, SESSION_EVENT, StaleNote } from './api';
 import { time } from './format';
 
 const call = request;
@@ -106,19 +106,29 @@ export function UpdatesPanel() {
   const [, setHealthCommit] = useState<string | null>(null);
   const [reloadPrompt, setReloadPrompt] = useState(false);
   const polling = useRef(false);
-  const [saved, setSaved] = useState<SavedBuild[]>([]);
+  const [saved, setSaved] = useState<SavedBuild[] | undefined>(undefined);
+  const [savedError, setSavedError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [progressAt, setProgressAt] = useState<number | null>(null);
   const [rollbackTo, setRollbackTo] = useState<SavedBuild | null>(null);
-  const loadSaved = () => call<{snapshots: SavedBuild[]}>('/releases/snapshots').then(v => setSaved(v.snapshots)).catch(() => {});
+  const loadSaved = () => call<{snapshots: SavedBuild[]}>('/releases/snapshots').then(v => {
+    setSaved(v.snapshots); setSavedError(null); setSavedAt(Date.now());
+  }).catch((e: unknown) => setSavedError(e instanceof Error ? e.message : String(e)));
 
   const load = () => call<ReleasesState>('/releases').then(v => { setData(v); setFailed(false); }).catch(() => setFailed(true));
-  const loadProgress = () => call<ReleaseProgress>('/releases/progress').then(v => { setProgress(v); return v; }).catch(() => null);
+  const loadProgress = () => call<ReleaseProgress>('/releases/progress').then(v => {
+    setProgress(v); setProgressError(null); setProgressAt(Date.now()); return v;
+  }).catch((e: unknown) => { setProgressError(e instanceof Error ? e.message : String(e)); return null; });
   useEffect(() => {
     load();
     loadSaved();
     // A reload mid-update picks the run up again: progress lives on the server.
     loadProgress();
+    const session = () => { loadSaved(); loadProgress(); };
+    window.addEventListener(SESSION_EVENT, session);
     const id = window.setInterval(load, 30_000);
-    return () => window.clearInterval(id);
+    return () => { window.clearInterval(id); window.removeEventListener(SESSION_EVENT, session); };
   }, []);
 
   useEffect(() => {
@@ -212,6 +222,7 @@ export function UpdatesPanel() {
           the tooltip says what the operator can actually do about it. */}
       {data.dirty && <div><span>Next update</span><b className="negative" title="An update builds from this checkout and will not start while crates/, web/ or Cargo files have uncommitted changes — the binary would not match any commit. Commit or discard them, or run scripts/release.sh by hand. The fleet keeps playing the installed build.">Blocked — uncommitted build inputs</b></div>}
     </div>
+    <StaleNote poll={{ data: progress ?? undefined, error: progressError, updatedAt: progressAt }}/>
     {showProgress && progress && <UpdateProgress progress={progress}/>}
     {data.update_available && !active && <div className="update-banner"><ArrowUpCircle size={15}/><span>{pending} commit{pending === 1 ? '' : 's'} since <b className="mono">{data.installed.commit}</b> — one click downloads, builds, tests and installs them; the bots keep playing and swap between turns.</span><button className="button primary" disabled={data.dirty} onClick={() => setConfirming(true)}>Update</button></div>}
     <div className="settings-row"><span className="footnote">Checked for updates every 30 minutes.</span><button className="button" disabled={checking || active} onClick={check}><RefreshCw size={12} className={checking ? 'spin' : ''}/>{checking ? 'Checking…' : 'Check now'}</button></div>
@@ -224,7 +235,8 @@ export function UpdatesPanel() {
     </section>}
     {!groups.length && !data.update_available && <p className="footnote">Installed build is the newest{data.installed.at ? ` (installed ${time(data.installed.at, { date: true })})` : ''}.</p>}
     {message && <p className={`footnote ${message.kind === 'error' ? 'negative' : 'positive'}`}>{message.text}</p>}
-    {saved.some(b => !b.current) && <details className="saved-builds">
+    <StaleNote poll={{ data: saved, error: savedError, updatedAt: savedAt }}/>
+    {saved?.some(b => !b.current) && <details className="saved-builds">
       <summary><History size={13}/> Roll back to a saved build ({saved.filter(b => !b.current).length})</summary>
       <p className="footnote">Every update saves the build it replaces. Rolling back reinstalls one after checking its hashes; the bots keep playing and swap to it between turns. A later Update brings the newest build back.</p>
       <ul className="changelog-list">{saved.filter(b => !b.current).map(b => <li key={b.commit}><span className="mono">{b.commit}</span> {b.subject ?? 'saved build'}{b.installed_at ? <small className="subtle"> · installed {time(b.installed_at, { date: true })}</small> : null} {b.readable === false ? <small className="subtle" title="This build reads only uncompressed data: stop the fleet, run ./target/release/archive unpack, then roll back."> · reads only uncompressed data</small> : <button className="text-button" disabled={active} onClick={() => setRollbackTo(b)}>Roll back</button>}</li>)}</ul>
