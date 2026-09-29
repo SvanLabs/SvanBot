@@ -176,3 +176,35 @@ fn a_column_another_process_added_first_is_not_an_error() {
     ensure_column(&conn, "replays", "version", "TEXT").unwrap();
     assert!(add_column(&conn, "missing_table", "version", "TEXT").is_err(), "other errors still fail");
 }
+
+#[test]
+fn compaction_preserves_a_row_rewritten_after_candidates_were_read() {
+    for packed in [false, true] {
+        let (conn, path) = db(if packed { "rewritten-frame" } else { "rewritten-text" });
+        let codec = Codec::open(&conn, &path).unwrap();
+        let old = record(1);
+        let fresh = record(2);
+        if packed {
+            conn.execute("INSERT INTO replays (id, record) VALUES (1, ?1)", [codec.pack(&conn, REPLAY_RECORD, &old)]).unwrap();
+        } else {
+            conn.execute("INSERT INTO replays (id, record) VALUES (1, ?1)", [&old]).unwrap();
+        }
+        let codec = if packed {
+            conn.execute("INSERT INTO pack_dicts (id, family, created, bytes) VALUES (1, 'record', 'test', ?1)", [old.as_bytes()]).unwrap();
+            Codec::open(&conn, &path).unwrap()
+        } else {
+            codec
+        };
+        let candidates = compact_candidates(&conn, &codec, REPLAY_RECORD, 0, 10).unwrap();
+        assert_eq!(candidates.len(), 1, "dictionary-free frames become candidates once a dictionary exists");
+        let writer = Connection::open(&path).unwrap();
+        writer.execute("UPDATE replays SET record = ?1 WHERE id = 1", [&fresh]).unwrap();
+        let (written, cursor) = compact_rows(&conn, &codec, REPLAY_RECORD, &candidates).unwrap();
+        let read = || conn.query_row("SELECT record FROM replays WHERE id = 1", [], |r| codec.text(r.get_ref(0)?)).unwrap();
+        assert_eq!(read(), fresh, "a stale compaction candidate must not overwrite a newer writer");
+        assert_eq!((written, cursor), (0, Some(1)), "skipped rows advance the cursor without counting a write");
+        assert_eq!(compact_batch(&conn, &codec, REPLAY_RECORD, 0, 10).unwrap(), (1, Some(1)));
+        assert_eq!(read(), fresh, "a fresh pass compacts the rewritten value");
+        assert_eq!(text_rows(&conn, REPLAY_RECORD).unwrap(), 0);
+    }
+}
