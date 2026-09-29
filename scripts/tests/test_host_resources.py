@@ -25,6 +25,12 @@ class ResourceBudgets(unittest.TestCase):
             (leaf / "memory.max").write_text("max")
             self.assertEqual(self.resources.memory_available(8 << 30, leaf, root), 256 << 20)
 
+    def test_unknown_cgroup_usage_does_not_assume_the_limit_is_free(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "memory.max").write_text(str(512 << 20))
+            self.assertEqual(self.resources.memory_available(8 << 30, root, root), 0)
+
     def test_cpu_budget_respects_affinity_and_parent_quota(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

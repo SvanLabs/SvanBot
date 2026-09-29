@@ -15,7 +15,7 @@ FROM rust:1.98.1-bookworm AS build
 WORKDIR /src
 COPY . .
 ENV RUSTFLAGS=""
-RUN cargo build --release --workspace --bins
+RUN . scripts/resources.sh && cargo build --release --workspace --bins
 
 FROM debian:bookworm-slim
 RUN apt-get update \

@@ -42,8 +42,9 @@ def memory_available(host=None, leaf=None, root=CGROUP):
                 break
     for path in ancestors(leaf or cgroup(), root):
         maximum, current = read(path / "memory.max"), read(path / "memory.current")
-        if maximum.isdigit() and current.isdigit():
-            host = min(host, max(0, int(maximum) - int(current)))
+        if maximum.isdigit():
+            used = int(current) if current.isdigit() else int(maximum)
+            host = min(host, max(0, int(maximum) - used))
     return host
 
 
