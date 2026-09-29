@@ -19,15 +19,16 @@ METRICS = {
               "deal_ns_per_sample_2opp": False, "reweight_ns_per_sample_1opp": False, "reweight_ns_per_sample_2opp": False,
               "equity_hu_samples_per_s": True, "rng_ns_per_u64": False},
 }
-T975 = {1: 12.71, 2: 4.30, 3: 3.18, 4: 2.78, 5: 2.57, 6: 2.45, 7: 2.36, 8: 2.31, 9: 2.26, 10: 2.23, 14: 2.14, 19: 2.09, 29: 2.05}
+T975 = {1: 12.71, 2: 4.31, 3: 3.19, 4: 2.78, 5: 2.58, 6: 2.45, 7: 2.37,
+        8: 2.31, 9: 2.27, 10: 2.23, 14: 2.15, 19: 2.10, 29: 2.05}
 
 
 def t975(df):
-    keys = sorted(T975)
-    for k in keys:
-        if df <= k:
+    # Rounded upward; a lower tabulated df keeps missing rows and the finite tail conservative.
+    for k in sorted(T975, reverse=True):
+        if df >= k:
             return T975[k]
-    return 1.96
+    return math.inf
 
 
 def run(binary, suite, extra):
