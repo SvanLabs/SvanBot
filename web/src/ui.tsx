@@ -5,7 +5,7 @@ import { panelHelp } from './help';
 import type { SeatRead } from './types';
 import { request } from './api';
 import { fmt, pct, sgn, SUITS } from './format';
-import { readLocal } from './storage';
+import { readLocal, writeLocal } from './storage';
 
 export const format = (value: number | null | undefined, digits = 0) => fmt(value, digits);
 export const signed = (value: number | null | undefined, digits = 0) => sgn(value, digits);
@@ -44,7 +44,7 @@ export function Panel({title, icon, aside, children, className = ''}: {title:str
   const helpId = React.useId();
   const storageKey = `svan-panel-collapsed:${title}`;
   const [collapsed, setCollapsed] = useState(() => readLocal(storageKey) === 'true');
-  return <section className={`panel ${className} ${collapsed ? 'panel-collapsed' : ''}`}><div className="panel-heading"><h2>{icon}{title}</h2><div className="panel-heading-actions">{aside}<button className="icon-button panel-info" aria-label={`About ${title}`} aria-expanded={showHelp} aria-controls={helpId} onClick={() => setShowHelp(!showHelp)}><span aria-hidden="true">i</span></button><button className="icon-button" aria-label={`${collapsed ? 'Expand' : 'Minimize'} ${title}`} aria-expanded={!collapsed} onClick={() => {setCollapsed(!collapsed);localStorage.setItem(storageKey, String(!collapsed));}}>{collapsed ? <ChevronRight size={15}/> : <ChevronDown size={15}/>}</button></div></div>{showHelp && <div className="panel-explanation" id={helpId} role="region" aria-label={`${title} explanation`}><p>{panelHelp[title]}</p><a href="#help">How the bot works →</a> <a href="#docs">Read the full docs →</a></div>}<div className="panel-content" hidden={collapsed}>{children}</div></section>;
+  return <section className={`panel ${className} ${collapsed ? 'panel-collapsed' : ''}`}><div className="panel-heading"><h2>{icon}{title}</h2><div className="panel-heading-actions">{aside}<button className="icon-button panel-info" aria-label={`About ${title}`} aria-expanded={showHelp} aria-controls={helpId} onClick={() => setShowHelp(!showHelp)}><span aria-hidden="true">i</span></button><button className="icon-button" aria-label={`${collapsed ? 'Expand' : 'Minimize'} ${title}`} aria-expanded={!collapsed} onClick={() => {setCollapsed(!collapsed);writeLocal(storageKey, String(!collapsed));}}>{collapsed ? <ChevronRight size={15}/> : <ChevronDown size={15}/>}</button></div></div>{showHelp && <div className="panel-explanation" id={helpId} role="region" aria-label={`${title} explanation`}><p>{panelHelp[title]}</p><a href="#help">How the bot works →</a> <a href="#docs">Read the full docs →</a></div>}<div className="panel-content" hidden={collapsed}>{children}</div></section>;
 }
 
 export function Empty({title, detail, icon = <Activity size={23}/>}:{title:string;detail:string;icon?:React.ReactNode}) {
