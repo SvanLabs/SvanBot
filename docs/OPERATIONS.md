@@ -94,6 +94,11 @@ Toolchain: Rust 1.98.1 pinned in `rust-toolchain.toml`, Node 26, React 19.3, Vit
 `scripts/web-test-server.sh` runs the dev `sv10-bot` in a throwaway root on port 5099. It uses a fake
 key, keeps the bots stopped and points every endpoint at a closed local port, so the tests never touch
 openpoker.ai or the live databases. 72 browser tests across 12 spec files, all passing.
+Dashboard report requests answer HTTP 500 when their stored evidence cannot be read, including
+accuracy, calibration, fleet results, highlights, stories, scout cards and leak analysis. Missing
+evidence remains an ordinary empty report; corrupt calibration JSON is an error. The
+`./target/release/review leaks` command propagates the same read failure instead of printing an
+empty report.
 
 Portable and offline builds:
 
