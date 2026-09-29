@@ -3,6 +3,36 @@
 
 use super::*;
 
+#[tokio::test]
+async fn an_earlier_unstored_replay_result_preserves_the_saved_open_hand() {
+    let mut rig = Rig::new("recover-earlier-result");
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    open_a_hand(&mut rig, &conn).await;
+    rig.shared.save_open_hands();
+    rig.tracker = TableTracker::default();
+    rig.tracker.reset_table();
+    rig.shared.resumable.lock().extend(crate::live::take_open_hands(&rig.shared.store, &["A".to_string()]));
+    assert_eq!(rig.shared.resumable.lock()["A"].hand_id, "h9", "the restart saved the hand we must recover");
+    let mut earlier = result_frame();
+    earlier["hand_id"] = json!("h-older");
+    earlier["table_seq"] = json!(1);
+    let mut saved = result_frame();
+    saved["table_seq"] = json!(2);
+    rig.feed(
+        &conn,
+        json!({"type": "resync_response", "replayed_events": [earlier, saved],
+        "snapshot": {"hand_id": "h10", "pot": 0, "board": [], "seats": [], "hero": {"seat": 2}}}),
+    )
+    .await;
+    assert!(rig.shared.store.hand("A", "h-older").unwrap().is_none(), "an unknown start cannot price the older hand");
+    let recovered = rig.shared.store.hand("A", "h9").unwrap().expect("the earlier result must not discard h9's saved start");
+    assert_eq!(recovered.net, Some(60));
+    assert_eq!(rig.shared.bots[0].read().session_hands, 1);
+    assert_eq!(rig.shared.bots[0].read().session_net, 60);
+    assert!(rig.shared.resumable.lock().is_empty(), "the matching result consumes the saved start once");
+}
+
 /// 0315: the release watch exits between hands while a hand is in progress; the new process never
 /// sees it end, so it was neither stored nor observed (5–10 hands a day). The hand is saved at
 /// exit, and the resync replay's `hand_result` settles it here: stored once, with its real net.
