@@ -39,9 +39,7 @@ export function announceSession() {
 /** Poll `path` every `ms` (a null path pauses); a change of `key` also re-polls, and so does a new
  * operator session. */
 export function usePoll<T>(path: string | null, ms: number, key?: unknown): Poll<T> {
-  const [data, setData] = useState<T>();
-  const [error, setError] = useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [reading, setReading] = useState<{ path: string; data?: T; error: string | null; updatedAt: number | null }>();
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const again = () => setTick(t => t + 1);
@@ -52,13 +50,18 @@ export function usePoll<T>(path: string | null, ms: number, key?: unknown): Poll
     if (!path) return;
     let alive = true;
     const load = () => request<T>(path)
-      .then(v => { if (alive) { setData(v); setError(null); setUpdatedAt(Date.now()); } })
-      .catch((e: unknown) => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
+      .then(data => { if (alive) setReading({ path, data, error: null, updatedAt: Date.now() }); })
+      .catch((e: unknown) => { if (alive) setReading(previous => ({
+        path, data: previous?.path === path ? previous.data : undefined,
+        updatedAt: previous?.path === path ? previous.updatedAt : null,
+        error: e instanceof Error ? e.message : String(e),
+      })); });
     load();
     const id = window.setInterval(load, ms);
     return () => { alive = false; window.clearInterval(id); };
   }, [path, ms, key, tick]);
-  return { data, error, updatedAt, refresh: () => setTick(t => t + 1) };
+  const current = reading?.path === path ? reading : undefined;
+  return { data: current?.data, error: current?.error ?? null, updatedAt: current?.updatedAt ?? null, refresh: () => setTick(t => t + 1) };
 }
 
 /** A one-line note under a panel whose latest poll failed: what failed and how old the data is. */
