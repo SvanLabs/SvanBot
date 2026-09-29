@@ -106,6 +106,9 @@ The results monitor attributes opponent transfers separately for main and side p
 unequal-commitment winners cannot be ranked from the recorded showdown, it skips that hand
 for opponent attribution; the bot’s recorded total result remains available.
 
+Database resource measurements from `scripts/resource-report.py` use a read-only, WAL-aware
+transaction, so committed table pages are included while the fleet is running.
+
 Portable and offline builds:
 
 Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
