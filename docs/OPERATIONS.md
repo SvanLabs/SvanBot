@@ -112,6 +112,10 @@ transaction, so committed table pages are included while the fleet is running.
 Build comparisons with `scripts/build-ab.py` retain compiler output and the diagnostic log path
 when a build exceeds its timeout, including runs that produced only one output stream.
 
+Benchmark intervals in `scripts/bench-ab.py` and `scripts/build-ab.py` use conservative
+Student-t multipliers: rounded upward, with the nearest lower tabulated degree of freedom
+and the last finite-sample bound retained for larger samples.
+
 Portable and offline builds:
 
 Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
