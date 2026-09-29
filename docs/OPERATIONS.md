@@ -149,7 +149,7 @@ and resume it with `-CONT` afterwards.
 ### Samples per second (`bench`)
 
 `bench [learner|live|micro|all] [--repeat N] [--profile] [--allocs] [--threads N]` measures the work
-the fleet does in one process, each suite printing one JSON line per repeat with a checksum, so a
+the fleet does in one process (`N` must be at least 1), each suite printing one JSON line per repeat with a checksum, so a
 speed-only change is shown to compute the same numbers:
 
 - `learner` — the paired champion-against-challenger evaluation the learner runs, in table runs per
