@@ -61,19 +61,11 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_TARGET_DIR: target/dev
-      CARGO_BUILD_JOBS: 4
       CARGO_TERM_COLOR: always
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-      # `.cargo/config.toml` compiles for the machine doing the compiling (`target-cpu=native`), which
-      # is right for a fleet that only runs where it was built and wrong here: runners are
-      # heterogeneous and `rust-cache` carries `target/dev` between them, so a binary built on a host
-      # with a wider instruction set reaches one without it and dies with SIGILL — a red gate whose
-      # log reads like a failed test. `RUSTFLAGS` replaces the config file's setting rather than
-      # adding to it, which is how `Dockerfile` and `scripts/portable.sh` opt out; this is the third
-      # opt-out and the last one that was missing. The baseline is the one the release image ships, so
-      # the gate compiles and runs the instruction set a release actually has. Cargo fingerprints
-      # `RUSTFLAGS`, so the artifacts a previous runner cached under `native` are rebuilt, not reused.
-      RUSTFLAGS: -C target-cpu=x86-64-v2
+      # Use the selected target's baseline ISA so cached artifacts remain portable across hosts.
+      # An explicit empty RUSTFLAGS overrides target-cpu=native in the local Cargo configuration.
+      RUSTFLAGS: ""
     steps:
       # Full history, because the gate's first step reads the commits this pull request adds and
       # compares them against the base branch. `actions/checkout` fetches a single commit by default,

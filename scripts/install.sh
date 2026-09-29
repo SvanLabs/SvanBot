@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install prebuilt binaries from a portable bundle (scripts/portable.sh) into target/release,
-# choosing x86-64-v3 when the CPU supports it and x86-64-v2 otherwise. Run from the unpacked bundle
+# choosing the fastest supported x86-64 instruction level, including baseline v1. Run from the unpacked bundle
 # (or a checkout that has target/dist-v2 and target/dist-v3 builds). Then: edit .env, scripts/start.sh.
 #   scripts/install.sh            install the best level for this CPU
 #   LEVEL=v2 scripts/install.sh   force a level
@@ -9,24 +9,30 @@ cd "$(dirname "$0")/.."
 
 cpu_level() {
   local flags
-  flags=" $(grep -m1 '^flags' /proc/cpuinfo | cut -d: -f2) "
+  flags=" $(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null | cut -d: -f2 || true) "
+  [ "$(v2_or_v1 "$flags")" != v1 ] || { echo v1; return; }
   local f
   for f in avx avx2 bmi1 bmi2 f16c fma abm movbe xsave; do
-    [[ "$flags" == *" $f "* ]] || { v2_or_none "$flags"; return; }
+    [[ "$flags" == *" $f "* ]] || { v2_or_v1 "$flags"; return; }
   done
   echo v3
 }
-v2_or_none() {
+v2_or_v1() {
   local f
   for f in cx16 lahf_lm popcnt sse4_1 sse4_2 ssse3; do
-    [[ "$1" == *" $f "* ]] || { echo none; return; }
+    [[ "$1" == *" $f "* ]] || { echo v1; return; }
   done
   echo v2
 }
 
 [ "$(uname -m)" = x86_64 ] || { echo "Prebuilt bundles are x86-64 only; build from source with scripts/setup.sh." >&2; exit 1; }
-level="${LEVEL:-$(cpu_level)}"
-[ "$level" != none ] || { echo "CPU lacks x86-64-v2 (SSE4.2/POPCNT); build from source with scripts/setup.sh." >&2; exit 1; }
+supported=$(cpu_level)
+level="${LEVEL:-$supported}"
+case "$level" in v1|v2|v3) ;; *) echo "LEVEL must be v1, v2 or v3." >&2; exit 1 ;; esac
+if [[ "$level" > "$supported" ]]; then
+  echo "CPU supports $supported; refusing unsupported $level binaries." >&2
+  exit 1
+fi
 
 if [ -d "bin/x86-64-$level" ]; then
   src="bin/x86-64-$level"

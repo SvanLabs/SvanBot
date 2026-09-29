@@ -273,7 +273,7 @@ rename.
 <a id="quick-start"></a>
 ## 🚀 Quick start
 
-**You need:** Linux x86-64 (x86-64-v2 or newer) · Rust 1.98.1 (pinned in
+**You need:** Linux with a supported Rust target (prebuilt bundles: x86-64, including baseline v1) · Rust 1.98.1 (pinned in
 [`rust-toolchain.toml`](rust-toolchain.toml)) · Node 26 for the dashboard · `zstd` and `cargo-deny`
 · an Open Poker API key · **no GPU**.
 

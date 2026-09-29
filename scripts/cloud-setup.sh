@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# Bootstrap for Claude Code cloud sessions (claude.ai/code); CLAUDE.md tells a cloud session to
-# run it first. Idempotent and never fatal: it installs
+# Bootstrap build/review tools for local agents and CI. It installs
 # what scripts/check.sh needs (pre-commit hook, cargo-deny, web deps). Rust comes from
 # rust-toolchain.toml via rustup. Runtime data is opt-in: scripts/fetch-data.sh.
 # Cloud sessions never run the live fleet (no .env, no API keys): no start.sh, no release.sh.
 cd "$(dirname "$0")/.." || exit 0
 export PATH="$HOME/.cargo/bin:$PATH"
+source scripts/resources.sh || exit 1
+
 log() { echo "cloud-setup: $*" >&2; }
 
 ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit 2>/dev/null || log "could not link the pre-commit hook"
 mkdir -p artifacts/logs artifacts/backups
 
 if ! command -v cargo-deny >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; then
+  if [ "$(uname -m)" != x86_64 ]; then
+    cargo install --locked cargo-deny || log "cargo-deny source install failed"
+  else
   tag=$(curl -fsSL https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/latest 2>/dev/null |
     sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
   if [ -n "$tag" ]; then
@@ -22,6 +26,7 @@ if ! command -v cargo-deny >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; 
       log "cargo-deny download failed; install with: cargo install --locked cargo-deny"
   else
     log "cargo-deny release lookup failed; install with: cargo install --locked cargo-deny"
+  fi
   fi
 fi
 

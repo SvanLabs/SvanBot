@@ -10,6 +10,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
+SVANBOT_BUILD_STAGES=2 source scripts/resources.sh
+
 # Progress for the dashboard's bar (0236). Under scripts/update.sh (SV10_UPDATE_RUN=1) the run, its
 # log and its outcome belong to update.sh; by hand this script records them itself.
 progress() { python3 scripts/progress.py "$@" || true; }

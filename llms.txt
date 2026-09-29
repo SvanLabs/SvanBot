@@ -10,7 +10,7 @@ matches the job and follow it literally; the traps in it are the ones that have 
 
 ## Get a fleet running
 
-Prerequisites: Linux x86-64 (x86-64-v2 or newer), Rust 1.98.1 (pinned in `rust-toolchain.toml`),
+Prerequisites: Linux with a supported Rust target (prebuilt bundles: x86-64, including baseline v1), Rust 1.98.1 (pinned in `rust-toolchain.toml`),
 Node 26, `zstd`, and an openpoker.ai API key. **No GPU is used or needed.** An i7-4770K with 32 GB is the
 reference machine — anything newer is faster.
 
@@ -124,3 +124,7 @@ Count hands the bot actually played, retain recorded result availability, and me
 aliases under the current identity. When asked for the latest hands per bot, select each bot's
 cohort independently. Missing evidence is not a measured zero, and descriptive calibration gaps
 are not proof that a proposed strategy change wins chips.
+
+Local builds and tests adapt concurrency to available CPU and memory, including cgroup-v2 limits.
+`scripts/host_resources.py` checks usable disk space before builds; `SVANBOT_MIN_FREE_MB` sets
+its reserve. Portable x86-64 bundles include v1/v2/v3 and reject incompatible forced levels.
