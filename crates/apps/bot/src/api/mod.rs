@@ -106,15 +106,6 @@ fn stored_json(s: &Shared, key: &str) -> Result<Option<Value>, ApiError> {
         .transpose()
 }
 
-/// A store read that feeds one figure of a larger snapshot: the snapshot still goes out, and the
-/// failure is logged at most once a minute so a store outage shows in the log, not as silence.
-fn snapshot_read<T: Default>(what: &str, r: Result<T>) -> T {
-    r.unwrap_or_else(|e| {
-        snapshot_warn(&format!("store unreadable ({what}), dashboard figure left empty: {e}"));
-        T::default()
-    })
-}
-
 /// Report a store failure behind a dashboard figure, at most once a minute process-wide: a broken
 /// store answers every panel on every poll, and the log must show the outage without drowning in it.
 fn snapshot_warn(message: &str) {

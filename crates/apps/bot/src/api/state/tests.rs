@@ -151,7 +151,7 @@ fn compute_reports_decision_time_against_the_45_second_deadline() {
     for (street, ms) in [("flop", 120.0), ("river", 4.0), ("flop", 180.0)] {
         shared.store.insert_decision("A", "h", street, "call", None, Some(0.5), 100, 20, ms, "{}").unwrap();
     }
-    let c = compute_value(&shared);
+    let c = compute_value(&shared).unwrap();
     assert_eq!(c["decisions"]["n"], 3);
     assert_eq!(c["by_street"]["flop"]["max"], 180.0);
     assert_eq!(c["by_street"]["turn"]["n"], 0);
