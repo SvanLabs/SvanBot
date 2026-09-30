@@ -177,9 +177,18 @@ impl Table {
         }
         let sum = fnv1a(&buf);
         buf.extend_from_slice(&sum.to_le_bytes());
-        let tmp = path.with_extension("tmp");
-        std::fs::write(&tmp, &buf)?;
-        std::fs::rename(&tmp, path)
+        // The staging file is this call's alone (#581): a fixed name is shared by two builds racing on
+        // one path, so one truncates or interleaves with the other's bytes and the rename then puts the
+        // mixture under the table's name — or simply fails, because the other writer renamed the shared
+        // staging file out from under it. Same rule as `sv10_rt::write_atomic_mode` (#501).
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let staging = format!("{}.{}.tmp", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+        let tmp = path.with_extension(staging);
+        let written = std::fs::write(&tmp, &buf).and_then(|()| std::fs::rename(&tmp, path));
+        if written.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        written
     }
 
     /// Read and verify magic, checksum, board length and shape. The rows stay in a shared read-only
@@ -336,5 +345,52 @@ mod tests {
         bytes[100] ^= 1;
         std::fs::write(&path, bytes).unwrap();
         assert!(Table::read(&path, 3).err().unwrap().contains("checksum"));
+    }
+
+    /// Two table builds racing on one path must still leave one whole table (#581).
+    ///
+    /// `write` stages through one fixed name, so two writers share it and one can truncate or
+    /// interleave with the other's bytes; the rename that follows then puts the mixture under the
+    /// table's real name. That is the class `sv10_rt::write_atomic_mode` was fixed for (#501). The
+    /// payload is the full 1,755-board table (~9 MB) so the writes really overlap, and the race is
+    /// run several times because a single round can serialise by luck.
+    #[test]
+    fn concurrent_writes_to_one_path_leave_one_whole_table() {
+        let dir = std::env::temp_dir().join(format!("sv10-tables-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let keys = canonical_boards(3);
+        assert_eq!(keys.len(), 1_755);
+        let table = |v: f32| Table::new(keys.clone(), vec![v; keys.len() * NUM_COMBOS]);
+        let (a, b) = (table(1.0), table(2.0));
+        let path = table_path(&dir, 3);
+        for round in 0..6 {
+            let gate = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let results: Vec<std::io::Result<()>> = std::thread::scope(|scope| {
+                let handles: Vec<_> = [&a, &b]
+                    .into_iter()
+                    .map(|t| {
+                        let (gate, path) = (gate.clone(), path.clone());
+                        scope.spawn(move || {
+                            gate.wait();
+                            t.write(&path, 3)
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().expect("no panic")).collect()
+            });
+            // A writer whose staging file was renamed out from under it fails outright — the other
+            // half of the same defect: one build racing another must not make either of them fail.
+            for (i, r) in results.iter().enumerate() {
+                r.as_ref().unwrap_or_else(|e| panic!("round {round}: writer {i} failed: {e}"));
+            }
+            let read = Table::read(&path, 3).unwrap_or_else(|e| panic!("round {round}: two writers left an unreadable table: {e}"));
+            let row = read.lookup(&cards_of(keys[0])).expect("the file's own board is in it");
+            assert!(
+                row.iter().all(|v| *v == 1.0) || row.iter().all(|v| *v == 2.0),
+                "round {round}: the file is a mixture of the two writers"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
