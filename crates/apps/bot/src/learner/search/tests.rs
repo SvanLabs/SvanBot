@@ -24,6 +24,47 @@ fn ctx<'a>(dir: &'a std::path::Path, store: &'a Store) -> Ctx<'a> {
     Ctx { store, root: dir, threads: 2, tables: 1, hands: 20, decision_samples: 40 }
 }
 
+#[test]
+fn live_supported_confirmation_records_the_whole_offered_funnel() {
+    use crate::experiment::target::{Source, TARGETS_KEY, Target, TargetQueue};
+    use crate::learner::funnel::{self, BARRED, FUNNEL_KEY, PROPOSED};
+    use crate::search_ledger::{Ledger, LedgerEntry, transition_key};
+    let (dir, store) = store("live-funnel");
+    let ctx = ctx(&dir, &store);
+    let mut run = begin(&ctx, 0, 0.0, 0).unwrap().unwrap();
+    let scope = super::Scope::load(&store);
+    let env = super::env(&ctx, &scope, &run, vec![]);
+    let mut ledger = Ledger { champion: run.champion_version.clone(), refit_rowid: run.refit_rowid, ..Default::default() };
+    let (key, old, new, _) = &env.proposals[0];
+    ledger.entries.insert(transition_key(key, *old, *new), LedgerEntry { hands: 20, mean_bb: -0.02, se_bb: 0.0, differing: 1 });
+    search_ledger::save(&store, &ledger).unwrap();
+    let (key, old, new, params) = &env.proposals[1];
+    let target =
+        Target::new((&ledger.champion, ledger.refit_rowid), key, *old, *new, params.clone(), LedgerEntry::default(), Source::Ledger);
+    let verdicts = crate::experiment::Verdicts::from([(
+        target.id.clone(),
+        crate::experiment::VerdictRecord {
+            verdict: crate::experiment::Verdict::LiveSupported,
+            at: 1.0,
+            label: target.label(),
+            estimate: Default::default(),
+        },
+    )]);
+    let queue =
+        TargetQueue { champion: ledger.champion, refit_rowid: ledger.refit_rowid, candidates: vec![target.clone()], ..Default::default() };
+    store.put_kv(TARGETS_KEY, &serde_json::to_string(&queue).unwrap()).unwrap();
+    store.put_kv(crate::experiment::VERDICTS_KEY, &serde_json::to_string(&verdicts).unwrap()).unwrap();
+    store.put_kv(FUNNEL_KEY, "{}").unwrap();
+    let stage = super::stages::start_halving(&env, &mut run);
+    assert!(matches!(stage, run::Stage::Confirm(c) if c.knob == target.knob));
+    let counts = funnel::load(&store).summary(crate::learner::now());
+    let count =
+        |key: &str| counts["outcomes"].as_array().unwrap().iter().find(|v| v["key"] == key).and_then(|v| v["count"].as_u64()).unwrap_or(0);
+    assert_eq!(count(BARRED), 1);
+    assert_eq!(count(PROPOSED), env.proposals.len() as u64 - 1);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// Run a whole search at `rate` with `cap` seconds of simulation planned for each step's first
 /// slice, storing and reloading the run between steps; the outcome, the steps taken and the ledger
 /// it left.

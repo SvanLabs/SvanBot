@@ -32,6 +32,9 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
         );
         funnel::note(store, funnel::BARRED, None, barred as u32);
     }
+    // The denominator is the pool offered after the ledger filter, including when live support
+    // bypasses halving. The ledger bar above is the other half of what the cycle was offered.
+    funnel::note(store, funnel::PROPOSED, None, kept.len() as u32);
     // A challenger the experiment pair supported live (0291) goes straight to fresh-deal
     // confirmation: live evidence only prioritizes, the confirmation gate alone promotes.
     let published: Option<TargetQueue> = store.get_kv(TARGETS_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok());
@@ -62,9 +65,6 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
         }));
     }
     let keys: Vec<String> = e.proposals.iter().map(|(k, o, n, _)| transition_key(k, *o, *n)).collect();
-    // The denominator of the funnel: what the search was handed after the ledger's filter. The
-    // ledger bar above is the other half of what a cycle was offered.
-    funnel::note(store, funnel::PROPOSED, None, kept.len() as u32);
     let pool = kept
         .into_iter()
         .filter_map(|(knob, old, new, _, prior)| {
