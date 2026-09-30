@@ -121,8 +121,8 @@ Portable and offline builds:
 Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
 
 ```
-scripts/portable.sh        # x86-64-v2 + v3 binaries, scripts, dashboard, docs -> target/dist/*.tar.gz (32 MB, needs glibc >= MANIFEST)
-scripts/install.sh         # in the unpacked bundle: picks v3/v2 from /proc/cpuinfo flags, installs into target/release, creates .env
+scripts/portable.sh        # x86-64-v1 + v2 + v3 binaries, scripts, dashboard, docs -> target/dist/*.tar.gz (32 MB, needs glibc >= MANIFEST)
+scripts/install.sh         # in the unpacked bundle: picks v3/v2/v1 from /proc/cpuinfo flags, installs into target/release, creates .env
 scripts/vendor.sh          # vendor/ (349 MB, gitignored) + .cargo/vendor.toml; then cargo build --release --offline --config .cargo/vendor.toml
 ```
 
@@ -534,6 +534,25 @@ carrying equity, and the public stream does not carry them), no scouting reports
 TV is a label, not a button — the read behind it is the model's opinion of a named person), and no
 exit link (there is nowhere to exit to). Setting the port back to `0` or unsetting it leaves the
 dashboard untouched.
+
+## Resource-aware builds
+
+Source builds use the local CPU; portable bundles include baseline x86-64-v1, v2 and v3.
+The installer selects a supported level and rejects a forced higher level before writing files.
+Container builds use the compiler's baseline for their selected architecture. Other architectures
+use the source installation; prebuilt bundles are x86-64 Linux with their recorded glibc minimum.
+
+`scripts/host_resources.py` sizes compiler jobs from CPU affinity, cgroup-v2 CPU quotas and
+remaining cgroup memory, bounded by host available RAM. Concurrent compiler stages share the
+budget; explicit `CARGO_BUILD_JOBS` remains an operator override. Tests use the same CPU and
+memory ceilings plus their measured peak RSS. Unknown memory defaults to serial scheduling.
+
+Build entry points check user-available space on the target and artifacts filesystems. The default
+reserve is 512 MiB, adjustable with `SVANBOT_MIN_FREE_MB`; it is a low-space guard, not an estimate
+of a cold build's complete storage requirement. They preserve existing data on failure and never
+prune automatically. Filesystem quotas and later competing writes can still cause ENOSPC; retain
+build diagnostics and move the checkout or free space explicitly. Rust, Linux, RAM and writable
+storage are still required; hardware independence does not mean zero resource requirements.
 
 Source installations support Linux x86-64 and AArch64. The benchmark's BMI2 arm is selected
 only on x86-64 with runtime support; other CPUs use the existing scalar fallback and report

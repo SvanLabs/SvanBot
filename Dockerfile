@@ -1,7 +1,7 @@
 # SvanBot in a container: the fleet, learner and analyst, and the built dashboard (#16).
 #   docker run -d -p 5000:5000 -v "$PWD/.env:/svanbot/.env:ro" -v svanbot-data:/svanbot/artifacts \
 #     ghcr.io/svanlabs/svanbot:latest
-# Binaries target x86-64-v2 so the image runs on any x86-64 CPU since about 2009.
+# Use the compiler's baseline CPU for the selected platform, rather than the build host's ISA.
 
 FROM node:24-bookworm AS web
 WORKDIR /src/web
@@ -12,10 +12,13 @@ COPY docs/ /src/docs/
 RUN npm run build
 
 FROM rust:1.98.1-bookworm AS build
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
-ENV RUSTFLAGS="-C target-cpu=x86-64-v2"
-RUN cargo build --release --workspace --bins
+ENV RUSTFLAGS=""
+RUN . scripts/resources.sh && cargo build --release --workspace --bins
 
 FROM debian:bookworm-slim
 RUN apt-get update \

@@ -35,14 +35,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+# Import works both as a script and when the runner is loaded by its tool tests.
+sys.path.insert(0, str(ROOT / "scripts"))
+from host_resources import cpu_available, memory_available
+
+
 def mem_available() -> int:
-    try:
-        for line in Path("/proc/meminfo").read_text().splitlines():
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) * 1024
-    except OSError:
-        pass
-    return 4 << 30
+    return memory_available()
 
 
 def build(profile: str, packages: list[str], env: dict) -> list[tuple[str, str, Path]]:
@@ -106,7 +105,7 @@ def main() -> int:
 
     env = dict(os.environ)
     env["PATH"] = str(Path.home() / ".cargo/bin") + ":" + env.get("PATH", "")
-    env.setdefault("CARGO_TARGET_DIR", str(ROOT / "target/dev"))
+    env.setdefault("CARGO_TARGET_DIR", "target/dev")
     threads = int(env.setdefault("RUST_TEST_THREADS", "2"))
     target = Path(env["CARGO_TARGET_DIR"])
     rss_file = target / "test-rss.json"
@@ -119,7 +118,7 @@ def main() -> int:
     except (OSError, ValueError):
         known = {}
     peak = max(known.values(), default=600 << 20)
-    cores = os.cpu_count() or 2
+    cores = cpu_available()
     jobs = a.jobs or max(1, min(cores // max(1, threads) or 1, int(mem_available() * 0.6 // max(peak, 1)), len(exes)))
 
     run_env = dict(env, TMPDIR=tempfile.mkdtemp(prefix="sv10-testrun-"))
