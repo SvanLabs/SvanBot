@@ -279,7 +279,7 @@ decision engine does not use the label; it uses the underlying numbers directly.
 
 ## 5. Neural opponent-response model
 
-A small multilayer perceptron (38 inputs → 48 → 24 → 3 outputs) predicts whether an opponent will
+A small multilayer perceptron (39 inputs → 48 → 24 → 3 outputs) predicts whether an opponent will
 **fold, call/check or bet/raise** in a given spot.
 
 - **Features** — street, facing-bet flag, bet size relative to pot, pot size, stack-to-pot ratio,
