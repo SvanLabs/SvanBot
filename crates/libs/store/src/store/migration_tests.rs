@@ -23,7 +23,7 @@ fn fixture(tag: &str) -> (Store, std::path::PathBuf) {
             hand_id: "h".into(),
             ended_at: "2026-09-30T00:00:00Z".into(),
             hero_seat: Some(0),
-            summary: serde_json::json!({"players":[[0,"A"]],"button":0,"bb":20,"history":[],"board":[],"shown":[],"stacks":{}}).to_string(),
+            summary: serde_json::json!({"players":[[0,"A"]],"button":0,"bb":20,"history":[],"board":[],"shown":[],"stacks":[]}).to_string(),
             ..Default::default()
         })
         .unwrap();
@@ -35,7 +35,7 @@ fn rewrite_on_read(path: std::path::PathBuf) {
         *h.borrow_mut() = Some(Box::new(move || {
             let conn = Connection::open(path).unwrap();
             let summary = serde_json::json!({"players":[[0,"A"]],"button":0,"bb":20,"history":[],"board":[],
-                "shown":[[0,["Ah","Kd"]]],"stacks":{}})
+                "shown":[[0,["Ah","Kd"]]],"stacks":[]})
             .to_string();
             let digest = crate::integrity::hand_digest("A", "h", "2026-09-30T00:00:00Z", "", "", &summary);
             serde_json::from_str::<sv10_model::model::HandSummary>(&summary).unwrap();
