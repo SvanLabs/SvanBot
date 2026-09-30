@@ -8,6 +8,52 @@ fn tmp(name: &str) -> PathBuf {
     d
 }
 
+/// A manifest is sealed against rot, not against a name that says `../…` (#603).
+///
+/// The seal is a sidecar in the same directory, so an archive someone else produced can name any
+/// path it likes: without confinement the restore writes there and reports it as a restored file.
+#[test]
+fn a_manifest_entry_that_leaves_the_archive_is_refused() {
+    let dir = tmp("escape");
+    let archive = dir.join("weekly/2026-W40");
+    std::fs::create_dir_all(&archive).unwrap();
+    let payload = b"an entry the manifest points at from outside";
+    std::fs::write(archive.join("payload.bin"), payload).unwrap();
+    let entry = Entry {
+        name: "../written-by-restore.txt".into(),
+        role: Role::RepoBundle,
+        bytes: payload.len() as u64,
+        sha256: crate::integrity::file_sha256(&archive.join("payload.bin")).unwrap(),
+        raw_bytes: payload.len() as u64,
+        raw_sha256: String::new(),
+        rows: BTreeMap::new(),
+        watermarks: BTreeMap::new(),
+    };
+    let manifest = Manifest {
+        format: FORMAT,
+        kind: Kind::Weekly,
+        name: "weekly/2026-W40".into(),
+        created_at: "2026-09-30T00:00:00Z".into(),
+        app_version: "test".into(),
+        git_commit: None,
+        base: None,
+        restore: "copy the files into artifacts/".into(),
+        files: vec![entry],
+    };
+    std::fs::write(archive.join(MANIFEST), serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
+    std::fs::write(archive.join(format!("{MANIFEST}.sha256")), crate::integrity::file_sha256(&archive.join(MANIFEST)).unwrap()).unwrap();
+
+    // The seal is intact, so this is not a corruption case: the name itself has to be refused.
+    assert!(load_manifest(&archive).is_ok());
+    let problem = verify(&archive, false).join("; ");
+    assert!(problem.contains("leaves the archive"), "verify says nothing about an escaping name: {problem}");
+
+    let out = dir.join("out");
+    let escaped = dir.join("written-by-restore.txt");
+    restore(&dir, "weekly/2026-W40", &out).expect_err("a restore must refuse an entry that leaves the archive");
+    assert!(!escaped.exists(), "the restore wrote outside its destination");
+}
+
 /// 0249: `SELECT *` maps by position. A column added or reordered between the full backup and
 /// the differential would fill the wrong columns with no error; naming both sides fixes that,
 /// and a column the full does not have is refused rather than skipped.

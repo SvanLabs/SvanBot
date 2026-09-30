@@ -10,4 +10,5 @@
 pub mod archive;
 pub mod integrity;
 pub mod packed;
+pub mod paths;
 pub mod store;
