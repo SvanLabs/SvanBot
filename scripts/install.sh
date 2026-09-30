@@ -18,6 +18,7 @@ cpu_level() {
   echo v3
 }
 v2_or_v1() {
+  [[ "$1" == *" pni "* || "$1" == *" sse3 "* ]] || { echo v1; return; }
   local f
   for f in cx16 lahf_lm popcnt sse4_1 sse4_2 ssse3; do
     [[ "$1" == *" $f "* ]] || { echo v1; return; }
