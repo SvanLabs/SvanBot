@@ -191,9 +191,9 @@ of our own play decays on the same cadence, so it describes how we have been pla
   blocking pool and deal their Monte Carlo samples across the rayon pool. Dashboard handlers that read
   the store or build snapshots (`state`, SSE snapshots, hands, replay, fleet race, highlights, opponent
   detail) run through `api::off_runtime` on the blocking pool, never on a runtime worker. A handler
-  that panics or cannot read the store answers 500 with a `detail` (`api::ApiError`); a
-  snapshot figure whose read fails is left empty and logged at most once a minute
-  (`api::snapshot_read`). Without an operator token, every POST must be addressed to a loopback host
+  that panics or cannot read required store data answers 500 with a `detail` (`api::ApiError`),
+  including decision latencies in the compute report. Optional snapshot failures are logged at
+  most once a minute (`api::snapshot_warn`). Without an operator token, every POST must be addressed to a loopback host
   (DNS-rebinding guard), and every response carries `nosniff`, `X-Frame-Options: DENY` and a
   same-origin referrer policy.
 - **Realtime dashboard** (`/api/events`, SSE): table events (`action`, `board`, `result`,
