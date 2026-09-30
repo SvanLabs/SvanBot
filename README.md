@@ -385,9 +385,10 @@ Directing the agent well is the contribution.
 5. **Open the pull request.** The template asks for three things: what generated it
    (`Generated-by: <tool>/<model>`, also in every commit footer), why, and what changed.
 
-CI runs the gate on every pull request. Pull requests from this repository's own branches also get
-an automatic Claude review, and collaborators can mention **@claude** in a comment to ask for a fix
-or an explanation.
+CI runs the gate on every pull request. Agent review runs on your computer with your chosen
+coding agent: `python3 scripts/local-review.py origin/main`. See
+[local review](docs/agents/local-review.md) for the optional agent command and review criteria.
+Hosted model review, scheduled maintenance, triage and mention workflows are removed.
 
 <details>
 <summary><b>🧑‍💻 Everyday development commands</b></summary>
