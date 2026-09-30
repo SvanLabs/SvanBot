@@ -17,6 +17,8 @@ mod events;
 mod hands;
 mod incidents;
 mod kv;
+#[cfg(test)]
+mod migration_tests;
 mod provenance;
 mod replays;
 mod scans;
@@ -174,14 +176,17 @@ impl Store {
     /// One-time migration: digest hands stored before the column existed.
     fn backfill_digests(&self) -> Result<()> {
         let conn = self.write_lock();
-        let rows: Vec<(i64, [String; 6])> = conn
+        // Read and write one snapshot: a peer commit cannot be overwritten with a stale digest.
+        let tx = conn.unchecked_transaction()?;
+        let rows: Vec<(i64, [String; 6])> = tx
             .prepare("SELECT rowid, bot, hand_id, ended_at, COALESCE(hole, ''), COALESCE(board, ''), COALESCE(summary, '') FROM hands WHERE digest IS NULL")?
             .query_map([], |r| Ok((r.get(0)?, [r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?])))?
             .collect::<Result<Vec<_>, _>>()?;
         if rows.is_empty() {
             return Ok(());
         }
-        let tx = conn.unchecked_transaction()?;
+        #[cfg(test)]
+        migration_tests::after_read();
         for (rowid, [bot, id, ended, hole, board, summary]) in rows {
             let digest = crate::integrity::hand_digest(&bot, &id, &ended, &hole, &board, &summary);
             tx.execute("UPDATE hands SET digest = ?1 WHERE rowid = ?2", params![digest, rowid])?;
@@ -200,14 +205,17 @@ impl Store {
     /// One-time migration: derive the showdown flag for hands stored before the column existed.
     fn backfill_showdown(&self) -> Result<()> {
         let conn = self.write_lock();
-        let rows: Vec<(i64, Option<i64>, String)> = conn
+        // The showdown flag must describe the summary in the snapshot being written.
+        let tx = conn.unchecked_transaction()?;
+        let rows: Vec<(i64, Option<i64>, String)> = tx
             .prepare("SELECT rowid, hero_seat, COALESCE(summary, '') FROM hands WHERE showdown IS NULL")?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         if rows.is_empty() {
             return Ok(());
         }
-        let tx = conn.unchecked_transaction()?;
+        #[cfg(test)]
+        migration_tests::after_read();
         for (rowid, seat, summary) in rows {
             let went = serde_json::from_str::<sv10_model::model::HandSummary>(&summary)
                 .map(|h| seat.map(|s| h.shown.iter().any(|(x, _)| *x as i64 == s)).unwrap_or(false))
