@@ -2,6 +2,9 @@
 //! replayed hand (training) and from a live decision (inference), plus the
 //! hand-built stat model used as the baseline it has to beat.
 
+#[cfg(test)]
+mod texture_tests;
+
 use crate::model::{HandSummary, ModelStore, Profile, aggressive};
 use sv10_cards::cards::Card;
 use sv10_engine::engine::{ActionKind, Street};
@@ -11,9 +14,9 @@ use sv10_nn::nn::Sample;
 /// 37 since 2026-09-15: every per-opponent statistic the model tracks is an input (c-bet,
 /// fold to c-bet, opens, calls, 4-bets, limps, river bluffs, fold by bet size, showdown wins) plus
 /// whether the bet faced is the preflop aggressor's flop bet. A stored network with another input
-/// size is never used. Production trains [`ResponseFeatureSet::PriorStreetCalls38`] since 0135
-/// (2026-09-22); networks of the older 37-input layout still run with their own inputs.
-pub const N_FEATURES: usize = 38;
+/// size is never used. Production trains [`ResponseFeatureSet::StraightTexture39`]; networks
+/// of the older 37- and 38-input layouts still run with their original inputs.
+pub const N_FEATURES: usize = 39;
 /// Inputs of the [`ResponseFeatureSet::Incumbent37`] layout, still served for networks trained on it.
 pub const INCUMBENT_FEATURES: usize = 37;
 
@@ -28,23 +31,29 @@ pub enum ResponseFeatureSet {
     /// log-loss −2.77 mnats (95% −3.95..−1.58) validating after 2026-09-21 and −1.09 (−1.86..−0.33)
     /// on 2026-09-18..21 against the 37-input layout with identical splits and seeds (0135).
     PriorStreetCalls38,
+    /// 39 inputs: corrected straight connectivity at index 15 (distinct ranks including the wheel),
+    /// plus wheel connectivity at index 38. The older layouts retain their trained texture values.
+    StraightTexture39,
 }
 
 impl ResponseFeatureSet {
     /// The production layout new networks are trained on.
-    pub const PRODUCTION: ResponseFeatureSet = ResponseFeatureSet::PriorStreetCalls38;
+    pub const PRODUCTION: ResponseFeatureSet = ResponseFeatureSet::StraightTexture39;
 
     /// Input width of this layout.
     pub fn inputs(self) -> usize {
         match self {
             ResponseFeatureSet::Incumbent37 => INCUMBENT_FEATURES,
-            ResponseFeatureSet::PriorStreetCalls38 => N_FEATURES,
+            ResponseFeatureSet::PriorStreetCalls38 => 38,
+            ResponseFeatureSet::StraightTexture39 => N_FEATURES,
         }
     }
 
     /// The layout a network with `inputs` input units was trained on, if it is one we serve.
     pub fn for_inputs(inputs: usize) -> Option<ResponseFeatureSet> {
-        [ResponseFeatureSet::Incumbent37, ResponseFeatureSet::PriorStreetCalls38].into_iter().find(|s| s.inputs() == inputs)
+        [ResponseFeatureSet::Incumbent37, ResponseFeatureSet::PriorStreetCalls38, ResponseFeatureSet::StraightTexture39]
+            .into_iter()
+            .find(|s| s.inputs() == inputs)
     }
 }
 
@@ -79,7 +88,7 @@ pub struct ResponseContext<'a> {
     pub profile: &'a Profile,
 }
 
-fn texture(board: &[Card]) -> [f32; 4] {
+fn legacy_texture(board: &[Card]) -> [f32; 4] {
     if board.is_empty() {
         return [0.0; 4];
     }
@@ -106,6 +115,17 @@ fn texture(board: &[Card]) -> [f32; 4] {
     [paired, flushy, best as f32 / 5.0, high]
 }
 
+fn wheel_connectivity(board: &[Card]) -> f32 {
+    [12, 0, 1, 2, 3].iter().filter(|&&rank| board.iter().any(|card| card.rank() == rank)).count() as f32 / 5.0
+}
+
+fn texture(board: &[Card]) -> [f32; 4] {
+    let mut t = legacy_texture(board);
+    let best = (0..=8).map(|lo| (lo..lo + 5).filter(|&rank| board.iter().any(|card| card.rank() == rank)).count()).max().unwrap_or(0);
+    t[2] = (best as f32 / 5.0).max(wheel_connectivity(board));
+    t
+}
+
 /// The production-layout ([`N_FEATURES`]) model inputs for a decision point.
 pub fn features(c: &ResponseContext) -> Vec<f32> {
     features_for(c, ResponseFeatureSet::PRODUCTION)
@@ -127,7 +147,7 @@ pub fn features_for(c: &ResponseContext, feature_set: ResponseFeatureSet) -> Vec
     f[10] = c.preflop_raises.min(3) as f32 / 3.0;
     f[11] = c.was_preflop_aggressor as u8 as f32;
     f[12] = (facing && c.to_call >= c.stack_behind) as u8 as f32;
-    let t = texture(c.board);
+    let t = if feature_set == ResponseFeatureSet::StraightTexture39 { texture(c.board) } else { legacy_texture(c.board) };
     f[13..17].copy_from_slice(&t);
     let p = c.profile;
     let st = c.street.index().saturating_sub(1).min(2);
@@ -151,8 +171,11 @@ pub fn features_for(c: &ResponseContext, feature_set: ResponseFeatureSet) -> Vec
     f[34] = if facing { p.fold_vs_size[crate::model::size_bucket(c.to_call as f64 / base as f64)] } else { 0.0 };
     f[35] = p.won_showdown;
     f[36] = c.facing_cbet as u8 as f32;
-    if feature_set == ResponseFeatureSet::PriorStreetCalls38 {
+    if feature_set != ResponseFeatureSet::Incumbent37 {
         f.push(c.prior_postflop_calls.min(3) as f32 / 3.0);
+    }
+    if feature_set == ResponseFeatureSet::StraightTexture39 {
+        f.push(wheel_connectivity(c.board));
     }
     f
 }
@@ -378,7 +401,7 @@ mod tests {
             shown: vec![],
         };
         let models = ModelStore::default();
-        // The default extraction is the production layout (38 inputs since 0135).
+        // Default extraction follows the versioned production layout.
         let incumbent = samples_from_hand(&hand, &models, &[]);
         let explicit_incumbent = samples_from_hand_for(&hand, &models, &[], ResponseFeatureSet::PRODUCTION);
         let candidate = samples_from_hand_for(&hand, &models, &[], ResponseFeatureSet::PriorStreetCalls38);

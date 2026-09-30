@@ -152,7 +152,7 @@ next process resumes the stored run.
    it flips would have saved chips with a positive 95% lower bound. The live policy subtracts it only
    from river call equity against an all-in; the recorded estimate stays raw.
 3. **Neural response model** (`sv10_bot::neural::train_response_model`): every opponent decision in
-   our live hands is a sample (38 features, 3 classes: fold, call/check, bet/raise). Server-export
+   our live hands is a sample (39 features, 3 classes: fold, call/check, bet/raise). Server-export
    hands from `history.db` (newest 60,000) add training samples only. Validation is the newest 15% of
    live hands. MLP 38-48-24-3, 10 epochs Adam, seed `11 + cycle` (a stored net warm-starts only at the exact shape). Stored to `nn.response.v1` with its
    predictive `active` flag and `profiles-before-hand-v1` contract. Profiles are rebuilt sequentially
@@ -314,7 +314,15 @@ steps of at most ~100 s.
 
 ## Versioned response-feature experiments
 
-Production trains `PriorStreetCalls38` since 2026-09-22 (held-out −2.77 mnats, 95% −3.95..−1.58, validating after 2026-09-21; −1.09, −1.86..−0.33, on 2026-09-18..21); inference picks the layout from each network's input width, so a stored 37-input net keeps playing until a 38-input one passes the predictive and paired-poker gates. `neural_ab --cutoff <RFC3339> --validation-end <RFC3339> --seed <N>` is a
+The prior production layout `PriorStreetCalls38` began on 2026-09-22 (held-out −2.77 mnats,
+95% −3.95..−1.58, validating after 2026-09-21; −1.09, −1.86..−0.33, on 2026-09-18..21).
+Inference picks the layout from each network's input width.
+Production now trains `StraightTexture39`: index 15 counts distinct ranks in the ten real straight
+windows, including A-2-3-4-5, and index 38 measures wheel connectivity. The 37- and 38-input layouts
+retain their original texture values, including the duplicated-ace behavior, for networks trained
+on them. New 39-input artifacts must pass the existing predictive and paired-poker gates before
+replacing an incumbent; no existing artifact is reinterpreted. The historical 37-versus-38 tool
+`neural_ab --cutoff <RFC3339> --validation-end <RFC3339> --seed <N>` is a
 read-only experiment: it splits live hands chronologically at the requested boundary, rejects hand-ID
 overlap and fewer than 300 validation samples, and trains equal `[inputs,48,24,3]` networks with the
 same seed and epoch budget. Profiles are rebuilt in timestamp order, so no future opponent statistics
