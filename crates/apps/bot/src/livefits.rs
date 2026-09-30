@@ -143,7 +143,7 @@ fn refit_fold(store: &Store, now: f64) {
     };
     match foldcal::preflop_samples_from_store(store) {
         Ok(pre) => samples.extend(pre),
-        Err(e) => tracing::warn!("preflop fold samples unreadable: {e}"),
+        Err(e) => return tracing::warn!("preflop fold samples unreadable: {e}"),
     }
     let cal = foldcal::fit(&samples, now);
     let names = ["preflop", "flop", "turn", "river"];
@@ -276,6 +276,37 @@ mod tests {
             assert!(s.get_kv(key).unwrap().is_some(), "{key} not stored");
         }
         assert_eq!(LiveFits::load(&s).unwrap(), LiveFits::NONE, "no evidence, no correction");
+    }
+
+    #[test]
+    fn failed_preflop_read_keeps_the_whole_installed_fold_calibration() {
+        let s = store("preflop-read-error");
+        let dir = std::env::temp_dir().join(format!("sv10-livefits-preflop-read-error-{}", std::process::id()));
+        let conn = rusqlite::Connection::open(dir.join("svanbot10.db")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO decisions (bot, hand_id, ts, street, action, amount, detail)
+             VALUES ('Hero', 'bad', '2026-09-30T00:00:00Z', 'preflop', 'raise', 60, X'00');",
+        )
+        .unwrap();
+        assert!(foldcal::samples_from_store(&s).unwrap().is_empty(), "postflop read succeeds");
+        assert!(foldcal::preflop_samples_from_store(&s).is_err(), "only the preflop read fails");
+        let cal = foldcal::FoldCalibration {
+            shift: [0.2, 0.0, -0.7],
+            preflop_shift: -1.5,
+            preflop: foldcal::StreetFit { n: 4_000, active: true, shift: -1.5, ..Default::default() },
+            fitted_at: 1.0,
+            ..Default::default()
+        };
+        let stored = serde_json::to_string(&cal).unwrap();
+        s.put_kv(foldcal::FOLD_CAL_KEY, &stored).unwrap();
+        for now in [10_000.0, 20_000.0] {
+            refit_stale(&s, now);
+            assert_eq!(s.get_kv(foldcal::FOLD_CAL_KEY).unwrap().as_deref(), Some(stored.as_str()), "partial read published a new fit");
+            assert_eq!(LiveFits::load(&s).unwrap().preflop_fold_logit_shift, -1.5);
+        }
+        conn.execute("DELETE FROM decisions", []).unwrap();
+        refit_stale(&s, 30_000.0);
+        assert_eq!(LiveFits::load(&s).unwrap().preflop_fold_logit_shift, 0.0, "successful empty read may retire the fit");
     }
 
     #[test]
