@@ -1,5 +1,19 @@
 use super::*;
 #[test]
+fn inactive_stored_call_fits_never_install_a_shift() {
+    let deep = DeepCallFit { active: false, shift: 0.15, ..Default::default() };
+    let river = RiverJamFit { active: false, shift: 0.08, ..Default::default() };
+    assert_eq!(installed_deep_call_shift(Some(&serde_json::to_string(&deep).unwrap())), 0.0);
+    assert_eq!(installed_river_jam_shift(Some(&serde_json::to_string(&river).unwrap())), 0.0);
+    assert_eq!(installed_deep_call_shift(Some("not json")), 0.0);
+    assert_eq!(installed_river_jam_shift(None), 0.0);
+    let deep = DeepCallFit { active: true, ..deep };
+    let river = RiverJamFit { active: true, ..river };
+    assert_eq!(installed_deep_call_shift(Some(&serde_json::to_string(&deep).unwrap())), 0.15);
+    assert_eq!(installed_river_jam_shift(Some(&serde_json::to_string(&river).unwrap())), 0.08);
+}
+
+#[test]
 fn short_all_in_raises_are_aggressive_even_without_reopening_action() {
     let short_raise = serde_json::json!({"kind": "AllIn", "to": 130, "bet_before": 0, "to_call_before": 100, "full_raise": false});
     assert!(is_raise(&short_raise), "a short all-in increases the bet despite not being a full raise");
