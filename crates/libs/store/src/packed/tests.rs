@@ -21,6 +21,33 @@ fn record(i: usize) -> String {
     )
 }
 
+/// A dictionary row whose id was corrupted to 0 must not reach the frame writer (#601).
+///
+/// The schema's `CHECK (id BETWEEN 1 AND 255)` is not re-checked when a row is read back, and
+/// `sv10_pack` reserves id 0 for "no dictionary": packing with it panics, and on the decision path
+/// that panic is not caught — every write to the column after that edit is lost.
+#[test]
+fn a_dictionary_whose_id_was_corrupted_to_zero_is_refused_instead_of_panicking() {
+    let (conn, path) = db("zero-id");
+    for i in 0..TRAIN_MIN_ROWS as usize {
+        conn.execute("INSERT INTO replays (record) VALUES (?1)", [record(i)]).unwrap();
+    }
+    let codec = Codec::open(&conn, &path).unwrap();
+    assert!(codec.train(&conn, REPLAY_RECORD).unwrap().is_some(), "a dictionary to corrupt");
+    conn.execute_batch("PRAGMA ignore_check_constraints=ON; UPDATE pack_dicts SET id = 0").unwrap();
+
+    let reopened = Codec::open(&conn, &path).unwrap();
+    assert!(!reopened.has_dictionary(REPLAY_RECORD), "a family whose only dictionary is id 0 packs without one");
+    let text = record(7);
+    let frame = reopened.pack(&conn, REPLAY_RECORD, &text);
+    assert_eq!(reopened.text(ValueRef::Blob(&frame)).unwrap(), text);
+    assert_eq!(
+        reopened.pack_cached(REPLAY_RECORD, &text).as_deref().map(|f| reopened.text(ValueRef::Blob(f)).unwrap()),
+        Some(text),
+        "the cached path packs without a dictionary too"
+    );
+}
+
 /// 0322: a writer packs before it takes the write lock. Without loaded dictionaries there is nothing
 /// to pack with (`None`: pack under the lock, which loads them); once loaded, the cached pack is the
 /// same frame the connected one makes, and it reads back.

@@ -139,6 +139,14 @@ impl Codec {
         for row in rows {
             let (id, family, bytes) = row?;
             let id = u8::try_from(id)?;
+            // An id of 0 is refused here rather than carried (#601): the schema's CHECK is not
+            // re-applied to a row as it is read back, and the frame format reserves 0 for "no
+            // dictionary", so packing with it panics in `sv10_pack` — on the decision path, for every
+            // write to that column afterwards.
+            if id == 0 {
+                tracing::warn!("pack dictionary id 0 in {} is refused; {} packs without one", self.path.display(), family);
+                continue;
+            }
             let dict = known.get(&id).cloned().unwrap_or_else(|| Arc::new(Dictionary::new(&bytes)));
             fresh.by_id.insert(id, dict);
             fresh.newest.insert(family, id);
