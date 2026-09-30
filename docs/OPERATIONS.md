@@ -229,11 +229,25 @@ is significant, so the effect is real and the interval is contention noise. The 
 | Archive (second disk) | `svanbot10-archive.timer` runs `./target/release/archive run` at 04:30 into `SVANBOT_ARCHIVE_DIR` (`.env`; here `/backup-disk/svanbot10`, default `artifacts/archive`): weekly full, else a daily differential; the month's archive; keeps 14 daily / 8 weekly / 12 monthly. Install with `scripts/archive-timer.sh`. Cleanup has a 3,600 s start timeout; keepalive has 1,200 s to cover the fleet's stop/start budgets. A stalled oneshot fails instead of blocking later timer ticks forever. |
 | Inspect archives | `./target/release/archive list`; `archive verify --deep` (all) or `archive verify weekly/2026-W38` |
 | Restore from the archive | `./target/release/archive restore daily/YYYY-MM-DD --to /tmp/restore` (never into `artifacts/`); then `scripts/stop.sh`, copy `svanbot10.db` and `history.db` over `artifacts/` (remove their `-wal`/`-shm`), `scripts/start.sh`. The code: `git clone /tmp/restore/repo.bundle` from a weekly or monthly |
+
 | Data snapshot | Runtime data is not part of this repository: `svanbot10.db`/`history.db` via sqlite `.backup` + zstd, plus `backups`, `release-snapshots`, `misc` (tables, logs, season checks) and screenshots tarballs with `SHA256SUMS`, published as `data-YYYYMMDD` releases on a repository named in `SVANBOT_DATA_REPO`; `.env` never uploaded. Restore (fleet stopped): `scripts/fetch-data.sh` (`--all` for backups and snapshots; `FORCE=1` to overwrite). The public derived set for a release (aggregates + schema, never raw opponent hands) comes from `archive export-derived --to DIR`, scrubbed and failing closed on aggregate query errors before writing output; fetch it with `scripts/fetch-data.sh --derived` (fleet may run). Cloud sessions: `scripts/cloud-setup.sh` |
 | Quarantined files | `artifacts/quarantine/` (damaged databases moved aside, never deleted automatically) |
 | Import a PHH tree / measure a source | `./target/release/ingest phh <dir> <source> --dry-run`; `SVANBOT10_ROOT=<copy of artifacts parent> ./target/release/ingest neural-ab <source> 3` |
 | Import archived frames | `./target/release/ingest archive <dir> --dry-run`, then without `--dry-run` (idempotent, resumable) |
 | Refit range model | `./target/release/calibrate 20000` (`CALIBRATE_CORPUS=1` to measure the corpus; `CALIBRATE_START=live CALIBRATE_FREEZE=a,b` starts from the live fitted set with fields held, a dry run for shape-term A/B tests; `CALIBRATE_LINES=1` reports range calibration per postflop line type; every fit logs the held-out likelihood split by the shown player's largest bet — under 1.5x, 1.5–4x, 4x+ pot — so a size term shows where it helps) |
+
+Monthly recovery points are first-week anchors, not month-end copies. The first successful weekly
+full created in a calendar month is recompressed once as that month's archive. Later runs leave it
+unchanged. The month in the directory name identifies the retention bucket; it does not promise
+data through the month's last day. The manifest's `base` names the weekly copy whose contents it
+holds, and that weekly manifest's `created_at` dates the data snapshot; the monthly `created_at`
+dates recompression. Check both with `archive list` and the manifests before choosing a restore
+point. For example, a September monthly based on a weekly captured September 7 cannot recover
+September 30 data. After daily and weekly retention expires, only that older monthly anchor remains.
+
+This policy keeps one durable early-month point without repeatedly replacing the only monthly
+copy or recompressing growing databases throughout the month. Recovery requiring a later date must
+retain the corresponding weekly or daily archive separately; the monthly label alone is insufficient.
 
 GitHub runtime restores with `scripts/fetch-data.sh` also require fleet writers and their restart
 supervisors to be stopped, including split workers, learner, and analyst. `FORCE=1` permits
