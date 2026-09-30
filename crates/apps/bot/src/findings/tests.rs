@@ -476,3 +476,24 @@ fn a_scan_states_one_explanation_per_family_and_the_rows_carry_their_numbers() {
     assert!(text.contains("the deep re-solve takes") && text.contains("0.02 bb per decision"), "{text}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The nemesis verdict is priced at the big blind it is given, not at a constant (#611).
+///
+/// A store whose hands are not at bb 20 printed a number that disagreed with the rivals card beside
+/// it, which has always been read at the store's own big blind.
+#[test]
+fn a_nemesis_is_priced_at_the_big_blind_it_is_given() {
+    let mut h = HeadToHead::default();
+    for _ in 0..200 {
+        h.add(-250.0);
+    }
+    let map = std::collections::HashMap::from([("Bully".to_string(), h)]);
+    let at = |bb: f64| {
+        let found = nemesis(&map, bb);
+        assert_eq!(found.len(), 1, "a constant -250 chips a hand over 200 hands is a nemesis");
+        found[0].value
+    };
+    // -250 chips a hand is -1250 bb/100 at bb 20 and -500 at bb 50: the same ledger, the store's rate.
+    assert!((at(20.0) + 1250.0).abs() < 1e-9, "{}", at(20.0));
+    assert!((at(50.0) + 500.0).abs() < 1e-9, "{}", at(50.0));
+}
