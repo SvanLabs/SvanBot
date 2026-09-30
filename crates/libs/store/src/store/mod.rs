@@ -12,6 +12,8 @@ use std::path::Path;
 
 mod audits;
 mod calibration;
+#[cfg(test)]
+mod compaction_tests;
 mod decisions;
 mod events;
 mod hands;
@@ -242,11 +244,17 @@ impl Store {
         let mut packed = 0;
         for (column, at) in crate::packed::MAIN_COLUMNS.iter().zip(cursor.iter_mut()) {
             let Some(after) = *at else { continue };
-            let conn = self.write_lock();
             if !self.codec.has_dictionary(*column) {
-                self.codec.train(&conn, *column)?;
+                self.codec.train(&self.write_lock(), *column)?;
             }
-            let (n, last) = crate::packed::compact_batch(&conn, &self.codec, *column, after, limit)?;
+            // Terminal scans may read the entire column. They must not hold the bot's writer.
+            let rows = crate::packed::compact_candidates(&self.read(), &self.codec, *column, after, limit)?;
+            if rows.is_empty() {
+                *at = None;
+                continue;
+            }
+            // This re-reads each candidate in its transaction before replacing it.
+            let (n, last) = crate::packed::compact_rows(&self.write_lock(), &self.codec, *column, &rows)?;
             packed += n;
             *at = last;
         }
