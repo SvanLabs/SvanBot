@@ -5,6 +5,73 @@
 
 use super::*;
 
+#[tokio::test]
+async fn abandoned_update_progress_recovers_without_operator_intervention() {
+    let s = Shared::for_test("abandoned-update", &["A"]);
+    let progress = json!({"state":"running", "started":now_secs()-120.0, "updated":now_secs()-110.0,
+        "stages":[{"name":"fetch","state":"running","started":now_secs()-120.0}]});
+    std::fs::write(s.config.artifacts.join("release-progress.json"), progress.to_string()).unwrap();
+    let Json(v) = release_progress(State(s)).await;
+    assert_eq!(v["state"], "failed", "a dead updater must not keep the controls busy");
+    assert_eq!(v["running"], false);
+    assert!(v["eta"].is_null());
+    assert_eq!(v["stages"][0]["state"], "failed");
+}
+
+#[test]
+fn a_dead_update_owner_does_not_block_recovery_for_two_hours() {
+    let s = Shared::for_test("dead-update-owner", &["A"]);
+    std::fs::write(s.config.artifacts.join("release.lock"), json!({"started":now_secs(),"pid":u32::MAX}).to_string()).unwrap();
+    assert!(!update_running(&s.config.artifacts), "the update owner is gone");
+}
+
+#[test]
+fn update_ownership_distinguishes_live_reused_and_finished_processes() {
+    let s = Shared::for_test("update-process-identity", &["A"]);
+    let lock = s.config.artifacts.join("release.lock");
+    record_owner(&lock, std::process::id());
+    assert!(!lock.exists(), "recording must not recreate a removed marker");
+    std::fs::write(&lock, "{}").unwrap();
+    record_owner(&lock, std::process::id());
+    assert!(update_running(&s.config.artifacts), "healthy owner remains active");
+    let mut owner: Value = serde_json::from_str(&std::fs::read_to_string(&lock).unwrap()).unwrap();
+    owner["process_start"] = json!("different process start");
+    std::fs::write(&lock, owner.to_string()).unwrap();
+    assert!(!update_running(&s.config.artifacts), "a reused PID is not the original owner");
+}
+
+#[test]
+fn orphan_recovery_keeps_startup_grace_and_existing_terminal_messages() {
+    let running = json!({"state":"running", "started":100.0, "updated":100.0});
+    assert_eq!(liveness::reconcile(&running, false, 103.0), running);
+    let failed = json!({"state":"failed", "message":"specific failure"});
+    assert_eq!(liveness::reconcile(&failed, false, 300.0), failed);
+}
+
+#[tokio::test]
+async fn manual_release_operation_remains_active_without_dashboard_lock() {
+    let s = Shared::for_test("manual-release-operation", &["A"]);
+    let operation = std::fs::File::create(s.config.artifacts.join("release-operation.lock")).unwrap();
+    operation.lock().unwrap();
+    assert!(
+        !std::process::Command::new("flock")
+            .arg("-n")
+            .arg(s.config.artifacts.join("release-operation.lock"))
+            .arg("true")
+            .status()
+            .unwrap()
+            .success(),
+        "the observer uses the same kernel lock as the shell release pipeline"
+    );
+    let progress = json!({"state":"running", "started":now_secs()-120.0, "updated":now_secs()-110.0,
+        "stages":[{"name":"build","state":"running","started":now_secs()-120.0}]});
+    std::fs::write(s.config.artifacts.join("release-progress.json"), progress.to_string()).unwrap();
+    let Json(v) = release_progress(State(s)).await;
+    assert_eq!(v["state"], "running");
+    assert_eq!(v["running"], true, "a hand-run release owns the operation lock");
+    drop(operation);
+}
+
 #[test]
 fn a_single_process_fleet_lists_no_workers() {
     let shared = Shared::for_test("release-workers", &["A", "B"]);

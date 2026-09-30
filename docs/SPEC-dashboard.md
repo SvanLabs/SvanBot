@@ -133,6 +133,15 @@ view and nothing else:
   renders `TvMode` with the commentary, the scouting-report buttons and the exit link off
   (`web/src/table.tsx`).
 
+## Abandoned update recovery
+
+The release progress endpoint reconciles a saved running record with the updater owner's process
+identity and the held release-operation lock. If neither is active after the startup grace, it
+serves a failed record and retry guidance so the controls recover automatically. A manual release
+remains active through its operation lock. Unknown ownership stays conservative; old ownerless
+markers retain their age fallback. Reconciled elapsed time ends at the last recorded activity,
+because an unreported exit time is unknown. This read does not rewrite source files or kill processes.
+
 ## Bot command delivery
 
 The bot command endpoint acknowledges a split-fleet head's Start, Pause or Stop only after
