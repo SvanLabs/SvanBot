@@ -132,3 +132,10 @@ view and nothing else:
   this listener for routes it does not have. When `public` is true the client asks for no session and
   renders `TvMode` with the commentary, the scouting-report buttons and the exit link off
   (`web/src/table.tsx`).
+
+## Bot command delivery
+
+The bot command endpoint acknowledges a split-fleet head's Start, Pause or Stop only after
+persisting the desired mode for the worker. A failed write returns HTTP 503 and leaves the head's
+displayed desired mode unchanged. A single-process fleet still applies the command locally when
+persistence fails and logs the failure.

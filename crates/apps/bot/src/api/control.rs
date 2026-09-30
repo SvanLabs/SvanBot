@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[cfg(test)]
+mod tests;
+
 pub(super) async fn bot_command(State(s): State<Arc<Shared>>, Path(slot): Path<usize>, Json(body): Json<Value>) -> Response {
     let Some(b) = s.bots.get(slot) else {
         return (StatusCode::NOT_FOUND, Json(json!({"detail": "Unknown bot slot"}))).into_response();
@@ -12,16 +15,18 @@ pub(super) async fn bot_command(State(s): State<Arc<Shared>>, Path(slot): Path<u
         "stop" => "stop",
         other => return (StatusCode::BAD_REQUEST, Json(json!({"detail": format!("Unknown command {other}")}))).into_response(),
     };
-    let name = {
-        let mut b = b.write();
-        crate::live::apply_desired(&mut b, desired);
-        b.name.clone()
-    };
-    // Workers in a split fleet poll this key; in one process the in-memory state above is enough,
-    // so a failed write is logged rather than failing the command.
+    let name = b.read().name.clone();
+    // A head controls workers only through this key. A single-process fleet can still apply the
+    // command locally if persistence fails, but a head must not acknowledge an undelivered command.
     if let Err(e) = s.store.put_kv(&crate::live::want_key(&name), desired) {
+        if s.config.head {
+            s.log(&name, "error", format!("operator command not delivered to worker: {e}"));
+            return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"detail": format!("operator command not delivered to worker: {e}")})))
+                .into_response();
+        }
         s.log(&name, "warn", format!("operator command not persisted for split-fleet workers: {e}"));
     }
+    crate::live::apply_desired(&mut b.write(), desired);
     s.log(&name, "info", format!("operator command: {}", body["command"].as_str().unwrap_or("")));
     Json(json!({"ok": true})).into_response()
 }
