@@ -21,8 +21,12 @@ ENV RUSTFLAGS=""
 RUN . scripts/resources.sh && cargo build --release --workspace --bins
 
 FROM debian:bookworm-slim
+# These are the tools the scripts copied below actually run, and they have to be installed *here*:
+# the build stage's packages do not reach the image. A missing one fails quietly, because the
+# scripts redirect their own output to a log — the results monitor could not start at all without
+# python3, and status.sh needs sqlite3 and curl for the fleet summary (#582).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends bash ca-certificates procps zstd \
+ && apt-get install -y --no-install-recommends bash ca-certificates curl procps python3 sqlite3 zstd \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /svanbot
 COPY scripts/ scripts/
