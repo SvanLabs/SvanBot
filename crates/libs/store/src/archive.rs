@@ -286,45 +286,8 @@ pub fn make_monthly(root: &Path, name: &str, weekly: &str, now: chrono::DateTime
     finish(root, &tmp, manifest)
 }
 
-/// Problems with the archive at `dir`: manifest seal, stored sizes and hashes, and with `deep`
-/// the decompressed content hashes. Empty means verified.
-pub fn verify(dir: &Path, deep: bool) -> Vec<String> {
-    let mut problems = Vec::new();
-    let manifest = match load_manifest(dir) {
-        Ok(m) => m,
-        Err(e) => return vec![format!("{}: {e}", dir.display())],
-    };
-    for e in &manifest.files {
-        let path = dir.join(&e.name);
-        let Ok(meta) = std::fs::metadata(&path) else {
-            problems.push(format!("{}: missing", e.name));
-            continue;
-        };
-        if meta.len() != e.bytes {
-            problems.push(format!("{}: {} bytes, manifest says {}", e.name, meta.len(), e.bytes));
-            continue;
-        }
-        match crate::integrity::file_sha256(&path) {
-            Ok(h) if h == e.sha256 => {}
-            Ok(_) => {
-                problems.push(format!("{}: SHA-256 mismatch", e.name));
-                continue;
-            }
-            Err(err) => {
-                problems.push(format!("{}: {err}", e.name));
-                continue;
-            }
-        }
-        if deep && e.role != Role::RepoBundle {
-            match zstd_content_sha(&path) {
-                Ok((h, n)) if h == e.raw_sha256 && n == e.raw_bytes => {}
-                Ok(_) => problems.push(format!("{}: decompressed content does not match", e.name)),
-                Err(err) => problems.push(format!("{}: {err}", e.name)),
-            }
-        }
-    }
-    problems
-}
+mod verify;
+pub use verify::verify;
 
 /// Restore the archive `name` under `root` into `out`, verifying hashes, structure and row
 /// counts. A daily is rebuilt from its weekly base plus its differential. Returns written paths.
@@ -338,15 +301,15 @@ pub fn restore(root: &Path, name: &str, out: &Path) -> Result<Vec<PathBuf>> {
     std::fs::create_dir_all(out)?;
     let mut written = Vec::new();
     for e in &manifest.files {
-        let from = dir.join(&e.name);
+        let from = crate::paths::confined(&dir, &e.name)?; // both ends: a seal proves rot, not intent (#603)
         match e.role {
             Role::RepoBundle => {
-                let to = out.join(&e.name);
+                let to = crate::paths::confined(out, &e.name)?;
                 std::fs::copy(&from, &to)?;
                 written.push(to);
             }
             Role::LiveFull | Role::HistoryFull => {
-                let to = out.join(e.name.trim_end_matches(".zst"));
+                let to = crate::paths::confined(out, e.name.trim_end_matches(".zst"))?;
                 restore_db(&from, &to, e)?;
                 written.push(to);
             }
