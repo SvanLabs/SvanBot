@@ -224,7 +224,7 @@ impl TableTracker {
                 msg["type"] == "table_state" && seq == self.last_table_seq
             }
             Some(seq) => {
-                self.last_table_seq = seq;
+                self.last_table_seq = self.last_table_seq.max(seq);
                 true
             }
             None => true,
