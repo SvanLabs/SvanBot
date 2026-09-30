@@ -318,6 +318,10 @@ restore. Drill: `grep -n "hot swap\|swapping" artifacts/logs/svanbot10.log` afte
 
 ### Dashboard updates
 
+An update that Git refuses because local edits would be overwritten ends with a failed progress
+record and preserves those edits. Unexpected updater failures also finish the record, with their
+exit status in the message; a read-only update check leaves another run's lock and progress alone.
+
 The Releases & updates widget replaces SSH for routine updates: the installed commit (from
 `releases.log`), the live build (`/api/health`), what the update branch on GitHub holds (checked every
 30 minutes and on **Check now**), and the grouped changelog of what an update would install. **Update**
