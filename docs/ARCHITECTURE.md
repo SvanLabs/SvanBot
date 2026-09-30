@@ -253,3 +253,9 @@ scheduling defaults, not a guarantee against OOM. Sample counts, evaluation size
 confidence thresholds are unchanged. Explicit compute profiles remain operator overrides.
 The memory field reports effective capacity; the suggested bot count uses current headroom
 and does not silently remove configured bots.
+
+All-in calibration distinguishes a raise from a call using the recorded street total, prior
+street bet and amount owed. A short all-in raises the price even when it does not reopen betting:
+our short shoves are reported separately from clean calls, and later short aggression excludes an
+earlier decision from the committed-call sample. Legacy summaries without those chip fields keep
+their existing full-raise fallback.
