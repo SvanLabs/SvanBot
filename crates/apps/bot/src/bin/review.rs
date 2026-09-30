@@ -182,7 +182,7 @@ fn main() -> Result<()> {
             p.held_out_lower * 1000.0,
             if p.active { format!("install shift {:+.2}", p.shift) } else { "not installed".into() }
         );
-        println!("{} heads-up postflop bets", samples.len());
+        println!("{} heads-up postflop bets", samples.iter().filter(|s| s.street != sv10_bot::foldcal::PREFLOP).count());
         for (name, s) in ["flop", "turn", "river"].iter().zip(&cal.streets) {
             println!(
                 "{name:6} n {:6}  predicted {:.3}  actual {:.3}  held-out gain {:+6.1} mnats (95% lower {:+6.1})  {}",
