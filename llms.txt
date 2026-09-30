@@ -95,6 +95,10 @@ same-machine comparison against the previous commit. Explain each intended golde
 before regenerating it. Learned parameter promotion still requires a 95% lower bound above
 +1 bb/100 in sequential fresh-deal confirmation; an audit does not bypass this gate.
 
+Review committed changes locally with `python3 scripts/local-review.py origin/main`.
+Choose your own agent; the runner makes no model calls unless you explicitly supply its command.
+See `docs/agents/local-review.md`. Hosted Claude automation is removed.
+
 ## Docs
 
 These are the docs as `main` has them — the branch the clone landed on, where a change is made

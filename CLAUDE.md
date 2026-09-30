@@ -86,3 +86,6 @@ The five canonical roles map 1:1 to same-named labels. See `docs/agents/triage-l
 ### Domain docs
 
 Single-context: `docs/CONTEXT.md` plus `docs/adr/`, consumed lazily. See `docs/agents/domain.md`.
+
+Branch and pull request review uses `docs/agents/local-review.md`, shared by all coding agents.
+Run it locally; hosted Claude automation is removed.

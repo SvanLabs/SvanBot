@@ -174,6 +174,9 @@ fresh-deal confirmation. Do not loosen that to make an experiment fit.
   Codex, OpenCode): tracker, labels and domain layout in `docs/agents/`. `CLAUDE.md` carries the
   same pointer for sessions that start there.
 
+For branch or pull request review, follow `docs/agents/local-review.md`. Run the shared local
+runner with the user's chosen agent; review inline and record evidence before publishing findings.
+
 ## 7. If you are an agent opening a pull request
 
 - Keep the change to one thing. A patch that fixes a bug and renames a module is two pull requests.
