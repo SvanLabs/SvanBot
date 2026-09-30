@@ -90,8 +90,9 @@ def load(source):
                 r['corrected_residual'] = r['realized'] - r['predicted'] - chosen.get('bias', 0) / bb
                 lookup[r['bot'], r['hand_id'], r['category']].remove(d)
                 break
+    audits = [dict(row) for row in c.execute('SELECT * FROM decision_audit ORDER BY id')]
     c.close()
-    return {'hmap': hands, 'ds': decisions, 'cal': calibration, 'clustered': clustered, 'out': {'source_sha256': digest}}
+    return {'hmap': hands, 'ds': decisions, 'cal': calibration, 'audits': audits, 'clustered': clustered, 'out': {'source_sha256': digest}}
 
 
 def flop(x):
@@ -147,16 +148,53 @@ def flop(x):
     }
 
 
+def sizing(x):
+    selected = []
+    for d in x['ds']:
+        if d['street'] in ['turn', 'river'] and d['action'] == 'raise' and d['picked']:
+            h = x['hmap'][d['bot'], d['hand_id']]
+            r = d.copy()
+            r['gap'] = (max(c['ev'] for c in d['detail_obj']['candidates']) - d['picked']['ev']) / h['bb']
+            r['split'] = 'early' if h['ended_at'] < '2026-09-29T13:00:00' else 'late'
+            selected.append(r)
+    audited = []
+    for a in x['audits']:
+        if a['street'] in ['turn', 'river'] and a['live_action'].startswith('raise'):
+            r = a.copy()
+            r['gap'] = max(a['gap_bb'], 0)
+            r['arm'] = x['hmap'][a['bot'], a['hand_id']]['arm']
+            audited.append(r)
+
+    def describe(rows):
+        groups = collections.defaultdict(list)
+        for row in rows:
+            groups[row['arm']].append(row)
+        halves = collections.defaultdict(list)
+        for row in rows:
+            if 'split' in row:
+                halves[row['split']].append(row)
+        return {'all': clustered(rows, 'gap'),
+                'arms': {k: clustered(v, 'gap') for k, v in sorted(groups.items())},
+                'chronological_halves': {k: clustered(v, 'gap') for k, v in sorted(halves.items())}}
+
+    return {'Generated-by': 'codex/gpt-6', 'source_sha256': x['out']['source_sha256'],
+            'all_recorded_raise_live_price_gaps': {street: describe([r for r in selected if r['street'] == street])
+                                                  for street in ['turn', 'river']},
+            'selected_deep_audit_gaps': {street: describe([r for r in audited if r['street'] == street])
+                                        for street in ['turn', 'river']}}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path, help='closed immutable SQLite cohort copy')
+    parser.add_argument('--study', choices=['flop', 'sizing'], default='flop')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--expected-sha256', required=True)
     args = parser.parse_args()
     if args.source.resolve() == args.output.resolve() or (args.output.exists() and args.source.samefile(args.output)):
         parser.error('output must differ from the source database')
     assert hashlib.sha256(args.source.read_bytes()).hexdigest() == args.expected_sha256, 'cohort digest differs'
-    report = flop(load(args.source))
+    report = {'flop': flop, 'sizing': sizing}[args.study](load(args.source))
     args.output.write_text(json.dumps(report, indent=2) + '\n')
 
 
