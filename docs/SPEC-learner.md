@@ -18,7 +18,9 @@ file with any change to the loop, its budgets or its gates.
   evaluation (`sv10_bot::neural::poker_verdict`: the clone pool cannot credit a net for reading real
   opponents, so the poker gate rejects demonstrated harm — a 95% upper bound at or below zero, or a
   net that never changed a decision — and approves otherwise);
-  the fitted range model only while its held-out showdown log-likelihood beats the defaults by more than 0.005.
+  the fitted range model only while the 95% hand-cluster lower bound on its held-out showdown log-likelihood gain over defaults exceeds
+  0.005 nats (5 mnats). Shown opponents from one hand stay together in the chronological split; the
+  stored activation report includes sample and hand counts, mean gain, standard error and lower bound.
 - Evaluations are paired: champion and challenger play identical deals, seats and opponents, and
   all-in runout luck and turn/river card luck are removed, so the difference measures the parameters and little else.
 - The learner never blocks live play: it runs under `nice -n 15` (`scripts/start.sh`) on `tuning.learner_threads` (every

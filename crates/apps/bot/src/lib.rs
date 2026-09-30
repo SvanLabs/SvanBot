@@ -31,6 +31,7 @@ pub mod playersize;
 pub mod profile;
 pub mod promotion;
 pub mod raisewar;
+pub mod rangefit;
 pub mod release;
 pub mod replay;
 pub mod reputation;
