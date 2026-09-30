@@ -1,10 +1,11 @@
 //! `calibrate [max_samples]` — fit the range-reconstruction constants to every stored showdown
 //! (live hands plus imported past-season hands) and store the result as `range_params.v1`.
 //! The fleet and learner install the fitted set only when it beats the defaults on the newest
-//! quarter of showdowns, which the fit never sees.
+//! quarter of showdowns, which the fit never sees, with a 95% hand-cluster lower bound above 5 mnats.
 
 use anyhow::Result;
 use sv10_bot::history::HistoryDb;
+use sv10_bot::rangefit as gate;
 use sv10_bot::{MODELS_KEY, RANGE_PARAMS_KEY, StoredRangeParams};
 use sv10_core::calibrate::{fit_frozen, samples_from_hand};
 use sv10_core::model::{HandSummary, ModelStore};
@@ -45,13 +46,19 @@ fn main() -> Result<()> {
     tracing::info!("{} showdown hands available", hands.len());
     // Newest hands first until the sample budget is met, then back to time order.
     let mut samples = Vec::new();
+    let mut hand_counts = Vec::new();
     for (_, h) in hands.iter().rev() {
-        samples.extend(samples_from_hand(h, &models, &fleet));
+        let hand_samples = samples_from_hand(h, &models, &fleet);
+        if !hand_samples.is_empty() {
+            hand_counts.push(hand_samples.len());
+            samples.extend(hand_samples);
+        }
         if samples.len() >= max_samples {
             break;
         }
     }
     samples.reverse();
+    hand_counts.reverse();
     if samples.len() < 1000 {
         tracing::warn!("only {} showdown samples; need at least 1000 to fit", samples.len());
         return Ok(());
@@ -65,7 +72,7 @@ fn main() -> Result<()> {
         }
         return Ok(());
     }
-    let split = samples.len() * 3 / 4;
+    let (split, train_hands) = gate::split(&hand_counts);
     let val = samples.split_off(split);
     tracing::info!("fitting on {} showdowns, validating on the newest {}", samples.len(), val.len());
     let started = std::time::Instant::now();
@@ -79,7 +86,27 @@ fn main() -> Result<()> {
     let frozen: Vec<&str> = frozen_env.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
     let experiment = std::env::var("CALIBRATE_START").is_ok() || !frozen.is_empty();
     let report = fit_frozen(&samples, &val, start, 8, &frozen);
-    let active = report.val_ll > report.default_val_ll + 0.005;
+    let mut offset = 0;
+    let gains: Vec<Vec<f64>> = hand_counts[train_hands..]
+        .iter()
+        .map(|count| {
+            let hand = &val[offset..offset + count];
+            offset += count;
+            hand.iter().map(|sample| sample.log_likelihood(&report.params) - sample.log_likelihood(&RangeParams::DEFAULT)).collect()
+        })
+        .collect();
+    let evidence = gate::evidence(&gains);
+    let active = evidence.active();
+    tracing::info!(
+        "held-out gain: {} samples in {} hands, {:.6} nats, SE {:.6}, 95% lower {:.6}; required > 0.005 nats",
+        evidence.samples,
+        evidence.hands,
+        evidence.mean_nats,
+        evidence.se_nats,
+        evidence.lower_95_nats
+    );
+    let mut stored_report = serde_json::to_value(&report)?;
+    stored_report["activation"] = serde_json::to_value(&evidence)?;
     tracing::info!(
         "range fit in {:.0}s ({} evaluations): train {:.4} -> {:.4}, validation {:.4} -> {:.4} (uniform {:.4}) -> {}",
         started.elapsed().as_secs_f64(),
@@ -111,12 +138,8 @@ fn main() -> Result<()> {
             tracing::info!("  {name}: {:.3} -> {:.3}", *a, *b);
         }
     }
-    let stored = StoredRangeParams {
-        active,
-        params: report.params,
-        report: serde_json::to_value(&report)?,
-        fitted_at: chrono::Utc::now().timestamp() as f64,
-    };
+    let stored =
+        StoredRangeParams { active, params: report.params, report: stored_report, fitted_at: chrono::Utc::now().timestamp() as f64 };
     if std::env::var("CALIBRATE_DRY").is_ok() || experiment {
         tracing::info!("dry run: not stored");
         println!("{}", serde_json::to_string(&stored.params)?);
