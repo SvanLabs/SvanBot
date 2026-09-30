@@ -16,11 +16,16 @@ struct Fingerprint {
     ino: u64,
     len: u64,
     mtime: i64,
+    /// Sub-second part of the modification time. Without it the fingerprint cannot tell two writes
+    /// inside one second apart, and `mtime` alone is not enough when the other fields can repeat: a
+    /// release is installed by copy-then-rename, so the kernel is free to hand the freed inode
+    /// straight back, and a same-length build then looks exactly like the one it replaced (#591).
+    mtime_nsec: i64,
 }
 
 fn fingerprint(path: &Path) -> Option<Fingerprint> {
     let m = std::fs::metadata(path).ok()?;
-    Some(Fingerprint { dev: m.dev(), ino: m.ino(), len: m.len(), mtime: m.mtime() })
+    Some(Fingerprint { dev: m.dev(), ino: m.ino(), len: m.len(), mtime: m.mtime(), mtime_nsec: m.mtime_nsec() })
 }
 
 pub struct ExeWatch {
@@ -115,6 +120,20 @@ mod tests {
         std::fs::write(&tmp, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::fs::rename(&tmp, path).unwrap();
+    }
+
+    /// The fingerprint must separate two snapshots taken inside one second (#591).
+    ///
+    /// Built rather than measured, because the collision it guards cannot be forced from a test: it
+    /// needs the kernel to hand a freed inode back, which ext4 does and tmpfs does not, and that is
+    /// the whole reason `only_a_settled_working_replacement_triggers_a_swap` passed for months on a
+    /// developer's box and failed half the time on CI. `dev`, `ino` and `len` are equal here on
+    /// purpose: they are the fields that can repeat, and the nanoseconds are what must not.
+    #[test]
+    fn a_same_length_rewrite_inside_one_second_is_a_different_file() {
+        let before = Fingerprint { dev: 2049, ino: 1183847, len: 30, mtime: 1_790_776_281, mtime_nsec: 481_398_573 };
+        let after = Fingerprint { dev: 2049, ino: 1183847, len: 30, mtime: 1_790_776_281, mtime_nsec: 481_506_119 };
+        assert_ne!(before, after, "a build installed in the same second, at the same length, on a reused inode");
     }
 
     #[test]
