@@ -28,43 +28,57 @@ impl TableTracker {
         }
         let mut history = self.history.clone();
         if street == Street::Preflop {
-            // After a resync without replay, rebuild missing preflop raises from the bets on the table.
+            // After a resync without replay, rebuild the preflop betting from the bets on the table.
             let has_aggr = history.iter().any(|r| r.street == Street::Preflop && sv10_model::model::aggressive(r));
             if !has_aggr {
-                let mut raisers: Vec<&SeatView> = self.seats.values().filter(|s| s.in_hand && s.bet > self.bb.max(1)).collect();
-                raisers.sort_by_key(|s| s.bet);
-                // Geometry (0092): only the blinds were in before the first raise (raisers other than
-                // the blinds had nothing in), each raise adds its excess over what that seat had posted,
-                // and the price a raiser faced is the level above its own post.
+                // Every seat with more than the big blind in front of it has acted, but only the seat
+                // that took the level higher raised: a caller of that raise sits at the same bet and is
+                // not a raiser. Reading callers as raisers lost their chips from the pot and their Call
+                // from the history — the action the policy narrows their range by — and left the raise
+                // attributed to whichever of two tied seats the map iterated first.
+                let mut acted: Vec<&SeatView> = self.seats.values().filter(|s| s.in_hand && s.bet > self.bb.max(1)).collect();
+                // Geometry (0092): act in the order the street really ran, which is the postflop order
+                // rotated by two — preflop the blinds act last, postflop first.
                 let seats: Vec<usize> = self.seats.keys().copied().collect();
+                let order = sv10_engine::situation::postflop_order(&seats, self.dealer);
+                let preflop: Vec<usize> = if seats.len() <= 2 {
+                    order.iter().rev().copied().collect()
+                } else {
+                    order[2..].iter().chain(&order[..2]).copied().collect()
+                };
+                let turn = |seat: usize| preflop.iter().position(|&s| s == seat).unwrap_or(usize::MAX);
+                acted.sort_by_key(|s| (s.bet, turn(s.seat)));
                 let post = |seat: usize| match sv10_engine::situation::position_of(&seats, self.dealer, seat) {
                     sv10_engine::situation::Position::SmallBlind => (self.bb / 2).max(1),
                     sv10_engine::situation::Position::BigBlind => self.bb.max(1),
                     _ => 0,
                 };
-                let raiser_seats: Vec<usize> = raisers.iter().map(|r| r.seat).collect();
+                let acted_seats: Vec<usize> = acted.iter().map(|r| r.seat).collect();
                 let mut level = self.bb.max(1);
+                // Only the blinds were in before the first raise: every seat yet to act here is
+                // counted for its post now and for the rest of its bet when its turn comes.
                 let mut pot = self
                     .seats
                     .values()
-                    .map(|s| if raiser_seats.contains(&s.seat) { post(s.seat).min(s.bet) } else { s.bet })
+                    .map(|s| if acted_seats.contains(&s.seat) { post(s.seat).min(s.bet) } else { s.bet })
                     .fold(0i64, |a, b| a.saturating_add(b));
-                for r in raisers {
-                    if r.bet > level {
-                        let had_in = post(r.seat).min(r.bet);
-                        history.push(ActionRecord {
-                            seat: r.seat,
-                            street: Street::Preflop,
-                            kind: ActionKind::Raise,
-                            to: r.bet,
-                            pot_before: pot,
-                            to_call_before: level.saturating_sub(had_in),
-                            bet_before: had_in,
-                            full_raise: true,
-                            think_ms: None,
-                            street_open: false,
-                        });
-                        pot = pot.saturating_add(r.bet.saturating_sub(had_in));
+                for r in acted {
+                    let had_in = post(r.seat).min(r.bet);
+                    let full = r.bet > level;
+                    history.push(ActionRecord {
+                        seat: r.seat,
+                        street: Street::Preflop,
+                        kind: if full { ActionKind::Raise } else { ActionKind::Call },
+                        to: r.bet,
+                        pot_before: pot,
+                        to_call_before: level.saturating_sub(had_in),
+                        bet_before: had_in,
+                        full_raise: full,
+                        think_ms: None,
+                        street_open: false,
+                    });
+                    pot = pot.saturating_add(r.bet.saturating_sub(had_in));
+                    if full {
                         level = r.bet;
                     }
                 }

@@ -2,6 +2,8 @@ use super::*;
 use serde_json::json;
 use sv10_model::model::ModelStore;
 
+mod preflop_rebuild;
+
 fn frames() -> Vec<Value> {
     include_str!("../../tests/fixtures/hand_capture.jsonl")
         .lines()
