@@ -253,6 +253,19 @@ pub struct Shared {
     pub tv_cache: Mutex<std::collections::HashMap<usize, (std::time::Instant, String)>>,
 }
 
+/// `configured` with every alias each of those names has played under, each once, order preserved.
+pub fn with_aliases(configured: &[String], aliases: &std::collections::HashMap<String, Vec<String>>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for name in configured {
+        for candidate in aliases.get(name).cloned().unwrap_or_else(|| vec![name.clone()]) {
+            if !out.contains(&candidate) {
+                out.push(candidate);
+            }
+        }
+    }
+    out
+}
+
 impl Shared {
     pub fn log(&self, bot: &str, level: &str, message: impl Into<String>) {
         let message = message.into();
@@ -326,6 +339,15 @@ impl Shared {
     /// stays one record (`identity`).
     pub fn names_of(&self, name: &str) -> Vec<String> {
         self.aliases.read().get(name).cloned().unwrap_or_else(|| vec![name.to_string()])
+    }
+
+    /// Every name the configured fleet's hands are stored under, aliases included.
+    ///
+    /// A panel that reads the store by name needs this rather than `config.bots`: after a rename the
+    /// hands are stored under the old name too, so a list built by hand shows a fraction of the store
+    /// and a number that disagrees with the terminal (#609, #610).
+    pub fn fleet_names(&self) -> Vec<String> {
+        with_aliases(&self.config.bots.iter().map(|b| b.name.clone()).collect::<Vec<_>>(), &self.aliases.read())
     }
 
     /// Identity and start of the season now being played, when it is known. Panels that present

@@ -178,3 +178,22 @@ fn remote_bot_reads_fresh_heartbeats_and_rejects_the_rest() {
     beat("W", wrap_heartbeat(&b, 2000.0));
     assert!(read_remote_bot(&shared.store, "W", 1004.0).is_none(), "future heartbeat refused");
 }
+
+/// A panel that reads the store by name must see the hands a rename left under the old name
+/// (#609, #610): the configured list alone is the bug the dashboard had.
+#[test]
+fn the_fleet_expands_to_every_name_a_bot_played_under() {
+    let configured = vec!["SvanBotV10".to_string(), "SuraGunnar".to_string()];
+    let aliases = std::collections::HashMap::from([
+        ("SvanBotV10".to_string(), vec!["SvanBotV10".to_string(), "SvanBotV7".to_string()]),
+        ("SuraGunnar".to_string(), vec!["SuraGunnar".to_string()]),
+    ]);
+    assert_eq!(with_aliases(&configured, &aliases), ["SvanBotV10", "SvanBotV7", "SuraGunnar"]);
+    // A name with no recorded aliases is itself, and a name two bots share is listed once.
+    let shared = std::collections::HashMap::from([
+        ("A".to_string(), vec!["A".to_string(), "C".to_string()]),
+        ("B".to_string(), vec!["B".to_string(), "C".to_string()]),
+    ]);
+    assert_eq!(with_aliases(&["A".into(), "B".into()], &shared), ["A", "C", "B"]);
+    assert_eq!(with_aliases(&["Unseen".to_string()], &shared), ["Unseen"]);
+}

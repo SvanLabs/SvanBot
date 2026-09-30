@@ -235,7 +235,8 @@ fn spawn_h2h_loop(shared: &Arc<Shared>) {
         loop {
             let (s, ledger) = (h2h.clone(), ledger.clone());
             crate::jobs::blocking("head-to-head", move || {
-                let fleet: Vec<String> = s.config.bots.iter().map(|b| b.name.clone()).collect();
+                // Aliases included, or the ledger starts from zero on rename day (#610).
+                let fleet = s.fleet_names();
                 let mut l = ledger.lock();
                 l.update(&s.store, &fleet);
                 *s.head_to_head.write() = l.table.clone();

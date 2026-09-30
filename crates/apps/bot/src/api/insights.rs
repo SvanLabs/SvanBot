@@ -299,7 +299,8 @@ pub(super) async fn analysis(State(s): State<Arc<Shared>>) -> Result<Json<Value>
     }
     let s2 = s.clone();
     let value = off_runtime(move || -> Result<Value, ApiError> {
-        let fleet: Vec<String> = s2.config.bots.iter().map(|b| b.name.clone()).collect();
+        // Aliases included: a renamed bot's hands are stored under its old name too (#609).
+        let fleet = s2.fleet_names();
         let h2h = s2.head_to_head.read().clone();
         let calibration = stored_json(&s2, crate::CALIBRATION_KEY)?;
         let bb = s2.big_blind();
