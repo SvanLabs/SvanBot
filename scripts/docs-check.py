@@ -35,7 +35,7 @@ LIVE = [
     for line in (ROOT / "scripts/docs-check.live").read_text().splitlines()
     if line.split("#", 1)[0].strip()
 ]
-PATH = re.compile(r"`((?:\./)?(?:crates|scripts|web|docs|\.claude)/[^`\s]*)`")
+PATH = re.compile(r"`((?:\./)?(?:crates|scripts|web|docs|\.claude|\.github)/[^`\s]*)`")
 TOOL = re.compile(r"`(?:\./target/release/|\./target/dev/\S*/)?(review|archive) ([a-z][a-z0-9-]*)")
 
 
