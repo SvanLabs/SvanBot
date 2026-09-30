@@ -8,9 +8,12 @@ pub(super) async fn hands(State(s): State<Arc<Shared>>, Path(slot): Path<usize>)
 
 fn hands_blocking(s: &Shared, slot: usize) -> Result<Response, ApiError> {
     let name = bot_name(s, slot)?;
-    let rows = store_read("recent hands", s.store.recent_hands_light(&name, 50))?;
-    let ids: Vec<String> = rows.iter().map(|r| r.hand_id.clone()).collect();
-    let versions = store_read("decision versions", s.store.decision_versions(&name, &ids))?;
+    let rows = seat_history::recent_seat_hands(s, &name, 50, true)?;
+    let mut versions = HashMap::new();
+    for alias in s.names_of(&name) {
+        let ids: Vec<String> = rows.iter().filter(|r| r.bot == alias).map(|r| r.hand_id.clone()).collect();
+        versions.extend(store_read("decision versions", s.store.decision_versions(&alias, &ids))?);
+    }
     let big_blind = s.bots.get(slot).map(|rl| rl.read().big_blind).filter(|bb| *bb > 0).unwrap_or(s.big_blind() as i64);
     let out: Vec<Value> = rows
         .iter()
@@ -26,7 +29,7 @@ pub(super) async fn replay(State(s): State<Arc<Shared>>, Path((slot, hand_id)): 
 
 fn replay_blocking(s: &Shared, slot: usize, hand_id: String) -> Result<Response, ApiError> {
     let name = bot_name(s, slot)?;
-    let Some(row) = store_read("hand", s.store.hand(&name, &hand_id))? else {
+    let Some(row) = seat_history::seat_hand(s, &name, &hand_id)? else {
         return Err((StatusCode::NOT_FOUND, Json(json!({"detail": "Hand not found"}))).into_response().into());
     };
     let ts = parse_ts(&row.ended_at);
@@ -35,7 +38,7 @@ fn replay_blocking(s: &Shared, slot: usize, hand_id: String) -> Result<Response,
     let mut events = vec![
         json!({"type": "hand_start", "ts": ts, "data": {"dealer_seat": summary.button, "hole_cards": split_cards(&row.hole), "players": summary.players.iter().map(|(s, n)| json!({"seat": s, "name": n})).collect::<Vec<_>>()}}),
     ];
-    let decisions = store_read("hand decisions", s.store.decisions_for_hand(&name, &hand_id))?;
+    let decisions = store_read("hand decisions", s.store.decisions_for_hand(&row.bot, &hand_id))?;
     let mut street = sv10_core::engine::Street::Preflop;
     let mut dec_iter = decisions.iter();
     for rec in &summary.history {

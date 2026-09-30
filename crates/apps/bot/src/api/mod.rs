@@ -29,12 +29,15 @@ mod monitor;
 mod opponents;
 mod players;
 mod releases;
+mod seat_history;
 mod setup;
 mod state;
 mod timeline;
 mod tv;
 mod wiring;
 
+#[cfg(test)]
+mod alias_history_tests;
 #[cfg(test)]
 mod report_failures;
 

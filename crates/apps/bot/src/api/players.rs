@@ -119,11 +119,11 @@ pub(super) fn scouting(models: &ModelStore, name: &str) -> Value {
 
 /// A model holding only `name`'s stats, read from their seat in `hands`, beside the fleet's
 /// population as the league: our own seats are never modelled, so their card reads our hands.
-pub(super) fn own_model(models: &ModelStore, name: &str, hands: &[HandSummary]) -> ModelStore {
+pub(super) fn own_model(models: &ModelStore, name: &str, hands: &[HandSummary], aliases: &[String]) -> ModelStore {
     let mut own = ModelStore { population: models.population.clone(), ..Default::default() };
     let stats = own.players.entry(name.to_string()).or_default();
     for h in hands {
-        let Some((seat, _)) = h.players.iter().find(|(_, n)| n == name) else { continue };
+        let Some((seat, _)) = h.players.iter().find(|(_, n)| aliases.contains(n)) else { continue };
         if let Some(s) = hand_stats(h).get(seat) {
             stats.merge_weighted(s, 1.0);
         }
@@ -141,14 +141,14 @@ pub(super) async fn player_card(State(s): State<Arc<Shared>>, Path(name): Path<S
     let standing = leaderboard_entry(&name).await;
     let shared = s.clone();
     let card = off_runtime(move || -> Result<Option<Value>, ApiError> {
-        let ours: Vec<String> = shared.bots.iter().map(|b| b.read().name.clone()).collect();
+        let ours = shared.fleet_names();
         let is_us = ours.contains(&name);
         let mut card = if is_us {
-            let summaries: Vec<HandSummary> = store_read("own hands", shared.store.recent_hands(&name, OWN_CARD_HANDS))?
+            let summaries: Vec<HandSummary> = seat_history::recent_seat_hands(&shared, &name, OWN_CARD_HANDS, false)?
                 .iter()
                 .filter_map(|h| serde_json::from_str(&h.summary).ok())
                 .collect();
-            let own = own_model(&shared.models.read(), &name, &summaries);
+            let own = own_model(&shared.models.read(), &name, &summaries, &shared.names_of(&shared.current_name(&name)));
             let mut c = scouting(&own, &name);
             c["advice"] = json!("Our own seat, read from its last hands the way we read opponents: this is what the table sees.");
             c
@@ -156,7 +156,7 @@ pub(super) async fn player_card(State(s): State<Arc<Shared>>, Path(name): Path<S
             scouting(&shared.models.read(), &name)
         };
         let known = shared.models.read().players.contains_key(&name);
-        let hands = store_read("hands with player", shared.store.hands_with_player(&name))?;
+        let hands = seat_history::player_hands(&shared, &name)?;
         if !known && !is_us && hands.is_empty() {
             return Ok(None);
         }
@@ -266,7 +266,7 @@ mod tests {
         };
         let mut league = ModelStore::default();
         league.population.hands = 5_000.0;
-        let own = own_model(&league, "us", &vec![h; 30]);
+        let own = own_model(&league, "us", &vec![h; 30], &["us".into()]);
         assert_eq!(own.players.get("us").map(|s| s.hands), Some(30.0), "only our seat is read");
         assert!(!own.players.contains_key("villain"));
         assert_eq!(own.population.hands, 5_000.0, "the league is the fleet's population, not our hands");
