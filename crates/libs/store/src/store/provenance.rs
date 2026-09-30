@@ -65,13 +65,7 @@ impl Store {
         if let Some(tag) = tag {
             insert_tag(&tx, &h.bot, &h.hand_id, tag)?;
         }
-        tx.execute(
-            "INSERT OR REPLACE INTO hands (bot, hand_id, table_id, ended_at, hero_seat, hole, board, pot, net, winners, summary, showdown, digest)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
-            params![h.bot, h.hand_id, h.table_id, h.ended_at, h.hero_seat, h.hole, h.board, h.pot, h.net, h.winners, h.summary, h.showdown as i64,
-                crate::integrity::hand_digest(&h.bot, &h.hand_id, &h.ended_at, &h.hole, &h.board, &h.summary)],
-        )?;
-        let rowid = tx.last_insert_rowid();
+        let rowid = hands::store_hand(&tx, h)?;
         tx.commit()?;
         Ok(rowid)
     }

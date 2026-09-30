@@ -317,6 +317,51 @@ mod tests {
         assert!(known as f64 >= total as f64 * 0.95);
     }
 
+    /// A hand stored a second time must keep its row, and its rowid (#600).
+    ///
+    /// `INSERT OR REPLACE` deletes the conflicting row and inserts another, so a re-store — the retry
+    /// path `client/recover.rs` and `client/decide.rs` take — moved the hand to the highest rowid.
+    /// Every consumer that persisted a watermark then folded that hand into the opponent models and
+    /// the head-to-head ledger a second time.
+    #[test]
+    fn re_storing_a_hand_keeps_its_rowid_and_its_place_under_a_watermark() {
+        let dir = std::env::temp_dir().join(format!("sv10-store-rowid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("sv10bot.db")).unwrap();
+        let row = |net: i64, summary: &str| HandRow {
+            bot: "A".into(),
+            hand_id: "h1".into(),
+            table_id: "t".into(),
+            ended_at: "2026-09-26T00:00:00Z".into(),
+            hero_seat: Some(1),
+            hole: "AhKd".into(),
+            board: "2c3d4h".into(),
+            pot: 100,
+            net: Some(net),
+            winners: "A".into(),
+            summary: summary.into(),
+            showdown: false,
+        };
+        let tag = HandTag { target: "t1".into(), arm: TREATMENT_ARM.into(), record: "{}".into() };
+        let first = store.insert_hand_tagged(&row(10, "{\"bb\":20}"), Some(&tag)).unwrap();
+        let second = store.insert_hand_tagged(&row(-5, "{\"bb\":20,\"corrected\":true}"), None).unwrap();
+        assert_eq!(first, second, "a re-store updates the row instead of replacing it");
+        // The watermark reader sees the hand once: a reader past the first store's rowid has nothing.
+        assert!(store.hands_after(first).unwrap().is_empty(), "{:?}", store.hands_after(first).unwrap());
+        // And the re-store's content is what the row holds, with its provenance updated not duplicated.
+        let (net, summary, rows): (i64, String, i64) = {
+            let conn = store.read();
+            conn.query_row("SELECT net, summary, (SELECT COUNT(*) FROM hands) FROM hands WHERE rowid = ?1", params![first], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap()
+        };
+        assert_eq!((net, summary.as_str()), (-5, "{\"bb\":20,\"corrected\":true}"));
+        assert_eq!(rows, 1, "the table holds one row, not two");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn detail(i: i64) -> String {
         serde_json::json!({"version": format!("v{}", i % 3), "opponents": 1 + i % 4, "street": "flop",
             "candidates": (0..(1 + i % 3)).map(|k| serde_json::json!({"action": k, "ev": i as f64 / 7.0})).collect::<Vec<_>>()})
