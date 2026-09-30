@@ -58,6 +58,40 @@ pub type EvResult = (Option<i64>, Option<f64>, bool, String);
 /// (rowid, bot, net chips, summary json, settled pot, comma-separated winner names).
 pub type ResultRow = (i64, String, Option<i64>, String, i64, String);
 
+/// Store one hand, updating the row in place when `(bot, hand_id)` is already there, and return the
+/// rowid that identifies it to a watermark reader.
+///
+/// Shared by `insert_hand` and `insert_hand_tagged` so the two cannot drift, and an upsert rather
+/// than `INSERT OR REPLACE` so a re-store keeps the rowid (#600).
+pub(crate) fn store_hand(conn: &Connection, h: &HandRow) -> Result<i64> {
+    Ok(conn.query_row(
+        "INSERT INTO hands (bot, hand_id, table_id, ended_at, hero_seat, hole, board, pot, net, winners, summary, showdown, digest)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+         ON CONFLICT(bot, hand_id) DO UPDATE SET
+             table_id = excluded.table_id, ended_at = excluded.ended_at, hero_seat = excluded.hero_seat,
+             hole = excluded.hole, board = excluded.board, pot = excluded.pot, net = excluded.net,
+             winners = excluded.winners, summary = excluded.summary, showdown = excluded.showdown,
+             digest = excluded.digest
+         RETURNING rowid",
+        params![
+            h.bot,
+            h.hand_id,
+            h.table_id,
+            h.ended_at,
+            h.hero_seat,
+            h.hole,
+            h.board,
+            h.pot,
+            h.net,
+            h.winners,
+            h.summary,
+            h.showdown as i64,
+            crate::integrity::hand_digest(&h.bot, &h.hand_id, &h.ended_at, &h.hole, &h.board, &h.summary)
+        ],
+        |r| r.get(0),
+    )?)
+}
+
 impl Store {
     /// Recompute every hand's digest: (hands checked, (bot, hand_id) whose content changed).
     pub fn verify_hand_digests(&self) -> Result<(usize, Vec<(String, String)>)> {
@@ -195,15 +229,13 @@ impl Store {
         Ok(rows)
     }
     /// Insert a completed hand; returns its rowid (the model watermark unit).
+    ///
+    /// A hand that is already stored is *updated*, never replaced (#600): `INSERT OR REPLACE` deletes
+    /// the conflicting row and inserts another, so a re-store — the retry path — moved the hand to the
+    /// highest rowid and every reader that persisted a watermark saw it a second time.
     pub fn insert_hand(&self, h: &HandRow) -> Result<i64> {
         let conn = self.write_lock();
-        conn.execute(
-            "INSERT OR REPLACE INTO hands (bot, hand_id, table_id, ended_at, hero_seat, hole, board, pot, net, winners, summary, showdown, digest)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
-            params![h.bot, h.hand_id, h.table_id, h.ended_at, h.hero_seat, h.hole, h.board, h.pot, h.net, h.winners, h.summary, h.showdown as i64,
-                crate::integrity::hand_digest(&h.bot, &h.hand_id, &h.ended_at, &h.hole, &h.board, &h.summary)],
-        )?;
-        Ok(conn.last_insert_rowid())
+        store_hand(&conn, h)
     }
     /// (bot, hand_id) of hands whose net the tracker could not compute (joined mid-hand on a resync).
     pub fn hands_missing_net(&self) -> Result<Vec<(String, String)>> {
