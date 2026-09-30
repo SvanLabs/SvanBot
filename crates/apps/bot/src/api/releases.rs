@@ -13,12 +13,8 @@ use super::*;
 
 pub(super) mod checkout;
 use checkout::*;
-
-/// Whether a release build is currently running (lock file, fresh enough to trust).
-fn update_running(artifacts: &std::path::Path) -> bool {
-    let Ok(meta) = std::fs::metadata(artifacts.join("release.lock")) else { return false };
-    meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() < 2 * 3600)
-}
+mod liveness;
+use liveness::{record_owner, update_running};
 
 pub(super) async fn releases(State(s): State<Arc<Shared>>) -> Response {
     let result = off_runtime({
@@ -196,7 +192,8 @@ fn worker_commits(s: &Shared) -> Vec<Value> {
 pub(super) async fn release_progress(State(s): State<Arc<Shared>>) -> Json<Value> {
     let artifacts = s.config.artifacts.clone();
     let read = |name: &str| std::fs::read_to_string(artifacts.join(name)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
-    let progress = read("release-progress.json").unwrap_or(Value::Null);
+    let running = update_running(&artifacts);
+    let progress = liveness::reconcile(&read("release-progress.json").unwrap_or(Value::Null), running, now_secs());
     let timings = read("release-timings.json").unwrap_or(Value::Null);
     let mut view = progress_view(&progress, &timings, now_secs());
     let target = progress["commit"].as_str().map(String::from);
@@ -221,7 +218,7 @@ pub(super) async fn release_progress(State(s): State<Arc<Shared>>) -> Json<Value
     });
     view["bots_playing"] = json!(playing);
     view["bots_total"] = json!(s.bots.len());
-    view["running"] = json!(update_running(&artifacts));
+    view["running"] = json!(running);
     view["log"] = json!(tail_lines(&artifacts.join("release.log"), 16 * 1024).into_iter().rev().take(40).rev().collect::<Vec<_>>());
     Json(view)
 }
@@ -258,7 +255,7 @@ pub(super) async fn trigger_update(State(s): State<Arc<Shared>>) -> Response {
 
 /// Take the update lock and start `scripts/update.sh ARGS` detached in its own process group: the
 /// run outlives this request and the fleet head (which exits during the hot swap). update.sh removes
-/// the lock however it ends; a killed machine can only leave a lock that ages out after 2 hours.
+/// the lock however it ends; liveness checks recover a dead owner's marker without waiting two hours.
 fn spawn_update(s: &Arc<Shared>, args: &[&str], started: &str) -> Response {
     if update_running(&s.config.artifacts) {
         return (StatusCode::CONFLICT, Json(json!({"detail": "an update or rollback is already running"}))).into_response();
@@ -282,7 +279,11 @@ fn spawn_update(s: &Arc<Shared>, args: &[&str], started: &str) -> Response {
         }
     }
     match cmd.spawn() {
-        Ok(_) => {
+        Ok(mut child) => {
+            record_owner(&lock, child.id());
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
             s.log("fleet", "info", started);
             Json(json!({"started": true})).into_response()
         }
