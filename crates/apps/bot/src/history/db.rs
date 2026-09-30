@@ -10,6 +10,8 @@ use std::time::Duration;
 use sv10_core::model::HandSummary;
 
 pub const STATUS_KEY: &str = "history.status";
+#[cfg(test)]
+mod compaction_tests;
 /// (raw row id, bot, raw export json, full corpus summary when a richer source holds the hand).
 pub(super) type TableHand = (i64, String, String, Option<String>);
 
@@ -26,6 +28,8 @@ pub struct HistoryDb {
     // Visible inside `history` for the sabotage test that drops a table to prove a failed page
     // never advances the frontier; production code goes through the methods below.
     pub(super) conn: Mutex<Connection>,
+    /// Candidate scans run beside importer writes under WAL.
+    reader: Mutex<Connection>,
     /// Packs and unpacks the export JSON and the summaries (0229).
     codec: sv10_store::packed::Codec,
 }
@@ -55,7 +59,10 @@ impl HistoryDb {
         if let Some(dir) = path.parent() {
             sv10_store::packed::mark_data_format(dir, sv10_store::packed::DATA_FORMAT, false)?;
         }
-        Ok(HistoryDb { conn: Mutex::new(conn), codec })
+        let reader =
+            Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+        reader.busy_timeout(Duration::from_secs(10))?;
+        Ok(HistoryDb { conn: Mutex::new(conn), reader: Mutex::new(reader), codec })
     }
 
     /// Compact one batch of the compressed columns (0229), like `Store::compact`: train a column's
@@ -64,11 +71,15 @@ impl HistoryDb {
         let mut packed = 0;
         for (column, at) in sv10_store::packed::HISTORY_COLUMNS.iter().zip(cursor.iter_mut()) {
             let Some(after) = *at else { continue };
-            let conn = self.conn.lock();
             if !self.codec.has_dictionary(*column) {
-                self.codec.train(&conn, *column)?;
+                self.codec.train(&self.conn.lock(), *column)?;
             }
-            let (n, last) = sv10_store::packed::compact_batch(&conn, &self.codec, *column, after, limit)?;
+            let rows = sv10_store::packed::compact_candidates(&self.reader.lock(), &self.codec, *column, after, limit)?;
+            if rows.is_empty() {
+                *at = None;
+                continue;
+            }
+            let (n, last) = sv10_store::packed::compact_rows(&self.conn.lock(), &self.codec, *column, &rows)?;
             packed += n;
             *at = last;
         }

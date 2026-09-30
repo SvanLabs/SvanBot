@@ -215,6 +215,10 @@ of our own play decays on the same cadence, so it describes how we have been pla
 
 ## Season scope in the dashboard
 
+History compaction uses a read-only connection for candidate selection so terminal scans run
+beside importer writes. Dictionary training and nonempty batches still use its writer mutex;
+each candidate is rechecked in the write transaction before replacement.
+
 A season is a separate contest with its own leaderboard, so what a panel *claims to be* decides
 what it reads. Everything presented as this season's performance or standing scopes stored hands to
 `season::CurrentSeason::started_at` (`/api/fleet`, `/api/highlights`, the per-bot `metrics` in
