@@ -720,9 +720,9 @@ fn latency_summary(mut ms: Vec<f64>) -> Value {
 
 /// Compute use of the live decision path (0162): the last hour's decision time overall and per
 /// street against the 45 s deadline, the live Monte Carlo budget and the machine's load.
-pub(super) fn compute_value(s: &Shared) -> Value {
+pub(super) fn compute_value(s: &Shared) -> Result<Value, ApiError> {
     let since = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
-    let rows = snapshot_read("decision latencies", s.store.decision_latencies_since(&since));
+    let rows = store_read("decision latencies", s.store.decision_latencies_since(&since))?;
     let mut by_street: HashMap<String, Vec<f64>> = HashMap::new();
     for (street, ms) in &rows {
         by_street.entry(street.clone()).or_default().push(*ms);
@@ -738,7 +738,7 @@ pub(super) fn compute_value(s: &Shared) -> Value {
         std::fs::read_to_string("/proc/loadavg").ok().map(|l| l.split_whitespace().take(3).filter_map(|x| x.parse().ok()).collect());
     let params = s.params.read();
     let timeouts: u64 = s.bots.iter().map(|b| b.read().decision_timeouts).sum();
-    json!({
+    Ok(json!({
         "window_minutes": 60,
         "decisions": all,
         "timeouts": timeouts,
@@ -751,7 +751,7 @@ pub(super) fn compute_value(s: &Shared) -> Value {
         "cpu_model": hardware.as_ref().and_then(|h| h["cpu_model"].as_str().map(str::to_string)),
         "load_average": load,
         "profile": compute_profile_json(s, hardware.as_ref().and_then(|h| h["logical_cores"].as_u64()).unwrap_or(1) as usize),
-    })
+    }))
 }
 
 /// The compute profile in effect (`max` when none is stored) and the presets for this machine (0187).
@@ -775,7 +775,7 @@ pub(super) async fn rivals(State(s): State<Arc<Shared>>) -> Response {
 }
 
 pub(super) async fn compute(State(s): State<Arc<Shared>>) -> Response {
-    off_runtime(move || Json(compute_value(&s))).await.into_response()
+    off_runtime(move || compute_value(&s).map(Json)).await.into_response()
 }
 
 /// Operations the fleet cannot see from a table: hands waiting for a store retry (0152) and the

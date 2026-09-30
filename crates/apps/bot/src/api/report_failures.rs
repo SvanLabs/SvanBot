@@ -2,6 +2,26 @@
 use super::*;
 
 #[tokio::test]
+async fn compute_distinguishes_empty_decisions_from_unreadable_decisions() {
+    let shared = Shared::for_test("api-compute-read-failure", &["A"]);
+    let response = compute(State(shared.clone())).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let empty: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(empty["decisions"]["n"], 0);
+    let conn = rusqlite::Connection::open(shared.config.artifacts.join("svanbot10.db")).unwrap();
+    conn.execute_batch("ALTER TABLE decisions RENAME TO decisions_hidden").unwrap();
+    let response = compute(State(shared.clone())).await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let error: Value = serde_json::from_slice(&body).unwrap();
+    assert!(error["detail"].as_str().unwrap().contains("decision latencies"));
+    assert!(error.get("decisions").is_none(), "an outage must not report zero decisions");
+    conn.execute_batch("ALTER TABLE decisions_hidden RENAME TO decisions").unwrap();
+    assert_eq!(compute(State(shared)).await.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn readable_empty_reports_remain_successful() {
     let shared = Shared::for_test("api-empty-reports", &["A"]);
     for (name, status) in [
