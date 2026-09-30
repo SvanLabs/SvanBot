@@ -1,6 +1,8 @@
 //! Detect the host machine and derive runtime tuning, so a fresh install on any
 //! computer picks sensible thread counts and Monte Carlo budgets by itself.
 
+mod memory;
+
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use sv10_cards::cards::Card;
@@ -18,7 +20,7 @@ pub struct HardwareProfile {
     pub logical_cores: usize,
     /// Physical cores (logical count when unknown).
     pub physical_cores: usize,
-    /// Total memory.
+    /// Effective memory capacity, bounded by enclosing cgroup-v2 limits.
     pub memory_gb: f64,
     /// Whether the CPU reports AVX2.
     pub avx2: bool,
@@ -54,15 +56,15 @@ pub struct Tuning {
     pub decision_samples: usize,
     /// Monte Carlo samples per live decision: the idle cores buy a more precise estimate at the table.
     pub live_samples: usize,
-    /// Parallel chunks the live decision's deals are split into (one per logical core).
+    /// Parallel live-decision chunks, bounded by the same CPU and memory headroom.
     pub live_deal_chunks: usize,
-    /// Threads the background learner uses (every logical core; it runs niced, so live play preempts it).
+    /// Background learner workers, bounded by available CPU and memory headroom.
     pub learner_threads: usize,
     /// Parallel simulated tables per learner evaluation.
     pub learner_tables: usize,
     /// Hands per simulated table per evaluation.
     pub learner_hands: usize,
-    /// Bots the machine can run comfortably (every bot is light; memory is the bound).
+    /// Suggested bot count from available memory; existing configured bots are retained.
     pub max_bots: usize,
 }
 
@@ -92,16 +94,6 @@ fn cpu_info() -> (String, usize, bool) {
     (model, cores.len(), avx2)
 }
 
-fn memory_gb() -> f64 {
-    read("/proc/meminfo")
-        .lines()
-        .find(|l| l.starts_with("MemTotal"))
-        .and_then(|l| l.split_whitespace().nth(1))
-        .and_then(|kb| kb.parse::<f64>().ok())
-        .map(|kb| kb / 1024.0 / 1024.0)
-        .unwrap_or(4.0)
-}
-
 /// Heads-up equity samples per second on one thread: 40,000 samples after a 2,000-sample warm-up
 /// (about 3 ms on the i7-4770K; `probe --bench` reports the whole detection, 2 ms on the cloud box).
 fn benchmark() -> f64 {
@@ -121,14 +113,15 @@ pub fn detect() -> HardwareProfile {
     let logical = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let (cpu_model, physical, avx2) = cpu_info();
     let physical = if physical == 0 { logical } else { physical };
-    let memory = memory_gb();
+    let (capacity, available) = memory::detect();
+    let memory = capacity as f64 / (1u64 << 30) as f64;
     let sps = benchmark();
     // Keep the main equity estimate under ~2ms of one core; never above the tuned default.
     let decision_samples = ((sps * 0.002) as usize).clamp(600, 2_500);
-    let learner_threads = logical;
+    let learner_threads = memory::workers(logical, available);
     // 640x the simulation budget on a reference-speed machine, dealt in parallel (0161).
     let live_samples = live_budget(decision_samples, sps);
-    let live_deal_chunks = logical;
+    let live_deal_chunks = learner_threads;
     // Reference: ~13M heads-up samples/s on an i7-4770K (the original target box) = 1.0.
     let speed = (sps / REFERENCE_SPS).clamp(0.2, 2.0);
     // Evaluation size (and so the promotion gate's power) stays what it was when the learner left two
@@ -136,7 +129,7 @@ pub fn detect() -> HardwareProfile {
     let learner_tables = (logical.saturating_sub(2).max(1) * 2).clamp(2, 32);
     // Keep evaluations large enough for meaningful confidence intervals even on a busy machine.
     let learner_hands = ((1_500.0 * speed) as usize).clamp(1_500, 3_000);
-    let max_bots = ((memory / 0.25) as usize).clamp(1, 5);
+    let max_bots = (available / (256 << 20)).clamp(1, 5) as usize;
     HardwareProfile {
         cpu_model,
         logical_cores: logical,
