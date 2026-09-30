@@ -553,3 +553,9 @@ of a cold build's complete storage requirement. They preserve existing data on f
 prune automatically. Filesystem quotas and later competing writes can still cause ENOSPC; retain
 build diagnostics and move the checkout or free space explicitly. Rust, Linux, RAM and writable
 storage are still required; hardware independence does not mean zero resource requirements.
+
+Source installations support Linux x86-64 and AArch64. The benchmark's BMI2 arm is selected
+only on x86-64 with runtime support; other CPUs use the existing scalar fallback and report
+BMI2 as unavailable. The sampling profiler reads the matching Linux x86-64 or AArch64 signal
+context. Other architectures report sampling unavailable rather than inventing a measurement.
+An ARM workspace cross-check verifies compilation; runtime measurements require real ARM hardware.
