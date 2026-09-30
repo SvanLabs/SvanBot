@@ -4,3 +4,9 @@ artifacts
 web/node_modules
 web/dist
 .env
+# The GitHub App private key is kept out of git by .git/info/exclude, which the build context does
+# not read: without this line `COPY . .` in the Dockerfile copies it into a build-stage layer (#583).
+# `.env.example` above stays, because the Dockerfile copies it into the image on purpose.
+.key
+# Agent scratch output: not a secret, but nothing in the image reads it either.
+.scratch
