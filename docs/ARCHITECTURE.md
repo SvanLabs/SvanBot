@@ -196,6 +196,9 @@ of our own play decays on the same cadence, so it describes how we have been pla
   (`api::snapshot_read`). Without an operator token, every POST must be addressed to a loopback host
   (DNS-rebinding guard), and every response carries `nosniff`, `X-Frame-Options: DENY` and a
   same-origin referrer policy.
+- **Seat history**: dashboard hand lists, replays, opponent results and own-player cards read all
+  stored names of a renamed seat through `api::seat_history`. Recent limits apply to the combined
+  history; replay decisions use the bot name stored on the selected hand.
 - **Realtime dashboard** (`/api/events`, SSE): table events (`action`, `board`, `result`,
   `decision`, `hand`) are forwarded as they happen; every bot update sends that bot's whole live
   table (`api::state::table_json`, a few KB, each opponent seat with its model `read`) as a

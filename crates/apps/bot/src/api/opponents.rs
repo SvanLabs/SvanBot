@@ -168,7 +168,7 @@ fn opponent_detail_blocking(s: &Shared, slot: usize, name: String) -> Result<Res
     let st = s.models.read().players.get(&name).cloned().unwrap_or_default();
     let rep = s.reputation.read().get(&name).cloned();
     let mut detail = opponent_json(&name, &st, rep.as_ref());
-    let rows = store_read("recent hands", s.store.recent_hands(&bot, 3000))?;
+    let rows = seat_history::recent_seat_hands(s, &bot, 3000, false)?;
     let (mut shared_hands, mut hero_wins, mut opp_wins, mut won_from, mut lost_to, mut table_net) = (0, 0, 0, 0i64, 0i64, 0i64);
     let mut trend = Vec::new();
     for r in rows.iter().rev() {
@@ -181,7 +181,7 @@ fn opponent_detail_blocking(s: &Shared, slot: usize, name: String) -> Result<Res
         table_net += net;
         let winners: Vec<&str> = r.winners.split(',').collect();
         let mut direct = 0;
-        if net > 0 && winners.contains(&bot.as_str()) {
+        if net > 0 && winners.contains(&r.bot.as_str()) {
             hero_wins += 1;
             won_from += net;
             direct = net;
