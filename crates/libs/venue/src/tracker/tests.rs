@@ -4,6 +4,8 @@ use sv10_model::model::ModelStore;
 
 mod preflop_rebuild;
 
+mod recovery;
+
 fn frames() -> Vec<Value> {
     include_str!("../../tests/fixtures/hand_capture.jsonl")
         .lines()
