@@ -5,6 +5,23 @@ use anyhow::Result;
 use rusqlite::{OptionalExtension, params};
 
 impl Store {
+    /// Replace a value derived from its latest committed state. Readers and writers in other
+    /// Store instances cannot interleave a write between this read and replacement. The closure
+    /// must not call this Store; an error rolls back the transaction.
+    pub fn update_kv(&self, key: &str, update: impl FnOnce(Option<&str>) -> Result<String>) -> Result<()> {
+        let conn = self.write_lock();
+        let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)?;
+        let old: Option<String> = tx.query_row("SELECT value FROM kv WHERE key = ?1", [key], |r| r.get(0)).optional()?;
+        let value = update(old.as_deref())?;
+        tx.execute(
+            "INSERT INTO kv (key, value, updated) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated = excluded.updated
+             WHERE kv.value IS NOT excluded.value",
+            params![key, value, chrono::Utc::now().to_rfc3339()],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
     /// Store a value; an identical value is not rewritten (no page change, no SSD write).
     pub fn put_kv(&self, key: &str, value: &str) -> Result<()> {
         self.write_lock().execute(
@@ -52,6 +69,40 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn concurrent_kv_updates_keep_every_increment_and_rollback_errors() {
+        let dir = std::env::temp_dir().join(format!("sv10-kv-update-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let first = Store::open(&dir.join("state.db")).unwrap();
+        let second = Store::open(&dir.join("state.db")).unwrap();
+        first.put_kv("count", "0").unwrap();
+        std::thread::scope(|scope| {
+            for store in [&first, &second] {
+                scope.spawn(move || {
+                    for _ in 0..100 {
+                        store
+                            .update_kv("count", |old| {
+                                let n: u32 = old.unwrap().parse()?;
+                                std::thread::yield_now();
+                                Ok((n + 1).to_string())
+                            })
+                            .unwrap();
+                    }
+                });
+            }
+        });
+        assert_eq!(first.get_kv("count").unwrap().as_deref(), Some("200"));
+        assert!(first.update_kv("count", |_| anyhow::bail!("injected update failure")).is_err());
+        assert_eq!(second.get_kv("count").unwrap().as_deref(), Some("200"));
+        first
+            .update_kv("new", |old| {
+                assert!(old.is_none());
+                Ok("created".into())
+            })
+            .unwrap();
+        assert_eq!(second.get_kv("new").unwrap().as_deref(), Some("created"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn reads_see_committed_writes_and_never_block_them() {
         let dir = std::env::temp_dir().join(format!("sv10-store-readers-{}", std::process::id()));
