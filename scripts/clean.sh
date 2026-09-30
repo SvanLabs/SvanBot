@@ -12,15 +12,26 @@
 #                                 free (left alone, and said so, while a build runs)
 # Never touches databases, backups, tables, .env files, target/release (the installed build) or tracked
 # files. Runs every 6 hours (svanbot10-clean.timer), independent of the nightly archive.
+#
+# The tree it reports on is `SV10_CLEAN_ROOT` (default: this checkout), which exists so the layout rule
+# has a test to fail (`scripts/tests/clean.sh`).
 set -uo pipefail
-cd "$(dirname "$0")/.."
+# `--apply` deletes, so an unusable root must not fall through to the caller's directory: without the
+# `|| exit`, a mistyped SV10_CLEAN_ROOT reports the error and then prunes whatever tree it happened to
+# be standing in.
+cd "${SV10_CLEAN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}" || exit 1
 apply=0; [ "${1:-}" = --apply ] && apply=1
 say() { printf '%s\n' "$*"; }
 
 say "== artifacts/: entries outside the known layout"
 # Every entry the code writes (data-format: packed store marker; release-*/update-check: the updates panel;
-# pacing-study: the learner). Session screenshots (*.png) are reported and swept separately below.
-known='^(svanbot10\.db(-wal|-shm)?|history\.db(-wal|-shm)?|backups|tables|logs|archive|quarantine|season-checks|.env.previous|README\.md|releases\.log|release-snapshots|(bot|supervisor|learner-supervisor|analyst-supervisor|logrotate|monitor-supervisor)\.pid|release\.log|release\.lock|release-operation\.lock|stop\.flag|data-format|release-progress\.json|release-timings\.json|update-check\.json|pacing-study\.json|[^/]+\.png)$'
+# pacing-study: the learner; derived: fetch-data.sh --derived; unidentified-builds: rollback.sh
+# --preserve-unidentified; review: local-review.py; bench-fixture: `learner bench-fixture`). The
+# pidfiles are the whole set the control scripts
+# leave behind — `head`, `worker-<name>` and their supervisors in split mode, `fleet.pids` beside them,
+# and `hold-until`, which is how stop.sh tells the keepalive to stay down. Session screenshots (*.png)
+# are reported and swept separately below.
+known='^(svanbot10\.db(-wal|-shm)?|history\.db(-wal|-shm)?|backups|tables|logs|archive|quarantine|season-checks|derived|unidentified-builds|review|.env.previous|README\.md|releases\.log|release-snapshots|(bot|supervisor|learner-supervisor|analyst-supervisor|logrotate|monitor-supervisor|head|head-supervisor|worker-[A-Za-z0-9_-]+|fleet)\.pids?|release\.log|release\.lock|release-operation\.lock|stop\.flag|hold-until|data-format|release-progress\.json|release-timings\.json|update-check\.json|pacing-study\.json|bench-fixture\.json|[^/]+\.png)$'
 unknown=$(ls -A artifacts | grep -vE "$known" || true)
 [ -n "$unknown" ] && say "$unknown" || say "   none"
 # A copied .env holds the API keys: never removed here, only named, so the operator deletes it once
