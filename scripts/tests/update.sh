@@ -49,6 +49,12 @@ run "$t/release-ok.sh" >/dev/null || fail "up-to-date update failed"
 [ ! -e "$box/artifacts/release.lock" ] || fail "release.lock left behind"
 [[ "$(state)" == "installed $(git -C "$box" rev-parse --short HEAD) fetch:done,snapshot:done,lint:done,test:done,build:done,dashboard:done,install:done" ]] || fail "progress after an up-to-date run: $(state)"
 [ -s "$box/artifacts/release-timings.json" ] || fail "no timings written"
+python3 - "$box/artifacts/release-progress.json" <<'PY' || fail 'manual updater owner identity not recorded'
+import json,sys
+progress=json.load(open(sys.argv[1]))
+assert isinstance(progress.get('pid'),int) and progress['pid'] > 0, progress
+assert progress.get('process_start') and progress.get('boot_id'), progress
+PY
 
 # 2. New commits on the branch: fast-forward, release, installed commit is the new head.
 push b && push c

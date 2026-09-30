@@ -73,6 +73,21 @@ def close_running(st: dict, now: float) -> None:
             s["seconds"] = round(now - s["started"], 1)
 
 
+def owner_identity() -> dict:
+    """The long-lived updater/release shell, not this short-lived progress writer."""
+    pid = os.getppid()
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        process_start = stat.rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        process_start = None
+    try:
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except OSError:
+        boot_id = None
+    return {"pid": pid, "process_start": process_start, "boot_id": boot_id}
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__, file=sys.stderr)
@@ -80,7 +95,7 @@ def main(argv: list[str]) -> int:
     now = time.time()
     cmd = argv[0]
     if cmd == "start":
-        save(STATE, {"state": "running", "started": now, "updated": now, "from": installed(), "commit": None, "message": None, "stages": []})
+        save(STATE, {"state": "running", "started": now, "updated": now, "from": installed(), "commit": None, "message": None, "stages": [], **owner_identity()})
         return 0
     st = load(STATE)
     if not st:

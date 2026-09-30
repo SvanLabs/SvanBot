@@ -321,6 +321,9 @@ restore. Drill: `grep -n "hot swap\|swapping" artifacts/logs/svanbot10.log` afte
 An update that Git refuses because local edits would be overwritten ends with a failed progress
 record and preserves those edits. Unexpected updater failures also finish the record, with their
 exit status in the message; a read-only update check leaves another run's lock and progress alone.
+Progress records identify the parent updater or release shell by PID, process start and boot ID.
+That identity covers manually started fetches before the operation lock is taken and remains in
+later stages so abandoned operations can be distinguished from healthy ones.
 
 The Releases & updates widget replaces SSH for routine updates: the installed commit (from
 `releases.log`), the live build (`/api/health`), what the update branch on GitHub holds (checked every

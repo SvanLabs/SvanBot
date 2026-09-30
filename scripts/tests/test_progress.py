@@ -2,6 +2,8 @@
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +18,20 @@ def load(env):
 
 
 class StartingPoint(unittest.TestCase):
+    def test_progress_writer_records_its_long_lived_parent(self):
+        with tempfile.TemporaryDirectory() as d:
+            script = Path(__file__).resolve().parent.parent / "progress.py"
+            env = dict(os.environ, SV10_PROGRESS_DIR=d, SV10_INSTALLED_MARKER=str(Path(d) / "absent"))
+            subprocess.run([sys.executable, str(script), "start"], env=env, check=True)
+            state = json.loads((Path(d) / "release-progress.json").read_text())
+            self.assertEqual(state["pid"], os.getpid())
+            self.assertTrue(state["process_start"])
+            self.assertTrue(state["boot_id"])
+            subprocess.run([sys.executable, str(script), "stage", "fetch"], env=env, check=True)
+            later = json.loads((Path(d) / "release-progress.json").read_text())
+            for field in ["pid", "process_start", "boot_id"]:
+                self.assertEqual(later[field], state[field])
+
     def test_a_run_starts_from_the_installed_build_not_the_checkout(self):
         # 2026-09-27: a release run by hand read "078e871 -> 078e871": the checkout's HEAD is the
         # commit being installed, not the one it replaces.
