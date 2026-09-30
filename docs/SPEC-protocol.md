@@ -92,6 +92,10 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 
 ## Envelope and state hash
 
+An empty postflop snapshot or turn board preserves cards already observed in that hand. It is
+not evidence that those cards disappeared. Starting a new hand clears the board; a preflop
+snapshot still accepts an empty board. This guards recovery frames without inventing missing cards.
+
 - `table_seq`: forward jumps accepted; duplicates and regressions ignored (`TableTracker::accept_seq`),
   except a `table_state` repeating the watermark and every `resync_response`. Accepting a resync
   never lowers the watermark, even if its envelope carries an older sequence. We resync on reconnect,

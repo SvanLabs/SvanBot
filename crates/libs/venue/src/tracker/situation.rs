@@ -3,6 +3,10 @@
 use super::*;
 
 impl TableTracker {
+    pub(super) fn recovery_board(&self, supplied: Vec<Card>, preflop: bool) -> Vec<Card> {
+        if supplied.is_empty() && !preflop { self.board.clone() } else { supplied }
+    }
+
     /// Decision input for an action-authority message (`your_turn`).
     pub fn situation(&mut self, msg: &Value, legal: &LegalActions) -> Option<Situation> {
         let hero_seat = msg["seat"].as_u64().map(|s| s as usize).or(self.hero_seat)?;
@@ -14,7 +18,9 @@ impl TableTracker {
                 s.stack = stack;
             }
         }
-        let board = if msg.get("community_cards").is_some() { cards(&msg["community_cards"]) } else { self.board.clone() };
+        // Recovery snapshots may precede the card event. A same-hand empty array cannot erase
+        // cards already observed; begin_hand clears the board before the next hand's turn.
+        let board = self.recovery_board(cards(&msg["community_cards"]), false);
         let street = match board.len() {
             0 => Street::Preflop,
             3 => Street::Flop,

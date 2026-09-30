@@ -2,6 +2,7 @@ use super::*;
 use serde_json::json;
 use sv10_model::model::ModelStore;
 
+mod board_recovery;
 mod preflop_rebuild;
 
 mod recovery;

@@ -268,7 +268,7 @@ impl TableTracker {
         self.sb = msg["small_blind"].as_i64().unwrap_or(self.sb);
         self.bb = msg["big_blind"].as_i64().unwrap_or(self.bb);
         if street.is_some() {
-            self.board = cards(&msg["board"]);
+            self.board = self.recovery_board(cards(&msg["board"]), street == Some(Street::Preflop));
             self.pot = msg["pot"].as_i64().unwrap_or(self.pot);
         }
         let mut present = Vec::new();
