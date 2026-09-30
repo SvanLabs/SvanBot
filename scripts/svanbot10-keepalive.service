@@ -6,6 +6,8 @@ Description=Restart the SvanBot fleet when it is down without a hold (0145)
 
 [Service]
 Type=oneshot
+# Covers the fleet's 900 s start and 180 s stop budgets with restart overhead.
+TimeoutStartSec=1200
 WorkingDirectory=@SVANBOT_ROOT@
 Environment=PATH=%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart="@SVANBOT_ROOT@/scripts/keepalive.sh"

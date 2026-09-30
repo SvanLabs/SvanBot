@@ -8,6 +8,7 @@ Description=SvanBot cleanup: superseded builds, scratch dirs and old logs (scrip
 
 [Service]
 Type=oneshot
+TimeoutStartSec=3600
 WorkingDirectory=@SVANBOT_ROOT@
 ExecStart="@SVANBOT_ROOT@/scripts/clean.sh" --apply
 Nice=15

@@ -27,6 +27,12 @@ for tpl in "$repo"/scripts/svanbot10*.service "$repo"/scripts/svanbot10*.timer; 
   [ -z "$baked" ] || fail "$tpl names an absolute path instead of @SVANBOT_ROOT@:"$'\n'"$baked"
 done
 
+# A stalled oneshot must fail rather than occupy every later timer tick forever.
+for name in clean keepalive; do
+  budget=$(sed -n 's/^TimeoutStartSec=//p' "$repo/scripts/svanbot10-$name.service")
+  [[ "$budget" =~ ^[1-9][0-9]*$ ]] || fail "$name has no finite positive start timeout"
+done
+
 # 2. Rendered for this checkout: the placeholder is gone, every service works in the checkout, and
 #    every script an Exec line names is really there and really executable.
 DEST="$t/here" "$units" > "$t/here.log"
