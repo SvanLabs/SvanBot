@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # Name the branch the script is fixed on. A checkout with no `ref:` would take the
           # repository default, which is `main` — the same branch — so this is belt and braces,
@@ -44,7 +44,7 @@ jobs:
         # A pull request from a fork gets no secrets, and a run a bot started has no Actions secrets
         # either; the fallback is the workflow token, which the permissions above make sufficient.
         continue-on-error: true
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           client-id: ${{ vars.SVANLABS_APP_CLIENT_ID }}
           private-key: ${{ secrets.SVANLABS_APP_PRIVATE_KEY }}

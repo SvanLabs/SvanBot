@@ -14,6 +14,7 @@ A missing step is therefore a failure here, not a skip, and the count each case 
 says it looked at something.
 """
 import unittest
+import re
 from pathlib import Path
 
 WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
@@ -26,6 +27,17 @@ def workflow_files() -> list[Path]:
 
 
 class GateJobsInstallTheirTools(unittest.TestCase):
+    def test_remote_actions_are_immutable_in_every_workflow(self):
+        checked = 0
+        for path in workflow_files():
+            for action in re.findall(r"^\s*(?:-\s*)?uses:\s*(\S+)", path.read_text(), re.MULTILINE):
+                if action.startswith("./"):
+                    continue
+                checked += 1
+                with self.subTest(workflow=path.name, action=action):
+                    self.assertRegex(action, r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
+        self.assertGreater(checked, 0, "no remote action invocation was checked")
+
     def test_a_workflow_that_runs_the_gate_runs_cloud_setup(self):
         checked = 0
         for path in workflow_files():
