@@ -9,7 +9,7 @@ pub mod refit;
 pub mod run;
 pub mod search;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use sv10_core::model::ModelStore;
 use sv10_core::policy::Params;
 use sv10_store::store::Store;
@@ -82,11 +82,12 @@ pub fn status(store: &Store, mut v: Value) {
 /// rewritten whole, so a write that does not land loses this experiment rather than deferring it:
 /// the next call reads the list as it was before, and the entry is gone for good (issue #326).
 pub fn push_experiment(store: &Store, e: Value) {
-    let mut list: Vec<Value> =
-        store.get_kv(crate::LEARNER_EXPERIMENTS_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-    list.insert(0, e);
-    list.truncate(40);
-    if let Err(e) = store.put_kv(crate::LEARNER_EXPERIMENTS_KEY, &json!(list).to_string()) {
+    if let Err(e) = store.update_kv(crate::LEARNER_EXPERIMENTS_KEY, |old| {
+        let mut list: Vec<Value> = old.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
+        list.insert(0, e);
+        list.truncate(40);
+        Ok(serde_json::to_string(&list)?)
+    }) {
         tracing::warn!("an experiment did not reach the dashboard list ({e})");
     }
 }
@@ -115,5 +116,45 @@ pub fn log_step(what: &str, took: std::time::Duration) {
     match crate::jobs::over_budget(what, took) {
         Some(warning) => tracing::warn!("{warning}"),
         None => tracing::info!("{what} took {:.0}s", took.as_secs_f64()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn concurrent_rollups_keep_every_count_and_experiment() {
+        let dir = std::env::temp_dir().join(format!("sv10-learner-rollups-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let first = Store::open(&dir.join("state.db")).unwrap();
+        let second = Store::open(&dir.join("state.db")).unwrap();
+        std::thread::scope(|scope| {
+            for (writer, store) in [&first, &second].into_iter().enumerate() {
+                scope.spawn(move || {
+                    for i in 0..100 {
+                        funnel::note(store, funnel::PROPOSED, None, 1);
+                        if i < 20 {
+                            push_experiment(store, json!({"writer": writer, "i": i}));
+                        }
+                        std::thread::yield_now();
+                    }
+                });
+            }
+        });
+        assert_eq!(funnel::dashboard(&first)["total"], 200);
+        let list: Vec<Value> = serde_json::from_str(&first.get_kv(crate::LEARNER_EXPERIMENTS_KEY).unwrap().unwrap()).unwrap();
+        assert_eq!(list.len(), 40);
+        for writer in 0..2 {
+            for i in 0..20 {
+                assert!(list.contains(&json!({"writer": writer, "i": i})));
+            }
+        }
+        push_experiment(&second, json!({"newest": true}));
+        let list: Vec<Value> = serde_json::from_str(&first.get_kv(crate::LEARNER_EXPERIMENTS_KEY).unwrap().unwrap()).unwrap();
+        assert_eq!(list.len(), 40);
+        assert_eq!(list[0], json!({"newest": true}));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

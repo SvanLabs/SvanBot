@@ -120,9 +120,11 @@ pub fn load(store: &Store) -> Funnel {
 /// Count one outcome and persist it. A write that does not land loses a count, not the cycle, so it
 /// warns — the same bargain `push_experiment` makes with the experiment list.
 pub fn note(store: &Store, key: &str, knob: Option<&str>, count: u32) {
-    let mut funnel = load(store);
-    funnel.record(now(), key, knob, count);
-    let stored = serde_json::to_string(&funnel).map_err(anyhow::Error::from).and_then(|j| store.put_kv(FUNNEL_KEY, &j));
+    let stored = store.update_kv(FUNNEL_KEY, |old| {
+        let mut funnel: Funnel = old.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
+        funnel.record(now(), key, knob, count);
+        Ok(serde_json::to_string(&funnel)?)
+    });
     if let Err(e) = stored {
         tracing::warn!("search funnel not recorded ({e})");
     }
