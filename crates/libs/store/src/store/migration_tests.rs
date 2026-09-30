@@ -38,6 +38,7 @@ fn rewrite_on_read(path: std::path::PathBuf) {
                 "shown":[[0,["Ah","Kd"]]],"stacks":{}})
             .to_string();
             let digest = crate::integrity::hand_digest("A", "h", "2026-09-30T00:00:00Z", "", "", &summary);
+            serde_json::from_str::<sv10_model::model::HandSummary>(&summary).unwrap();
             conn.execute("UPDATE hands SET summary=?1, digest=?2, showdown=1 WHERE hand_id='h'", params![summary, digest]).unwrap();
         }));
     });
@@ -77,8 +78,10 @@ fn showdown_backfill_never_overwrites_a_concurrently_rewritten_hand() {
     assert!(summary.contains("Ah"), "peer write must have committed");
     assert_eq!(showdown, 1, "migration installed the flag from its stale summary");
     drop(conn);
+    store.write_lock().execute("UPDATE hands SET showdown=NULL", []).unwrap();
     store.backfill_showdown().unwrap();
-    assert!(store.hand("A", "h").unwrap().unwrap().showdown);
+    let showdown: i64 = store.read().query_row("SELECT showdown FROM hands", [], |r| r.get(0)).unwrap();
+    assert_eq!(showdown, 1, "retry derives the flag from the newer summary");
 }
 
 #[test]
