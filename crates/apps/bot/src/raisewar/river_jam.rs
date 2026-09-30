@@ -75,5 +75,5 @@ pub fn fit_river_jam_call(commits: &[Commit]) -> RiverJamFit {
 
 /// The shift to play with, from the stored fit (0 when absent, unreadable or inactive).
 pub fn installed_river_jam_shift(stored: Option<&str>) -> f64 {
-    stored.and_then(|j| serde_json::from_str::<RiverJamFit>(j).ok()).map(|f| f.shift).unwrap_or(0.0)
+    stored.and_then(|j| serde_json::from_str::<RiverJamFit>(j).ok()).filter(|f| f.active).map(|f| f.shift).unwrap_or(0.0)
 }
