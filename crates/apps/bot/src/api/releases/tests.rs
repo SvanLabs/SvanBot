@@ -48,6 +48,16 @@ fn orphan_recovery_keeps_startup_grace_and_existing_terminal_messages() {
     assert_eq!(liveness::reconcile(&failed, false, 300.0), failed);
 }
 
+#[test]
+fn manual_update_fetch_uses_its_progress_owner_before_operation_lock() {
+    let s = Shared::for_test("manual-update-fetch-owner", &["A"]);
+    let path = s.config.artifacts.join("release-progress.json");
+    std::fs::write(&path, json!({"state":"running","started":now_secs()-120.0,"pid":std::process::id()}).to_string()).unwrap();
+    assert!(update_running(&s.config.artifacts), "a slow manual fetch remains active");
+    std::fs::write(&path, json!({"state":"running","started":now_secs()-120.0,"pid":u32::MAX}).to_string()).unwrap();
+    assert!(!update_running(&s.config.artifacts), "an abandoned manual fetch becomes retryable");
+}
+
 #[tokio::test]
 async fn manual_release_operation_remains_active_without_dashboard_lock() {
     let s = Shared::for_test("manual-release-operation", &["A"]);

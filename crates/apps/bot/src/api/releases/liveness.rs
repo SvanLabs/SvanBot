@@ -36,14 +36,24 @@ pub(super) fn update_running(artifacts: &Path) -> bool {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return true,
         Err(_) => {}
     }
+    // A manually started updater can spend time fetching before taking the operation lock. New
+    // progress writers record that owner too, so it is not mistaken for an abandoned dashboard run.
+    let progress_owner = std::fs::read_to_string(artifacts.join("release-progress.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .filter(|progress| progress["state"] == "running" && progress["pid"].as_u64().is_some());
     let lock = artifacts.join("release.lock");
     let meta = match std::fs::metadata(&lock) {
         Ok(meta) => meta,
-        Err(e) => return e.kind() != std::io::ErrorKind::NotFound,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return progress_owner.as_ref().is_some_and(owner_alive),
+        Err(_) => return true,
     };
     if let Some(owner) = std::fs::read_to_string(&lock).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok())
         && owner["pid"].as_u64().is_some()
     {
+        return owner_alive(&owner);
+    }
+    if let Some(owner) = progress_owner {
         return owner_alive(&owner);
     }
     // Older installs and the short spawn window carry no owner yet; preserve their age fallback.
