@@ -4,6 +4,7 @@
   progress.py start                   a new run (records the installed build's commit as the starting point)
   progress.py stage NAME              close the running stage, open NAME
   progress.py fail [STAGE] [MESSAGE]  the run failed (in STAGE, default the running one)
+  progress.py fail-running [STAGE] [MESSAGE]  fail only a still-running record on unexpected exit
   progress.py installed COMMIT        the run installed COMMIT; stage durations become the next ETA
   progress.py current MESSAGE         there was nothing to install (the checkout is ahead of the
                                       update branch); MESSAGE says why, and no stage ever ran
@@ -88,7 +89,9 @@ def main(argv: list[str]) -> int:
         close_running(st, now)
         st["stages"].append({"name": argv[1], "state": "running", "started": now, "seconds": None})
         st["state"] = "running"
-    elif cmd == "fail":
+    elif cmd in ("fail", "fail-running"):
+        if cmd == "fail-running" and st.get("state") != "running":
+            return 0
         stage = argv[1] if len(argv) > 1 and argv[1] else None
         running = next((s for s in st["stages"] if s["state"] == "running"), None)
         if running is not None:

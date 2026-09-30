@@ -18,6 +18,7 @@ git clone -q "$t/origin.git" "$t/dev" 2>/dev/null
 mkdir -p "$t/dev/scripts" "$t/dev/crates"
 cp "$repo/scripts/update.sh" "$repo/scripts/progress.py" "$repo/scripts/rollback.sh" "$t/dev/scripts/"
 echo 'fn a() {}' > "$t/dev/crates/a.rs"
+echo 'operator notes' > "$t/dev/operator-notes.txt"
 printf 'artifacts/\n' > "$t/dev/.gitignore"
 git -C "$t/dev" add -A && git -C "$t/dev" commit -qm "first" && git -C "$t/dev" -c push.negotiate=false push -q origin HEAD:main
 git clone -q "$t/origin.git" "$t/box"
@@ -72,6 +73,43 @@ echo 'fn dirty() {}' > "$box/crates/dirty.rs"
 if run "$t/release-ok.sh" >/dev/null 2>&1; then fail "a dirty checkout was updated"; fi
 [ "$(git -C "$box" rev-parse HEAD)" = "$before" ] || fail "dirty checkout moved"
 rm "$box/crates/dirty.rs"
+
+# A tracked non-build file can pass the source guard and still prevent git's fast-forward.
+# That refusal must finish the progress record instead of leaving a permanent running card.
+echo 'upstream notes' > "$t/dev/operator-notes.txt"
+git -C "$t/dev" add operator-notes.txt
+git -C "$t/dev" commit -qm notes
+git -C "$t/dev" -c push.negotiate=false push -q origin HEAD:main
+echo 'local notes to preserve' > "$box/operator-notes.txt"
+echo '{}' > "$box/artifacts/release.lock"
+if run "$t/release-ok.sh" >/dev/null 2>&1; then fail "a conflicting tracked edit was overwritten"; fi
+[ "$(git -C "$box" rev-parse HEAD)" = "$before" ] || fail "a refused fast-forward moved the checkout"
+[ "$(cat "$box/operator-notes.txt")" = 'local notes to preserve' ] || fail "local notes were lost"
+[ ! -e "$box/artifacts/release.lock" ] || fail "release.lock left after a refused fast-forward"
+[[ "$(state)" == "failed - fetch:failed" ]] || fail "a refused fast-forward left progress running: $(state)"
+git -C "$box" checkout -q -- operator-notes.txt
+
+# An unexpected Git error must also finish a run. A failing update check owns no run, so it must
+# not change another operation's progress or remove the dashboard lock.
+mkdir -p "$t/git-failure"
+real_git=$(command -v git)
+cat > "$t/git-failure/git" <<EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = rev-parse ] && [ "\${2:-}" = HEAD ]; then exit 42; fi
+exec "$real_git" "\$@"
+EOF
+chmod +x "$t/git-failure/git"
+if PATH="$t/git-failure:$PATH" run "$t/release-ok.sh" >/dev/null 2>&1; then fail "an unexpected git failure succeeded"; fi
+[[ "$(state)" == "failed - fetch:failed" ]] || fail "an unexpected git failure left progress running: $(state)"
+grep -q 'exit 42' "$box/artifacts/release-progress.json" || fail "unexpected failure lacks its exit status"
+(cd "$box" && python3 scripts/progress.py start && python3 scripts/progress.py stage build)
+cp "$box/artifacts/release-progress.json" "$t/active-progress.json"
+echo '{}' > "$box/artifacts/release.lock"
+git -C "$box" remote set-url origin "$t/missing.git"
+if run "$t/release-ok.sh" --check >/dev/null 2>&1; then fail "a failed update check succeeded"; fi
+cmp "$box/artifacts/release-progress.json" "$t/active-progress.json" || fail "update check changed another run's progress"
+[ -e "$box/artifacts/release.lock" ] || fail "update check removed another run's lock"
+git -C "$box" remote set-url origin "$t/origin.git"
 
 # 5. Local commits the branch lacks: refused (never merged, never rewritten).
 echo 'fn local() {}' > "$box/crates/local.rs" && git -C "$box" add -A && git -C "$box" commit -qm local

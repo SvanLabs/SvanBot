@@ -18,8 +18,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH" GIT_TERMINAL_PROMPT=0
 mkdir -p artifacts
-# The dashboard wrote artifacts/release.lock before starting us; remove it however we exit.
-trap 'rm -f artifacts/release.lock' EXIT
+update_started=0
+update_exit() {
+  local status=$?
+  if [ "$update_started" = 1 ]; then
+    if [ "$status" != 0 ]; then
+      progress fail-running "" "update stopped unexpectedly (exit $status); see the release log"
+    fi
+    rm -f artifacts/release.lock
+  fi
+  return "$status"
+}
+trap update_exit EXIT
 remote="${SVANBOT_UPDATE_REMOTE:-origin}"
 branch="${SVANBOT_UPDATE_BRANCH:-main}"
 progress() { python3 scripts/progress.py "$@" || true; }
@@ -36,6 +46,7 @@ if [ "${1:-}" = "--rollback" ]; then
   [[ "$commit" =~ ^[0-9a-f]{7,40}$ ]] || { echo "update: usage: scripts/update.sh --rollback <commit>" >&2; exit 2; }
   : > artifacts/release.log
   exec > >(tee -a artifacts/release.log) 2>&1
+  update_started=1
   progress start
   echo "== restoring the saved build $commit"
   progress stage restore
@@ -55,6 +66,7 @@ fi
 
 : > artifacts/release.log
 exec > >(tee -a artifacts/release.log) 2>&1
+update_started=1
 progress start
 echo "== fetching $remote/$branch"
 progress stage fetch
@@ -160,7 +172,10 @@ ahead_updates() {
 
 if [ "$before" != "$target" ]; then
   if git merge-base --is-ancestor "$before" "$target"; then
-    git merge --ff-only --quiet "$target"
+    if ! git merge --ff-only --quiet "$target"; then
+      progress fail fetch "fast-forward refused; local edits are preserved, see the release log"
+      exit 1
+    fi
     echo "fast-forwarded $(git rev-parse --short "$before") -> $(git rev-parse --short "$target") ($(git rev-list --count "$before..$target") commits)"
   elif git merge-base "$before" "$target" >/dev/null 2>&1; then
     ahead_updates
