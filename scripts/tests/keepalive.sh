@@ -9,19 +9,21 @@ cleanup() { [ -z "$sleeper" ] || kill "$sleeper" 2>/dev/null || true; rm -rf "$r
 trap cleanup EXIT
 fail() { echo "keepalive test: $*" >&2; exit 1; }
 mkdir -p "$root/scripts" "$root/artifacts"
-cp "$repo_root/scripts/keepalive.sh" "$repo_root/scripts/stop.sh" "$repo_root/scripts/start.sh" "$root/scripts/"
+cp "$repo_root/scripts/keepalive.sh" "$repo_root/scripts/stop.sh" "$repo_root/scripts/start.sh" "$repo_root/scripts/supervisors.sh" "$root/scripts/"
 decide() { KEEPALIVE_DRY=1 "$root/scripts/keepalive.sh"; }
 
 [ "$(decide)" = "fleet down, restarting" ] || fail "a down fleet with no hold was not restarted"
 grep -q "restarting svanbot10.service" "$root/artifacts/logs/keepalive.log" || fail "restart decision not logged"
 
 sleep 60 & sleeper=$!
-echo "$sleeper" > "$root/artifacts/supervisor.pid"
+for file in supervisor.pid learner-supervisor.pid analyst-supervisor.pid monitor-supervisor.pid logrotate.pid; do
+  echo "$sleeper" > "$root/artifacts/$file"
+done
 [ "$(decide)" = "fleet up" ] || fail "a running supervisor was treated as down"
 kill "$sleeper"; wait "$sleeper" 2>/dev/null || true; sleeper=
 echo "$((1 << 22))" > "$root/artifacts/supervisor.pid"   # stale pid: nothing runs there
 [ "$(decide)" = "fleet down, restarting" ] || fail "a stale supervisor pid kept the fleet down"
-rm "$root/artifacts/supervisor.pid"
+rm "$root/artifacts/supervisor.pid" "$root/artifacts/learner-supervisor.pid" "$root/artifacts/analyst-supervisor.pid" "$root/artifacts/monitor-supervisor.pid" "$root/artifacts/logrotate.pid"
 
 "$root/scripts/stop.sh" >/dev/null
 [[ $(decide) == "fleet down, held until "* ]] || fail "the default 30-minute stop hold was ignored"

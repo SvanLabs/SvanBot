@@ -10,25 +10,50 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p artifacts/logs
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >> artifacts/logs/keepalive.log; }
-alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
-
-for p in artifacts/supervisor.pid artifacts/head-supervisor.pid; do
-  if alive "$p"; then echo "fleet up"; exit 0; fi
-done
+source scripts/supervisors.sh
+# Read feature/layout expectations without exposing keys; explicit caller flags win.
+caller_fleet=${SVANBOT_FLEET-}; caller_learner=${LEARNER-}; caller_analyst=${ANALYST-}
+set -a; [ ! -f .env ] || source .env; set +a
+[ -z "$caller_fleet" ] || export SVANBOT_FLEET="$caller_fleet"
+[ -z "$caller_learner" ] || export LEARNER="$caller_learner"
+[ -z "$caller_analyst" ] || export ANALYST="$caller_analyst"
 hold=none
 if [ -f artifacts/hold-until ]; then
   hold=$(cat artifacts/hold-until)
   if [ "$hold" = forever ]; then echo "fleet down, held forever"; exit 0; fi
   if [[ $hold =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$hold" ]; then echo "fleet down, held until $hold"; exit 0; fi
 fi
+missing=()
+while IFS= read -r file; do pid_alive "$file" || missing+=("$file"); done < <(expected_supervisors)
+[ "${#missing[@]}" -gt 0 ] || { echo "fleet up"; exit 0; }
+fleet_present=0
+for file in artifacts/supervisor.pid artifacts/head-supervisor.pid artifacts/worker-*-supervisor.pid; do
+  pid_alive "$file" && fleet_present=1
+done
 exec 9> artifacts/release-operation.lock
 if ! flock -n 9; then
-  log "fleet down; a release operation holds the lock, waiting"
+  log "fleet incomplete; release operation holds the lock, waiting"
   echo "fleet down, release in progress"
   exit 0
 fi
-exec 9>&-
-log "fleet down with no hold in force (hold-until: $hold); restarting svanbot10.service"
-echo "fleet down, restarting"
-[ "${KEEPALIVE_DRY:-0}" = 1 ] && exit 0
-systemctl --user restart svanbot10.service >> artifacts/logs/keepalive.log 2>&1 || log "restart failed"
+if [ "$fleet_present" = 1 ]; then
+  log "partial fleet; repairing missing supervisors: ${missing[*]}"
+  echo "fleet partial, repairing"
+  [ "${KEEPALIVE_DRY:-0}" = 1 ] && exit 0
+  # ExecReload puts repaired children in the persistent fleet service's cgroup. Release the
+  # probe lock first: start.sh --repair acquires its own lock in that service.
+  exec 9>&-
+  if systemctl --user start svanbot10.service >> artifacts/logs/keepalive.log 2>&1; then
+    systemctl --user reload svanbot10.service >> artifacts/logs/keepalive.log 2>&1 || log "partial repair failed"
+  else
+    log "fleet service could not be activated for partial repair"
+  fi
+else
+  # systemd runs startup in the fleet service's cgroup, rather than killing detached children
+  # when this oneshot finishes. Startup adopts surviving children instead of duplicating writers.
+  exec 9>&-
+  log "fleet down with no hold in force (hold-until: $hold); restarting svanbot10.service"
+  echo "fleet down, restarting"
+  [ "${KEEPALIVE_DRY:-0}" = 1 ] && exit 0
+  systemctl --user restart svanbot10.service >> artifacts/logs/keepalive.log 2>&1 || log "restart failed"
+fi

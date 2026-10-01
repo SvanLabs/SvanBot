@@ -2,6 +2,7 @@
 # Stop the fleet gracefully (models are saved on SIGTERM); seats are held 120s server-side.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+source scripts/supervisors.sh
 # How long the keepalive (0145) leaves the fleet down: --hold 45m | 8h | forever (default 30m).
 hold=30m
 while [ $# -gt 0 ]; do
@@ -41,18 +42,20 @@ for p in artifacts/supervisor.pid artifacts/head-supervisor.pid artifacts/worker
   # shellcheck disable=SC2086
   [ -f $p ] && kill "$(cat $p)" 2>/dev/null || true
 done
-if [ -f artifacts/learner-supervisor.pid ]; then
-  kill "$(cat artifacts/learner-supervisor.pid)" 2>/dev/null || true
-  pkill -f "target/release/learner" 2>/dev/null || true
-fi
-if [ -f artifacts/analyst-supervisor.pid ]; then
-  kill "$(cat artifacts/analyst-supervisor.pid)" 2>/dev/null || true
-  pkill -f "target/release/analyst" 2>/dev/null || true
-fi
-if [ -f artifacts/monitor-supervisor.pid ]; then
-  kill "$(cat artifacts/monitor-supervisor.pid)" 2>/dev/null || true
-  pkill -f "scripts/monitor.py" 2>/dev/null || true
-fi
+# Supporting children belong to this checkout. Never use an unscoped pkill pattern, which can
+# stop another deployment (or the live fleet when a scratch fault test runs).
+for tool in learner analyst monitor; do
+  file="artifacts/$tool-supervisor.pid"
+  if pid_alive "$file"; then kill "$(cat "$file")" 2>/dev/null || true; fi
+  term_pidfile "artifacts/$tool.pid"
+  # Compatibility with supervisors installed before supporting child pid files were recorded.
+  while true; do
+    orphan=$(find_orphan "$tool")
+    [ -n "$orphan" ] || break
+    echo "$orphan" > "artifacts/$tool.pid"
+    term_pidfile "artifacts/$tool.pid"
+  done
+done
 [ -f artifacts/logrotate.pid ] && kill "$(cat artifacts/logrotate.pid)" 2>/dev/null || true
-rm -f artifacts/bot.pid artifacts/head.pid artifacts/worker-*.pid artifacts/fleet.pids artifacts/supervisor.pid artifacts/head-supervisor.pid artifacts/worker-*-supervisor.pid artifacts/learner-supervisor.pid artifacts/analyst-supervisor.pid artifacts/logrotate.pid artifacts/monitor-supervisor.pid
+rm -f artifacts/bot.pid artifacts/head.pid artifacts/worker-*.pid artifacts/fleet.pids artifacts/supervisor.pid artifacts/head-supervisor.pid artifacts/worker-*-supervisor.pid artifacts/learner-supervisor.pid artifacts/analyst-supervisor.pid artifacts/logrotate.pid artifacts/monitor-supervisor.pid artifacts/learner.pid artifacts/analyst.pid artifacts/monitor.pid
 echo "Stopped (keepalive hold: $hold)."
