@@ -14,6 +14,9 @@ pub mod calibration;
 pub mod hands;
 pub mod models;
 pub mod scan;
+pub mod supervision;
+mod workers;
+use workers::{spawn_head_tailer, spawn_worker_loops, spawn_worker_model_refresh};
 
 pub use backup::{backup_database, free_bytes, save_models};
 pub use calibration::{update_calibration, update_calibration_with};
@@ -72,7 +75,7 @@ pub fn spawn_all(shared: &Arc<Shared>) {
     spawn_findings_scan(shared);
 
     // Past-season hands from the server's history export feed the opponent models.
-    tokio::spawn(crate::history::run(shared.clone()));
+    supervision::spawn("history download", shared, crate::history::run);
 
     // The head owns the canonical models; workers only write hand rows.
     if shared.config.head {
@@ -82,8 +85,7 @@ pub fn spawn_all(shared: &Arc<Shared>) {
 
 /// Poll `/season/current` and `/season/me`: wind-down flag and per-bot season state.
 fn spawn_season_poller(shared: &Arc<Shared>) {
-    let season = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("season poller", shared, |season| async move {
         let http = reqwest::Client::builder().user_agent(crate::USER_AGENT).timeout(Duration::from_secs(20)).build().unwrap();
         loop {
             if let Ok(r) = http.get(format!("{}/season/current", season.config.rest_base)).send().await
@@ -131,8 +133,7 @@ fn spawn_season_poller(shared: &Arc<Shared>) {
 /// store it for every process and check the running target's live gates. A restart starts in
 /// champion mode (the stored state is overwritten before the first reading).
 fn spawn_experiment_poller(shared: &Arc<Shared>) {
-    let poll = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("experiment poller", shared, |poll| async move {
         let http = reqwest::Client::builder().user_agent(crate::USER_AGENT).timeout(Duration::from_secs(20)).build().unwrap();
         let mut mode = crate::experiment::ModeState::start(now_secs());
         crate::experiment::store_mode(&poll, &mode);
@@ -146,8 +147,7 @@ fn spawn_experiment_poller(shared: &Arc<Shared>) {
 /// Every process re-reads the experiment state (mode, targets, verdicts, the pair's hand counts)
 /// every 15 s; a bot's policy changes only at its next hand.
 fn spawn_experiment_refresh(shared: &Arc<Shared>) {
-    let refresh = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("experiment refresh", shared, |refresh| async move {
         loop {
             let s = refresh.clone();
             crate::jobs::blocking("experiment refresh", move || crate::experiment::refresh(&s)).await;
@@ -159,8 +159,7 @@ fn spawn_experiment_refresh(shared: &Arc<Shared>) {
 /// Fill the all-in EV net of stored hands (0213): new hands within 30 s, the backlog in batches.
 fn spawn_ev_fill(shared: &Arc<Shared>) {
     const BATCH: usize = 2_000;
-    let fill = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("all-in EV fill", shared, |fill| async move {
         let mut total = 0usize;
         loop {
             let s = fill.clone();
@@ -201,8 +200,7 @@ fn spawn_findings_scan(shared: &Arc<Shared>) {
     if shared.config.worker {
         return;
     }
-    let scan = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("findings scan", shared, |scan| async move {
         let root = scan.config.root.clone();
         tokio::time::sleep(Duration::from_secs(300)).await;
         loop {
@@ -216,8 +214,7 @@ fn spawn_findings_scan(shared: &Arc<Shared>) {
 /// Pick up what the learner stored for live play (promotions, models, fits) every 30 s; a store
 /// read error keeps what is installed ([`crate::installs`]).
 fn spawn_params_watcher(shared: &Arc<Shared>) {
-    let watcher = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("install watcher", shared, |watcher| async move {
         let installs = Arc::new(Mutex::new(crate::installs::Installs::after_startup(&watcher.store)));
         loop {
             let (w, i) = (watcher.clone(), installs.clone());
@@ -229,8 +226,7 @@ fn spawn_params_watcher(shared: &Arc<Shared>) {
 
 /// Head-to-head results per opponent, for table selection.
 fn spawn_h2h_loop(shared: &Arc<Shared>) {
-    let h2h = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("head-to-head", shared, |h2h| async move {
         let ledger = Arc::new(Mutex::new(crate::headtohead::Ledger::default()));
         loop {
             let (s, ledger) = (h2h.clone(), ledger.clone());
@@ -249,8 +245,7 @@ fn spawn_h2h_loop(shared: &Arc<Shared>) {
 
 /// Keep the dashboard's starting-hand guide in step with the live models and parameters.
 fn spawn_guide_loop(shared: &Arc<Shared>) {
-    let guide = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("starting-hand guide", shared, |guide| async move {
         tokio::time::sleep(Duration::from_secs(90)).await;
         loop {
             let g = guide.clone();
@@ -268,8 +263,7 @@ fn spawn_guide_loop(shared: &Arc<Shared>) {
 
 /// Retry hands whose insert failed every 30 s (0152).
 fn spawn_hand_retry(shared: &Arc<Shared>) {
-    let retry = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("hand retry", shared, |retry| async move {
         let mut t = tokio::time::interval(Duration::from_secs(30));
         loop {
             t.tick().await;
@@ -283,8 +277,7 @@ fn spawn_hand_retry(shared: &Arc<Shared>) {
 }
 /// Checkpoint the models every 5 minutes (and on shutdown).
 fn spawn_model_saver(shared: &Arc<Shared>) {
-    let saver = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("model saver", shared, |saver| async move {
         // Every 5 minutes (and on shutdown): hands after the checkpoint are replayed from the
         // hand table on startup, so a longer interval loses nothing and writes 10x less.
         let mut t = tokio::time::interval(Duration::from_secs(300));
@@ -299,8 +292,7 @@ fn spawn_model_saver(shared: &Arc<Shared>) {
 
 /// Self-calibration: learn per-spot EV corrections from predicted vs realized outcomes.
 fn spawn_calibration_loop(shared: &Arc<Shared>) {
-    let calib = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("self-calibration", shared, |calib| async move {
         tokio::time::sleep(Duration::from_secs(20)).await;
         loop {
             let c = calib.clone();
@@ -314,8 +306,7 @@ fn spawn_calibration_loop(shared: &Arc<Shared>) {
 /// Reputation from every season's leaderboard, refreshed hourly.
 fn spawn_reputation_loop(shared: &Arc<Shared>) {
     // Ended seasons are cached, so a refresh is two requests.
-    let rep = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("reputation", shared, |rep| async move {
         tokio::time::sleep(Duration::from_secs(30)).await;
         loop {
             if let Some(book) = crate::reputation::refresh(&rep).await {
@@ -331,8 +322,7 @@ fn spawn_reputation_loop(shared: &Arc<Shared>) {
 /// Autonomy watchdog (0222): every 10 minutes, check that the learner, analyst, fold calibration
 /// and backups are still reporting, and log once when one stops and once when it recovers.
 fn spawn_watchdog(shared: &Arc<Shared>) {
-    let watch = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("autonomy watchdog", shared, |watch| async move {
         // Give every loop a full round after a restart before judging it.
         tokio::time::sleep(Duration::from_secs(15 * 60)).await;
         let loops = crate::watchdog::loops(crate::pacing::Pacing::from_env().max_idle_secs);
@@ -361,8 +351,7 @@ fn spawn_watchdog(shared: &Arc<Shared>) {
 /// update would bring without a click. A failed fetch is logged once per change of outcome and
 /// simply tried again at the next tick (no retry loop, LESSONS 30).
 fn spawn_update_checker(shared: &Arc<Shared>) {
-    let up = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("update checker", shared, |up| async move {
         tokio::time::sleep(Duration::from_secs(90)).await;
         let mut last_error: Option<String> = None;
         loop {
@@ -388,8 +377,7 @@ fn spawn_update_checker(shared: &Arc<Shared>) {
 
 /// Hourly consistent database backups.
 fn spawn_backup_loop(shared: &Arc<Shared>) {
-    let backups = shared.clone();
-    tokio::spawn(async move {
+    supervision::spawn("database backup", shared, |backups| async move {
         tokio::time::sleep(Duration::from_secs(120)).await;
         loop {
             let b = backups.clone();
@@ -419,82 +407,6 @@ fn spawn_bot_loops(shared: &Arc<Shared>) {
             }
         });
     }
-}
-
-/// Worker loops of a split fleet (0128): heartbeats for the head dashboard and the operator's
-/// desired-mode key. Head processes never run these; the all-in-one fleet never needs them.
-/// Reload the head's opponent-model checkpoint every 30 s when it changed (the head saves every
-/// 5 minutes after folding every process's hands in, so this is the canonical view).
-fn spawn_worker_model_refresh(shared: &Arc<Shared>) {
-    let refresh = shared.clone();
-    tokio::spawn(async move {
-        let mut last = None;
-        loop {
-            let s = refresh.clone();
-            let prev = last.take();
-            last = crate::jobs::blocking("worker model refresh", move || {
-                let mut last = prev;
-                refresh_models_from_store(&s, &mut last);
-                last
-            })
-            .await
-            .flatten();
-            tokio::time::sleep(Duration::from_secs(30)).await;
-        }
-    });
-}
-
-fn spawn_worker_loops(shared: &Arc<Shared>) {
-    let beats = shared.clone();
-    tokio::spawn(async move {
-        loop {
-            for (slot, bot) in beats.config.bots.iter().enumerate() {
-                let value = {
-                    let b = beats.bots[slot].read();
-                    crate::live::wrap_heartbeat(&b, now_secs())
-                };
-                if let Err(e) = beats.store.put_kv(&crate::live::heartbeat_key(&bot.name), &value.to_string()) {
-                    tracing::warn!("heartbeat for {} not stored: {e}", bot.name);
-                }
-            }
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        }
-    });
-    let wants = shared.clone();
-    tokio::spawn(async move {
-        let mut last: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        loop {
-            for (slot, bot) in wants.config.bots.iter().enumerate() {
-                let key = crate::live::want_key(&bot.name);
-                let want = wants.store.get_kv(&key).ok().flatten().unwrap_or_default();
-                if !want.is_empty() && last.get(&bot.name).map(|l| l.as_str()) != Some(want.as_str()) {
-                    let cmd = want.clone();
-                    wants.update(slot, |b| crate::live::apply_desired(b, &cmd));
-                    wants.log(&bot.name, "info", format!("operator command from the head: {cmd}"));
-                    last.insert(bot.name.clone(), want);
-                }
-            }
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        }
-    });
-}
-/// Head loop of a split fleet (0128): fold every newly stored hand into the canonical models.
-/// Workers write hand rows but never save; the regular 5-minute saver persists what the tailer
-/// observed, so no observation is lost whichever process saw the table.
-fn spawn_head_tailer(shared: &Arc<Shared>) {
-    let tail = shared.clone();
-    tokio::spawn(async move {
-        loop {
-            let t = tail.clone();
-            crate::jobs::blocking("head tailer", move || match fold_new_hands(&t.store, &t.models) {
-                Ok(folded) if folded > 0 => tracing::info!("head tailer folded {folded} stored hands into the models"),
-                Err(e) => tracing::warn!("head model tail failed: {e}"),
-                _ => {}
-            })
-            .await;
-            tokio::time::sleep(Duration::from_secs(30)).await;
-        }
-    });
 }
 
 /// Unix seconds, for heartbeat and dashboard timestamps.

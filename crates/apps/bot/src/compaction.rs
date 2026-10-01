@@ -75,8 +75,7 @@ fn remaining(store: &Store, history: Option<&HistoryDb>) -> serde_json::Map<Stri
 
 /// Start the loop (the fleet head or the all-in-one fleet: one process packs).
 pub fn spawn(shared: &Arc<Shared>) {
-    let shared = shared.clone();
-    tokio::spawn(async move {
+    crate::tasks::supervision::spawn("compaction", shared, |shared| async move {
         // After startup's own work (integrity checks, model load, first tables).
         tokio::time::sleep(Duration::from_secs(90)).await;
         let path = shared.config.artifacts.join("history.db");

@@ -286,6 +286,12 @@ panel):**
 5. Optional: the Radeon HD 5870 has no compute use (no Vulkan or ROCm for TeraScale 2). Removing it
    and using the i7's HD 4600 outputs saves roughly 20–30 W at idle.
 
+Background loops run under panic/return supervision, including season and experiment polling,
+artifact installs, hand/model maintenance, backups, history, compaction and split-worker loops.
+An ended instance restarts after 5 seconds; repeated failures back off to 5 minutes, resetting after
+10 minutes of useful lifetime. A running blocking job is never detached and replaced on a timeout:
+that would allow duplicate writers. Heartbeat alarms still report stalled work for diagnosis.
+
 ## Fault drills
 
 | Drill | Expected outcome | Last run |
@@ -293,6 +299,7 @@ panel):**
 | Corrupt `svanbot10.db` header while stopped, start | error logged, file in `quarantine/`, newest sealed backup restored | Every build: `sv10-store` test `damaged_database_is_restored_from_newest_verified_backup` |
 | Corrupt the newest backup too | that backup skipped (hash mismatch), an older one restored | Same test (a rotted newer backup is skipped) |
 | No backup at all | file quarantined, database starts empty | Every build: `damaged_database_without_backup_is_quarantined_and_starts_empty` |
+| Panic or unexpectedly return from a background loop | the loop restarts and resumes useful work; other loops and bots continue | Every build: `tasks::supervision` fault drills, including child cancellation and bounded backoff |
 | Kill `ingest` mid-run, re-run | resumes from the batch watermark, no duplicates (`verify_corpus` 0 mismatches) | 2026-09-15 on a scratch root: killed after batch 1 (1,000 rows, watermark 1000); re-run added 9,000, 10,000 distinct rows, 0 mismatches |
 | Hot-swap release while seated | fleet exits 75 when no bot is mid-turn, supervisor restarts at once, seats resync (a hand in progress at that moment is saved and settled by the new process from its resync replay); learner swaps between steps | Run live: every bot connected again within the server's 120 s grace window |
 | Restore the monthly archive into a scratch dir | the databases rebuilt, hashes and row counts verified, `repo.bundle` clones | Run by hand into a scratch dir: `archive restore monthly/YYYY-MM` completed with every hash and row count verified and the bundle cloned; daily differentials: every build, `sv10-store` test `weekly_daily_monthly_restore_and_prune` |
