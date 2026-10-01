@@ -2,6 +2,30 @@
 use super::*;
 
 #[test]
+fn recorded_stack_pairs_preserve_identity_and_sliced_evaluation() {
+    let p = crate::policy::Params { samples: 40, ..Default::default() };
+    let c = crate::policy::Params { open_bb: 3.0, short_open_bb: 3.0, ..p.clone() };
+    let models = sv10_model::model::ModelStore::default();
+    let clones = vec![(crate::agents::ProfileClone::exact("v", models.profile("v")), 1.0)];
+    let champion = Arm { params: &p, nn: None };
+    let arms = [Arm { params: &c, nn: None }, Arm { params: &p, nn: None }];
+    let layouts = [[500; 6], [10000, 500, 600, 1200, 8000, 3000]];
+    let whole = paired_sums_arms_stacked(&champion, &arms, &clones, &models, 0..4, 30, &layouts, 31);
+    let mut sliced = vec![PairedSums::default(); 2];
+    for range in [0..1, 1..3, 3..4] {
+        for (sum, part) in sliced.iter_mut().zip(paired_sums_arms_stacked(&champion, &arms, &clones, &models, range, 30, &layouts, 31)) {
+            sum.add(&part);
+        }
+    }
+    for (whole, sliced) in whole.iter().zip(sliced) {
+        assert_eq!((whole.hands, whole.differing), (sliced.hands, sliced.differing));
+        assert!((whole.sum - sliced.sum).abs() < 1e-9 && (whole.sum_sq - sliced.sum_sq).abs() < 1e-8);
+    }
+    assert_eq!(whole[1].differing, 0, "identical arms on identical stacks/deals");
+    assert!(whole[0].differing > 0, "the fixture exercises a real policy difference");
+}
+
+#[test]
 fn combining_halves_keeps_the_mean_and_shrinks_the_error() {
     let a = PairedResult { hands: 1000, mean_bb: 0.02, se_bb: 0.01, differing: 400 };
     let b = PairedResult { hands: 1000, mean_bb: 0.04, se_bb: 0.01, differing: 500 };

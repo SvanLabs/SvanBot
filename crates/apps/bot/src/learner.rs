@@ -9,6 +9,7 @@ pub mod progress;
 pub mod refit;
 pub mod run;
 pub mod search;
+pub mod stacks;
 
 use serde_json::Value;
 use sv10_core::model::ModelStore;

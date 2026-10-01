@@ -25,6 +25,7 @@ mod provenance;
 mod replays;
 mod scans;
 mod slow;
+mod stack_samples;
 mod timeline;
 
 pub use audits::{AUDIT_RESULT_DAYS, AuditJob, AuditResult, AuditSummary};

@@ -63,6 +63,9 @@ pub struct Ledger {
     pub champion: String,
     /// Evidence epoch the entries were measured against; the epoch advancing retires the scope.
     pub refit_rowid: i64,
+    /// Paired stack objective identity; legacy scalar-stack evidence has an empty identity.
+    #[serde(default)]
+    pub evaluation: String,
     /// Combined entries by [`transition_key`].
     pub entries: BTreeMap<String, LedgerEntry>,
     /// Transitions a completed fresh-deal confirmation rejected under this scope: never offered
@@ -95,6 +98,16 @@ pub fn load(store: &Store, champion: &str, refit_rowid: i64) -> Ledger {
     match stored {
         Some(l) if l.champion == champion && l.refit_rowid == refit_rowid => l,
         _ => Ledger { champion: champion.to_string(), refit_rowid, ..Default::default() },
+    }
+}
+
+/// A changed fixture retires incompatible single-stack or different-distribution measurements.
+pub fn load_evaluated(store: &Store, champion: &str, refit_rowid: i64, evaluation: &str) -> Ledger {
+    let ledger = load(store, champion, refit_rowid);
+    if ledger.evaluation == evaluation {
+        ledger
+    } else {
+        Ledger { champion: champion.into(), refit_rowid, evaluation: evaluation.into(), ..Default::default() }
     }
 }
 

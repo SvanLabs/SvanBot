@@ -45,6 +45,13 @@ pub struct Target {
 }
 
 impl Target {
+    /// Include the exact simulated stack objective in live verdict identity.
+    pub fn with_evaluation(mut self, evaluation: &str) -> Self {
+        if !evaluation.is_empty() {
+            self.id.push_str(&format!(":{evaluation}"));
+        }
+        self
+    }
     /// A target for `knob` moved from `old` to `new`, scoped to (champion version, watermark).
     pub fn new(
         (champion, refit_rowid): (&str, i64),
@@ -81,6 +88,8 @@ impl Target {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TargetQueue {
+    /// Stack objective the simulated evidence was measured under.
+    pub evaluation: String,
     /// Champion version the targets were measured against.
     pub champion: String,
     /// Evidence watermark they were measured against.
@@ -118,13 +127,23 @@ pub fn build_queue(
             if !undecided(entry, tables, hands) || ledger.confirm_rejected.contains(&key) {
                 return None;
             }
-            Some(Target::new((&ledger.champion, ledger.refit_rowid), knob, *old, *new, params.clone(), entry.clone(), Source::Ledger))
+            Some(
+                Target::new((&ledger.champion, ledger.refit_rowid), knob, *old, *new, params.clone(), entry.clone(), Source::Ledger)
+                    .with_evaluation(&ledger.evaluation),
+            )
         })
         .filter(|t| confirming.as_ref().is_none_or(|c| c.id != t.id))
         .collect();
     candidates.sort_by(|a, b| b.z_to_bar().total_cmp(&a.z_to_bar()).then_with(|| a.id.cmp(&b.id)));
     candidates.dedup_by(|a, b| a.id == b.id);
-    TargetQueue { champion: ledger.champion.clone(), refit_rowid: ledger.refit_rowid, updated: now, confirming, candidates }
+    TargetQueue {
+        evaluation: ledger.evaluation.clone(),
+        champion: ledger.champion.clone(),
+        refit_rowid: ledger.refit_rowid,
+        updated: now,
+        confirming,
+        candidates,
+    }
 }
 
 /// The target the pair should run, or why none is safe. `live_champion` is the version live play
@@ -145,7 +164,8 @@ pub fn select<'a>(queue: Option<&'a TargetQueue>, live_champion: &str, done: imp
 /// The first target of this scope the experiment pair supported live and no completed
 /// confirmation has rejected: the learner confirms it next instead of searching (0267).
 pub fn live_supported(queue: Option<&TargetQueue>, verdicts: &crate::experiment::Verdicts, ledger: &Ledger) -> Option<Target> {
-    let queue = queue.filter(|q| q.champion == ledger.champion && q.refit_rowid == ledger.refit_rowid)?;
+    let queue =
+        queue.filter(|q| q.champion == ledger.champion && q.refit_rowid == ledger.refit_rowid && q.evaluation == ledger.evaluation)?;
     queue
         .confirming
         .iter()
@@ -232,6 +252,9 @@ mod tests {
         verdicts.insert(q.candidates[0].id.clone(), record(Verdict::LiveSupported));
         assert_eq!(live_supported(Some(&q), &verdicts, &l).map(|t| t.knob), Some("b".to_string()));
         let mut other = l.clone();
+        other.evaluation = "different-stack-objective".into();
+        assert!(live_supported(Some(&q), &verdicts, &other).is_none(), "foreign stack evidence cannot bypass screening");
+        other.evaluation = l.evaluation.clone();
         other.refit_rowid = 8;
         assert!(live_supported(Some(&q), &verdicts, &other).is_none(), "a refit retires the scope");
         l.confirm_rejected.insert(transition_key("b", 1.0, 0.9));
