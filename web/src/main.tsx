@@ -27,7 +27,7 @@ import { time, TURN_DEADLINE_S } from './format';
 import type { TableTheme } from './ui';
 import { announceSession, StaleNote, usePoll } from './api';
 import { PokerTable, TvMode, DecisionStrip } from './table';
-import { scopeLabel, Performance, Autonomy, ExperimentCard, ExperimentModePanel, Season, Profile, SearchFunnel } from './training';
+import { scopeLabel, Performance, Autonomy, RecentExperiments, ExperimentModePanel, Season, Profile, SearchFunnel } from './training';
 import { Replay, StartingHands } from './panels';
 import { IntelPanel } from './intel';
 import { TimelinePanel } from './timeline';
@@ -224,7 +224,7 @@ function App() {
       {view === 'results' && <TimelinePanel onReplay={openReplayFor}/>}
       <WidgetBoard view={view} editing={arranging} onDoneEditing={()=>setArranging(false)} defaults={{left:['autonomy', 'experiments', 'experiment-mode', 'calibration', 'accuracy', 'wiring', 'highlights', 'health', 'privacy'], center:['table', 'ranges', 'ticker', 'leaks', 'fleet-race', 'starting-hands', 'recent-hands', 'opponents'], right:['monitor', 'updates', 'host', 'season-race', 'badges', 'rivals', 'intel', 'stories', 'performance', 'champion', 'season', 'activity'], hidden:[]}} widgets={[
     {id:'autonomy', title:'Autonomy', node:<Panel title="Autonomy" icon={<Cpu size={15}/>} aside={<span className="tag amber">{snapshot?.training.automatic ? 'AUTOPILOT' : 'MANUAL'}</span>}><Autonomy training={snapshot?.training} onCommand={trainingCommand} busy={busy}/></Panel>},
-    {id:'experiments', title:'Experiments', node:<Panel title="Experiments" icon={<FlaskConical size={15}/>} aside={<span className="count">{snapshot?.training.experiments.length || 0}</span>}>{snapshot?.training.search_funnel?.total ? <SearchFunnel funnel={snapshot.training.search_funnel}/> : null}{snapshot?.training.experiments.length ? <div className="experiments">{snapshot.training.experiments.slice(0,6).map(experiment=><ExperimentCard experiment={experiment} key={experiment.id}/>)}</div> : <Empty title="The next edge is waiting" detail="Training cycles compare challengers against your current champion." icon={<FlaskConical size={24}/>}/>}</Panel>},
+    {id:'experiments', title:'Experiments', node:<Panel title="Experiments" icon={<FlaskConical size={15}/>} aside={<span className="count">{snapshot?.training.experiments.length || 0}</span>}>{snapshot?.training.search_funnel?.total ? <SearchFunnel funnel={snapshot.training.search_funnel}/> : null}{snapshot?.training.experiments.length ? <RecentExperiments training={snapshot.training}/> : <Empty title="The next edge is waiting" detail="Training cycles compare challengers against your current champion." icon={<FlaskConical size={24}/>}/>}</Panel>},
     {id:'experiment-mode', title:'Experiment mode', node:<Panel title="Experiment mode" icon={<FlaskConical size={15}/>} aside={<span className="tag">TOP FOUR</span>}><ExperimentModePanel/></Panel>},
     {id:'calibration', title:'Self-calibration', node:<Panel title="Self-calibration" icon={<Gauge size={15}/>} aside={<span className="tag">AUTO</span>}><CalibrationPanel/></Panel>},
     {id:'accuracy', title:'Decision accuracy', node:<Panel title="Decision accuracy" icon={<Gauge size={15}/>} aside={<span className="tag">7 DAYS</span>}><AccuracyPanel/></Panel>},

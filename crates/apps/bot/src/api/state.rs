@@ -445,6 +445,8 @@ pub fn training_json(s: &Shared) -> Value {
         "knobs": knob_catalogue(),
         "progress": {"hands": 0, "target": 10800},
         "experiments": experiments,
+        "last_promotion": crate::learner::progress::latest(&s.store),
+        "promotion_count": crate::learner::progress::promotion_count(&s.store),
         // Why candidates have been dying, over the last day (#317): the experiment list is capped at
         // 40 and holds only rejections, so it can neither count a full day nor say what the search
         // was even offered. `learner::funnel` counts at the death instead of reading the list back.
@@ -495,17 +497,14 @@ pub fn training_json(s: &Shared) -> Value {
     }
     learning.push(json!({"what": "Self-calibration", "updated": updated(crate::CALIBRATION_KEY),
         "detail": format!("{} active EV corrections", params.ev_bias.len())}));
-    let promoted_at = experiments
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|e| e["status"] == "promoted")
-        .filter_map(|e| e["ts"].as_f64())
-        .fold(None, |m: Option<f64>, t| Some(m.map_or(t, |m| m.max(t))));
+    let promoted_at = t["last_promotion"]["ts"].as_f64();
     let pacing = kv(crate::pacing::PACING_KEY);
     learning.push(json!({"what": "Strategy search", "updated": pacing.as_ref().and_then(|p| p["last_run"].as_f64()).map(|t| t as i64),
-        "detail": format!("last promotion {} · {} cycles in a row without one",
-            promoted_at.and_then(|t| chrono::DateTime::from_timestamp(t as i64, 0)).map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string()).unwrap_or_else(|| "none yet".into()),
+        "detail": format!("{} successful promotions · last promotion {}{} · {} cycles in a row without one",
+            t["promotion_count"].as_u64().unwrap_or(0),
+            promoted_at.and_then(|t| chrono::DateTime::from_timestamp(t as i64, 0)).map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| if t["promotion_count"].as_u64().unwrap_or(0) > 0 { "time unavailable".into() } else { "none yet".into() }),
+            if t["last_promotion"]["timestamp_basis"] == "lineage write" { " (lineage write)" } else { "" },
             pacing.as_ref().and_then(|p| p["streak"].as_u64()).unwrap_or(0))}));
     // Decision analyst (separate process): deep re-solves of live decisions over the last 24 hours.
     let analyst = kv(crate::ANALYST_STATUS_KEY);

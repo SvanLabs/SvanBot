@@ -5,6 +5,23 @@
 use super::*;
 
 #[test]
+fn successful_promotions_survive_the_recent_experiment_limit() {
+    let shared = Shared::for_test("durable-promotions", &["A"]);
+    shared.store.put_kv(crate::LEARNER_LINEAGE_KEY, r#"["sv10-ev-1","sv10-ev-2","sv10-ev-3"]"#).unwrap();
+    crate::learner::push_experiment(&shared.store, json!({"status":"promoted","ts":1_700_000_000.0}));
+    for i in 0..45 {
+        crate::learner::push_experiment(&shared.store, json!({"id":i,"status":"rejected","ts":1_700_000_001.0+i as f64}));
+    }
+    let training = training_json(&shared);
+    let search = training["learning"].as_array().unwrap().iter().find(|l| l["what"] == "Strategy search").unwrap();
+    assert!(!search["detail"].as_str().unwrap().contains("none yet"), "{search}");
+    assert_eq!(training["promotion_count"], 2);
+    assert!(training["last_promotion"]["ts"].is_number());
+    assert_eq!(training["last_promotion"]["timestamp_basis"], "lineage write");
+    assert_eq!(training["experiments"].as_array().unwrap().len(), 40);
+}
+
+#[test]
 fn the_champion_carries_every_knob_the_dashboard_shows() {
     // 2026-09-27: the Champion profile read "Short-stack open 0.00" and "Preflop jam at or below
     // 0.00" (live values 2.5 and 30): the panel listed knobs the API never sent. The panel's list is
