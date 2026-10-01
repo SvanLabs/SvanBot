@@ -130,12 +130,16 @@ pub fn installed(stored: Option<&str>, live_net_trained_at: Option<f64>) -> std:
 
 /// The installed correction read from the store (live network and residual fit).
 pub fn installed_from_store(store: &Store) -> anyhow::Result<std::sync::Arc<std::collections::HashMap<String, [f32; 3]>>> {
-    let live = store
-        .get_kv(crate::NN_KEY)?
-        .and_then(|j| serde_json::from_str::<crate::StoredNet>(&j).ok())
+    let net = crate::installs::read_checked::<crate::StoredNet>(store, crate::NN_KEY)?;
+    // read_checked validated this JSON; retain Result rather than assuming parsing is infallible.
+    let live = net
+        .as_deref()
+        .map(serde_json::from_str::<crate::StoredNet>)
+        .transpose()?
         .filter(crate::neural::response_net_is_eligible)
         .map(|n| n.trained_at);
-    Ok(installed(store.get_kv(NN_RESIDUAL_KEY)?.as_deref(), live))
+    let residual = crate::installs::read_checked::<ResidualFit>(store, NN_RESIDUAL_KEY)?;
+    Ok(installed(residual.as_deref(), live))
 }
 
 /// Fit the correction against the stored live network and store it (the learner, hourly).
