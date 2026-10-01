@@ -5,6 +5,7 @@
 
 pub mod funnel;
 pub mod pool;
+pub mod progress;
 pub mod refit;
 pub mod run;
 pub mod search;

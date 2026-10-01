@@ -210,6 +210,10 @@ of our own play decays on the same cadence, so it describes how we have been pla
   WAL lets readers run beside the writer, so dashboard and learner queries never delay a bot's write.
   Main-store compaction selects candidates on a reader. It takes the writer for dictionary training
   and nonempty batches, rechecking each candidate in the transaction before replacement.
+- **Learner progress**: champion parameters, lineage and the latest successful promotion commit
+  together. The dashboard's 40 recent candidate records do not define promotion history; older
+  installations use the lineage write time and label that basis. Funnel proposals and outcomes
+  are separate counts, so the headline counts proposed candidates rather than their sum.
 - **Learner**: each successive-halving round plays the champion once per table and schedules every
   (candidate, table) run on one rayon pool (`sim::paired_eval_many`, bit-identical to separate
   `paired_eval` calls). Neural response features are extracted sequentially in chronological order:
