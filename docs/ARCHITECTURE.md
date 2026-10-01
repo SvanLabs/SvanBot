@@ -278,3 +278,8 @@ Live artifact refresh validates present records against their typed contracts be
 acknowledging a change. Malformed neural/range models, compute profiles, promoted parameters, live
 fits and per-opponent fits preserve their incumbents and retry next tick. Valid absent/inactive
 records retain their retirement behavior; startup without an incumbent uses its normal defaults.
+
+Process expectations and launch/adoption live in `scripts/supervisors.sh`. `scripts/start.sh --repair`
+starts only missing supervisors and watches any surviving child until it exits. Keepalive checks
+every configured component, then uses the fleet service's `ExecReload` for partial repair so new
+children remain in its persistent cgroup. Healthy fleet processes are retained.

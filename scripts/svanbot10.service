@@ -12,6 +12,8 @@ RemainAfterExit=yes
 WorkingDirectory=@SVANBOT_ROOT@
 Environment=PATH=%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart="@SVANBOT_ROOT@/scripts/start.sh"
+# Partial repair runs in this service's persistent cgroup; healthy processes are preserved.
+ExecReload="@SVANBOT_ROOT@/scripts/start.sh" --repair
 ExecStop="@SVANBOT_ROOT@/scripts/stop.sh" --hold forever
 # start.sh backgrounds its supervisors (they stay in this unit's cgroup); on stop, stop.sh ends
 # them cleanly first and systemd only cleans up whatever is left.

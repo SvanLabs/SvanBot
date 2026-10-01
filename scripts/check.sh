@@ -161,6 +161,7 @@ case "$mode" in
     python3 scripts/docs-check.py 2>/dev/null || { python3 scripts/docs-check.py | head -20 >&2; fail "docs drift (scripts/docs-check.py)"; }
     run_suite "release/rollback tests (run bash scripts/tests/release-rollback.sh)" bash scripts/tests/release-rollback.sh
     run_suite "keepalive tests (run bash scripts/tests/keepalive.sh)" bash scripts/tests/keepalive.sh
+    run_suite "partial fleet recovery tests (run bash scripts/tests/partial-fleet.sh)" bash scripts/tests/partial-fleet.sh
     run_suite "update tests (run bash scripts/tests/update.sh)" bash scripts/tests/update.sh
     run_suite "adopt-upstream tests (run bash scripts/tests/adopt-upstream.sh)" bash scripts/tests/adopt-upstream.sh
     run_suite "file-size tests (run bash scripts/tests/file-size.sh)" bash scripts/tests/file-size.sh
