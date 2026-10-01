@@ -31,14 +31,18 @@ impl PlayerFits {
         Self::default()
     }
 
-    /// The installed corrections from the stored fits (empty maps for any fit absent, unreadable
-    /// or inactive). A persistence read failure returns an error so live refresh keeps the
+    /// The installed corrections from the stored fits (empty maps for any fit absent
+    /// or inactive). A persistence read or typed parse failure returns an error so live refresh keeps the
     /// previously installed corrections.
     pub fn load(store: &Store) -> anyhow::Result<PlayerFits> {
         Ok(PlayerFits {
             response_ratios: crate::nnresidual::installed_from_store(store)?,
-            fold_offsets: crate::playerfold::installed(store.get_kv(crate::playerfold::PLAYER_FOLD_KEY)?.as_deref()),
-            size_tells: crate::playersize::installed(store.get_kv(crate::playersize::PLAYER_SIZE_KEY)?.as_deref()),
+            fold_offsets: crate::playerfold::installed(
+                crate::installs::read_checked::<crate::playerfold::PlayerFoldFit>(store, crate::playerfold::PLAYER_FOLD_KEY)?.as_deref(),
+            ),
+            size_tells: crate::playersize::installed(
+                crate::installs::read_checked::<sv10_core::sizetell::SizeTellFit>(store, crate::playersize::PLAYER_SIZE_KEY)?.as_deref(),
+            ),
         })
     }
 

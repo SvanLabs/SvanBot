@@ -70,7 +70,7 @@ residual measured there, not by the category mean, which big-EV spots dominate.
 
 Anything live play loads from the store and replaces while running: promoted parameters, the neural
 response model, the fitted range model, the compute profile's live budget, live fits and per-opponent
-reads. All go through `installs`: a changed stored value is installed, a failed store read keeps what
+reads. All go through `installs`: a changed stored value is installed, a failed store read or malformed record keeps what
 is installed.
 
 ## Autonomy watchdog
@@ -103,3 +103,15 @@ and the checkout as they were. Rolling back to a saved build uses the same path.
 The read-only list of machine facts the fleet depends on (microcode, huge pages, memory, free space
 on the SSD and the archive disk, SSD TRIM), each judged against the verified checklist, with the
 operator's command when one is off (`GET /api/host`, System view).
+
+## Enabled learning pipeline
+
+A learning capability that continues gathering evidence, fitting candidates and validating them.
+A pipeline can be enabled while its current candidate is not installed because the candidate did
+not pass its evidence gate.
+
+## Operational recovery
+
+Automatic restoration of a failed fleet capability to useful progress while retaining valid
+installed learning and recoverable evidence. Recovery succeeds when the capability resumes work,
+not merely when a process exists again.

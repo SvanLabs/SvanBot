@@ -41,17 +41,25 @@ impl LiveFits {
         overbet_call_slope: 0.0,
     };
 
-    /// The installed shifts from the stored fits (0 for any fit absent, unreadable or inactive).
+    /// The installed shifts from the stored fits (0 for any fit absent or inactive; malformed records return an error).
     pub fn load(store: &Store) -> anyhow::Result<LiveFits> {
-        let fold = store.get_kv(foldcal::FOLD_CAL_KEY)?;
+        let fold = crate::installs::read_checked::<foldcal::FoldCalibration>(store, foldcal::FOLD_CAL_KEY)?;
         Ok(LiveFits {
             fold_logit_shift: foldcal::installed_shift(fold.as_deref()),
             preflop_fold_logit_shift: foldcal::installed_preflop_shift(fold.as_deref()),
-            river_jam_call_shift: raisewar::installed_river_jam_shift(store.get_kv(raisewar::RIVER_JAM_KEY)?.as_deref()),
-            deep_call_shift: raisewar::installed_deep_call_shift(store.get_kv(raisewar::DEEP_CALL_KEY)?.as_deref()),
+            river_jam_call_shift: raisewar::installed_river_jam_shift(
+                crate::installs::read_checked::<raisewar::RiverJamFit>(store, raisewar::RIVER_JAM_KEY)?.as_deref(),
+            ),
+            deep_call_shift: raisewar::installed_deep_call_shift(
+                crate::installs::read_checked::<raisewar::DeepCallFit>(store, raisewar::DEEP_CALL_KEY)?.as_deref(),
+            ),
             // The overbet fit shares the deep-pot fit's type.
-            overbet_call_shift: raisewar::installed_deep_call_shift(store.get_kv(raisewar::OVERBET_CALL_KEY)?.as_deref()),
-            overbet_call_slope: raisewar::installed_overbet_slope(store.get_kv(raisewar::OVERBET_SLOPE_KEY)?.as_deref()),
+            overbet_call_shift: raisewar::installed_deep_call_shift(
+                crate::installs::read_checked::<raisewar::DeepCallFit>(store, raisewar::OVERBET_CALL_KEY)?.as_deref(),
+            ),
+            overbet_call_slope: raisewar::installed_overbet_slope(
+                crate::installs::read_checked::<raisewar::OverbetSlopeFit>(store, raisewar::OVERBET_SLOPE_KEY)?.as_deref(),
+            ),
         })
     }
 
@@ -254,11 +262,11 @@ mod tests {
     }
 
     #[test]
-    fn nothing_stored_or_unreadable_plays_uncorrected() {
+    fn absence_plays_uncorrected_and_malformed_data_returns_an_error() {
         let s = store("empty");
         assert_eq!(LiveFits::load(&s).unwrap(), LiveFits::NONE);
         s.put_kv(raisewar::OVERBET_CALL_KEY, "not json").unwrap();
-        assert_eq!(LiveFits::load(&s).unwrap(), LiveFits::NONE);
+        assert!(LiveFits::load(&s).is_err(), "malformed records must not clear installed fits");
         assert_eq!(LiveFits::default(), LiveFits::NONE);
     }
 

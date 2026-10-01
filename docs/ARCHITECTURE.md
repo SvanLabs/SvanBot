@@ -273,3 +273,8 @@ Long-lived background loops use `crates/apps/bot/src/tasks/supervision.rs` to re
 unexpected return, with bounded backoff. Split-worker loops live in
 `crates/apps/bot/src/tasks/workers.rs` and use the same supervisor. Blocking jobs keep their existing
 completion/panic handling; a timeout never starts a duplicate writer.
+
+Live artifact refresh validates present records against their typed contracts before applying or
+acknowledging a change. Malformed neural/range models, compute profiles, promoted parameters, live
+fits and per-opponent fits preserve their incumbents and retry next tick. Valid absent/inactive
+records retain their retirement behavior; startup without an incumbent uses its normal defaults.
