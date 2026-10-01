@@ -7,6 +7,33 @@ use crate::search_ledger;
 use sv10_core::model::{ModelStore, PlayerStats};
 use sv10_store::store::Store;
 
+#[test]
+fn short_stack_open_candidates_are_exercised_on_recorded_short_tables() {
+    use super::super::run::Stage;
+    use sv10_core::policy::Params;
+    let (dir, store) = store("short-coverage");
+    let summary = serde_json::json!({"bb":20,"players":[[0,"hero"],[1,"a"],[2,"b"],[3,"c"],[4,"d"],[5,"e"]],"stacks":[[0,500],[1,500],[2,500],[3,500],[4,500],[5,500]]});
+    store
+        .insert_hand(&sv10_store::store::HandRow {
+            bot: "hero".into(),
+            hand_id: "short".into(),
+            hero_seat: Some(0),
+            summary: summary.to_string(),
+            ..Default::default()
+        })
+        .unwrap();
+    let ctx = Ctx { hands: 200, ..ctx(&dir, &store) };
+    let mut run = begin(&ctx, store.max_hand_rowid().unwrap(), 0.0, 0).unwrap().unwrap();
+    let sc = super::Scope::load(&store);
+    let mut env = super::env(&ctx, &sc, &run, vec![]);
+    env.proposals = vec![("short_open_bb".into(), 2.5, 3.0, Params { short_open_bb: 3.0, ..sc.champion.clone() })];
+    run.stage = super::stages::start_halving(&env, &mut run);
+    super::stages::halving(&env, &mut run, 60.0, false, 60.0).unwrap();
+    let Stage::Halving(h) = &run.stage else { panic!("first slice must be a screening measurement") };
+    assert!(h.pool[0].round.differing > 0, "short-stack proposals need short-stack evaluation coverage");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 fn store(tag: &str) -> (std::path::PathBuf, Store) {
     let dir = std::env::temp_dir().join(format!("sv10-search-steps-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -34,7 +61,12 @@ fn live_supported_confirmation_records_the_whole_offered_funnel() {
     let mut run = begin(&ctx, 0, 0.0, 0).unwrap().unwrap();
     let scope = super::Scope::load(&store);
     let env = super::env(&ctx, &scope, &run, vec![]);
-    let mut ledger = Ledger { champion: run.champion_version.clone(), refit_rowid: run.refit_rowid, ..Default::default() };
+    let mut ledger = Ledger {
+        evaluation: run.stacks.digest.clone(),
+        champion: run.champion_version.clone(),
+        refit_rowid: run.refit_rowid,
+        ..Default::default()
+    };
     let (key, old, new, _) = &env.proposals[0];
     ledger.entries.insert(transition_key(key, *old, *new), LedgerEntry { hands: 20, mean_bb: -0.02, se_bb: 0.0, differing: 1 });
     search_ledger::save(&store, &ledger).unwrap();
@@ -50,8 +82,13 @@ fn live_supported_confirmation_records_the_whole_offered_funnel() {
             estimate: Default::default(),
         },
     )]);
-    let queue =
-        TargetQueue { champion: ledger.champion, refit_rowid: ledger.refit_rowid, candidates: vec![target.clone()], ..Default::default() };
+    let queue = TargetQueue {
+        evaluation: ledger.evaluation.clone(),
+        champion: ledger.champion,
+        refit_rowid: ledger.refit_rowid,
+        candidates: vec![target.clone()],
+        ..Default::default()
+    };
     store.put_kv(TARGETS_KEY, &serde_json::to_string(&queue).unwrap()).unwrap();
     store.put_kv(crate::experiment::VERDICTS_KEY, &serde_json::to_string(&verdicts).unwrap()).unwrap();
     store.put_kv(FUNNEL_KEY, "{}").unwrap();
@@ -135,5 +172,18 @@ fn a_champion_change_between_steps_abandons_the_search() {
     let moved = sv10_core::policy::Params { open_bb: 3.1, ..Default::default() };
     store.put_kv(crate::PARAMS_KEY, &serde_json::to_string(&moved).unwrap()).unwrap();
     assert_eq!(step(&ctx, &mut s, SLICE_TARGET_SECS).unwrap(), Outcome::Abandoned("the champion's parameters changed"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn legacy_or_tampered_stack_accumulators_are_retired() {
+    let (dir, store) = store("stack-contract");
+    let ctx = ctx(&dir, &store);
+    let mut run = begin(&ctx, 0, 0.0, 0).unwrap().unwrap();
+    run.stacks.contract = 0;
+    assert_eq!(step(&ctx, &mut run, SLICE_TARGET_SECS).unwrap(), Outcome::Abandoned("the paired stack objective changed"));
+    run.stacks.contract = super::super::stacks::CONTRACT;
+    run.stacks.layouts[0][0] += 1;
+    assert_eq!(step(&ctx, &mut run, SLICE_TARGET_SECS).unwrap(), Outcome::Abandoned("the paired stack objective changed"));
     let _ = std::fs::remove_dir_all(&dir);
 }

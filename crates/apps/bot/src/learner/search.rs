@@ -16,7 +16,7 @@ use sv10_core::agents::{ProfileClone, live_pool};
 use sv10_core::model::ModelStore;
 use sv10_core::nn::Mlp;
 use sv10_core::policy::Params;
-use sv10_core::sim::{Arm, PairedSums, paired_sums_arms};
+use sv10_core::sim::{Arm, PairedSums, paired_sums_arms_stacked};
 use sv10_store::store::Store;
 
 use super::run::{self, Gate, Rate, SLICE_TARGET_SECS, STEP_TARGET_SECS, SearchRun, Stage, table_slice};
@@ -78,6 +78,7 @@ struct Env<'a> {
     nn: Option<Arc<Mlp>>,
     /// The champion as the simulation plays it.
     eval_champion: Params,
+    stacks: super::stacks::Fixture,
     /// This cycle's one-knob proposals (candidates refer to them by index).
     proposals: Vec<(String, f64, f64, Params)>,
     lineage: Vec<String>,
@@ -177,6 +178,7 @@ pub fn begin(ctx: &Ctx, start_rowid: i64, started: f64, refit_rowid: i64) -> any
         return Ok(None);
     }
     let mut run = SearchRun {
+        stacks: super::stacks::Fixture::capture(store, start_rowid)?,
         cycle,
         start_rowid,
         started,
@@ -213,6 +215,7 @@ fn env<'a>(ctx: &'a Ctx<'a>, sc: &'a Scope, run: &SearchRun, lineage: Vec<String
         clones,
         nn,
         eval_champion: sc.champion.clone(),
+        stacks: run.stacks.clone(),
         proposals: super::pool::challengers(&sc.champion, run.cycle),
         lineage,
     };
@@ -224,6 +227,9 @@ fn env<'a>(ctx: &'a Ctx<'a>, sc: &'a Scope, run: &SearchRun, lineage: Vec<String
 /// slice is planned from the rate as it stands at that moment, capped at `first_cap` for the step's
 /// first slice and at [`SLICE_TARGET_SECS`] after it (0343).
 pub fn step(ctx: &Ctx, run: &mut SearchRun, first_cap: f64) -> anyhow::Result<Outcome> {
+    if !run.stacks.valid() {
+        return Ok(Outcome::Abandoned("the paired stack objective changed"));
+    }
     let sc = Scope::load(ctx.store);
     if run::digest(&sc.champion_json) != run.champion_digest {
         return Ok(Outcome::Abandoned("the champion's parameters changed"));
@@ -305,7 +311,9 @@ fn gate(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f64) -> anyhow:
         match neural::poker_verdict(&r) {
             neural::PokerVerdict::Approve => {
                 cand.paired_poker_approved = true;
-                e.ctx.store.put_kv(NN_KEY, &serde_json::to_string(&cand)?)?;
+                let net = serde_json::to_string(&cand)?;
+                let evidence = json!({"trained_at":cand.trained_at,"evaluation":run.stacks.evidence(),"hands":r.hands,"mean_bb":r.mean_bb,"lower_95":r.lower_95()});
+                e.ctx.store.put_kv_batch(&[(NN_KEY, &net), ("nn.poker-evaluation.v1", &evidence.to_string())])?;
                 tracing::info!("cycle {}: neural model approved by the paired poker gate: {summary}", run.cycle);
                 run.players_refit_due = true;
             }
@@ -323,14 +331,14 @@ fn gate(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f64) -> anyhow:
         "progress": {"hands": g.next_table * e.ctx.hands, "target": total * e.ctx.hands}}));
     let s = Instant::now();
     let net = Arc::new(cand.net);
-    let part = paired_sums_arms(
+    let part = paired_sums_arms_stacked(
         &Arm { params: &e.eval_champion, nn: e.nn.clone() },
         &[Arm { params: &e.eval_champion, nn: Some(net) }],
         &e.clones,
         &e.sc.models,
         t.clone(),
         e.ctx.hands,
-        100,
+        &e.stacks.layouts,
         700_000 + run.cycle * 10_000,
     )
     .pop()

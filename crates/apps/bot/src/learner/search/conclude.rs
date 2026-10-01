@@ -15,7 +15,8 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
     let store = e.ctx.store;
     let cycle = run.cycle;
     let (knob, old, new) = (&c.knob, c.old, c.new);
-    let population = json!({"id": run.population_id, "opponent_count": e.clones.len(), "evidence": run.evidence});
+    let population =
+        json!({"id": run.population_id, "opponent_count": e.clones.len(), "evidence": run.evidence, "evaluation": run.stacks.evidence()});
     if outcome == Verdict::Promote {
         let lineage = super::super::load_lineage(store);
         let version = format!("sv10-ev-{}", lineage.len() + 1);
@@ -51,7 +52,7 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
     tracing::info!("cycle {cycle}: best candidate failed confirmation ({:+.2} bb/100): {why}", confirm.mean_bb * 100.0);
     funnel::note(store, &format!("confirm/{code}"), Some(knob), 1);
     // A completed fresh-deal rejection is never offered to the experiment pair again.
-    let mut ledger = search_ledger::load(store, &run.champion_version, run.refit_rowid);
+    let mut ledger = search_ledger::load_evaluated(store, &run.champion_version, run.refit_rowid, &run.stacks.digest);
     ledger.confirm_rejected.insert(transition_key(knob, old, new));
     // The result is discarded, not stored: `confirm_rejected` holds only the key, so a key that
     // comes back costs the full confirmation again. Record the measurement beside the key so the

@@ -26,7 +26,7 @@ type OperatorOnly = 'metrics' | 'hole' | 'street' | 'decision' | 'version' | 'tu
  *  wants the hero's cards has to say what it draws when they are not there. */
 export type TableBot = Omit<Bot, OperatorOnly> & Partial<Pick<Bot, OperatorOnly>>;
 export interface EvaluationSummary { hands:number; mean_bb?:number|null; lower_95?:number|null; upper_95?:number|null }
-export interface PopulationSummary { id:string; opponent_count:number; evidence:number }
+export interface PopulationSummary { id:string; opponent_count:number; evidence:number; evaluation?:{id:string;basis:string;sampled:number;eligible:number;excluded:number;cutoff:number} }
 export interface Experiment { id: string; status: string; ts: number; hands?: number; target?: number; knob?: string; old?: number; new?: number; mean_bb?: number; lower_95?: number; upper_95?: number; champion?: string; challenger?: string; candidate_kind?:string; rationale?:string; resumed?:boolean; terminal_reason?:string; population?:PopulationSummary; strata?:Record<'synthetic'|'observed',EvaluationSummary> }
 /** Why search candidates died over the last `hours` (#317): counts by outcome key, then by knob. */
 export interface SearchFunnel { hours:number; total:number; outcomes:{key:string;count:number}[]; knobs:{key:string;count:number}[] }

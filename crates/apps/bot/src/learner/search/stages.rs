@@ -2,7 +2,7 @@
 
 use serde_json::json;
 use std::time::Instant;
-use sv10_core::sim::{Arm, PairedResult, PairedSums, paired_sums_arms};
+use sv10_core::sim::{Arm, PairedResult, PairedSums, paired_sums_arms_stacked};
 
 use super::super::run::{Cand, Confirm, Halving, SearchRun, Stage, table_slice};
 use super::super::{funnel, now, publish_targets, push_experiment};
@@ -20,7 +20,7 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
     let total = e.proposals.len();
     // The rejection ledger (0285): repeats continue their stored interval instead of restarting
     // it, and decided-dead transitions are not proposed while this champion and evidence stand.
-    let ledger = search_ledger::load(store, &run.champion_version, run.refit_rowid);
+    let ledger = search_ledger::load_evaluated(store, &run.champion_version, run.refit_rowid, &run.stacks.digest);
     let fresh = e.proposals.iter().map(|(k, o, n, p)| (k.clone(), *o, *n, p.clone(), None)).collect();
     let (kept, barred) = search_ledger::seed_and_filter(fresh, &ledger, e.ctx.tables, e.ctx.hands);
     if barred > 0 {
@@ -50,7 +50,8 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
             t.challenger.clone(),
             t.sim.clone(),
             Source::Confirmation,
-        );
+        )
+        .with_evaluation(&run.stacks.digest);
         publish_targets(store, &ledger, &e.sc.champion, run.cycle, Some(confirming), (e.ctx.tables, e.ctx.hands));
         return Stage::Confirm(Box::new(Confirm {
             knob: t.knob,
@@ -98,14 +99,14 @@ pub(super) fn halving(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f
     let arms: Vec<Arm<'_>> = batch.iter().map(|p| Arm { params: p, nn: e.nn.clone() }).collect();
     let seed = 900_000 + run.cycle * 10_000 + h.round * 1_000;
     let s = Instant::now();
-    let sums = paired_sums_arms(
+    let sums = paired_sums_arms_stacked(
         &Arm { params: &e.eval_champion, nn: e.nn.clone() },
         &arms,
         &e.clones,
         &e.sc.models,
         tables.clone(),
         e.ctx.hands,
-        100,
+        &e.stacks.layouts,
         seed,
     );
     for (i, part) in cands.clone().zip(sums) {
@@ -183,7 +184,7 @@ fn judge_round(e: &Env, run: &mut SearchRun) -> Flow {
                         "champion": run.champion_version, "challenger": format!("c{cycle}-{knob}-{new:.3}"), "candidate_kind": "parameter",
                         "stage": "search", "reason": why.code(),
                         "rationale": format!("Successive halving round {}: {}. Paired simulation on identical deals against clones of the live pool, all-in luck removed.", round + 1, why.message()),
-                        "population": {"id": run.population_id, "opponent_count": e.clones.len(), "evidence": run.evidence},
+                        "population": {"id": run.population_id, "opponent_count": e.clones.len(), "evidence": run.evidence, "evaluation": run.stacks.evidence()},
                         "strata": {"observed": {"hands": r.hands, "mean_bb": r.mean_bb, "lower_95": r.lower_95(), "upper_95": r.upper_95()}}
                     }),
                 );
@@ -231,7 +232,7 @@ fn end_halving(e: &Env, run: &mut SearchRun) -> Flow {
             run.ledger_done.push((transition_key(&c.knob, c.old, c.new), p.clone()));
         }
     }
-    let mut ledger = search_ledger::load(e.ctx.store, &run.champion_version, run.refit_rowid);
+    let mut ledger = search_ledger::load_evaluated(e.ctx.store, &run.champion_version, run.refit_rowid, &run.stacks.digest);
     let done: Vec<(String, PairedResult)> = run.ledger_done.iter().map(|(k, v)| (k.clone(), v.to_paired())).collect();
     search_ledger::record(&mut ledger, &done);
     if let Err(err) = search_ledger::save(e.ctx.store, &ledger) {
@@ -264,6 +265,7 @@ fn end_halving(e: &Env, run: &mut SearchRun) -> Flow {
             LedgerEntry::from_paired(r),
             Source::Confirmation,
         )
+        .with_evaluation(&run.stacks.digest)
     });
     publish_targets(e.ctx.store, &ledger, &e.sc.champion, run.cycle, confirming, (e.ctx.tables, e.ctx.hands));
     match best {
@@ -330,14 +332,14 @@ pub(super) fn confirm(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f
     let seed = 55_000_000 + cycle * 16 + c.chunk as u64;
     let challenger = e.eval(&c.params);
     let s = Instant::now();
-    let part = paired_sums_arms(
+    let part = paired_sums_arms_stacked(
         &Arm { params: &e.eval_champion, nn: e.nn.clone() },
         &[Arm { params: &challenger, nn: e.nn.clone() }],
         &e.clones,
         &e.sc.models,
         t.clone(),
         e.ctx.hands,
-        100,
+        &e.stacks.layouts,
         seed,
     )
     .pop()

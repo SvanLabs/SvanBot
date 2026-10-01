@@ -210,6 +210,15 @@ of our own play decays on the same cadence, so it describes how we have been pla
   WAL lets readers run beside the writer, so dashboard and learner queries never delay a bot's write.
   Main-store compaction selects candidates on a reader. It takes the writer for dictionary training
   and nonempty batches, rechecking each candidate in the transaction before replacement.
+- **Learner stack objective**: search, fresh-deal confirmation and new neural poker approvals use
+  one frozen distribution of recorded six-seat starting-stack vectors, hero first, normalized to
+  a 20-chip big blind. Up to 256 layouts are sampled deterministically from the latest 4,096
+  ordinary/control rows at the search cutoff. Other table sizes and invalid/missing stacks are
+  excluded and counted; an empty window explicitly uses a 100bb fallback. This preserves stack
+  asymmetry while the opponent pool still uses fitted clones, rather than replaying recorded hands.
+  Fixture identity scopes search accumulators, rejection evidence and live-target verdicts; legacy
+  equal-stack runs restart. Installed champions and already approved neural models keep playing;
+  new neural approvals record their evaluation basis. No knob or promotion gate is removed.
 - **Learner**: each successive-halving round plays the champion once per table and schedules every
   (candidate, table) run on one rayon pool (`sim::paired_eval_many`, bit-identical to separate
   `paired_eval` calls). Neural response features are extracted sequentially in chronological order:

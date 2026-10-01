@@ -140,6 +140,9 @@ pub struct RefitRun {
 /// A champion search: what every step must see unchanged, and where it stands.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchRun {
+    /// Frozen paired evaluation objective; absent legacy objectives are explicitly retired.
+    #[serde(default)]
+    pub stacks: super::stacks::Fixture,
     /// Learner cycle (seeds its clones and deals).
     pub cycle: u64,
     /// Newest hand row when it started.
@@ -387,6 +390,7 @@ mod tests {
     #[test]
     fn a_run_survives_its_store_round_trip() {
         let run = Run::Search(Box::new(SearchRun {
+            stacks: super::super::stacks::Fixture::default(),
             cycle: 7,
             start_rowid: 1,
             started: 2.0,
