@@ -32,7 +32,7 @@ pub fn loops(learner_max_idle_secs: f64) -> [WatchedLoop; 5] {
             key: "learner.pacing",
             pointer: "/last_run",
             limit_secs: learner_max_idle_secs + 2.0 * 3600.0,
-            meaning: "no strategy search or refit has run",
+            meaning: "no scheduled champion search has run",
         },
         WatchedLoop {
             name: "analyst",
@@ -86,10 +86,25 @@ pub fn stale_loops(now: f64, loops: &[WatchedLoop], read: impl Fn(&str) -> anyho
         .flatten()
         .and_then(|j| serde_json::from_str::<Value>(&j).ok())
         .is_some_and(|v| v["automatic"] == Value::Bool(false));
+    let settings = read(crate::pacing::SETTINGS_KEY).ok().flatten();
+    let pacing = crate::pacing::Pacing::from_env().with_settings(&crate::pacing::LearnerSettings::parse(settings.as_deref()));
     loops
         .iter()
         .filter(|l| !(l.name == "learner" && learner_paused))
-        .filter_map(|l| staleness(now, l, read(l.key)).map(|message| Stale { name: l.name, message }))
+        .filter_map(|l| {
+            let status = read(l.key);
+            let mut watched = *l;
+            if l.name == "learner"
+                && let Some(v) = status.as_ref().ok().and_then(|j| j.as_deref()).and_then(|j| serde_json::from_str::<Value>(j).ok())
+                && let Some(start) = v["last_run"].as_f64().filter(|t| *t > 0.0)
+            {
+                // Cooldown starts when the search finishes. Fresh refits do not renew this
+                // deadline: a stopped champion search must still become visible.
+                let end = v["last_end"].as_f64().unwrap_or(start).max(start);
+                watched.limit_secs = watched.limit_secs.max(end - start + pacing.cooldown_secs + 2.0 * 3600.0);
+            }
+            staleness(now, &watched, status).map(|message| Stale { name: l.name, message })
+        })
         .collect()
 }
 
@@ -167,6 +182,24 @@ mod tests {
         assert_eq!(stale.len(), 1, "{stale:?}");
         assert_eq!(stale[0].name, "experiment poller");
         assert!(stale[0].message.contains("0.5 h ago (limit 0.5 h)"), "{}", stale[0].message);
+    }
+
+    #[test]
+    fn scheduled_cooldown_is_healthy_but_refits_do_not_hide_an_overdue_search() {
+        let mut entries = with(&[
+            (crate::pacing::SETTINGS_KEY, r#"{"cooldown_minutes":1440}"#.into()),
+            (
+                "learner.pacing",
+                format!(r#"{{"last_run":{},"last_end":{},"refit_run":{}}}"#, NOW - 25.0 * 3600.0, NOW - 23.0 * 3600.0, NOW - 60.0),
+            ),
+        ]);
+        assert!(check(&entries).is_empty(), "cooldown starts at search completion");
+        entries.retain(|(k, _)| *k != "learner.pacing");
+        entries.push((
+            "learner.pacing",
+            format!(r#"{{"last_run":{},"last_end":{},"refit_run":{}}}"#, NOW - 29.0 * 3600.0, NOW - 27.0 * 3600.0, NOW - 60.0),
+        ));
+        assert_eq!(check(&entries).iter().map(|s| s.name).collect::<Vec<_>>(), ["learner"]);
     }
 
     #[test]
