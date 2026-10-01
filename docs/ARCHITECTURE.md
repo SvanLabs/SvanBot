@@ -268,3 +268,8 @@ street bet and amount owed. A short all-in raises the price even when it does no
 our short shoves are reported separately from clean calls, and later short aggression excludes an
 earlier decision from the committed-call sample. Legacy summaries without those chip fields keep
 their existing full-raise fallback.
+
+Long-lived background loops use `crates/apps/bot/src/tasks/supervision.rs` to restart after panic or
+unexpected return, with bounded backoff. Split-worker loops live in
+`crates/apps/bot/src/tasks/workers.rs` and use the same supervisor. Blocking jobs keep their existing
+completion/panic handling; a timeout never starts a duplicate writer.

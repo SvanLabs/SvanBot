@@ -157,9 +157,9 @@ mod tests {
         stale_loops(NOW, &loops(6.0 * 3600.0), store(&e))
     }
 
-    /// 0327: the poller that reads the official leaderboard is a bare task with no supervisor, so
-    /// a panic in it stops every future reading — and with it the mode's own record, which then
-    /// stays `Active` on a reading nobody refreshes. Its mode record is the heartbeat.
+    /// 0327: the poller that reads the official leaderboard must keep reporting even when
+    /// supervision is retrying it. Its mode record is the heartbeat; a stalled or repeatedly
+    /// failing poller is still named rather than hidden by automatic retries.
     #[test]
     fn a_stalled_leaderboard_poller_is_named() {
         let silent = with(&[(crate::experiment::MODE_KEY, format!(r#"{{"status":"active","last_attempt_at":{}}}"#, NOW - 31.0 * 60.0))]);
