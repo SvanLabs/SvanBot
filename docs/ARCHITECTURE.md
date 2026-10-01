@@ -219,6 +219,10 @@ of our own play decays on the same cadence, so it describes how we have been pla
   Fixture identity scopes search accumulators, rejection evidence and live-target verdicts; legacy
   equal-stack runs restart. Installed champions and already approved neural models keep playing;
   new neural approvals record their evaluation basis. No knob or promotion gate is removed.
+- **Learner progress**: champion parameters, lineage and the latest successful promotion commit
+  together. The dashboard's 40 recent candidate records do not define promotion history; older
+  installations use the lineage write time and label that basis. Funnel proposals and outcomes
+  are separate counts, so the headline counts proposed candidates rather than their sum.
 - **Learner**: each successive-halving round plays the champion once per table and schedules every
   (candidate, table) run on one rayon pool (`sim::paired_eval_many`, bit-identical to separate
   `paired_eval` calls). Neural response features are extracted sequentially in chronological order:

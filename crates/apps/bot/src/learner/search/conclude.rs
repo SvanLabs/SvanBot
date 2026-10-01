@@ -24,18 +24,16 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
         let mut promoted = lineage;
         promoted.push(version.clone());
         let lineage_json = serde_json::to_string(&promoted)?;
-        store.put_kv_batch(&[(crate::PARAMS_KEY, &params_json), (crate::LEARNER_LINEAGE_KEY, &lineage_json)])?;
-        push_experiment(
-            store,
-            json!({
-                "id": format!("{version}-promotion"), "status": "promoted", "ts": now(), "hands": c.search.hands + confirm.hands,
-                "knob": knob, "old": old, "new": new, "mean_bb": confirm.mean_bb, "lower_95": confirm.lower_95(), "upper_95": confirm.upper_95(),
-                "champion": run.champion_version, "challenger": version,
-                "stage": "confirmation", "reason": "promoted",
-                "rationale": format!("Won search ({:+.2} bb/100) and fresh-deal confirmation ({:+.2} bb/100, lower bound {:+.2}).", c.search.mean_bb * 100.0, confirm.mean_bb * 100.0, confirm.lower_95() * 100.0),
-                "population": population
-            }),
-        );
+        let promotion = json!({
+            "id": format!("{version}-promotion"), "status": "promoted", "ts": now(), "hands": c.search.hands + confirm.hands,
+            "knob": knob, "old": old, "new": new, "mean_bb": confirm.mean_bb, "lower_95": confirm.lower_95(), "upper_95": confirm.upper_95(),
+            "champion": run.champion_version, "challenger": version,
+            "stage": "confirmation", "reason": "promoted",
+            "rationale": format!("Won search ({:+.2} bb/100) and fresh-deal confirmation ({:+.2} bb/100, lower bound {:+.2}).", c.search.mean_bb * 100.0, confirm.mean_bb * 100.0, confirm.lower_95() * 100.0),
+            "population": population
+        });
+        super::super::progress::install(store, &params_json, &lineage_json, &promotion)?;
+        push_experiment(store, promotion);
         funnel::note(store, funnel::PROMOTED, Some(knob), 1);
         tracing::info!("cycle {cycle}: PROMOTED {version} ({knob} {old:.3}->{new:.3})");
         // Every target was measured against the old champion; the next cycle publishes anew.

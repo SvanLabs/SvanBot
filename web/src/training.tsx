@@ -177,15 +177,27 @@ export function Autonomy({training, onCommand, busy}: {training?:Training;onComm
 /** The key the learner counts a death under, as a phrase: `search/no-effect` -> `search · no effect`. */
 const funnelLabel = (key:string) => key.replace('/', ' · ').replaceAll('-', ' ');
 
-/** Why candidates are dying, over the last day (#317). The experiment list below is capped at 40
- * and holds only rejections, so on its own it reads as a wall of `rejected` whatever the search is
- * actually doing; these are the counts the learner takes where each candidate dies. */
+/** Candidate proposals and their outcomes are separate counts, not additive candidates. */
 export function SearchFunnel({funnel}: {funnel:SearchFunnel}) {
+  const proposed = funnel.outcomes.find(o => o.key === 'search/proposed')?.count ?? 0;
   return <div className="funnel">
-    <div className="funnel-head"><span>Why candidates die · last {funnel.hours}h</span><b>{format(funnel.total)}</b></div>
+    <div className="funnel-head"><span>Strategy search · last {funnel.hours}h</span><b>{format(proposed)} proposed</b></div>
     <div className="funnel-chips">{funnel.outcomes.map(o=><span className={`funnel-chip ${o.key.split('/')[0]}`} key={o.key} title={o.key}>{funnelLabel(o.key)}<b>{format(o.count)}</b></span>)}</div>
     {funnel.knobs.length > 0 && <div className="funnel-knobs">Knobs: {funnel.knobs.slice(0,6).map(k=>`${k.key.replaceAll('_',' ')} ${format(k.count)}`).join(' · ')}</div>}
+    <p className="footnote">Proposals and outcomes are separate counts. A rejected challenger keeps the current champion; opponent models and calibration keep learning.</p>
   </div>;
+}
+
+/** Keep the latest successful change visible after it leaves the recent candidate list. */
+export function RecentExperiments({training}: {training:Training}) {
+  const latest = training.last_promotion;
+  const recent = training.experiments.slice(0,6);
+  const pinned = latest?.id && latest.status === 'promoted' && typeof latest.ts === 'number' && !recent.some(e => e.id === latest.id);
+  return <>
+    {pinned && <><span className="eyebrow">LATEST SUCCESSFUL CHANGE</span><ExperimentCard experiment={latest as Experiment}/></>}
+    <p className="footnote">Latest {recent.length} candidate decisions · {training.experiments.length} retained. Model learning runs independently of champion search.</p>
+    <div className="experiments">{recent.map(experiment => <ExperimentCard experiment={experiment} key={experiment.id}/>)}</div>
+  </>;
 }
 
 export function ExperimentCard({experiment}: {experiment:Experiment}) {
