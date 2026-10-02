@@ -5,6 +5,8 @@ use rusqlite::{OptionalExtension, params};
 
 mod blinds;
 pub use blinds::EvResultWithBlind;
+mod players;
+pub use players::PlayerHandWithBlind;
 
 /// A stored hand as the API and tools read it.
 #[derive(Clone, Debug, Default, serde::Serialize)]
