@@ -3,6 +3,9 @@ use super::*;
 use anyhow::Result;
 use rusqlite::{OptionalExtension, params};
 
+mod blinds;
+pub use blinds::EvResultWithBlind;
+
 /// A stored hand as the API and tools read it.
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct HandRow {
