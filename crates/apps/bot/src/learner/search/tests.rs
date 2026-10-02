@@ -109,6 +109,54 @@ fn live_supported_confirmation_records_the_whole_offered_funnel() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+#[test]
+fn rare_tiered_pricing_gets_distinct_liveness_tables_before_ranking() {
+    use super::super::run::Stage;
+    use sv10_core::sim::PairedSums;
+    let (dir, store) = store("tier-liveness");
+    let ctx = ctx(&dir, &store);
+    let mut run = begin(&ctx, 0, 0.0, 0).unwrap().unwrap();
+    let scope = super::Scope::load(&store);
+    let env = super::env(&ctx, &scope, &run, vec![]);
+    run.stage = super::stages::start_halving(&env, &mut run);
+    let Stage::Halving(h) = &mut run.stage else { panic!("search must screen candidates") };
+    let index = h.pool.iter().position(|c| c.knob == "tiered_all_in_fold_pricing").expect("the pricing challenger is offered");
+    let candidate = h.pool.remove(index);
+    h.pool = vec![candidate];
+    h.cursor.next_cand = 1; // The ordinary first table has finished.
+    h.pool[0].round = PairedSums { hands: ctx.hands as u64, ..Default::default() };
+    h.spent = ctx.hands;
+
+    let first = super::stages::halving(&env, &mut run, 60.0, false, 0.01).unwrap();
+    assert!(matches!(first, super::Flow::Played), "one unchanged table must not kill a rare candidate");
+    let Stage::Halving(h) = &mut run.stage else { panic!("candidate stays in screening") };
+    assert_eq!(h.pool[0].round.hands, (2 * ctx.hands) as u64, "the second table has distinct deals");
+    assert_eq!(h.cursor.next_cand, 1, "extra screening keeps the ordinary round cursor complete");
+    h.pool[0].round = PairedSums { hands: (2 * ctx.hands) as u64, ..Default::default() };
+    let saved = serde_json::to_string(&run).unwrap();
+    let mut capped = serde_json::from_str::<run::SearchRun>(&saved).unwrap();
+    let Stage::Halving(capped_round) = &mut capped.stage else { panic!("candidate stays in screening") };
+    capped_round.pool[0].round = PairedSums { hands: (8 * ctx.hands) as u64, ..Default::default() };
+    assert!(
+        matches!(super::stages::halving(&env, &mut capped, 60.0, false, 0.01).unwrap(), super::Flow::Done { promoted: false }),
+        "eight unchanged tables exhaust the coverage budget without promoting"
+    );
+    let mut run = serde_json::from_str(&saved).unwrap();
+    let resumed = super::stages::halving(&env, &mut run, 60.0, false, 0.01).unwrap();
+    assert!(matches!(resumed, super::Flow::Played), "a saved zero-difference candidate continues its exposure");
+    let Stage::Halving(h) = &mut run.stage else { panic!("candidate stays in screening") };
+    assert_eq!(h.pool[0].round.hands, (3 * ctx.hands) as u64, "resume starts at table 2, not a repeated table");
+
+    // Once another table exposes a changed outcome, the normal search nominates the candidate for
+    // fresh-deal confirmation; this coverage path never promotes it on its screening result.
+    h.pool[0].round.differing = 1;
+    h.pool[0].round.sum = 4.0;
+    h.pool[0].round.sum_sq = 16.0;
+    let next = super::stages::halving(&env, &mut run, 60.0, false, 0.01).unwrap();
+    assert!(matches!(next, super::Flow::Next(Stage::Confirm(c)) if c.knob == "tiered_all_in_fold_pricing" && c.chunk == 1));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// Run a whole search at `rate` with `cap` seconds of simulation planned for each step's first
 /// slice, storing and reloading the run between steps; the outcome, the steps taken and the ledger
 /// it left.

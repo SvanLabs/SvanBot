@@ -198,8 +198,11 @@ next process resumes the stored run.
      (candidate, table) run shares the thread pool. Results are bit-identical to one `paired_eval` per
      candidate; the champion half of the work is no longer repeated per candidate.
     - Round 0 gives every candidate 1 table × `learner_hands` (liveness: a wide field, dropping
-      only what never matters); each round doubles the tables, so round 1 carries the budget
-      that can rank.
+      only what never matters). Tiered all-in fold pricing is rare (3 changed outcomes in 16,000
+      ordinary paired hands when introduced), so if its first table changes no outcome it gets
+      up to seven more distinct matched tables, stopping on the first change. Its extra work is
+      charged to the same search budget and stored across sliced steps. Each later round doubles
+      the tables, so round 1 carries the budget that can rank.
     - Results accumulate across rounds (`PairedResult::combine`), and across cycles through the
       rejection ledger (`sv10_bot::search_ledger`): each candidate's accumulator starts from
       its stored combined measurement, decided-dead transitions (a full screening budget of hands
