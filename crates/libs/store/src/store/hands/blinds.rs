@@ -81,4 +81,42 @@ mod tests {
         assert!(!rows[0].showdown);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn player_hands_keep_their_recorded_blinds_across_stakes_and_bad_summaries() {
+        let dir = std::env::temp_dir().join(format!("sv10-player-blinds-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("svanbot10.db")).unwrap();
+        for (id, net, summary) in [
+            ("h1", 10, r#"{"players":[[0,"us"],[1,"villain"]],"bb":10}"#),
+            ("h2", 20, r#"{"players":[[0,"us"],[1,"villain"]],"bb":20}"#),
+            ("h3", 30, r#"{"players":[[0,"us"],[1,"villain"]],"bb":0}"#),
+            ("h4", 40, r#"{"players":[[0,"us"],[1,"villain"]],"bb":"20"}"#),
+            ("h5", 50, r#"{"players":[[0,"us"],[1,"villain"]],"bb":oops}"#),
+            ("h6", 60, r#"{"players":[[0,"us"],[1,"villain"]]}"#),
+            ("h7", 70, r#"{"players":[[0,"us"],[1,"villain"]],"bb":-10}"#),
+            ("h8", 80, r#"{"players":[[0,"us"],[1,"villain"]],"bb":20.5}"#),
+        ] {
+            store
+                .insert_hand(&HandRow {
+                    bot: "us".into(),
+                    hand_id: id.into(),
+                    ended_at: format!("2026-09-24T00:00:0{}Z", &id[1..]),
+                    net: Some(net),
+                    summary: summary.into(),
+                    ..Default::default()
+                })
+                .unwrap();
+        }
+        store.set_ev_nets(&[("us".into(), "h2".into(), 25.0)]).unwrap();
+        let rows = store.hands_with_player_with_blinds("villain").unwrap();
+        assert_eq!(rows.iter().map(|h| h.big_blind).collect::<Vec<_>>(), [Some(10), Some(20), None, None, None, None, None, None]);
+        assert_eq!(
+            rows.iter().map(|h| h.hand.net).collect::<Vec<_>>(),
+            [Some(10), Some(20), Some(30), Some(40), Some(50), Some(60), Some(70), Some(80)]
+        );
+        assert_eq!(rows[1].hand.ev_net, Some(25.0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
