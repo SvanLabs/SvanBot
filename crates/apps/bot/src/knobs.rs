@@ -267,6 +267,15 @@ pub const KNOBS: &[Knob] = &[
         description: "How much EV, as a share of the pot, a chosen action may give up so the choice is not always the same one.",
         read: |p| p.temperature,
     },
+    Knob {
+        key: "tiered_all_in_fold_pricing",
+        label: "Tiered all-in fold pricing",
+        min: 0.0,
+        max: 1.0,
+        decimals: 0,
+        description: "Uses each side pot's eligible opponents when pricing a raise that makes all players with chips behind fold.",
+        read: |p| f64::from(p.tiered_all_in_fold_pricing as u8),
+    },
 ];
 
 #[cfg(test)]

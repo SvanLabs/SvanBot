@@ -5,6 +5,16 @@
 use super::*;
 use crate::learner::pool::challengers;
 
+#[test]
+fn tiered_all_in_pricing_has_the_same_boolean_bar_as_the_search() {
+    let knob = find("tiered_all_in_fold_pricing").expect("learner knob is visible in the dashboard catalogue");
+    assert_eq!((knob.min, knob.max, knob.decimals), (0.0, 1.0, 0));
+    for enabled in [false, true] {
+        let p = Params { tiered_all_in_fold_pricing: enabled, ..Params::default() };
+        assert_eq!(knob.get(&p), f64::from(enabled as u8));
+    }
+}
+
 /// The bounds every clamp in `learner::pool` carried before they moved into the catalogue. Written
 /// out rather than read from `KNOBS`, so this is a second copy on purpose: it is what makes the move
 /// checkable at all. A deliberate widening (LESSONS 29 — a bound the champion sits on is an untested
@@ -99,6 +109,7 @@ fn the_search_never_proposes_a_value_off_the_bar() {
                 "profile_response_weight" => p.profile_response_weight = v,
                 "check_lookahead" => p.check_lookahead = v,
                 "temperature" => p.temperature = v,
+                "tiered_all_in_fold_pricing" => p.tiered_all_in_fold_pricing = v >= 0.5,
                 "bet_size_scale" => p.bet_sizes = [0.33, 0.55, 0.8, 1.2].iter().map(|b| b * v).collect(),
                 other => panic!("{other} has no assignment in this test"),
             }
@@ -144,7 +155,12 @@ fn every_row_the_profile_prints_is_readable() {
     for k in KNOBS {
         assert!(!k.label.is_empty() && !k.description.is_empty(), "{} has no text", k.key);
         assert!(k.description.ends_with('.'), "{} description is not a sentence", k.key);
-        let places = 10f64.powi(-i32::from(k.decimals));
-        assert!(k.max - k.min > places, "{} spans {} but prints {} decimals", k.key, k.max - k.min, k.decimals);
+        assert_ne!(
+            format!("{:.*}", usize::from(k.decimals), k.min),
+            format!("{:.*}", usize::from(k.decimals), k.max),
+            "{} endpoints print the same at {} decimals",
+            k.key,
+            k.decimals
+        );
     }
 }

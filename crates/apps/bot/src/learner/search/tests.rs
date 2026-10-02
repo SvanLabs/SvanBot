@@ -70,7 +70,11 @@ fn live_supported_confirmation_records_the_whole_offered_funnel() {
     let (key, old, new, _) = &env.proposals[0];
     ledger.entries.insert(transition_key(key, *old, *new), LedgerEntry { hands: 20, mean_bb: -0.02, se_bb: 0.0, differing: 1 });
     search_ledger::save(&store, &ledger).unwrap();
-    let (key, old, new, params) = &env.proposals[1];
+    let (key, old, new, params) = env
+        .proposals
+        .iter()
+        .find(|(key, _, _, _)| key == "tiered_all_in_fold_pricing")
+        .expect("the default-off champion offers the tiered all-in challenger");
     let target =
         Target::new((&ledger.champion, ledger.refit_rowid), key, *old, *new, params.clone(), LedgerEntry::default(), Source::Ledger);
     let verdicts = crate::experiment::Verdicts::from([(
@@ -93,7 +97,10 @@ fn live_supported_confirmation_records_the_whole_offered_funnel() {
     store.put_kv(crate::experiment::VERDICTS_KEY, &serde_json::to_string(&verdicts).unwrap()).unwrap();
     store.put_kv(FUNNEL_KEY, "{}").unwrap();
     let stage = super::stages::start_halving(&env, &mut run);
-    assert!(matches!(stage, run::Stage::Confirm(c) if c.knob == target.knob));
+    assert!(
+        matches!(stage, run::Stage::Confirm(c) if c.knob == target.knob && c.chunk == 1 && c.next_table == 0),
+        "live support may skip halving but must begin fresh-deal confirmation"
+    );
     let counts = funnel::load(&store).summary(crate::learner::now());
     let count =
         |key: &str| counts["outcomes"].as_array().unwrap().iter().find(|v| v["key"] == key).and_then(|v| v["count"].as_u64()).unwrap_or(0);
