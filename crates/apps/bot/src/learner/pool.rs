@@ -64,6 +64,11 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     step_knob("profile_response_weight", -0.5 * step, &|c, v| c.profile_response_weight = v);
     step_knob("check_lookahead", 0.5 * step, &|c, v| c.check_lookahead = v);
     step_knob("check_lookahead", -0.5 * step, &|c, v| c.check_lookahead = v);
+    // The default champion keeps legacy pricing. Promotion in either direction requires fresh-deal
+    // confirmation, so a promoted on champion can later test the legacy path again.
+    step_knob("tiered_all_in_fold_pricing", if p.tiered_all_in_fold_pricing { -1.0 } else { 1.0 }, &|c, v| {
+        c.tiered_all_in_fold_pricing = v >= 0.5
+    });
     // Postflop bet sizes as pot fractions: the four the policy started with, and a seven-size set
     // (0170) the 4x live budget and exact heads-up equity can afford. The scale knob keeps whichever
     // set the champion plays.
@@ -90,6 +95,20 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tiered_all_in_pricing_is_a_single_knob_step_in_both_directions() {
+        for enabled in [false, true] {
+            let champion = Params { tiered_all_in_fold_pricing: enabled, ..Params::default() };
+            let proposals: Vec<_> =
+                challengers(&champion, 0).into_iter().filter(|(key, _, _, _)| key == "tiered_all_in_fold_pricing").collect();
+            assert_eq!(proposals.len(), 1, "each champion must get one opposite-value candidate");
+            let (_, old, new, challenger) = &proposals[0];
+            assert_eq!((*old, *new), (f64::from(enabled as u8), f64::from((!enabled) as u8)));
+            let expected = Params { tiered_all_in_fold_pricing: !enabled, ..champion };
+            assert_eq!(serde_json::to_value(challenger).unwrap(), serde_json::to_value(expected).unwrap(), "only this knob changes");
+        }
+    }
 
     #[test]
     fn search_pool_covers_temperature_both_directions() {

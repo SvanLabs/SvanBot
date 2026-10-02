@@ -180,9 +180,12 @@ next process resumes the stored run.
 6. **Challengers** (`challengers`): one-knob perturbations of the champion (fold scale, initiative,
    open size, 3-bet sizes, raise-fold bonus, realization weight, call margin, jam ratio, raise risk,
    4-bet size, limper size, preflop fold scale, passive fold bonus, 3-bet call margin, preflop re-raise
-   weight, profile response weight, check lookahead, bet-size scale). The last three
-   ship at 0: live-pool A/Bs measured no gain at the defaults tried, so only the learner can turn them on.
-   Steps alternate full and half size by cycle parity; every knob is clamped to a bounded range.
+   weight, profile response weight, check lookahead, bet-size scale, tiered all-in fold pricing).
+   Profile response weight and check lookahead ship at 0: live-pool A/Bs measured no gain at the
+   defaults tried. Tiered all-in fold pricing also ships at 0 because its initial paired results
+   did not establish a gain; the learner can test either boolean value on fresh deals.
+   Continuous steps alternate full and half size by cycle parity; the boolean pricing knob flips
+   between 0 and 1. Every knob is clamped to a bounded range.
    The knobs and their bounds are defined once, in `crates/apps/bot/src/knobs.rs`: `challengers` names
    only the step it takes and the catalogue says where it stops, and the dashboard's Champion profile
    draws each bar over the same range (#322), so widening a bound here moves the panel's track with it.
@@ -195,8 +198,11 @@ next process resumes the stored run.
      (candidate, table) run shares the thread pool. Results are bit-identical to one `paired_eval` per
      candidate; the champion half of the work is no longer repeated per candidate.
     - Round 0 gives every candidate 1 table × `learner_hands` (liveness: a wide field, dropping
-      only what never matters); each round doubles the tables, so round 1 carries the budget
-      that can rank.
+      only what never matters). Tiered all-in fold pricing is rare (3 changed outcomes in 16,000
+      ordinary paired hands when introduced), so if its first table changes no outcome it gets
+      up to seven more distinct matched tables, stopping on the first change. Its extra work is
+      charged to the same search budget and stored across sliced steps. Each later round doubles
+      the tables, so round 1 carries the budget that can rank.
     - Results accumulate across rounds (`PairedResult::combine`), and across cycles through the
       rejection ledger (`sv10_bot::search_ledger`): each candidate's accumulator starts from
       its stored combined measurement, decided-dead transitions (a full screening budget of hands

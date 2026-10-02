@@ -11,6 +11,11 @@ use crate::experiment::target::{self as experiment_target, Source, TARGETS_KEY, 
 use crate::promotion::{self, CHUNK_SCALE, CONFIRM_CHUNKS, MIN_EDGE_BB, Verdict};
 use crate::search_ledger::{self, LedgerEntry, transition_key};
 
+// #665 changed only 3 of 16,000 ordinary paired outcomes. One table of 1,500–3,000 hands often
+// sees no difference, which otherwise marks this real switch dead in the rejection ledger. Limit
+// its round-0 liveness exposure to eight distinct tables and stop as soon as one outcome changes.
+const TIERED_LIVENESS_TABLES: usize = 8;
+
 /// Set up successive halving on common deals: every candidate gets a small screening budget, the
 /// better half doubles its budget each round, candidates that never change an outcome or whose
 /// upper bound is below +1 bb/100 are dropped. The survivor is then confirmed sequentially on
@@ -80,10 +85,14 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
 
 /// Play the next slice of the current halving round, or judge the round once it is complete.
 pub(super) fn halving(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f64) -> anyhow::Result<Flow> {
-    let Stage::Halving(h) = &mut run.stage else { unreachable!("halving stage") };
+    let Stage::Halving(h) = &run.stage else { unreachable!("halving stage") };
     if h.cursor.done(h.pool.len()) {
+        if let Some((index, next_table)) = tiered_liveness_next(h, e.ctx.hands) {
+            return play_tiered_liveness(e, run, left, did, index, next_table);
+        }
         return Ok(judge_round(e, run));
     }
+    let Stage::Halving(h) = &mut run.stage else { unreachable!("halving stage") };
     let (cands, tables) = h.cursor.slice(h.pool.len(), h.round_tables, run.rate.slice_runs(left, cap));
     let runs = (cands.len() + 1) * tables.len();
     if did && run.rate.secs_for(runs) > left {
@@ -115,6 +124,54 @@ pub(super) fn halving(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f
     h.spent += cands.len() * tables.len() * e.ctx.hands;
     h.cursor.advance(&cands, &tables, h.round_tables);
     run.rate.observe(runs, s.elapsed().as_secs_f64());
+    Ok(Flow::Played)
+}
+
+/// A zero-difference tiered-pricing candidate needs more ordinary matched deals before the ledger
+/// calls it inert. `round.hands` is persisted with the run, so it also records the next distinct
+/// table after a step stops; no new stored cursor or reset of the ordinary round is needed.
+fn tiered_liveness_next(h: &Halving, hands: usize) -> Option<(usize, usize)> {
+    if h.round != 0 || !h.cursor.done(h.pool.len()) {
+        return None;
+    }
+    let index = h.pool.iter().position(|c| c.knob == "tiered_all_in_fold_pricing")?;
+    let candidate = &h.pool[index];
+    if candidate.prior.as_ref().is_some_and(|p| p.differing > 0) || candidate.round.differing > 0 {
+        return None;
+    }
+    let next_table = candidate.round.hands as usize / hands.max(1);
+    (1..TIERED_LIVENESS_TABLES).contains(&next_table).then_some((index, next_table))
+}
+
+fn play_tiered_liveness(e: &Env, run: &mut SearchRun, left: f64, did: bool, index: usize, next_table: usize) -> anyhow::Result<Flow> {
+    // One table per slice lets the next step stop as soon as a changed outcome appears.
+    let tables = next_table..next_table + 1;
+    if did && run.rate.secs_for(2) > left {
+        return Ok(Flow::Stop);
+    }
+    let Stage::Halving(h) = &mut run.stage else { unreachable!("halving stage") };
+    e.status(json!({"status": "evaluating", "stratum": "observed",
+        "phase": format!("tiered all-in liveness tables {}..{} of {TIERED_LIVENESS_TABLES}", tables.start + 1, tables.end),
+        "progress": {"hands": h.spent, "target": e.ctx.tables * e.ctx.hands * 16},
+        "next_candidate": {"family": h.pool[index].knob.as_str(), "reason": "measuring rare unequal all-in decisions on additional matched deals"}}));
+    let challenger = e.eval(&e.proposals[h.pool[index].index].3);
+    let seed = 900_000 + run.cycle * 10_000;
+    let started = Instant::now();
+    let part = paired_sums_arms_stacked(
+        &Arm { params: &e.eval_champion, nn: e.nn.clone() },
+        &[Arm { params: &challenger, nn: e.nn.clone() }],
+        &e.clones,
+        &e.sc.models,
+        tables.clone(),
+        e.ctx.hands,
+        &e.stacks.layouts,
+        seed,
+    )
+    .pop()
+    .expect("one tiered-pricing arm");
+    h.pool[index].round.add(&part);
+    h.spent += tables.len() * e.ctx.hands;
+    run.rate.observe(2 * tables.len(), started.elapsed().as_secs_f64());
     Ok(Flow::Played)
 }
 
