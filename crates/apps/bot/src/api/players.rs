@@ -5,7 +5,7 @@
 
 use super::*;
 use sv10_core::model::{HandSummary, ModelStore, Profile, hand_stats};
-use sv10_store::store::PlayerHand;
+use sv10_store::store::{PlayerHand, PlayerHandWithBlind};
 
 fn profile_json(p: &Profile) -> Value {
     json!({
@@ -19,28 +19,38 @@ fn profile_json(p: &Profile) -> Value {
 /// Hands with a result the card names one by one (0296).
 const RECENT_HANDS: usize = 10;
 
-/// Our record against a player over `hands` (oldest first) played by `ours`, in big blinds of `bb`.
+/// Our record against a player over `hands` (oldest first) played by `ours`. Chip totals include
+/// every settled hand; rates use only hands with their own positive recorded blind.
 ///
 /// `current` maps a stored bot name to the name that seat answers to today
 /// ([`crate::live::Shared::current_name`]): rows written under a bot's earlier name still group
 /// under one seat and still point at a replay, and anything here that groups or picks a bot goes
 /// through it.
-pub(super) fn record(hands: &[PlayerHand], name: &str, ours: &[String], bb: f64, current: impl Fn(&str) -> String) -> Value {
-    let (mut n, mut net, mut ev, mut sq, mut evsq) = (0f64, 0f64, 0f64, 0f64, 0f64);
+pub(super) fn record(hands: &[PlayerHandWithBlind], name: &str, ours: &[String], current: impl Fn(&str) -> String) -> Value {
+    let (mut n, mut net, mut ev) = (0f64, 0f64, 0f64);
+    let (mut priced, mut bb_net, mut bb_ev, mut bb_sq, mut bb_evsq) = (0f64, 0f64, 0f64, 0f64, 0f64);
     let (mut won_pots, mut lost_pots) = (0usize, 0usize);
     let mut best: Option<&PlayerHand> = None;
     let mut worst: Option<&PlayerHand> = None;
     let mut by_bot: std::collections::BTreeMap<String, (usize, i64)> = Default::default();
     let mut series = Vec::new();
     let step = (hands.len() / 120).max(1);
-    for (i, h) in hands.iter().enumerate() {
+    for (i, row) in hands.iter().enumerate() {
+        let h = &row.hand;
         let Some(x) = h.net else { continue };
         let e = h.ev_net.unwrap_or(x as f64);
         n += 1.0;
         net += x as f64;
         ev += e;
-        sq += (x * x) as f64;
-        evsq += e * e;
+        if let Some(bb) = row.big_blind.filter(|bb| *bb > 0) {
+            let x_bb = x as f64 / bb as f64;
+            let e_bb = e / bb as f64;
+            priced += 1.0;
+            bb_net += x_bb;
+            bb_ev += e_bb;
+            bb_sq += x_bb * x_bb;
+            bb_evsq += e_bb * e_bb;
+        }
         let winners: Vec<&str> = h.winners.split(',').collect();
         if x > 0 && winners.iter().any(|w| ours.iter().any(|o| o == w)) {
             won_pots += 1;
@@ -61,19 +71,19 @@ pub(super) fn record(hands: &[PlayerHand], name: &str, ours: &[String], bb: f64,
         }
     }
     let rate = |sum: f64, sq: f64| {
-        if n < 2.0 {
+        if priced < 2.0 {
             return (Value::Null, Value::Null);
         }
-        let m = sum / n;
-        let sd = (sq / n - m * m).max(0.0).sqrt();
-        (json!(m / bb * 100.0), json!(1.96 * sd / n.sqrt() / bb * 100.0))
+        let m = sum / priced;
+        let sd = (sq / priced - m * m).max(0.0).sqrt();
+        (json!(m * 100.0), json!(1.96 * sd / priced.sqrt() * 100.0))
     };
-    let (bb100, ci) = rate(net, sq);
-    let (ev_bb100, ev_ci) = rate(ev, evsq);
+    let (bb100, ci) = rate(bb_net, bb_sq);
+    let (ev_bb100, ev_ci) = rate(bb_ev, bb_evsq);
     let form: Vec<&str> = hands
         .iter()
         .rev()
-        .filter_map(|h| h.net)
+        .filter_map(|r| r.hand.net)
         .take(10)
         .map(|x| {
             if x > 0 {
@@ -89,9 +99,10 @@ pub(super) fn record(hands: &[PlayerHand], name: &str, ours: &[String], bb: f64,
         h.map(|h| json!({"hand_id": h.hand_id, "bot": current(&h.bot), "net": h.net, "pot": h.pot, "ts": parse_ts(&h.ended_at)}))
     };
     // The newest hands with a result, newest first: what the card's key-hand list names one by one.
-    let recent: Vec<Value> = hands.iter().rev().filter(|h| h.net.is_some()).filter_map(|h| pick(Some(h))).take(RECENT_HANDS).collect();
+    let recent: Vec<Value> =
+        hands.iter().rev().filter(|r| r.hand.net.is_some()).filter_map(|r| pick(Some(&r.hand))).take(RECENT_HANDS).collect();
     json!({
-        "hands": n as i64, "net": net.round(), "ev_net": ev.round(), "bb100": bb100, "confidence": ci, "ev_bb100": ev_bb100, "ev_confidence": ev_ci,
+        "hands": n as i64, "priced_hands": priced as i64, "net": net.round(), "ev_net": ev.round(), "bb100": bb100, "confidence": ci, "ev_bb100": ev_bb100, "ev_confidence": ev_ci,
         "won_pots": won_pots, "lost_pots": lost_pots, "biggest_win": pick(best.filter(|b| b.net.unwrap_or(0) > 0)),
         "biggest_loss": pick(worst.filter(|w| w.net.unwrap_or(0) < 0)),
         "by_bot": by_bot.into_iter().map(|(bot, (hands, net))| json!({"bot": bot, "hands": hands, "net": net})).collect::<Vec<_>>(),
@@ -163,7 +174,7 @@ pub(super) async fn player_card(State(s): State<Arc<Shared>>, Path(name): Path<S
         card["name"] = json!(name);
         card["avatar_url"] = json!(shared.avatars.read().get(&name).and_then(|a| crate::avatar_url(&shared.config.rest_base, a)));
         card["reputation"] = json!(shared.reputation.read().get(&name).cloned());
-        card["vs_us"] = record(&hands, &name, &ours, shared.big_blind(), |b| shared.current_name(b));
+        card["vs_us"] = record(&hands, &name, &ours, |b| shared.current_name(b));
         // Our net in the hands they sat in is a table result; the head-to-head read is the chip
         // flow attributed to their seat, the number every other surface shows (0277).
         card["vs_seat"] = if is_us {
@@ -201,16 +212,20 @@ mod tests {
         }
     }
 
+    fn priced_hand(bot: &str, net: i64, ev: Option<f64>, winners: &str) -> PlayerHandWithBlind {
+        PlayerHandWithBlind { hand: hand(bot, net, ev, winners), big_blind: Some(20) }
+    }
+
     #[test]
     fn the_record_counts_pots_won_and_lost_and_reads_all_in_ev() {
         let ours = vec!["A".to_string(), "B".to_string()];
         let hands = vec![
-            hand("A", 400, None, "A"),
-            hand("B", -1000, Some(300.0), "villain"),
-            hand("A", -20, None, "someone"),
-            hand("B", 60, None, "B"),
+            priced_hand("A", 400, None, "A"),
+            priced_hand("B", -1000, Some(300.0), "villain"),
+            priced_hand("A", -20, None, "someone"),
+            priced_hand("B", 60, None, "B"),
         ];
-        let r = record(&hands, "villain", &ours, 20.0, |b| b.to_string());
+        let r = record(&hands, "villain", &ours, |b| b.to_string());
         assert_eq!(r["hands"], json!(4));
         assert_eq!(r["net"], json!(-560.0));
         assert_eq!(r["ev_net"], json!(740.0), "the all-in loss counts at its EV");
@@ -222,15 +237,42 @@ mod tests {
         assert!(r["bb100"].as_f64().is_some() && r["ev_bb100"].as_f64().unwrap() > r["bb100"].as_f64().unwrap());
     }
 
+    #[test]
+    fn mixed_blind_rates_use_each_recorded_blind_and_exclude_unpriced_hands() {
+        let ours = vec!["A".to_string()];
+        let hands = vec![
+            PlayerHandWithBlind { hand: hand("A", 10, Some(5.0), "A"), big_blind: Some(10) },
+            PlayerHandWithBlind { hand: hand("A", 20, Some(30.0), "A"), big_blind: Some(20) },
+            PlayerHandWithBlind { hand: hand("A", 50, None, "A"), big_blind: None },
+        ];
+        let priced = record(&hands[..2], "villain", &ours, |b| b.to_string());
+        assert_eq!(priced["bb100"], json!(100.0), "both settled results are +1 bb");
+        assert_eq!(priced["confidence"], json!(0.0), "settled bb outcomes have zero spread");
+        assert_eq!(priced["ev_bb100"], json!(100.0), "EV is normalized before averaging");
+        assert!((priced["ev_confidence"].as_f64().unwrap() - 69.296_464_56).abs() < 1e-6);
+
+        let with_unpriced = record(&hands, "villain", &ours, |b| b.to_string());
+        assert_eq!(with_unpriced["hands"], json!(3));
+        assert_eq!(with_unpriced["priced_hands"], json!(2));
+        assert_eq!((with_unpriced["net"].as_f64(), with_unpriced["ev_net"].as_f64()), (Some(80.0), Some(85.0)));
+        assert_eq!(with_unpriced["bb100"], json!(100.0), "missing blind must not use the current table blind");
+        assert_eq!(with_unpriced["confidence"], json!(0.0));
+        assert_eq!(with_unpriced["ev_bb100"], json!(100.0));
+        let last = with_unpriced["series"].as_array().unwrap().last().unwrap();
+        assert_eq!((last["net"].as_f64(), last["ev"].as_f64()), (Some(80.0), Some(85.0)), "the curve stays in chips");
+        assert_eq!(with_unpriced["recent"][0]["hand_id"], json!("h50"));
+        assert_eq!((with_unpriced["recent"][0]["net"].as_i64(), with_unpriced["recent"][0]["pot"].as_i64()), (Some(50), Some(100)));
+    }
+
     /// 0296: the card's key hands and per-bot split name the seat as it is today, so a hand stored
     /// under a bot's earlier name still resolves to a live slot and keeps its replay link.
     #[test]
     fn a_renamed_bots_hands_still_resolve_to_its_current_seat() {
         let ours = vec!["SvanBotV10".to_string()];
-        let mut hands: Vec<PlayerHand> = (0..12).map(|i| hand("SvanBotV7", i * 10 - 50, None, "villain")).collect();
-        hands.push(hand("SvanBotV10", 100, None, "SvanBotV10"));
+        let mut hands: Vec<PlayerHandWithBlind> = (0..12).map(|i| priced_hand("SvanBotV7", i * 10 - 50, None, "villain")).collect();
+        hands.push(priced_hand("SvanBotV10", 100, None, "SvanBotV10"));
         let rename = |b: &str| if b == "SvanBotV7" { "SvanBotV10".to_string() } else { b.to_string() };
-        let r = record(&hands, "villain", &ours, 20.0, rename);
+        let r = record(&hands, "villain", &ours, rename);
         assert_eq!(r["by_bot"], json!([{"bot": "SvanBotV10", "hands": 13, "net": 160}]), "one seat, not two");
         let recent = r["recent"].as_array().unwrap();
         assert_eq!(recent.len(), 10, "the newest ten");

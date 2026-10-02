@@ -1,6 +1,6 @@
 //! Alias-aware history reads for one fleet seat. Store rows retain the name used in play.
 use super::*;
-use sv10_store::store::{HandRow, PlayerHand};
+use sv10_store::store::{HandRow, PlayerHandWithBlind};
 
 pub(super) fn recent_seat_hands(s: &Shared, name: &str, limit: usize, light: bool) -> Result<Vec<HandRow>, ApiError> {
     let mut rows = Vec::new();
@@ -26,13 +26,13 @@ pub(super) fn seat_hand(s: &Shared, name: &str, id: &str) -> Result<Option<HandR
     Ok(None)
 }
 
-pub(super) fn player_hands(s: &Shared, name: &str) -> Result<Vec<PlayerHand>, ApiError> {
+pub(super) fn player_hands(s: &Shared, name: &str) -> Result<Vec<PlayerHandWithBlind>, ApiError> {
     let mut rows = Vec::new();
     for alias in s.names_of(&s.current_name(name)) {
-        rows.extend(store_read("hands with player", s.store.hands_with_player(&alias))?);
+        rows.extend(store_read("hands with player", s.store.hands_with_player_with_blinds(&alias))?);
     }
-    rows.sort_by(|a, b| a.ended_at.cmp(&b.ended_at));
+    rows.sort_by(|a, b| a.hand.ended_at.cmp(&b.hand.ended_at));
     let mut seen = std::collections::HashSet::new();
-    rows.retain(|r| seen.insert((r.bot.clone(), r.hand_id.clone())));
+    rows.retain(|r| seen.insert((r.hand.bot.clone(), r.hand.hand_id.clone())));
     Ok(rows)
 }
