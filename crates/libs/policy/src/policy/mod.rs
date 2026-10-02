@@ -182,23 +182,19 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
     // Opponents already all-in stay in the pot when everyone else folds (live 2026-09-15: a 10%
     // equity river jam was scored as winning 12.5k when the only player who could fold did).
     let all_in_idx: Vec<usize> = responders.iter().enumerate().filter(|(_, r)| r.stack_total <= r.bet).map(|(i, _)| i).collect();
-    let fold_branch = if all_in_idx.is_empty() {
-        pot
-    } else {
-        let seats: Vec<usize> = all_in_idx.iter().map(|&i| responders[i].seat).collect();
-        let (side, main) = sit.split_at_all_ins(&seats);
-        let subset: Vec<(usize, Option<&Range>)> = all_in_idx.iter().map(|&i| (i, None)).collect();
-        let refs: Vec<&Range> = all_in_idx.iter().map(|&i| responders[i].range).collect();
-        let Some(eq_all_in) = measure::measured_equity(deals.as_ref(), sit, params, &subset, &refs, params.samples / 2, rng) else {
-            return measure::unmeasured(sit);
-        };
-        side + eq_all_in * main
+    let Some(legacy_fold_branch) = measure::legacy_all_in_fold_branch(sit, &responders, &all_in_idx, deals.as_ref(), params, rng) else {
+        return measure::unmeasured(sit);
     };
     // No bluff raise wars: once a street has two raises, only raise with real equity (the guard is
     // `Params::raise_allowed`, whose floors `params.raise_gate` scales).
     let targets = if params.raise_allowed(sit, eq) { raise_targets(sit, params, ip, eq) } else { Vec::new() };
     for to in targets {
         let add = (to - hero.bet) as f64;
+        let Some(fold_branch) =
+            measure::all_in_fold_branch(sit, &responders, &all_in_idx, deals.as_ref(), params, to, legacy_fold_branch, rng)
+        else {
+            return measure::unmeasured(sit);
+        };
         let prices = response_pricing.for_raise_to(&responders, to);
         let mut all_fold = 1.0;
         let mut cont_ranges: Vec<(f64, Range)> = Vec::new();
