@@ -147,6 +147,53 @@ impl Situation {
         (side.min(pot), (pot - side).max(0.0))
     }
 
+    /// Pot slices after raising the current-street total to `raise_to` and having every opponent
+    /// with chips behind fold. Each slice names the already all-in seats still eligible for it; an
+    /// empty list is an uncalled refund or a pot won outright. A tier hero cannot reach is omitted.
+    /// This refines only *unequal* all-in commitments. If history cannot reconstruct them, or they
+    /// are equal, the caller keeps the existing one-pot estimate. The underlying commitments from
+    /// [`Self::invested`] remain approximate when past action history is incomplete.
+    pub fn unequal_all_in_tiers_after_raise(&self, all_in_seats: &[usize], raise_to: i64) -> Option<Vec<(f64, Vec<usize>)>> {
+        let mut invested = self.invested();
+        let mut caps: Vec<f64> = all_in_seats.iter().map(|seat| invested.get(seat).copied().unwrap_or(0.0)).collect();
+        if caps.len() < 2 || caps.iter().any(|&cap| cap <= 0.0) {
+            return None;
+        }
+        caps.sort_by(f64::total_cmp);
+        caps.dedup();
+        if caps.len() < 2 {
+            return None;
+        }
+        let added = raise_to.checked_sub(self.hero().bet)?;
+        if added < 0 || added > self.hero().stack {
+            return None;
+        }
+        *invested.entry(self.hero_seat).or_default() += added as f64;
+        let hero_invested = invested.get(&self.hero_seat).copied().unwrap_or(0.0);
+        let mut levels: Vec<f64> = invested.values().copied().filter(|&amount| amount > 0.0).collect();
+        levels.sort_by(f64::total_cmp);
+        levels.dedup();
+        let mut tiers: Vec<(f64, Vec<usize>)> = Vec::new();
+        let mut previous = 0.0;
+        for level in levels {
+            let amount = (level - previous) * invested.values().filter(|&&contribution| contribution >= level).count() as f64;
+            previous = level;
+            if hero_invested < level {
+                continue;
+            }
+            let eligible: Vec<usize> =
+                all_in_seats.iter().copied().filter(|seat| invested.get(seat).is_some_and(|&v| v >= level)).collect();
+            if let Some((last_amount, last_eligible)) = tiers.last_mut()
+                && *last_eligible == eligible
+            {
+                *last_amount += amount;
+            } else {
+                tiers.push((amount, eligible));
+            }
+        }
+        Some(tiers)
+    }
+
     /// The situation of `seat` in a simulated hand, with `names` per seat.
     pub fn from_hand(hand: &Hand, seat: usize, names: &[String]) -> Situation {
         let legal = hand.legal();
@@ -365,6 +412,37 @@ mod tests {
         // Hero and the deep player are in for 4,749 each: about 3,250 each above the all-in level.
         assert!((6_000.0..7_000.0).contains(&side), "side pot {side}");
         assert_eq!(sit.split_at_all_ins(&[]), (12_536.0, 0.0));
+    }
+
+    #[test]
+    fn unequal_all_ins_have_separate_showdown_tiers() {
+        let mut sit = uncallable_overshove();
+        let player = |seat, bet, stack| PlayerInfo { seat, name: format!("p{seat}"), stack, bet, folded: false };
+        sit.hero_seat = 0;
+        sit.players = vec![player(0, 400, 600), player(1, 100, 0), player(2, 300, 0), player(3, 0, 1_000)];
+        sit.pot = 800;
+        sit.history.clear();
+        assert_eq!(sit.unequal_all_in_tiers_after_raise(&[1, 2], 400), Some(vec![(300.0, vec![1, 2]), (400.0, vec![2]), (100.0, vec![])]));
+        let payouts = crate::engine::split_pots(&[400, 100, 300, 0], &[false, false, false, true], &[200, 300, 100, 0], 3);
+        assert_eq!(payouts[0], 500, "hero loses the main pot, wins the deeper side pot and takes the uncalled refund");
+        // The current wager is below both all-ins, but a proposed raise can still contest both.
+        sit.players[0].bet = 0;
+        sit.pot = 400;
+        sit.current_bet_to = Some(300);
+        sit.call_amount = 300;
+        sit.can_check = false;
+        sit.min_raise_to = Some(500);
+        sit.max_raise_to = Some(600);
+        assert!(sit.min_raise_to.unwrap() <= 500 && 500 <= sit.max_raise_to.unwrap());
+        assert_eq!(sit.unequal_all_in_tiers_after_raise(&[1, 2], 500), Some(vec![(300.0, vec![1, 2]), (400.0, vec![2]), (200.0, vec![])]));
+        assert_eq!(sit.unequal_all_in_tiers_after_raise(&[1, 2], 600), Some(vec![(300.0, vec![1, 2]), (400.0, vec![2]), (300.0, vec![])]));
+        let raised_payouts = crate::engine::split_pots(&[500, 100, 300, 0], &[false, false, false, true], &[200, 300, 100, 0], 3);
+        assert_eq!(raised_payouts[0] - 500, 100, "the called part of hero's raise remains at risk against the all-ins");
+        // A snapshot without past betting history cannot assign side pots; preserve the old
+        // single-showdown estimate instead of declaring the whole pot uncontested.
+        sit.players[1].bet = 0;
+        sit.players[2].bet = 0;
+        assert_eq!(sit.unequal_all_in_tiers_after_raise(&[1, 2], 500), None);
     }
 
     #[test]
