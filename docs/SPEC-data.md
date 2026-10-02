@@ -180,6 +180,9 @@ level 6). Any zlib reads it: `zlib.decompressobj(-15, zdict=<pack_dicts.bytes>)`
   output, and read at the same speed (about 6.5 s).
 - **Hand summaries stay text**: `hands.summary` (175 MB) is read on every model import and searched
   with `instr` for the opponent pages.
+- **Opponent result blinds**: `hands_with_player_with_blinds` returns each matched hand with its
+  own positive integer big blind from a valid summary. Missing, malformed, non-integer and
+  non-positive blinds remain absent; chip results and the original opponent-hand query are unchanged.
 - **Inspect** with `review decisions BOT HAND`, `review export HAND` and `review storage` (`sqlite3`
   shows packed values as blobs).
 
