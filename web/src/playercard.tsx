@@ -129,9 +129,10 @@ function KeyHands({card, bots, onReplay}: {card: PlayerCard; bots: Bot[]; onRepl
 function OwnCard({card}: {card: PlayerCard}) {
   const v = card.vs_us;
   const edge = v.ev_bb100 ?? v.bb100;
+  const rateBase = v.priced_hands == null ? `${num(v.hands)} hands` : `${num(v.priced_hands)} hands with recorded blinds`;
   return <>
     <section className="pc-scoreboard" aria-label="Our seat's results">
-      <div className={`pc-big ${(edge ?? 0) < 0 ? 'negative' : 'positive'}`}><span>WIN RATE</span><b>{signed(edge, 0)}</b><small>bb/100 all-in EV{v.ev_confidence != null ? ` ± ${num(v.ev_confidence)}` : ''} over {num(v.hands)} hands</small></div>
+      <div className={`pc-big ${(edge ?? 0) < 0 ? 'negative' : 'positive'}`}><span>WIN RATE</span><b>{signed(edge, 0)}</b><small>bb/100 all-in EV{v.ev_confidence != null ? ` ± ${num(v.ev_confidence)}` : ''} over {rateBase}</small></div>
       <div className="pc-big" title="Pots this seat won, of the hands it played"><span>POTS WON</span><b>{num(v.won_pots)}</b><small>of {num(v.hands)} hands</small></div>
       <div className={`pc-big ${v.net < 0 ? 'negative' : 'positive'}`}><span>CHIPS WON</span><b>{signed(v.net)}</b><small>actual · EV {signed(v.ev_net)} over {num(v.hands)} hands</small></div>
       <div className="pc-form" aria-label="Last 10 hands, newest first"><span>FORM</span><div>{v.form.map((f, i) => <i key={i} className={`pc-pill ${f === 'W' ? 'win' : f === 'L' ? 'loss' : 'even'}`}>{f}</i>)}</div></div>

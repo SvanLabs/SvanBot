@@ -872,6 +872,30 @@ test('champion explanations and mobile help are readable', async ({ page }) => {
 const scoutRates = {vpip:0.3, pfr:0.2, open_raise:0.2, limp:0.05, three_bet:0.09, call_open:0.2, fold_to_3bet:0.5, four_bet:0.05, fold_to_4bet:0.4, cbet:0.7,
   fold_to_cbet:0.5, wtsd:0.3, won_showdown:0.52, river_bluff:0.25, bet_first:[0.4,0.3,0.3], fold_vs_bet:[0.4,0.5,0.6], raise_vs_bet:[0.1,0.08,0.05], vpip_pos:[0.2,0.35,0.3], open_pos:[0.15,0.3,0.2]};
 
+test('own card labels the recorded-blind rate sample only when the API supplies it', async ({page}) => {
+  let pricedHands: number | undefined;
+  await page.route('**/api/players/TestBot/card', route => route.fulfill({json:{
+    name:'TestBot', ours:true, style:'Our seat', advice:'', hands_observed:3, confidence:0.5,
+    read:scoutRates, league:scoutRates, corrections:{},
+    vs_us:{hands:3, ...(pricedHands == null ? {} : {priced_hands:pricedHands}), net:30, ev_net:30,
+      bb100:100, confidence:0, ev_bb100:100, ev_confidence:0, won_pots:2, lost_pots:1,
+      by_bot:[], form:['W','W','L'], series:[]},
+  }}));
+  await page.goto('/');
+  await expect(page.getByRole('tablist', {name:'Dashboard views'})).toBeVisible();
+  const open = () => page.evaluate(() => window.dispatchEvent(new CustomEvent('sv-open-player', {detail:'TestBot'})));
+  await open();
+  const card = page.getByRole('dialog', {name:'Scout view: TestBot'});
+  await expect(card.locator('.pc-scoreboard .pc-big').first().locator('small')).toHaveText('bb/100 all-in EV ± 0 over 3 hands');
+  await card.getByRole('button', {name:'Close scout view'}).click();
+
+  pricedHands = 2;
+  await open();
+  await expect(card.locator('.pc-scoreboard .pc-big').first().locator('small')).toHaveText('bb/100 all-in EV ± 0 over 2 hands with recorded blinds');
+  await expect(card.locator('.pc-scoreboard .pc-big').nth(1).locator('small')).toHaveText('of 3 hands');
+  await expect(card.locator('.pc-scoreboard .pc-big').nth(2).locator('small')).toHaveText('actual · EV +30 over 3 hands');
+});
+
 test('an opponent row opens the one scout view with our record, the corrections and key hands', async ({ page }) => {
   // 0296: the Opponent intelligence table became a list, and the row opens the single view that
   // replaced the table, the read list and the profile drawer.

@@ -113,7 +113,9 @@ export interface PlayerCard {
   reputation?: Reputation | null;
   /** The chip flow attributed to this player's seat, the number every other surface shows (0280). */
   vs_seat?: { hands:number; bb_per_100:number; low_95:number; high_95:number; beats_us:boolean; we_beat:boolean } | null;
-  vs_us: { hands:number; net:number; ev_net:number; bb100:number|null; confidence:number|null; ev_bb100:number|null; ev_confidence:number|null; won_pots:number; lost_pots:number;
+  vs_us: { hands:number;
+    /** Hands with a positive recorded blind used for bb/100, when the API supplies this count. */
+    priced_hands?:number; net:number; ev_net:number; bb100:number|null; confidence:number|null; ev_bb100:number|null; ev_confidence:number|null; won_pots:number; lost_pots:number;
     biggest_win?: KeyHand | null; biggest_loss?: KeyHand | null; by_bot: {bot:string;hands:number;net:number}[]; form: string[]; series: {hand:number;net:number;ev:number}[];
     /** The newest shared hands with a result, newest first, when the server sends them; without
      *  them the card names only the two extremes. */
