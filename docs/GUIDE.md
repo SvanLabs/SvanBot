@@ -393,7 +393,7 @@ Everything lives in `artifacts/svanbot10.db` (SQLite, WAL, `synchronous=FULL`).
 | `hands` | Every completed hand per bot: hole cards, board, pot, net chips, winners and the full hand summary (players, stacks, action history, shown cards) |
 | `decisions` | Every decision with equity, pot, price, latency and all candidate EVs |
 | `events` | Activity log |
-| `kv: models.v1` | Opponent models (checkpoint every 30 s) |
+| `kv: models.v1` | Opponent models (checkpoint every 5 min) |
 | `kv: params.v1` | Live strategy parameters (promoted by the learner) |
 | `kv: nn.response.v1` | Trained neural response model and its validation scores |
 | `kv: learner.*` | Learner status, experiments, lineage, cycle counter, clone cache |
@@ -423,7 +423,8 @@ and the SSD keeps only the two newest. The mirror is off by default.
 
 - A hand is written to the database *before* it updates the opponent models.
 - The model checkpoint records the last hand row it contains; on startup every later hand is
-  replayed into the models, so even a hard crash loses nothing.
+  replayed into the models. Split-fleet workers replay those later hands again when they reload
+  the head's checkpoint, so a refresh does not undo startup recovery.
 - When new statistics are added, models are rebuilt from the complete hand history.
 - **Backups**: a consistent copy every hour in `artifacts/backups/` (3 hourly + 1 daily kept,
   `SVANBOT_HOURLY_BACKUPS` and `SVANBOT_DAILY_BACKUPS`). Each
