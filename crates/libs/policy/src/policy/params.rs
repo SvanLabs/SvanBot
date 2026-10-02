@@ -114,6 +114,10 @@ pub struct Params {
     /// 1 = the single-stream path the learner and the golden snapshot use. Live play sets it to the core
     /// count with a larger `samples` budget; like `samples`, it is local and never promoted.
     pub deal_chunks: usize,
+    /// Price unequal all-in pot tiers with their eligible ranges after a raise. Off until a paired
+    /// strength result supports replacing the existing one-pot approximation (#665).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tiered_all_in_fold_pricing: bool,
 }
 
 impl Default for Params {
@@ -156,6 +160,7 @@ impl Default for Params {
             overbet_call_shift: 0.0,
             overbet_call_slope: 0.0,
             deal_chunks: 1,
+            tiered_all_in_fold_pricing: false,
         }
     }
 }

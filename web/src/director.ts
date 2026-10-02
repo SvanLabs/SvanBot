@@ -1,14 +1,20 @@
 import type { TableBot } from './types';
 
+const POT_CAP_BB = 2000;
+// A capped pot plus six occupied seats contributes at most 2,120 points. Each event tier must
+// beat every score in the tier below it, even when the other table has the largest possible pot.
+const ALL_IN_BONUS = 2500;
+const OUR_TURN_BONUS = 5000;
+
 /** TV mode auto-director (0177): how interesting a live table is right now. Our bot to act beats an
  * all-in, which beats a big pot; empty or idle tables score below zero. */
 export function directorScore(b: TableBot): number {
   if (!b.connected || !b.hand_id) return -1;
   const bb = b.big_blind || 20;
   let s = 0;
-  if (b.actor_seat != null && b.actor_seat === b.hero_seat) s += 1000;
-  if (b.seats.some(x => x.last_action === 'all_in' && !x.folded)) s += 800;
-  s += Math.min((b.pot || 0) / bb, 2000);
+  if (b.actor_seat != null && b.actor_seat === b.hero_seat) s += OUR_TURN_BONUS;
+  if (b.seats.some(x => x.last_action === 'all_in' && !x.folded)) s += ALL_IN_BONUS;
+  s += Math.min((b.pot || 0) / bb, POT_CAP_BB);
   s += b.seats.filter(x => x.name && !x.folded).length * 20;
   return s;
 }

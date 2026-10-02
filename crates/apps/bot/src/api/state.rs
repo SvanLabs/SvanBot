@@ -2,6 +2,9 @@
 
 use super::*;
 
+mod rates;
+use rates::summarize;
+
 pub(super) struct MetricsCache {
     at: Instant,
     /// The figures the last successful store read produced. A failed read never overwrites them:
@@ -57,14 +60,13 @@ pub(super) fn metrics(s: &Shared, b: &BotLive) -> Value {
         // the panel's evidence, so they come from the bot as it is now.
         return served(c.value.clone(), b, c.error.as_deref());
     }
-    let bb = if b.big_blind > 0 { b.big_blind as f64 } else { s.big_blind() };
     // A bot's winnings are a season standing, so the headline figures and the curve read this
     // season; the cumulative run stays available as `all_time`.
     let season = s.season();
     let mut all: Vec<ResultRow> = Vec::new();
     let mut error: Option<String> = None;
     for name in s.names_of(&b.name) {
-        match s.store.bot_ev_results(&name) {
+        match s.store.bot_ev_results_with_blinds(&name) {
             Ok(rows) => all.extend(rows),
             // Reported, not defaulted (0326): one failed name read used to publish
             // `{"hands": 0, "net_chips": 0}` for a bot that was at a table playing.
@@ -72,7 +74,7 @@ pub(super) fn metrics(s: &Shared, b: &BotLive) -> Value {
         }
     }
     let last_good = metrics_cache().lock().get(&b.slot).map(|c| c.value.clone());
-    let (value, error) = figures(all, error, &season, bb, last_good);
+    let (value, error) = figures(all, error, &season, last_good);
     if let Some(e) = &error {
         snapshot_warn(&format!("{e}, serving the last good figures (stale)"));
     }
@@ -91,17 +93,16 @@ fn figures(
     rows: Vec<ResultRow>,
     error: Option<String>,
     season: &Option<crate::season::CurrentSeason>,
-    bb: f64,
     last_good: Option<Value>,
 ) -> (Value, Option<String>) {
     if error.is_some() {
-        return (last_good.unwrap_or_else(|| empty_figures(season, bb)), error);
+        return (last_good.unwrap_or_else(|| empty_figures(season)), error);
     }
     let mut rows = rows;
-    rows.sort_by(|a, b| a.3.cmp(&b.3));
-    let all_time = summarize(&rows, bb).0;
-    let season_rows = this_season(season.as_ref(), rows, |(_, _, _, ended): &ResultRow| parse_ts(ended));
-    let (summary, series) = summarize(&season_rows, bb);
+    rows.sort_by(|a, b| a.ended_at.cmp(&b.ended_at));
+    let all_time = summarize(&rows).0;
+    let season_rows = this_season(season.as_ref(), rows, |r: &ResultRow| parse_ts(&r.ended_at));
+    let (summary, series) = summarize(&season_rows);
     let mut v = summary;
     v["season"] = season_scope(season.as_ref());
     v["all_time"] = all_time;
@@ -125,10 +126,10 @@ fn served(mut value: Value, b: &BotLive, error: Option<&str>) -> Value {
 
 /// The shape of a snapshot whose store could not be read at all: the fields a panel reads, zeroed
 /// and flagged, never presented as a measurement.
-fn empty_figures(season: &Option<crate::season::CurrentSeason>, bb: f64) -> Value {
-    let mut v = summarize(&[], bb).0;
+fn empty_figures(season: &Option<crate::season::CurrentSeason>) -> Value {
+    let mut v = summarize(&[]).0;
     v["season"] = season_scope(season.as_ref());
-    v["all_time"] = summarize(&[], bb).0;
+    v["all_time"] = summarize(&[]).0;
     v["series"] = json!([]);
     v
 }
@@ -174,52 +175,8 @@ fn fleet_state_hash(s: &Shared) -> Value {
         "last_mismatch": newest.unwrap_or(Value::Null)})
 }
 
-/// A stored result: net, all-in EV net (0213), showdown, end time.
-type ResultRow = (Option<i64>, Option<f64>, bool, String);
-
-/// Net chips, win rate and the running curve over a set of stored results, with the all-in EV
-/// (luck-adjusted) curve, win rate and the luck between the two.
-fn summarize(rows: &[ResultRow], bb: f64) -> (Value, Vec<Value>) {
-    let (mut n, mut sum, mut sq) = (0f64, 0f64, 0f64);
-    let (mut ev_sum, mut ev_sq) = (0f64, 0f64);
-    let (mut total, mut showdown, mut other) = (0i64, 0i64, 0i64);
-    let mut series = Vec::new();
-    let step = (rows.len() / 150).max(1);
-    for (i, (net, ev, went, _)) in rows.iter().enumerate() {
-        let Some(net) = *net else { continue };
-        let ev = ev.unwrap_or(net as f64);
-        n += 1.0;
-        sum += net as f64;
-        sq += (net * net) as f64;
-        ev_sum += ev;
-        ev_sq += ev * ev;
-        total += net;
-        if *went {
-            showdown += net;
-        } else {
-            other += net;
-        }
-        if i % step == 0 || i + 1 == rows.len() {
-            series.push(json!({"hand": i + 1, "total": total, "showdown": showdown, "other": other, "ev": ev_sum.round()}));
-        }
-    }
-    let rate = |sum: f64, sq: f64| {
-        if n >= 2.0 {
-            let mean = sum / n;
-            let var = (sq / n - mean * mean).max(0.0);
-            (Some(mean / bb * 100.0), Some(1.96 * (var / n).sqrt() / bb * 100.0))
-        } else {
-            (None, None)
-        }
-    };
-    let (bb100, conf) = rate(sum, sq);
-    let (ev_bb100, ev_conf) = rate(ev_sum, ev_sq);
-    (
-        json!({"hands": rows.len(), "priced_hands": n as i64, "net_chips": total, "bb100": bb100, "confidence": conf,
-            "ev_net_chips": ev_sum.round(), "ev_bb100": ev_bb100, "ev_confidence": ev_conf, "luck_chips": (total as f64 - ev_sum).round()}),
-        series,
-    )
-}
+/// A stored result carries its own blind so rates remain valid across stakes.
+type ResultRow = sv10_store::store::EvResultWithBlind;
 
 pub(super) fn p95(b: &BotLive) -> Value {
     if b.latencies_ms.is_empty() {

@@ -14,12 +14,15 @@ const bot = (slot: number, over: Partial<Bot> = {}): Bot => ({
 test('the director prefers our turn, then all-ins, then big pots', () => {
   const ours = bot(0, { actor_seat: 0 });
   const allIn = bot(1, { seats: [{ seat: 0, name: 'us', stack: 0 }, { seat: 3, name: 'v', stack: 0, last_action: 'all_in' }] });
-  const bigPot = bot(2, { pot: 20_000 });
+  const bigPot = bot(2, { pot: 30_000 });
   const idle = bot(3, { hand_id: null as unknown as string });
   expect(directorScore(ours)).toBeGreaterThan(directorScore(allIn));
+  expect(directorScore(ours)).toBeGreaterThan(directorScore(bigPot));
+  expect(directorScore(allIn)).toBeGreaterThan(directorScore(bigPot));
   expect(directorScore(allIn)).toBeGreaterThan(directorScore(bot(4)));
   expect(directorScore(bigPot)).toBeGreaterThan(directorScore(bot(4)));
   expect(directorScore(idle)).toBeLessThan(0);
+  expect(nextShot([bigPot, allIn, ours], bigPot.slot, MIN_SHOT_MS)).toBe(ours.slot);
 });
 
 test('the director holds a shot before cutting and leaves a finished table at once', () => {

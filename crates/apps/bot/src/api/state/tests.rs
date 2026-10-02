@@ -231,22 +231,51 @@ fn dashboard_rejects_a_legacy_active_response_model() {
 /// are kept rather than replaced by zeros.
 #[test]
 fn a_failed_results_read_keeps_the_last_good_figures_and_says_so() {
-    let rows = vec![(Some(300), None, false, "2026-09-27T00:00:00Z".to_string())];
-    let (good, err) = figures(rows, None, &None, 20.0, None);
+    let rows = vec![ResultRow {
+        net: Some(300),
+        ev_net: None,
+        showdown: false,
+        ended_at: "2026-09-27T00:00:00Z".to_string(),
+        big_blind: Some(20),
+    }];
+    let (good, err) = figures(rows, None, &None, None);
     assert!(err.is_none());
     assert_eq!(good["hands"], json!(1));
     assert_eq!(good["net_chips"], json!(300));
 
-    let (v, err) = figures(vec![], Some("store unreadable (bot results): boom".into()), &None, 20.0, Some(good.clone()));
+    let (v, err) = figures(vec![], Some("store unreadable (bot results): boom".into()), &None, Some(good.clone()));
     assert_eq!(v["hands"], good["hands"], "the last good figures stand");
     assert_eq!(v["net_chips"], json!(300));
     assert_eq!(err.as_deref(), Some("store unreadable (bot results): boom"), "and the read failure is carried out");
 
     // Nothing good to keep: the panel's shape is there for a renderer, but the payload says so.
-    let (v, err) = figures(vec![], Some("boom".into()), &None, 20.0, None);
+    let (v, err) = figures(vec![], Some("boom".into()), &None, None);
     assert_eq!(v["hands"], json!(0));
     assert_eq!(err.as_deref(), Some("boom"));
     assert!(v.get("series").is_some() && v.get("all_time").is_some() && v.get("season").is_some(), "{v}");
+}
+
+#[test]
+fn mixed_blinds_price_each_hand_without_changing_chip_totals() {
+    let row = |net, ev_net, big_blind, second| sv10_store::store::EvResultWithBlind {
+        net: Some(net),
+        ev_net: Some(ev_net),
+        showdown: false,
+        ended_at: format!("2026-09-27T00:00:0{second}Z"),
+        big_blind,
+    };
+    let rows = vec![row(10, 5.0, Some(10), 1), row(20, 10.0, Some(20), 2), row(30, 15.0, None, 3)];
+    let (summary, series) = summarize(&rows);
+    assert_eq!(summary["hands"], 3);
+    assert_eq!(summary["priced_hands"], 2, "a missing blind cannot use the current table's blind");
+    assert_eq!(summary["bb100"], 100.0);
+    assert_eq!(summary["confidence"], 0.0);
+    assert_eq!(summary["ev_bb100"], 50.0);
+    assert_eq!(summary["ev_confidence"], 0.0);
+    assert_eq!(summary["net_chips"], 60, "raw chip totals include every settled hand");
+    assert_eq!(summary["ev_net_chips"], 30.0);
+    assert_eq!(series.last().unwrap()["total"], 60);
+    assert_eq!(series.last().unwrap()["ev"], 30.0, "the curve remains in chips, including the unpriced hand");
 }
 
 /// 0326: `stale` and `error` are always in the payload, so "0 hands" and "unreadable" differ.
