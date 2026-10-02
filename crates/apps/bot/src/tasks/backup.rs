@@ -386,5 +386,7 @@ mod tests {
         assert!(sv10_store::integrity::verify_backup(&daily), "the next hour must repair the daily backup");
         let db = rusqlite::Connection::open(&daily).unwrap();
         assert_eq!(db.query_row("SELECT x FROM t", [], |r| r.get::<_, i64>(0)).unwrap(), 7);
+        drop(db);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
