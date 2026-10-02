@@ -15,6 +15,13 @@ pub fn refresh_models_from_store(shared: &Shared, last: &mut Option<String>) -> 
     }
     match serde_json::from_str::<ModelStore>(&json) {
         Ok(mut models) => {
+            // The head checkpoint can trail the hand table by up to five minutes. Replay those
+            // hands before replacing the worker's model, including on its first refresh after
+            // startup recovery, or the refresh undoes observations it already made.
+            if let Err(e) = recover_models(&shared.store, &mut models) {
+                tracing::warn!("head model checkpoint could not recover newer hands: {e}");
+                return false;
+            }
             let mut live = shared.models.write();
             // Per-opponent fits are not checkpointed; keep the ones installed (0218).
             crate::playerfits::PlayerFits::of(&live).apply(&mut models);

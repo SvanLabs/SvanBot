@@ -204,7 +204,7 @@ fn a_worker_reloads_the_heads_models_only_when_they_change() {
     assert!(!super::refresh_models_from_store(&shared, &mut last), "nothing saved yet");
     shared.models.write().response_ratios = std::sync::Arc::new([("villain".to_string(), [2.0, 1.0, 1.0])].into_iter().collect());
     shared.models.write().fold_offsets = std::sync::Arc::new([("villain".to_string(), -0.6)].into_iter().collect());
-    let mut head = ModelStore::default();
+    let mut head = ModelStore { schema: sv10_core::model::MODEL_SCHEMA, ..Default::default() };
     head.players.entry("villain".into()).or_default().hands = 42.0;
     shared.store.put_kv(crate::MODELS_KEY, &serde_json::to_string(&head).unwrap()).unwrap();
     assert!(super::refresh_models_from_store(&shared, &mut last));
@@ -212,6 +212,37 @@ fn a_worker_reloads_the_heads_models_only_when_they_change() {
     assert_eq!(shared.models.read().profile("villain").response_ratio, [2.0, 1.0, 1.0], "the installed correction survives");
     assert_eq!(shared.models.read().profile("villain").fold_logit_offset, -0.6, "and so does the fold calibration");
     assert!(!super::refresh_models_from_store(&shared, &mut last), "unchanged checkpoint: no reload");
+}
+
+#[test]
+fn a_worker_refresh_keeps_hands_recovered_after_the_head_checkpoint() {
+    let shared = crate::live::Shared::for_test("worker-recovered-models", &["A"]);
+    let (mut hand, _) = queued("fresh-hand", 0);
+    hand.summary = serde_json::json!({
+        "players": [[0, "villain"], [1, "A"]], "button": 0, "bb": 20,
+        "history": [], "board": [], "shown": []
+    })
+    .to_string();
+    let rowid = shared.store.insert_hand(&hand).unwrap();
+    let head = ModelStore { schema: sv10_core::model::MODEL_SCHEMA, watermark: Some(0), ..Default::default() };
+    shared.store.put_kv(crate::MODELS_KEY, &serde_json::to_string(&head).unwrap()).unwrap();
+    let mut recovered = head.clone();
+    super::recover_models(&shared.store, &mut recovered).unwrap();
+    assert_eq!(recovered.watermark, Some(rowid));
+    assert_eq!(recovered.hero_seen[&format!("{}A", sv10_core::model::HERO_SEEN_ONE)].hands, 1.0);
+    *shared.models.write() = recovered;
+
+    let mut last = None;
+    assert!(super::refresh_models_from_store(&shared, &mut last));
+    assert_eq!(shared.models.read().watermark, Some(rowid), "first refresh must not discard startup recovery");
+    assert_eq!(shared.models.read().hero_seen[&format!("{}A", sv10_core::model::HERO_SEEN_ONE)].hands, 1.0);
+
+    let mut newer_head = head;
+    newer_head.players.entry("head-only".into()).or_default().hands = 5.0;
+    shared.store.put_kv(crate::MODELS_KEY, &serde_json::to_string(&newer_head).unwrap()).unwrap();
+    assert!(super::refresh_models_from_store(&shared, &mut last));
+    assert_eq!(shared.models.read().players["head-only"].hands, 5.0, "a newer head checkpoint still installs");
+    assert_eq!(shared.models.read().watermark, Some(rowid), "its missed hands are replayed before installation");
 }
 
 #[test]
