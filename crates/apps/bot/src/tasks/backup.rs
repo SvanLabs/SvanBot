@@ -83,7 +83,9 @@ fn write_hourly_backup(shared: &Shared, dir: &std::path::Path, now: &chrono::Dat
 /// One daily copy per calendar day, taken from the hourly file.
 fn ensure_daily_backup(dir: &std::path::Path, hourly: &std::path::Path, now: &chrono::DateTime<chrono::Utc>) {
     let daily = dir.join(format!("daily-svanbot10-{}.db", now.format("%Y%m%d")));
-    if !daily.exists() {
+    // An interrupted copy or failed seal can leave the name occupied without a restorable
+    // daily backup. Retry from this hour until the existing pair actually verifies.
+    if !sv10_store::integrity::verify_backup(&daily) {
         let copied = std::fs::copy(hourly, &daily).map_err(anyhow::Error::from).and_then(|_| sv10_store::integrity::seal_backup(&daily));
         if let Err(e) = copied {
             tracing::warn!("daily backup copy failed: {e}");
@@ -359,4 +361,30 @@ pub fn save_models(shared: &Shared) {
     // must outlive the process, and this is the write that already runs every five minutes, at
     // shutdown and before a hot swap.
     crate::live::save_state_hash_totals(&shared.store, &shared.bots);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_unsealed_daily_copy_is_replaced_on_the_next_hour() {
+        let dir = std::env::temp_dir().join(format!("sv10-daily-retry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-26T14:00:00Z").unwrap().with_timezone(&chrono::Utc);
+        let hourly = dir.join("svanbot10-2026092614.db");
+        let daily = dir.join("daily-svanbot10-20260926.db");
+        let db = rusqlite::Connection::open(&hourly).unwrap();
+        db.execute_batch("CREATE TABLE t (x); INSERT INTO t VALUES (7);").unwrap();
+        drop(db);
+        sv10_store::integrity::seal_backup(&hourly).unwrap();
+
+        // An interrupted copy leaves a path but no usable sealed backup.
+        std::fs::write(&daily, b"partial copy").unwrap();
+        ensure_daily_backup(&dir, &hourly, &now);
+        assert!(sv10_store::integrity::verify_backup(&daily), "the next hour must repair the daily backup");
+        let db = rusqlite::Connection::open(&daily).unwrap();
+        assert_eq!(db.query_row("SELECT x FROM t", [], |r| r.get::<_, i64>(0)).unwrap(), 7);
+    }
 }
