@@ -85,6 +85,9 @@ function App() {
   const [seek,setSeek] = useState(30);
   useEffect(() => {
     if (!settings) return;
+    // Drop the previous load first: on a failed reload the stale bot list must not leave the
+    // inputs enabled against values the server may no longer hold.
+    setSetup(null);
     setSetupNote(null);
     api<SetupState>('/setup')
       .then(s => {setSetup(s);setBuyIn(s.buy_in);setSeek(s.seek_top_rank);})
