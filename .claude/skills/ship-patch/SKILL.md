@@ -19,10 +19,12 @@ clean tree.
    two patches.
 3. Export with history, not just a diff, so the message travels with the change:
    ```sh
-   git format-patch -1 HEAD -o artifacts/patches/   # artifacts/ is gitignored: local, never committed
+   git format-patch -o artifacts/patches/<issue>-<slug>/ origin/main   # gitignored tray: one directory per submission
    ```
-   Name the file `<issue>-<slug>.patch`. A series stays in order; never squash two decisions into one
-   file by hand.
+   A series stays in order inside its directory; never squash two decisions into one file by hand.
+   `scripts/patch-inbox.sh land` (#710) is the machine that lands a submission: shape preflight,
+   apply-check, the full gate in a landing worktree, provenance, branch and pull request — the
+   manual protocol below remains for anything it refuses.
 4. The patch message is the commit message: `<area>: <what it does>`, a body that says why,
    `Closes #<issue>` in its own paragraph, and `Generated-by: <tool>/<model>` last
    (`docs/CONTRIBUTING.md`).
