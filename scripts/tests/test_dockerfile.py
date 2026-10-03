@@ -30,7 +30,7 @@ INSTALL = re.compile(r"apt-get install[^\n]*?(?=\n\s*&&|\n\s*RUN|\n$)", re.S)
 
 # command -> (package that provides it, where in this repository it is run).
 REQUIRED = {
-    "python3": ("python3", "scripts/start.sh runs the results monitor, and status.sh the API checks"),
+    "python3": ("python3", "scripts/status.sh runs its API checks with it, and the one-release monitor shim (#717) needs it"),
     "sqlite3": ("sqlite3", "scripts/status.sh reads hands and decisions with the CLI"),
     "curl": ("curl", "scripts/status.sh asks the dashboard API for the fleet summary"),
     "zstd": ("zstd", "scripts/clean.sh compresses rotated logs"),

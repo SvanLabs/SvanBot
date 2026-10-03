@@ -1,6 +1,7 @@
 //! Parity tests for the monitor port: the frozen fixture and the lines the Python monitor it
 //! replaced printed for it. The commands and their output are in the pull request for #717.
 
+use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sv10_bot::monitor::{Monitor, Options, unix_now};
 use sv10_store::store::{HandRow, Store};
@@ -119,4 +120,71 @@ fn a_pass_over_new_hands_matches_the_python_monitors_output() {
         "OPPONENTS 0 faced, 0 new | most played: none",
     ];
     assert_eq!(normalize(&lines), frozen(&expected));
+}
+
+/// A store with the schema and nothing in it, for cases whose dates are relative to now and so
+/// cannot be frozen in the fixture.
+fn plain_store(tag: &str) -> (std::path::PathBuf, Store) {
+    let root = std::env::temp_dir().join(format!("sv10-monitor-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("artifacts")).unwrap();
+    let store = Store::open(&root.join("artifacts").join("svanbot10.db")).unwrap();
+    (root, store)
+}
+
+fn play_hand(store: &Store, bot: &str, hand_id: &str, ended_at: DateTime<Utc>) {
+    store
+        .insert_hand(&HandRow { bot: bot.into(), hand_id: hand_id.into(), ended_at: ended_at.to_rfc3339(), ..Default::default() })
+        .unwrap();
+}
+
+fn stalls(lines: &[String]) -> Vec<String> {
+    normalize(lines).into_iter().filter(|l| l.starts_with("STALL ")).collect()
+}
+
+/// The supervisor runs only `--big-loss-bb`, so `--big-win-bb` has to inherit it, as the Python
+/// monitor's argparse default did; an explicit flag still wins.
+#[test]
+fn big_win_bb_defaults_to_big_loss_bb() {
+    let inherited = Options::parse(&["--big-loss-bb".to_string(), "250".to_string()]).unwrap();
+    assert_eq!(inherited.big_win_bb, 250.0);
+    let explicit = Options::parse(&["--big-loss-bb".to_string(), "250".to_string(), "--big-win-bb".to_string(), "10".to_string()]).unwrap();
+    assert_eq!(explicit.big_win_bb, 10.0);
+}
+
+/// `--active-hours` selects the stall-watch population: a bot whose last hand is older than the
+/// window is not watched, so going quiet is not a stall — while a bot that played inside it is.
+#[test]
+fn only_bots_that_played_inside_the_active_window_are_stall_watched() {
+    let (root, store) = plain_store("active-hours");
+    let now = unix_now();
+    let at = |secs_ago: i64| DateTime::<Utc>::from_timestamp(now as i64 - secs_ago, 0).unwrap();
+    play_hand(&store, "Recent", "h-recent", at(60));
+    play_hand(&store, "Dormant", "h-dormant", at(30 * 24 * 3600));
+
+    let opts = Options { active_hours: 24.0, stall_min: 0, ..options(true) };
+    let mut monitor = Monitor::open(&root, opts).unwrap();
+    assert_eq!(stalls(&monitor.pass(now + 1.0, true)), frozen(&["STALL Recent: no completed hand for 0+ minutes"]));
+
+    let opts = Options { active_hours: 24.0 * 31.0, stall_min: 0, ..options(true) };
+    let mut monitor = Monitor::open(&root, opts).unwrap();
+    assert_eq!(
+        stalls(&monitor.pass(now + 1.0, true)),
+        frozen(&["STALL Recent: no completed hand for 0+ minutes", "STALL Dormant: no completed hand for 0+ minutes"])
+    );
+}
+
+/// A store that loses the `events` table mid-run: the pass reports it as a MONITOR line and the
+/// loop keeps running, as the Python monitor did on a `sqlite3.Error`.
+#[test]
+fn a_failed_pass_is_reported_as_a_monitor_line() {
+    let (root, store, _) = fixture_store("error");
+    drop(store);
+    let mut monitor = Monitor::open(&root, options(true)).unwrap();
+    let conn = rusqlite::Connection::open(root.join("artifacts").join("svanbot10.db")).unwrap();
+    conn.execute("DROP TABLE events", []).unwrap();
+    drop(conn);
+    let lines = monitor.pass(unix_now() + 1.0, true);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(normalize(&lines)[0].starts_with("MONITOR db error:"), "{lines:?}");
 }

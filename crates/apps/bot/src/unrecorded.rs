@@ -16,8 +16,6 @@ use sv10_store::store::Store;
 /// the new one never records it: a swap gap, not a foreign client (0151).
 const SWAP_BEFORE: Duration = Duration::minutes(5);
 const SWAP_AFTER: Duration = Duration::minutes(1);
-/// Log tail read for swap lines: a swap older than this can only matter to a window this long.
-const LOG_TAIL: u64 = 4 << 20;
 
 /// One exported hand this store has no record of.
 struct Missing {
@@ -116,10 +114,12 @@ fn season_since(store: &Store) -> Option<String> {
     Some(DateTime::from_timestamp_millis(ms)?.to_rfc3339_opts(SecondsFormat::Micros, false))
 }
 
-/// UTC times of the fleet's hot-swap exits and starts, from the log's tail.
+/// UTC times of the fleet's hot-swap exits and starts. The whole log is read: the fleet check
+/// grepped the whole file, and a swap older than any tail can still explain a long window's hands.
 fn swap_times(path: &Path) -> Vec<DateTime<Utc>> {
-    let Ok(log) = read_tail(path, LOG_TAIL) else { return Vec::new() };
-    log.lines().filter_map(swap_line).collect()
+    use std::io::{BufRead, BufReader};
+    let Ok(file) = std::fs::File::open(path) else { return Vec::new() };
+    BufReader::new(file).lines().map_while(|line| line.ok()).filter_map(|line| swap_line(&line)).collect()
 }
 
 fn swap_line(line: &str) -> Option<DateTime<Utc>> {
@@ -151,19 +151,6 @@ fn strip_ansi(s: &str) -> String {
         }
     }
     out
-}
-
-/// The last `max` bytes of a file, first (partial) line dropped when the tail starts mid-file.
-fn read_tail(path: &Path, max: u64) -> std::io::Result<String> {
-    use std::io::{Read, Seek, SeekFrom};
-    let mut f = std::fs::File::open(path)?;
-    let len = f.metadata()?.len();
-    let from = len.saturating_sub(max);
-    f.seek(SeekFrom::Start(from))?;
-    let mut buf = Vec::with_capacity((len - from) as usize);
-    f.read_to_end(&mut buf)?;
-    let text = String::from_utf8_lossy(&buf).into_owned();
-    Ok(if from == 0 { text } else { text.split_once('\n').map(|(_, rest)| rest.to_string()).unwrap_or_default() })
 }
 
 #[cfg(test)]
@@ -243,5 +230,21 @@ mod tests {
         assert!(!flagged, "{text}");
         assert!(text.contains("window (2 h, since "), "{text}");
         assert!(text.contains("0 hands, +0 chips"), "{text}");
+    }
+
+    /// The swap scan reads the whole log, not a tail: a swap megabytes back still explains a
+    /// window's hands, and a tail that missed it would report them as a foreign client.
+    #[test]
+    fn swaps_are_found_beyond_the_start_of_a_large_log() {
+        let root = std::env::temp_dir().join(format!("sv10-unrecorded-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("artifacts/logs")).unwrap();
+        let mut log = String::from("2026-09-20 11:46:00.000+00:00  INFO svanbot10 starting: 5 bots\n");
+        log.push_str(&"x".repeat(5 << 20));
+        log.push('\n');
+        let path = root.join("artifacts/logs/svanbot10.log");
+        std::fs::write(&path, log).unwrap();
+        assert_eq!(swap_times(&path).len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
