@@ -386,8 +386,10 @@ there, so on timeout or a wrong commit `update.sh` restores the previous verifie
 `scripts/rollback.sh`, moves the checkout back with it, and ends with the failure and the rollback
 named on the progress card instead of a green `installed` over a dead fleet. A fleet that went down
 while the release ran is told apart from one that never came up by what is left behind: with a
-supervisor still restarting dead bots the build is crash-looping and the rollback fires, while with
-no fleet left at all (a stop.sh, a service stop) there is nothing to verify and nothing broken, so
+supervisor still restarting dead bots — a live process really running from this checkout, so a pid
+file left by a dead supervisor, or one whose pid was recycled or is a zombie, counts for nothing —
+the build is crash-looping and the rollback fires, while with no fleet left at all (a stop.sh, a
+service stop) there is nothing to verify and nothing broken, so
 the install is kept and the run reports it as unverified. A fleet that was already stopped when the
 update started skips the gate entirely. A previous install with no verified snapshot is never named
 as the fallback, and the run says there is no rollback target instead.

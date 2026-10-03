@@ -270,14 +270,26 @@ running_installed_bot_is_verified() {
 # A new build that crash-loops still has its supervisors restarting it, while a fleet taken down on
 # purpose (stop.sh, a service stop) leaves none. The health gate uses this to tell a build that never
 # came up from a fleet that was stopped while the release ran (issue #726).
+#
+# stop.sh removes the pid files, so one left behind names a supervisor that died without cleanup. Its
+# pid can since have been recycled by an unrelated process, or still be a zombie: either answers
+# `kill -0`, and counting it would read a down fleet as a crash loop and send update.sh into a
+# rollback of a good install. Only a live, non-zombie process running from this checkout counts. The
+# zombie rule is pid_alive's (scripts/supervisors.sh); it is repeated here because this script runs
+# under scratch roots whose scripts/ directory does not carry a copy.
 fleet_supervisors_running() {
-  local pidfile
+  local pidfile pid root_real
+  root_real=$(readlink -f -- "$release_root" 2>/dev/null) || return 1
   for pidfile in "$release_root"/artifacts/supervisor.pid "$release_root"/artifacts/head-supervisor.pid \
                  "$release_root"/artifacts/worker-*-supervisor.pid "$release_root"/artifacts/learner-supervisor.pid \
                  "$release_root"/artifacts/analyst-supervisor.pid "$release_root"/artifacts/monitor-supervisor.pid \
                  "$release_root"/artifacts/logrotate.pid; do
     [ -f "$pidfile" ] || continue
-    kill -0 "$(tr -d '[:space:]' < "$pidfile")" 2>/dev/null && return 0
+    pid=$(tr -d '[:space:]' < "$pidfile")
+    [[ $pid =~ ^[1-9][0-9]*$ ]] || continue
+    [[ $(ps -o stat= -p "$pid" 2>/dev/null) != Z* ]] || continue
+    [ "$(readlink -f -- "/proc/$pid/cwd" 2>/dev/null)" = "$root_real" ] || continue
+    return 0
   done
   return 1
 }

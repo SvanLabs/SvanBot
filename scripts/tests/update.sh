@@ -393,7 +393,10 @@ rm -f artifacts/bot.pid
 echo "stub: installed a build that crash-loops while the supervisor restarts it"
 EOF
 chmod +x "$t/release-crashloop-supervised.sh"
-sleep 60 & supervisor_pid=$!
+# From the release root, the way start.sh launches one: --fleet-supervisors only counts a
+# supervisor process that is really this checkout's.
+( cd "$box" && exec sleep 60 ) &
+supervisor_pid=$!
 echo "$supervisor_pid" > "$box/artifacts/supervisor.pid"
 "$box/target/release/sv10-bot" &
 bot_pid=$!
@@ -420,7 +423,10 @@ unverified_commit=$(git -C "$t/dev" rev-parse --short HEAD)
 # The installed marker names a commit with no snapshot: adopt-legacy and markerless installs leave
 # exactly this shape, and the manual fallback must not name a commit that cannot be restored.
 printf '%s\n' "$run_commit" > "$box/target/release/.sv10-installed-commit"
-sleep 60 & supervisor_pid=$!
+# From the release root, the way start.sh launches one: --fleet-supervisors only counts a
+# supervisor process that is really this checkout's.
+( cd "$box" && exec sleep 60 ) &
+supervisor_pid=$!
 echo "$supervisor_pid" > "$box/artifacts/supervisor.pid"
 "$box/target/release/sv10-bot" &
 bot_pid=$!

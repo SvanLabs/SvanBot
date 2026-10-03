@@ -329,6 +329,50 @@ grep -q "did not answer /api/health with commit $commit_b" "$test_root/health.er
 wait "$health_pid" || true
 health_pid=
 
+# A supervisor pid file is not proof of a crash-looping fleet (#726): stop.sh removes them, so one
+# left behind belongs to a supervisor that died without cleanup, and its pid may be a recycled live
+# process or a zombie. Counting either one would read a fleet that is simply down as a crash loop,
+# and update.sh would roll back a good install for it.
+mkdir -p "$test_root/artifacts"
+if SV10_RELEASE_ROOT="$test_root" "$rollback" --fleet-supervisors >/dev/null 2>&1; then
+  fail "--fleet-supervisors found a fleet with no pid files"
+fi
+( cd "$test_root" && exec sleep 60 ) &
+supervisor_pid=$!
+echo "$supervisor_pid" > "$test_root/artifacts/supervisor.pid"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --fleet-supervisors ||
+  fail "--fleet-supervisors missed a supervisor running from the release root"
+sleep 60 &
+stale_pid=$!
+echo "$stale_pid" > "$test_root/artifacts/supervisor.pid"
+if SV10_RELEASE_ROOT="$test_root" "$rollback" --fleet-supervisors >/dev/null 2>&1; then
+  fail "--fleet-supervisors counted a pid that is not running from the release root"
+fi
+kill "$stale_pid" 2>/dev/null || true
+# The zombie parent never reaps: the child stays in state Z, which still answers kill -0.
+python3 - "$test_root/artifacts/supervisor.pid" <<'PY' &
+import os, sys, time
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+open(sys.argv[1], "w").write(str(pid))
+time.sleep(60)
+PY
+zombie_keeper=$!
+zombie_pid=
+for _ in $(seq 1 100); do
+  zombie_pid=$(cat "$test_root/artifacts/supervisor.pid" 2>/dev/null || true)
+  [[ $(ps -o stat= -p "$zombie_pid" 2>/dev/null) = Z* ]] && break
+  sleep 0.02
+done
+[[ $(ps -o stat= -p "$zombie_pid" 2>/dev/null) = Z* ]] || fail "the zombie fixture did not become a zombie"
+if SV10_RELEASE_ROOT="$test_root" "$rollback" --fleet-supervisors >/dev/null 2>&1; then
+  fail "--fleet-supervisors counted a zombie as a supervisor"
+fi
+kill "$zombie_keeper" "$supervisor_pid" 2>/dev/null || true
+wait "$zombie_keeper" "$supervisor_pid" 2>/dev/null || true
+rm -f "$test_root/artifacts/supervisor.pid"
+
 # Disk preflight (LESSONS 22): fail closed before the snapshot and the build, and run inside
 # release.sh before it snapshots anything.
 SV10_RELEASE_ROOT="$test_root" SV10_MIN_FREE_MB=1 "$rollback" --check-space >/dev/null || fail "the disk preflight refused a root with free space"
