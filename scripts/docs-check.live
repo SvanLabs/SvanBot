@@ -43,6 +43,7 @@ README.md
 docs/CONTRIBUTING.md
 docs/CONTEXT.md
 docs/ARCHITECTURE.md
+docs/adr/0001-decision-path-stays-in-process.md
 docs/OPERATIONS.md
 docs/RELEASE.md
 docs/SPEC-protocol.md

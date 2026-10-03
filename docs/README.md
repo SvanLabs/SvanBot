@@ -58,6 +58,7 @@ otherwise cost the first hour.
 | [`docs/CONTRIBUTING.md`](CONTRIBUTING.md) | How do I get a change merged, and what standard is it held to? | before your first pull request |
 | [`docs/CONTEXT.md`](CONTEXT.md) | What does *flagship bot*, *fleet* or *season record* mean here? | a word seems to mean more than usual |
 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Which processes run, how the crates layer, how one decision is made | you need the whole picture |
+| [`docs/adr/0001-decision-path-stays-in-process.md`](adr/0001-decision-path-stays-in-process.md) | Why decisions run in-process, and the gate a process split must pass | you are about to split or pin a process |
 | [`docs/GUIDE.md`](GUIDE.md) | How do I use it, and what is the dashboard showing me? | you are operating it |
 | [`docs/OPERATIONS.md`](OPERATIONS.md) | Which command does this job, and what do I do when something breaks? | you are running a fleet |
 | [`docs/HELL.md`](HELL.md) | What do I paste first when everything is broken? | everything has gone to hell |
