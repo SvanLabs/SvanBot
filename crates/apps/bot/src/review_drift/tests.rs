@@ -302,8 +302,20 @@ fn the_json_render_carries_the_row_and_the_same_verdict() {
     assert_eq!(json["row"]["flips"], 2);
     assert_eq!(json["row"]["population"]["ids"], "3471-3518");
     assert!(json["verdict"].as_str().unwrap().contains("current: champion"), "{json}");
+    // A row on a superseded basis: the JSON's `basis` is the row's own — the one the text line
+    // names — and the current basis appears only inside the verdict (review of #723).
+    store.put_kv(DRIFT_KEY, &row("champion-alone/v0", &digest)).unwrap();
+    let text = drift(&store, false).unwrap();
+    assert!(text.contains("drift [champion-alone/v0]"), "{text}");
+    let json: serde_json::Value = serde_json::from_str(&drift(&store, true).unwrap()).unwrap();
+    assert_eq!(json["basis"], "champion-alone/v0");
+    assert_eq!(json["row"]["basis"], "champion-alone/v0");
+    let verdict = json["verdict"].as_str().unwrap();
+    assert!(verdict.contains("superseded basis (\"champion-alone/v0\")"), "{verdict}");
+    assert!(verdict.contains(&format!("the analyst measures on {DRIFT_BASIS}")), "{verdict}");
     let none: serde_json::Value = serde_json::from_str(&render_json(None, Some(champion))).unwrap();
     assert!(none["row"].is_null(), "{none}");
+    assert!(none["basis"].is_null(), "no row, no basis: {none}");
     assert!(none["verdict"].as_str().unwrap().contains("no row stored"), "{none}");
 }
 

@@ -140,7 +140,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if which == "experiment" {
-        let target = args.get(2).map(String::as_str).filter(|a| !a.starts_with("--"));
+        let target = args.iter().skip(2).find(|a| !a.starts_with("--")).map(String::as_str);
         let mut out = std::io::stdout();
         sv10_bot::experiment::review(&store, target, &mut out, json)?;
         return Ok(());

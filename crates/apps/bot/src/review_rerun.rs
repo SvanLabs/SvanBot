@@ -117,11 +117,13 @@ pub fn report(store: &Store, args: &[String], json: bool) -> Result<Report> {
         let rec: ReplayRecord = match serde_json::from_str(&record) {
             Ok(r) => r,
             Err(e) => {
-                // stdout is exactly one JSON object in JSON mode, so the note goes to stderr.
+                // stdout is exactly one JSON object in JSON mode, so the note goes to stderr; in text
+                // mode it stays in the buffer, in position among the rows (it is a row that could not
+                // be read).
                 if json {
                     eprintln!("#{rid} unreadable: {e}");
                 } else {
-                    println!("#{rid} unreadable: {e}");
+                    let _ = writeln!(out, "#{rid} unreadable: {e}");
                 }
                 continue;
             }
@@ -322,10 +324,11 @@ mod tests {
         }
     }
 
-    /// #723: `--json` is one parseable object over the same rows and footer numbers, and the text
-    /// footer is what a script read before the flag existed (with no rows: nothing replayed).
+    /// #723: `--json` is one parseable object over the same rows and footer numbers, the text path is
+    /// what a script read before the flag existed, and an unreadable record's note keeps its place
+    /// among the rows instead of jumping to the top (review of #723).
     #[test]
-    fn the_replay_json_parses_and_the_text_footer_is_unchanged() {
+    fn the_replay_json_parses_and_the_text_path_is_unchanged() {
         let dir = std::env::temp_dir().join(format!("sv10-replay-json-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -338,5 +341,53 @@ mod tests {
         assert_eq!((json["total"].as_u64(), json["identical"].as_u64(), json["moved"].as_u64()), (Some(0), Some(0), Some(0)));
         assert_eq!(json["current"], false);
         assert_eq!(json["rows"].as_array().map(Vec::len), Some(0));
+
+        // A seeded store: the record replays bit-identically, and an unreadable record older than it
+        // (lower id, so read second) must leave its note after the first row, where the row it stands
+        // for would have printed — not ahead of every row.
+        store.insert_replay("A", "h1", "not json", None).unwrap();
+        store.insert_replay("A", "h2", &serde_json::to_string(&small_replay()).unwrap(), None).unwrap();
+        let text = report(&store, &[], false).unwrap();
+        let row = text.out.find("#2 ").expect("the readable row");
+        let note = text.out.find("#1 unreadable").expect("the note for the unreadable record");
+        let foot = text.out.find("1 replayed").expect("the footer");
+        assert!(row < note && note < foot, "the note stays in position among the rows: {}", text.out);
+        assert!(text.total == 1 && text.same == 1, "one readable row, replayed exactly");
+
+        let json: serde_json::Value = serde_json::from_str(&report(&store, &["--json".into()], true).unwrap().out).unwrap();
+        assert_eq!((json["total"].as_u64(), json["identical"].as_u64(), json["moved"].as_u64()), (Some(1), Some(1), Some(0)));
+        let rows = json["rows"].as_array().expect("the readable row's object");
+        assert_eq!(rows.len(), 1, "only the readable record is a row");
+        assert_eq!((rows[0]["id"].as_i64(), rows[0]["bot"].as_str(), rows[0]["hand"].as_str()), (Some(2), Some("A"), Some("h2")));
+        assert_eq!(rows[0]["status"], "identical");
+        assert_eq!(rows[0]["identical"], true);
+        assert!(!json.to_string().contains("unreadable"), "the note is not part of the object: {json}");
+    }
+
+    /// One replay record of a real decision, built the way the live client records one: `report`
+    /// replays it bit-identically, so a seeded row has a known status.
+    fn small_replay() -> crate::replay::ReplayRecord {
+        use crate::replay::record;
+        use sv10_core::engine::{Action, Hand};
+        use sv10_core::model::{Counter, ModelStore, PlayerStats};
+        use sv10_core::policy::decide_with;
+        use sv10_core::situation::Situation;
+        use sv10_rng::SeedableRng;
+        use sv10_rng::rngs::SmallRng;
+        let mut rng = SmallRng::seed_from_u64(3);
+        let mut hand = Hand::new(&[40_000, 40_000, 40_000], 0, 10, 20, &mut rng);
+        hand.apply(Action::RaiseTo(60)).unwrap();
+        hand.apply(Action::RaiseTo(6_000)).unwrap();
+        let actor = hand.actor().unwrap();
+        let names: Vec<String> = ["reg", "station", "maniac"].iter().map(|s| s.to_string()).collect();
+        let sit = Situation::from_hand(&hand, actor, &names);
+        let mut models = ModelStore::default();
+        for (name, vpip) in [("reg", 0.22f32), ("station", 0.6), ("maniac", 0.5)] {
+            let st = PlayerStats { hands: 300.0, vpip: Counter { opp: 300.0, hit: vpip * 300.0 }, ..Default::default() };
+            models.players.insert(name.into(), st);
+        }
+        let params = Params { samples: 64, ..Default::default() };
+        let d = decide_with(&sit, &models, &params, None, &mut SmallRng::seed_from_u64(99));
+        record(&sit, 99, &params, &models, None, &d)
     }
 }

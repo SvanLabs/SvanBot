@@ -25,6 +25,44 @@ fn the_json_report_parses_and_the_text_path_is_unchanged() {
     assert_eq!(json["rivals"][0]["name"], "Ghost");
     assert_eq!(json["rivals"][0]["hands"], 0);
     assert_eq!(json["rivals"][0]["note"], "never dealt in with our bots");
+
+    // A seeded hand: our seat 4 shoved into POKER_STUDY_AI (seat 5), who called — one confrontation,
+    // and the JSON's figures are the numbers the text prints (review of #723).
+    store
+        .insert_hand(&HandRow {
+            bot: "SurSvan".into(),
+            hand_id: "h1".into(),
+            ended_at: "2026-09-27T00:00:00Z".into(),
+            hero_seat: Some(4),
+            pot: 4_060,
+            net: Some(-2_000),
+            winners: "POKER_STUDY_AI".into(),
+            summary: ALL_IN.into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let names = vec!["POKER_STUDY_AI".to_string()];
+    let text = rival(&store, &names, false).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&rival(&store, &names, true).unwrap()).unwrap();
+    let r = &json["rivals"][0];
+    assert_eq!(
+        (r["name"].as_str(), r["hands"].as_u64(), r["confrontations"].as_u64(), r["unreconciled"].as_u64()),
+        (Some("POKER_STUDY_AI"), Some(1), Some(1), Some(0)),
+        "{json}"
+    );
+    assert!(
+        text.contains("POKER_STUDY_AI: 1 hands dealt in with our bots (every hand), 1 champion confrontations (chips moved between us), 0 not reconciled"),
+        "{text}"
+    );
+    // The text's biggest-confrontation line is the JSON's own flow and luck-adjusted flow, formatted.
+    let c = &r["biggest"][0]["confrontation"];
+    let flow = c["flow_bb"].as_f64().unwrap();
+    assert_eq!(flow, -100.0, "we lost 2,000 chips in a 20-chip big blind");
+    assert!(text.contains(&format!("{flow:+8.1}")), "the text prints the JSON's flow: {text}");
+    assert!(text.contains(&format!("{:+8.1}", flow + c["luck_bb"].as_f64().unwrap())), "{text}");
+    // The table net is every chip we won at their table, experiment hands included.
+    assert_eq!(r["table_net"]["bb100"], -10_000.0, "{json}");
+    assert!(text.contains(&format!("{:+.1}", r["table_net"]["bb100"].as_f64().unwrap())), "{text}");
 }
 
 /// 0317: a confrontation is classified by how it ended, the pot type, position and the preflop

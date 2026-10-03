@@ -110,5 +110,27 @@ mod tests {
         // The flag is not a positional: `--json 30` still reads 30 days and no category.
         let json: serde_json::Value = serde_json::from_str(&report(&store, &["--json".into(), "30".into()], true).unwrap()).unwrap();
         assert_eq!(json["days"], 30);
+
+        // A seeded store: 30 samples in one bin, so the populated shape is pinned and its numbers are
+        // the ones the text prints (review of #723).
+        for i in 0..30 {
+            store.insert_calibration("A", &format!("h{i}"), "river:call", 0.5, 1.5, 20.0).unwrap();
+        }
+        let text = report(&store, &[], false).unwrap();
+        assert!(text.contains("river:call  (live correction +0.00 bb, set by ?)"), "{text}");
+        assert!(
+            text.contains("pred [  0.5,     1)  n     30  residual   +1.00 ±  0.00  after correction   +1.00 *"),
+            "the bin line the JSON is the same numbers of: {text}"
+        );
+        let json: serde_json::Value = serde_json::from_str(&report(&store, &[], true).unwrap()).unwrap();
+        assert_eq!(json["decisions"], 30);
+        let cat = &json["categories"][0];
+        assert_eq!(cat["category"], "river:call");
+        assert_eq!((cat["live_correction"].as_f64(), cat["set_by"].as_str()), (Some(0.0), Some("?")));
+        assert_eq!(cat["bins"][0]["n"], 30);
+        assert_eq!((cat["bins"][0]["residual"].as_f64(), cat["bins"][0]["after_correction"].as_f64()), (Some(1.0), Some(1.0)));
+        // The bin's numbers as the text line prints them: same residual, before correction == after
+        // (nothing installed), and the same sample count.
+        assert!(cat["bins"][0]["half_width"].as_f64().unwrap() == 0.0, "{cat}");
     }
 }

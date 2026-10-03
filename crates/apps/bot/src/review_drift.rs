@@ -365,15 +365,18 @@ fn verdict(value: &serde_json::Value, champion: Option<&str>) -> String {
 }
 
 /// [`drift`] as JSON (#723): the stored row exactly as the analyst wrote it (so every field it
-/// carries survives), the basis a row has to name to be current, and the verdict.
+/// carries survives), the basis the row was measured on — the same one the text line's
+/// `drift [basis]` names, and the current basis only in the verdict when the row is superseded —
+/// and the verdict.
 fn render_json(row: Option<&str>, champion: Option<&str>) -> String {
     const NO_ROW: &str = "no row stored — the analyst measures one when idle, once the champion or the basis changes";
     match row.and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok()) {
         Some(value) => {
+            let basis = value.get("basis").cloned().unwrap_or(serde_json::Value::Null);
             let v = verdict(&value, champion);
-            json!({"basis": DRIFT_BASIS, "verdict": v, "row": value}).to_string()
+            json!({"basis": basis, "verdict": v, "row": value}).to_string()
         }
-        None => json!({"basis": DRIFT_BASIS, "verdict": NO_ROW, "row": serde_json::Value::Null}).to_string(),
+        None => json!({"basis": serde_json::Value::Null, "verdict": NO_ROW, "row": serde_json::Value::Null}).to_string(),
     }
 }
 
