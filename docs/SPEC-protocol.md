@@ -120,7 +120,7 @@ snapshot still accepts an empty board. This guards recovery frames without inven
 | `GET /season/me` | Balance before buy-in and top-up (spec: season chips, rank, hands) |
 | `POST /season/rebuy` | 1,500 chips when the balance is below the 1,000 minimum; honours `Retry-After` |
 | `GET /season/current` | Season clock: `winding_down`, `time_remaining_seconds` (no table moves while winding down), plus `season_number`, `season_id`, `start_date` (the boundary for season-scoped dashboard panels) |
-| `GET /season/leaderboard`, `/season/list`, `/season/{id}/leaderboard` | Ranks, reputation book, table seeking (30/min and 60/min per-IP limits respected). Rank keys on `score = chip_balance + chips_at_table`, with the official display qualified at `min_hands=10` — table seeking passes it explicitly (`crates/apps/bot/src/experiment.rs`), while the reputation fetch reads the unqualified board (`crates/apps/bot/src/reputation.rs`) |
+| `GET /season/leaderboard`, `/season/list`, `/season/{id}/leaderboard` | Ranks, reputation book, table seeking (30/min and 60/min per-IP limits respected). Rank keys on `score = chip_balance + chips_at_table`, with the official display qualified at `min_hands=10` — table seeking passes it explicitly (`crates/apps/bot/src/experiment.rs`), while the reputation fetch reads the unqualified board (`crates/apps/bot/src/reputation.rs`). Canonical scoring reference: [`docs/SPEC-scoring.md`](SPEC-scoring.md) |
 | `GET /me/hand-history` | Past-hand download (30/min, spaced 2.6 s; stops at the 20,000-hand export cap, `SVANBOT_EXPORT_CAP`, which Pro keys ignore — `pro_tier` from `/season/me` lifts it automatically) |
 | `GET /me/hand-history/export?format=json&season_id=` | Per-season backfill, all ended seasons, 2 pages/bot/pass (undocumented analytics endpoint, verified live 2026-09-15; needs Pro — only Pro keys reach past seasons, Free keys get empty pages; spaced 6 s, the endpoint 429s at the plain 2.6 s pace) |
 
@@ -150,5 +150,5 @@ the calibrate gate.
 
 ## Out of scope
 
-- Pro/portfolio management endpoints and private competitions (`competition_id` scope): unimplemented and unsupported — no client or config path sends them, and no operator order covers them. Recorded here so the delta audit does not re-open them as gaps.
+- Pro/portfolio management endpoints and private competitions (`competition_id` scope): unimplemented and unsupported — no client or config path sends them, and no operator order covers them. Recorded here so the delta audit does not re-open them as gaps. Canonical references: [`docs/SPEC-pro.md`](SPEC-pro.md), [`docs/SPEC-competitions.md`](SPEC-competitions.md).
 - Payout structure beyond the leaderboard score above is undocumented here until verified against a live leaderboard fetch.
