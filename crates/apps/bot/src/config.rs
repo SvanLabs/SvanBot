@@ -1,3 +1,4 @@
+use crate::setup::MAX_BOTS;
 use anyhow::{Result, bail};
 use std::path::PathBuf;
 
@@ -90,8 +91,10 @@ const EXPORT_CAP: Setting = Setting { key: "SVANBOT_EXPORT_CAP", default: 20_000
 const WEB_PORT: Setting = Setting { key: "SVANBOT_WEB_PORT", default: 5_000, min: 1, max: 65_535 };
 /// The public TV listener's port (0 = no TV listener at all).
 const TV_PORT: Setting = Setting { key: "SVANBOT_TV_PORT", default: 0, min: 0, max: 65_535 };
-/// Bots to play: unset means every configured key, so the default is the most keys we read.
-const FLEET_SIZE: Setting = Setting { key: "SVANBOT_RUNTIME__FLEET_SIZE", default: 10, min: 1, max: 10 };
+/// Bots to play: unset means every configured key, so the default is the most keys we read. The cap
+/// is [`MAX_BOTS`]: the venue's Pro fair-play rules allow five same-owner bots (docs/SPEC-pro.md),
+/// and this path (`.env`) must obey the same limit the dashboard saves do.
+const FLEET_SIZE: Setting = Setting { key: "SVANBOT_RUNTIME__FLEET_SIZE", default: MAX_BOTS as i64, min: 1, max: MAX_BOTS as i64 };
 
 /// Every numeric setting, so the gate can hold each one to the same rule.
 const SETTINGS: [Setting; 8] = [BUY_IN, SEEK_TOP_RANK, BANK_STACK_BB, BANK_UNTIL_CHIPS, EXPORT_CAP, WEB_PORT, TV_PORT, FLEET_SIZE];
@@ -100,6 +103,12 @@ const SETTINGS: [Setting; 8] = [BUY_IN, SEEK_TOP_RANK, BANK_STACK_BB, BANK_UNTIL
 /// cannot be added without a declared range and the test that holds it there.
 fn numbers() -> std::collections::BTreeMap<&'static str, i64> {
     SETTINGS.iter().map(|s| (s.key, var(s.key).and_then(|v| v.parse().ok()).unwrap_or(s.default).clamp(s.min, s.max))).collect()
+}
+
+/// Key indices configured beyond the fair-play cap (the venue's Pro rules, docs/SPEC-pro.md): still
+/// detected, so the refusal can name them, but never read as bots.
+fn keys_beyond_cap(has: impl Fn(usize) -> bool) -> Vec<usize> {
+    (MAX_BOTS + 1..=10).filter(|i| has(*i)).collect()
 }
 
 impl Config {
@@ -118,11 +127,20 @@ impl Config {
             let name = var("SVANBOT_MAIN_NAME").or_else(|| var("SVANBOT_BOT_NAME")).unwrap_or_else(|| "bot1".into());
             bots.push(BotConfig { name, api_key: key });
         }
-        for i in 2..=10 {
+        for i in 2..=MAX_BOTS {
             if let Some(key) = var(&format!("OPENPOKER_API_KEY_{i}")) {
                 let name = var(&format!("BOT_{i}_NAME")).unwrap_or_else(|| format!("bot{i}"));
                 bots.push(BotConfig { name, api_key: key });
             }
+        }
+        // Keys beyond the cap are refused loudly, not started quietly: the venue's fair-play rules
+        // allow five same-owner bots and never two at one table (docs/SPEC-pro.md).
+        let extra = keys_beyond_cap(|i| var(&format!("OPENPOKER_API_KEY_{i}")).is_some());
+        if !extra.is_empty() {
+            tracing::error!(
+                "{} configured beyond the fair-play cap of {MAX_BOTS} same-owner bots (docs/SPEC-pro.md); extra keys are ignored",
+                extra.iter().map(|i| format!("OPENPOKER_API_KEY_{i}")).collect::<Vec<_>>().join(", ")
+            );
         }
         if let Some(only) = var("SVANBOT_ONLY") {
             let keep: Vec<&str> = only.split(',').map(|s| s.trim()).collect();
@@ -177,6 +195,16 @@ fn supervised(_root: &std::path::Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The `.env` path obeys the same fair-play cap the dashboard saves do (docs/SPEC-pro.md): at
+    /// most five same-owner bots, and a configured sixth key is named, never started.
+    #[test]
+    fn fleet_size_is_capped_at_the_fair_play_limit() {
+        let s = SETTINGS.iter().find(|s| s.key == FLEET_SIZE.key).expect("fleet size is listed");
+        assert_eq!((s.min, s.default, s.max), (1, MAX_BOTS as i64, MAX_BOTS as i64));
+        assert_eq!(keys_beyond_cap(|i| i == 3 || i == 7), vec![7], "only indices beyond the cap are named");
+        assert!(keys_beyond_cap(|i| i <= MAX_BOTS).is_empty());
+    }
 
     /// 0250: one parser, one declared range per setting, so a typo cannot reach a multiplication
     /// in the hand loop. `bank_stack_bb` had only `.max(0)`, and `4e18` parsed.

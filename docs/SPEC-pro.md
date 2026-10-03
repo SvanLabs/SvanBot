@@ -44,7 +44,7 @@ Where SvanBot uses it:
 
 | Use | Where | Notes |
 |---|---|---|
-| Five-bot cap | `crates/apps/bot/src/setup.rs` | `MAX_BOTS = 5` enforces the fair-play limit on saves |
+| Five-bot cap | `crates/apps/bot/src/setup.rs`, `crates/apps/bot/src/config.rs` | `MAX_BOTS = 5` enforces the fair-play limit on dashboard saves and on `.env` keys (beyond the cap an error names the rule and the key is ignored) |
 | `pro_tier` read | `crates/apps/bot/src/seasons.rs` | `GET /season/me` per key; fails closed (`false`) |
 | Export cap lift | `crates/apps/bot/src/history/download.rs` | Pro keys ignore `SVANBOT_EXPORT_CAP` (0 = unlimited) and download ended seasons |
 | Everything else | — | No call to `/season/pro*`, `/bot/*/api` or `/portfolio/*` exists |
