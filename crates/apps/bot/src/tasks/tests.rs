@@ -445,3 +445,21 @@ fn an_upward_correction_is_bounded_by_its_margin_evidence() {
 
 // `fold_new_hands` and the watermarks it advances are exercised in `tasks/models.rs`, next to
 // the code (0321).
+
+#[test]
+fn only_the_operator_stop_retires_a_bot() {
+    // #744: the old `_ => break` retired a bot on any non-panic end; only `desired=stop` may.
+    assert_eq!(super::after_session(&Ok(()), "stop"), super::AfterSession::Retire);
+    assert_eq!(super::after_session(&Ok(()), "run"), super::AfterSession::Restart, "a return while running restarts");
+    assert_eq!(super::after_session(&Ok(()), "pause"), super::AfterSession::Restart);
+}
+
+#[tokio::test]
+async fn a_panicked_or_cancelled_session_restarts() {
+    let panicked = tokio::spawn(async { panic!("session panicked") }).await;
+    assert_eq!(super::after_session(&panicked, "run"), super::AfterSession::Restart);
+    let cancelled = tokio::spawn(async { std::future::pending::<()>().await });
+    cancelled.abort();
+    let cancelled = cancelled.await;
+    assert_eq!(super::after_session(&cancelled, "run"), super::AfterSession::Restart);
+}

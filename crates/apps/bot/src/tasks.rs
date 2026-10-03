@@ -387,6 +387,24 @@ fn spawn_backup_loop(shared: &Arc<Shared>) {
     });
 }
 
+/// What the per-bot supervisor does after its session task ends (issue #744).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AfterSession {
+    /// A normal return with the operator having asked to stop: the bot stays retired.
+    Retire,
+    /// Anything else — log it and restart the session in five seconds.
+    Restart,
+}
+
+/// A panic, an unexpected return, or a cancelled task must never silently retire a bot; only the
+/// operator's `desired=stop` path retires (the session loop breaks there, `client/mod.rs`).
+fn after_session(ended: &Result<(), tokio::task::JoinError>, desired: &str) -> AfterSession {
+    match ended {
+        Ok(()) if desired == "stop" => AfterSession::Retire,
+        _ => AfterSession::Restart,
+    }
+}
+
 /// One supervised session loop per bot; a panic restarts that bot, never the fleet.
 fn spawn_bot_loops(shared: &Arc<Shared>) {
     let config = shared.config.clone();
@@ -394,15 +412,21 @@ fn spawn_bot_loops(shared: &Arc<Shared>) {
         let s = shared.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(slot as u64 * 3)).await;
-            // A panic inside a bot's session must never silently retire that bot.
+            // A panic inside a bot's session must never silently retire that bot (the old
+            // `_ => break` did exactly that for any non-panic end — issue #744).
             loop {
                 let handle = tokio::spawn(client::run_bot(s.clone(), slot, bot.clone()));
-                match handle.await {
-                    Err(e) if e.is_panic() => {
-                        s.log(&bot.name, "error", format!("bot task panicked; restarting in 5s: {e}"));
+                let ended = handle.await;
+                let desired = s.bots[slot].read().desired.clone();
+                match after_session(&ended, &desired) {
+                    AfterSession::Retire => break,
+                    AfterSession::Restart => {
+                        match ended {
+                            Err(e) => s.log(&bot.name, "error", format!("bot task ended abnormally; restarting in 5s: {e}")),
+                            Ok(()) => s.log(&bot.name, "warn", "bot session returned while desired=run; restarting in 5s"),
+                        }
                         tokio::time::sleep(Duration::from_secs(5)).await;
                     }
-                    _ => break,
                 }
             }
         });
