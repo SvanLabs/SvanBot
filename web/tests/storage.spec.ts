@@ -42,6 +42,7 @@ test('the dashboard renders when every localStorage read throws', async ({ page 
   await expect(page.locator('div.app')).not.toHaveClass(/\bcompact\b/);
   await expect(panel.locator('.panel-content')).toBeVisible();
   await expect(page.locator('.theme-toggle button[aria-pressed="true"]')).toHaveText('Arena');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
   // The slot read falls back to no selection, so the first bot in the snapshot is the one shown.
   await expect(page.locator('.breadcrumb b')).not.toHaveText('Control room');
@@ -62,6 +63,10 @@ test('dashboard preferences still change when browser storage throws', async ({ 
   await page.getByRole('button', { name: 'Open settings' }).click();
   await page.getByRole('switch', { name: 'Compact layout' }).click();
   await expect(page.getByRole('switch', { name: 'Compact layout' })).toHaveAttribute('aria-checked', 'true');
+  // The theme picker's write is as guarded as every other preference, and the room re-inks this
+  // visit even though nothing was remembered.
+  await page.getByRole('dialog').getByRole('button', { name: 'Light', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.getByRole('button', { name: 'Close settings' }).click();
   await page.locator('.bot-tabs button').first().click();
   expect(errors, `uncaught preference errors: ${errors.map(error => error.message).join('; ')}`).toHaveLength(0);

@@ -6,7 +6,7 @@ import { fmt, sgn, share, time, SUITS } from './format';
 import { NamesIn, PlayerName } from './playername';
 
 const suit = SUITS;
-const BOT_COLORS = ['#e4b956', '#6daa98', '#b68578', '#8fa2d8', '#c79bd6'];
+const BOT_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
 
 export function MiniCards({ cards }: { cards: string[] }) {
   return <span className="mini-cards">{cards.map((c, i) => <span key={i} className={`mini-card ${'hd'.includes(c[1]) ? 'red' : ''}`}>{c[0]}{suit[c[1]]}</span>)}</span>;
@@ -244,7 +244,7 @@ export function FleetRace() {
           const p = b.points.reduce((a, c) => Math.abs(c.hand - hand) < Math.abs(a.hand - hand) ? c : a, b.points[0]);
           setHover({ x: x(p.hand), name: b.name, total: p.total, hand: p.hand });
         }} />)}
-      {hover && <g><line x1={hover.x} x2={hover.x} y1="8" y2={H - 8} stroke="#e4b95655" /><text x={Math.min(hover.x + 6, W - 150)} y="20" fill="#f2e3b6" fontSize="11">{hover.name} · hand {fmt(hover.hand)} · {sgn(hover.total)}</text></g>}
+      {hover && <g><line x1={hover.x} x2={hover.x} y1="8" y2={H - 8} stroke="var(--chart-cursor)" /><text x={Math.min(hover.x + 6, W - 150)} y="20" fill="var(--chart-cursor-ink)" fontSize="11">{hover.name} · hand {fmt(hover.hand)} · {sgn(hover.total)}</text></g>}
     </svg>
   </div>;
 }

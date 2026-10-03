@@ -300,6 +300,129 @@ test('local dashboard loads without exposing credentials', async ({ page }) => {
   await page.screenshot({path:'../artifacts/dashboard-desktop.png',fullPage:true});
 });
 
+test('the site theme is one root attribute, re-inks the room, and persists across a reload', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  // The dark rule paints the panel from its tokens; the light theme redefines those tokens, so the
+  // same rule's computed background changes with nothing but the attribute.
+  const painted = () => page.locator('.panel').first().evaluate(element => getComputedStyle(element).backgroundImage);
+  const dark = await painted();
+  await page.getByRole('button', {name:'Open settings'}).click();
+  await page.getByRole('dialog').getByRole('button', {name:'Light', exact:true}).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.getByRole('dialog').getByRole('button', {name:'Light', exact:true})).toHaveAttribute('aria-pressed', 'true');
+  expect(await painted()).not.toBe(dark);
+  await page.getByRole('button', {name:'Close settings'}).click();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.getByRole('button', {name:'Open settings'})).toBeVisible();
+  await page.screenshot({path:'../artifacts/dashboard-light.png',fullPage:true});
+});
+
+/** WCAG contrast of an element's text over the backgrounds it actually sits on, asserted at `min`.
+ *  Backgrounds are composited from the element up, since several of these rules use translucent ink. */
+async function expectReadable(locator: Locator, min = 4.5) {
+  const seen = await locator.evaluate(element => {
+    const rgba = (value: string) => { const n = value.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0, 0]; return [n[0], n[1], n[2], n[3] ?? 1]; };
+    const layers: number[][] = [];
+    for (let node: Element | null = element; node; node = node.parentElement) layers.push(rgba(getComputedStyle(node).backgroundColor));
+    let background = [255, 255, 255];
+    for (const [r, g, b, a] of layers.reverse()) background = [r * a + background[0] * (1 - a), g * a + background[1] * (1 - a), b * a + background[2] * (1 - a)];
+    const channel = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const luminance = ([r, g, b]: number[]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    const ink = luminance(rgba(getComputedStyle(element).color));
+    const paper = luminance(background);
+    return { ratio: (Math.max(ink, paper) + 0.05) / (Math.min(ink, paper) + 0.05), color: getComputedStyle(element).color, background: `rgb(${background.map(v => Math.round(v)).join(',')})` };
+  });
+  const name = await locator.getAttribute('class');
+  expect(seen.ratio, `${name} ink ${seen.color} on ${seen.background}`).toBeGreaterThanOrEqual(min);
+}
+
+test('the light theme keeps the dark-literal surfaces readable (#728 review)', async ({ page }) => {
+  // The review of #728 read the light rules and found surfaces whose base rule is a dark literal, not
+  // a token: `--text` flips to near-black, the box does not, and the text lands at about 1.2:1. The
+  // review could not render them, so this renders each one in the light theme and measures contrast
+  // against the composited background — the reviewer's own list, plus the surfaces it named.
+  await page.addInitScript(() => { localStorage.setItem('svan-theme', 'light'); localStorage.setItem('svan-view', 'all'); });
+  await fleet(page, state => { Object.assign(state.bots[0], {name: 'SvanBotV10', hand_id: 'h-signal', decision: signalDecision}); });
+  // The operator-token login form lives in an `.error-banner`; session answers 403 until it is filled.
+  await page.route('**/api/session', async route => {
+    if (route.request().postDataJSON()?.token !== 'browser-test-token') await route.fulfill({status:403,json:{detail:'Operator token required'}});
+    else await route.continue();
+  });
+  await page.route('**/api/releases', route => route.fulfill({json:{installed:{commit:'aaaaaaa',at:'2026-09-26T01:30:28+02:00',subject:'feat: before'},head:{commit:'aaaaaaa',subject:'feat: before'},behind:2,dirty:false,update_available:true,build:{commit:'aaaaaaa',version:'10.0.0'},changelog:[],remote:{source:'origin/main',commit:'ccccccc',behind:2,checked_at:Date.now()/1000-60,error:null}}}));
+  await page.route('**/api/releases/progress', route => route.fulfill({json:{state:'idle',running:false,percent:0,elapsed:null,eta:null,from:'aaaaaaa',commit:null,message:null,swap:{target:null,fleet:'aaaaaaa',fleet_done:false,learner:'aaaaaaa',analyst:'aaaaaaa',workers:[]},bots_playing:5,bots_total:5,log:[],stages:[]}}));
+  await page.route('**/api/bots/0/opponents', route => route.fulfill({json:[{name:'Villain', style:'Loose / aggressive', evidence_hands:42,
+    vpip:{value:.48,samples:420,count:200,lower:.4,upper:.56}, pfr:{value:.31,samples:420}, aggression:{value:.62,samples:300}, fold_to_bet:{value:.27,samples:310}}]}));
+  await page.route('**/api/players/Villain/card', route => route.fulfill({json:{
+    name:'Villain', avatar_url:null, style:'Loose / aggressive', advice:'They give up when the board misses.', hands_observed:42, confidence:0.62,
+    read:{...scoutRates, vpip:0.48}, league:scoutRates, corrections:{fold_offset:-0.64,response_ratio:null,size_tell:0.34},
+    leaderboard:{rank:12, score:98120, hands:4300, win_rate:0.61, rank_delta:2},
+    reputation:{best_rank:4, seasons:7, top10:3, lifetime_hands:219605, strength:0.91, names:['Villain','villain_two'], finishes:[{season:10, rank:4, score:120000, hands:3000, participants:160}]},
+    vs_us:{hands:42, net:900, ev_net:1200, bb100:107, confidence:null, ev_bb100:142, ev_confidence:null, won_pots:9, lost_pots:4,
+      biggest_win:{hand_id:'h-1aaaaaaa', bot:'SvanBotV10', net:30000, pot:61000, ts:1790328893},
+      biggest_loss:{hand_id:'h-2bbbbbbb', bot:'SurSvan', net:-1050, pot:2100, ts:1789626632},
+      recent:[{hand_id:'h-1aaaaaaa', bot:'SvanBotV10', net:30000, pot:61000, ts:1790328893},
+        {hand_id:'h-2bbbbbbb', bot:'SurSvan', net:-1050, pot:2100, ts:1789626632}],
+      by_bot:[{bot:'SvanBotV10', hands:40, net:500}], form:['W','L','W'], series:[{hand:1,net:0,ev:0},{hand:42,net:900,ev:1200}]},
+    vs_seat:{hands:42, bb_per_100:12.5, low_95:-30.2, high_95:55.1, beats_us:false, we_beat:false},
+  }}));
+  await page.goto('/');
+
+  // 1. The login banner (the operator-token form).
+  await expect(page.getByLabel('Operator token')).toBeVisible();
+  await expectReadable(page.locator('form.error-banner'));
+  await page.getByLabel('Operator token').fill('browser-test-token');
+  await page.getByRole('button',{name:'Unlock control room'}).click();
+  await expect(page.getByRole('button', {name:'Open settings'})).toBeVisible();
+
+  // 2. A panel explanation — every panel's information button opens one.
+  const about = page.getByRole('button', {name: /^About /}).first();
+  await about.scrollIntoViewIfNeeded();
+  await about.click();
+  await expect(page.locator('.panel-explanation')).toBeVisible();
+  await expectReadable(page.locator('.panel-explanation'));
+  await about.click();
+
+  // 3. The Updates panel's pending-update banner.
+  const banner = page.locator('.update-banner');
+  await banner.scrollIntoViewIfNeeded();
+  await expect(banner).toBeVisible();
+  await expectReadable(banner);
+
+  // 4. The EV tooltip over the signal strip's options.
+  const tipRow = page.locator('.ev-row').nth(1);
+  await tipRow.scrollIntoViewIfNeeded();
+  await tipRow.hover();
+  await expect(page.locator('.ev-tip')).toBeVisible();
+  await expectReadable(page.locator('.ev-tip'));
+
+  // 5. The scout view's key-hands list — the other dark-literal surface the review named.
+  const row = page.getByRole('button', {name:/Villain/});
+  await row.scrollIntoViewIfNeeded();
+  await row.click();
+  const card = page.getByRole('dialog', {name:'Scout view: Villain'});
+  await expect(card.locator('.pc-recent li').first()).toBeVisible();
+  await expectReadable(card.locator('.pc-recent li').first());
+  await expectReadable(card.locator('.pc-big').first());
+  await expectReadable(card.locator('.pc-panel').first());
+  await page.screenshot({path:'../artifacts/dashboard-light-surfaces.png',fullPage:true});
+  await page.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
+
+  // 6. The quiz page's option cards and score tiles — the same dark-literal family.
+  await page.route('**/api/quiz', route => route.fulfill({json:{id: 1, bot:'Svanar', street:'turn', hole:['As','Kd'], board:['2c','7d','9h','Js'], pot: 1000, to_call: 0, bb: 20,
+    opponents: 1, bot_action:'check', options:[
+      {action:'check', amount:null, ev_bb:12, loss_bb:0, grade:'best', accuracy:100, chosen_by_bot:true},
+      {action:'raise', amount:500, ev_bb:8, loss_bb:4, grade:'good', accuracy:70, chosen_by_bot:false}]}}));
+  await page.goto('/#quiz');
+  const option = page.locator('.quiz-option').first();
+  await expect(option).toBeVisible();
+  await expectReadable(option);
+  await option.click();
+  await expectReadable(page.locator('.quiz-score div').first());
+});
+
 test('layout settings persist and mobile has no horizontal overflow', async ({ page }) => {
   await page.setViewportSize({width:390,height:844});
   await page.goto('/');
