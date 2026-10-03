@@ -21,7 +21,7 @@ import { PlayerCardHost, openPlayerCard } from './playercard';
 import { registerNames, SELECT_BOT_EVENT } from './playername';
 import { AccuracyPanel, QuizPage, WiringPanel } from './games';
 import { ActionTicker, BadgeRace, CalibrationPanel, FleetRace, HighlightsPanel, LivePulse, RivalsPanel, SeasonRace, StoriesPanel, WinToasts } from './fun';
-import type { Bot, DashboardLayout, Hand, Opponent, ReplayEvent, Snapshot, TableBot } from './types';
+import type { Bot, DashboardLayout, Hand, Opponent, ReplayEvent, SetupState, Snapshot, TableBot } from './types';
 import { format, signed, percent, suitMap, dotClass, ThemeToggle, api, Card, Panel, Empty, WidgetIdContext, setPanelsCollapsed, useAllCollapsed } from './ui';
 import { time, TURN_DEADLINE_S } from './format';
 import type { TableTheme } from './ui';
@@ -75,6 +75,24 @@ function App() {
   const [query,setQuery] = useState('');
   const [logQuery,setLogQuery] = useState('');
   const [settings,setSettings] = useState(false);
+  // Fleet settings editable from the modal: the server's saved setup, the edited values, and the
+  // outcome of the last save. Loaded when the modal opens — not polled — because these change on
+  // operator action only.
+  const [setup,setSetup] = useState<SetupState | null>(null);
+  const [setupBusy,setSetupBusy] = useState(false);
+  const [setupNote,setSetupNote] = useState<{kind:'ok' | 'error'; text:string} | null>(null);
+  const [buyIn,setBuyIn] = useState(5000);
+  const [seek,setSeek] = useState(30);
+  useEffect(() => {
+    if (!settings) return;
+    // Drop the previous load first: on a failed reload the stale bot list must not leave the
+    // inputs enabled against values the server may no longer hold.
+    setSetup(null);
+    setSetupNote(null);
+    api<SetupState>('/setup')
+      .then(s => {setSetup(s);setBuyIn(s.buy_in);setSeek(s.seek_top_rank);})
+      .catch(failure => setSetupNote({kind:'error', text:(failure as Error).message}));
+  }, [settings]);
   const [watchAll,setWatchAll] = useState(false);
   const [replay,setReplay] = useState<{hand:Hand;events:ReplayEvent[]}>();
   const [compact,setCompact] = useState(readLocal('svan-compact') === 'true');
@@ -189,6 +207,26 @@ function App() {
     try {await api('/training/command',{command:action,...extra});setError('');setSnapshot(await api<Snapshot>('/state'));}
     catch(failure) {setError((failure as Error).message);} finally {setBusy(false);}
   }
+  // Save the fleet settings through the same endpoint the setup page uses; the stored bots ride
+  // along unchanged by slot (from_slot keeps their keys), so this only moves buy-in and seek rank.
+  async function saveFleetSettings() {
+    if (!setup) return;
+    setSetupBusy(true); setSetupNote(null);
+    try {
+      const r = await api<{restart:string}>('/setup', {
+        buy_in: buyIn,
+        seek_top_rank: seek,
+        bots: setup.bots.map(b => ({name:b.name, enabled:b.enabled, from_slot:b.slot})),
+      });
+      setSetupNote({kind:'ok', text: r.restart === 'scheduled'
+        ? 'Saved. The fleet restarts at the next moment no bot is mid-turn (under a minute) and every seat resyncs.'
+        : 'Saved to .env. Restart the fleet (scripts/restart-bot.sh) to apply it.'});
+      const fresh = await api<SetupState>('/setup');
+      setSetup(fresh); setBuyIn(fresh.buy_in); setSeek(fresh.seek_top_rank);
+    } catch (failure) {
+      setSetupNote({kind:'error', text:(failure as Error).message});
+    } finally { setSetupBusy(false); }
+  }
   async function openReplayFor(slot:number, handId:string) {
     try {
       const events = await api<ReplayEvent[]>(`/bots/${slot}/hands/${encodeURIComponent(handId)}`);
@@ -265,7 +303,7 @@ function App() {
       ]}/>
       <footer><span><Spade size={12}/> SVANBOT <span className="footer-separator">/</span> Built on proven control-room foundations.</span><span>LOCAL CONTROL ROOM</span></footer>
     </main>
-    {settings && <div className="modal-backdrop" onClick={()=>setSettings(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Settings" onClick={event=>event.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">YOUR WORKSPACE</span><h2>Control room settings</h2></div><button className="icon-button" aria-label="Close settings" onClick={()=>setSettings(false)}><X/></button></div><div className="settings-row"><div><strong>Compact layout</strong><p>Fit more information on your screen.</p></div><button className={`toggle ${compact ? 'on':''}`} role="switch" aria-checked={compact} aria-label="Compact layout" onClick={()=>{setCompact(!compact);writeLocal('svan-compact',String(!compact));}}><i/></button></div><div className="settings-row"><div><strong>Automatic training</strong><p>Evaluate challengers automatically, even while tables are stopped.</p></div><button className={`toggle ${snapshot?.training.automatic ? 'on':''}`} role="switch" aria-checked={!!snapshot?.training.automatic} aria-label="Automatic training" onClick={()=>trainingCommand('automatic',{enabled:!snapshot?.training.automatic})}><i/></button></div><div className="settings-details"><div><span>Configured bots</span><b>{snapshot?.config.configured_slots}</b></div><div><span>Buy-in</span><b>{format(snapshot?.config.buy_in)} chips</b></div><div><span>Automatic rebuy</span><b>{snapshot?.config.auto_rebuy ? 'Enabled':'Disabled'}</b></div><div><span>Credentials</span><b>Server-side .env</b></div></div><div className="settings-row"><div><strong>Bot setup</strong><p>Add or remove bots, paste API keys, switch bots off, set the buy-in.</p></div><a className="button" href="#setup" onClick={()=>setSettings(false)}>Open bot setup</a></div><p className="footnote">Pause finishes the current hand before leaving. Stop requests an immediate departure. Strategy promotions take effect on the next hand.</p></section></div>}
+    {settings && <div className="modal-backdrop" onClick={()=>setSettings(false)}><section className="modal" role="dialog" aria-modal="true" aria-label="Settings" onClick={event=>event.stopPropagation()}><div className="modal-heading"><div><span className="eyebrow">YOUR WORKSPACE</span><h2>Control room settings</h2></div><button className="icon-button" aria-label="Close settings" onClick={()=>setSettings(false)}><X/></button></div><div className="settings-row"><div><strong>Compact layout</strong><p>Fit more information on your screen.</p></div><button className={`toggle ${compact ? 'on':''}`} role="switch" aria-checked={compact} aria-label="Compact layout" onClick={()=>{setCompact(!compact);writeLocal('svan-compact',String(!compact));}}><i/></button></div><div className="settings-row"><div><strong>Automatic training</strong><p>Evaluate challengers automatically, even while tables are stopped.</p></div><button className={`toggle ${snapshot?.training.automatic ? 'on':''}`} role="switch" aria-checked={!!snapshot?.training.automatic} aria-label="Automatic training" onClick={()=>trainingCommand('automatic',{enabled:!snapshot?.training.automatic})}><i/></button></div><div className="settings-row"><div><strong>Buy-in</strong><p>1,000–5,000 chips; applies at each bot's next join.</p></div><input type="number" min={1000} max={5000} step={100} aria-label="Buy-in" value={buyIn} disabled={!setup?.can_write || setupBusy} onChange={event=>setBuyIn(Number(event.target.value))}/></div><div className="settings-row"><div><strong>Seek top rank</strong><p>Move to tables hosting a bot ranked this high or better; 0 turns seeking off.</p></div><input type="number" min={0} max={1000} aria-label="Seek top rank" value={seek} disabled={!setup?.can_write || setupBusy} onChange={event=>setSeek(Number(event.target.value))}/></div><div className="settings-row"><div><strong>Apply fleet settings</strong><p>{setup?.write_blocked ?? (setup?.supervised ? 'Applies with a short fleet restart between turns.' : 'Applies on the next fleet restart.')}</p>{setupNote && <p className={setupNote.kind === 'error' ? 'footnote amber' : 'footnote'} role={setupNote.kind === 'error' ? 'alert' : 'status'}>{setupNote.text}</p>}</div><button className="button" disabled={!setup?.can_write || setupBusy || buyIn < 1000 || buyIn > 5000 || seek < 0 || seek > 1000} onClick={saveFleetSettings}>{setupBusy ? 'Saving…' : 'Save fleet settings'}</button></div><div className="settings-details"><div><span>Configured bots</span><b>{snapshot?.config.configured_slots}</b></div><div><span>Automatic rebuy</span><b>{snapshot?.config.auto_rebuy ? 'Enabled':'Disabled'}</b></div><div><span>Credentials</span><b>Server-side .env</b></div></div><div className="settings-row"><div><strong>Bot setup</strong><p>Add or remove bots, paste API keys, switch bots off, set the buy-in.</p></div><a className="button" href="#setup" onClick={()=>setSettings(false)}>Open bot setup</a></div><p className="footnote">Pause finishes the current hand before leaving. Stop requests an immediate departure. Strategy promotions take effect on the next hand.</p></section></div>}
     {replay && <Replay hand={replay.hand} events={replay.events} onClose={()=>setReplay(undefined)}/>}
   </div>;
 }
