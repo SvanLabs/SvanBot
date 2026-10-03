@@ -300,6 +300,25 @@ test('local dashboard loads without exposing credentials', async ({ page }) => {
   await page.screenshot({path:'../artifacts/dashboard-desktop.png',fullPage:true});
 });
 
+test('the site theme is one root attribute, re-inks the room, and persists across a reload', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  // The dark rule paints the panel from its tokens; the light theme redefines those tokens, so the
+  // same rule's computed background changes with nothing but the attribute.
+  const painted = () => page.locator('.panel').first().evaluate(element => getComputedStyle(element).backgroundImage);
+  const dark = await painted();
+  await page.getByRole('button', {name:'Open settings'}).click();
+  await page.getByRole('dialog').getByRole('button', {name:'Light', exact:true}).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.getByRole('dialog').getByRole('button', {name:'Light', exact:true})).toHaveAttribute('aria-pressed', 'true');
+  expect(await painted()).not.toBe(dark);
+  await page.getByRole('button', {name:'Close settings'}).click();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.getByRole('button', {name:'Open settings'})).toBeVisible();
+  await page.screenshot({path:'../artifacts/dashboard-light.png',fullPage:true});
+});
+
 test('layout settings persist and mobile has no horizontal overflow', async ({ page }) => {
   await page.setViewportSize({width:390,height:844});
   await page.goto('/');

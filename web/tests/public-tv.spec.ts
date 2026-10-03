@@ -83,3 +83,18 @@ test('the TV renders a live table with no session, no operator affordances and n
   // show before it knows where it is.
   expect(asked, 'the TV asked its listener for routes it does not serve').toEqual(['/api/health', '/api/tv']);
 });
+
+test('the TV keeps the base theme and the arena table, with no theme picker', async ({ page }) => {
+  // The public TV is a spectator's screen, not the operator's: it has no settings modal, so it has
+  // no theme picker, and it stays on the base look even when this origin's storage asks for light.
+  await page.addInitScript(() => localStorage.setItem('svan-theme', 'light'));
+  await quietStream(page);
+  await page.route('**/api/tv', route => route.fulfill({json: publicTable()}));
+  await page.goto(`${TV}/`);
+
+  await expect(page.locator('.tv-mode .table-stage')).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.getByRole('group', {name:'Control room theme'})).toHaveCount(0);
+  await expect(page.getByRole('button', {name:'Open settings'})).toHaveCount(0);
+  await expect(page.locator('.tv-mode .table-theme-arena')).toHaveCount(1);
+});

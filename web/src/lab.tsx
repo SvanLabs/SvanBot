@@ -45,8 +45,8 @@ function Trend({ points }: { points: Analysis['trend'] }) {
   return <div className="lab-trend">
     <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Cumulative big blinds won">
       <line x1={pad} x2={w - pad} y1={Y(0)} y2={Y(0)} stroke="var(--line)" strokeDasharray="3 5" />
-      {points.map((p, i) => <rect key={i} x={X(i) - 3} width={6} y={(p.bb100 ?? 0) >= 0 ? Y(0) - (p.bb100 ?? 0) / maxBar * 30 : Y(0)} height={Math.abs(p.bb100 ?? 0) / maxBar * 30} fill={(p.bb100 ?? 0) >= 0 ? '#6daa9855' : '#b6857855'}><title>{`Hands ${p.hands_end - 250}–${p.hands_end}: ${sgn(p.bb100, 0)} bb/100`}</title></rect>)}
-      <polyline points={points.map((p, i) => `${X(i)},${Y(p.cumulative_bb ?? 0)}`).join(' ')} fill="none" stroke="#e4b956" strokeWidth="2.2" />
+      {points.map((p, i) => <rect key={i} x={X(i) - 3} width={6} y={(p.bb100 ?? 0) >= 0 ? Y(0) - (p.bb100 ?? 0) / maxBar * 30 : Y(0)} height={Math.abs(p.bb100 ?? 0) / maxBar * 30} fill={(p.bb100 ?? 0) >= 0 ? 'var(--chart-2-soft)' : 'var(--chart-3-soft)'}><title>{`Hands ${p.hands_end - 250}–${p.hands_end}: ${sgn(p.bb100, 0)} bb/100`}</title></rect>)}
+      <polyline points={points.map((p, i) => `${X(i)},${Y(p.cumulative_bb ?? 0)}`).join(' ')} fill="none" stroke="var(--chart-1)" strokeWidth="2.2" />
     </svg>
     <p className="footnote">Line: cumulative big blinds. Bars: bb/100 of each 250-hand block (hover for values). Blocks swing widely; trust the line.</p>
   </div>;
@@ -98,7 +98,7 @@ function RangeGrid({ grid, share, names }: { grid: number[]; share: number[]; na
     const title = idx < 0
       ? `${label}: the engine's class order does not name this hand`
       : `${label}: likelihood ${pct(v, 0)} of the most likely hand · ${pct(share[idx], 1)} of the range`;
-    cells.push(<span key={label} title={title} style={{ background: `rgba(228,185,86,${0.08 + v * 0.85})`, color: v > 0.45 ? '#1b1c14' : '#b2b9ac' }}>{label}</span>);
+    cells.push(<span key={label} title={title} style={{ background: `color-mix(in srgb, var(--chart-1) ${Math.round((0.08 + v * 0.85) * 100)}%, transparent)`, color: v > 0.45 ? 'var(--heat-ink-strong)' : 'var(--heat-ink)' }}>{label}</span>);
   }
   return <div className="range-grid heat">{cells}</div>;
 }

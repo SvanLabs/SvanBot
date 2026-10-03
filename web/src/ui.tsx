@@ -33,6 +33,18 @@ export function ThemeToggle({theme, onChange}: {theme: TableTheme; onChange: (th
   </div>;
 }
 
+/** Which complete look the control room wears (#728). `dark` is the base theme style.css was written
+ *  against; `light` is the same layout re-inked through the theme tokens. The switch is the
+ *  `data-theme` attribute on the document root, so no component forks on it. */
+export type SiteTheme = 'dark' | 'light';
+export const SITE_THEMES: SiteTheme[] = ['dark', 'light'];
+
+export function SiteThemePicker({theme, onChange}: {theme: SiteTheme; onChange: (theme: SiteTheme) => void}) {
+  return <div className="theme-toggle" role="group" aria-label="Control room theme">
+    {SITE_THEMES.map(t => <button key={t} className={theme === t ? 'active' : ''} aria-pressed={theme === t} onClick={() => onChange(t)}>{t[0].toUpperCase()}{t.slice(1)}</button>)}
+  </div>;
+}
+
 export const api = request;
 
 export function Card({card, small = false}: {card?: string; small?: boolean}) {
