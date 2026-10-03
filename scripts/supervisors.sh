@@ -43,11 +43,8 @@ find_orphan() {
   while read -r pid; do
     [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$process_root" ] || continue
     [[ $(ps -o stat= -p "$pid" 2>/dev/null) != Z* ]] || continue
-    if [ "$tool" = monitor ]; then
-      tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q 'scripts/monitor.py' || continue
-    fi
     printf '%s\n' "$pid"; return
-  done < <(ps -C "$([ "$tool" = monitor ] && echo python3 || echo "$tool")" -o pid=)
+  done < <(ps -C "$tool" -o pid=)
 }
 
 supervised_process() {
@@ -75,7 +72,7 @@ supervised_process() {
           else
             ./target/release/sv10-bot >> "$log" 2>&1 &
           fi ;;
-        monitor) python3 scripts/monitor.py --interval 300 --summary-min 30 --big-loss-bb 250 >> "$log" 2>&1 & ;;
+        monitor) ./target/release/monitor --interval 300 --summary-min 30 --big-loss-bb 250 >> "$log" 2>&1 & ;;
         *) ./target/release/"$tool" >> "$log" 2>&1 & ;;
       esac
       child=$!

@@ -96,7 +96,7 @@ if [ "${2:-}" = '^flags' ]; then echo 'flags : FLAGS'; else exec /usr/bin/grep "
 while [ "$1" != --target-dir ]; do shift; done
 shift
 mkdir -p "$1/release"
-for name in sv10-bot learner analyst sim probe tables review calibrate ingest archive; do
+for name in sv10-bot learner analyst sim probe tables review monitor calibrate ingest archive; do
   printf '#!/bin/sh\\necho fixture\\n' > "$1/release/$name"
   chmod +x "$1/release/$name"
 done''')

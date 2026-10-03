@@ -1,0 +1,623 @@
+{
+  "seed": {
+    "hands": [
+      {
+        "bot": "Solo",
+        "hand_id": "h-seed-walk",
+        "ended_at": "2026-10-03T00:01:00+00:00",
+        "net": 10,
+        "pot": 20,
+        "winners": "Solo",
+        "hole": "AhKd",
+        "board": "",
+        "summary": {
+          "players": [
+            [
+              0,
+              "Quiet"
+            ],
+            [
+              1,
+              "Solo"
+            ]
+          ],
+          "button": 0,
+          "bb": 20,
+          "stacks": [
+            [
+              0,
+              5000
+            ],
+            [
+              1,
+              5000
+            ]
+          ],
+          "history": [
+            {
+              "seat": 0,
+              "street": "Preflop",
+              "kind": "Fold",
+              "to": 0,
+              "pot_before": 30,
+              "to_call_before": 20,
+              "bet_before": 10,
+              "full_raise": false
+            }
+          ],
+          "board": [],
+          "shown": []
+        }
+      },
+      {
+        "bot": "Alpha",
+        "hand_id": "h-seed-loss",
+        "ended_at": "2026-10-03T00:02:00+00:00",
+        "net": -2500,
+        "pot": 5000,
+        "winners": "Villain",
+        "hole": "AhKd",
+        "board": "",
+        "summary": {
+          "players": [
+            [
+              0,
+              "Alpha"
+            ],
+            [
+              1,
+              "Villain"
+            ]
+          ],
+          "button": 0,
+          "bb": 20,
+          "stacks": [
+            [
+              0,
+              5000
+            ],
+            [
+              1,
+              5000
+            ]
+          ],
+          "history": [
+            {
+              "seat": 0,
+              "street": "Preflop",
+              "kind": "Raise",
+              "to": 2500,
+              "pot_before": 30,
+              "to_call_before": 20,
+              "bet_before": 10,
+              "full_raise": true
+            },
+            {
+              "seat": 1,
+              "street": "Preflop",
+              "kind": "Call",
+              "to": 2500,
+              "pot_before": 2520,
+              "to_call_before": 2480,
+              "bet_before": 20,
+              "full_raise": false
+            }
+          ],
+          "board": [],
+          "shown": []
+        }
+      },
+      {
+        "bot": "Bravo",
+        "hand_id": "h-seed-win-1",
+        "ended_at": "2026-10-03T00:03:00+00:00",
+        "net": 2000,
+        "pot": 4000,
+        "winners": "Bravo",
+        "hole": "AhKd",
+        "board": "",
+        "summary": {
+          "players": [
+            [
+              0,
+              "Fish"
+            ],
+            [
+              1,
+              "Bravo"
+            ]
+          ],
+          "button": 0,
+          "bb": 20,
+          "stacks": [
+            [
+              0,
+              5000
+            ],
+            [
+              1,
+              5000
+            ]
+          ],
+          "history": [
+            {
+              "seat": 1,
+              "street": "Preflop",
+              "kind": "Raise",
+              "to": 2000,
+              "pot_before": 30,
+              "to_call_before": 10,
+              "bet_before": 20,
+              "full_raise": true
+            },
+            {
+              "seat": 0,
+              "street": "Preflop",
+              "kind": "Call",
+              "to": 2000,
+              "pot_before": 2010,
+              "to_call_before": 1990,
+              "bet_before": 10,
+              "full_raise": false
+            }
+          ],
+          "board": [],
+          "shown": []
+        }
+      },
+      {
+        "bot": "Bravo",
+        "hand_id": "h-seed-win-2",
+        "ended_at": "2026-10-03T00:04:00+00:00",
+        "net": 2000,
+        "pot": 4000,
+        "winners": "Bravo",
+        "hole": "AhKd",
+        "board": "",
+        "summary": {
+          "players": [
+            [
+              0,
+              "Fish"
+            ],
+            [
+              1,
+              "Bravo"
+            ]
+          ],
+          "button": 0,
+          "bb": 20,
+          "stacks": [
+            [
+              0,
+              5000
+            ],
+            [
+              1,
+              5000
+            ]
+          ],
+          "history": [
+            {
+              "seat": 1,
+              "street": "Preflop",
+              "kind": "Raise",
+              "to": 2000,
+              "pot_before": 30,
+              "to_call_before": 10,
+              "bet_before": 20,
+              "full_raise": true
+            },
+            {
+              "seat": 0,
+              "street": "Preflop",
+              "kind": "Call",
+              "to": 2000,
+              "pot_before": 2010,
+              "to_call_before": 1990,
+              "bet_before": 10,
+              "full_raise": false
+            }
+          ],
+          "board": [],
+          "shown": []
+        }
+      }
+    ],
+    "events": []
+  },
+  "new": {
+    "hands": [
+      {
+        "bot": "Alpha",
+        "hand_id": "h-new-loss",
+        "ended_at": "2026-10-03T00:05:00+00:00",
+        "net": -2500,
+        "pot": 5000,
+        "winners": "Villain",
+        "hole": "AhKd",
+        "board": "",
+        "summary": {
+          "players": [
+            [
+              0,
+              "Alpha"
+            ],
+            [
+              1,
+              "Villain"
+            ]
+          ],
+          "button": 0,
+          "bb": 20,
+          "stacks": [
+            [
+              0,
+              5000
+            ],
+            [
+              1,
+              5000
+            ]
+          ],
+          "history": [
+            {
+              "seat": 0,
+              "street": "Preflop",
+              "kind": "Raise",
+              "to": 2500,
+              "pot_before": 30,
+              "to_call_before": 20,
+              "bet_before": 10,
+              "full_raise": true
+            },
+            {
+              "seat": 1,
+              "street": "Preflop",
+              "kind": "Call",
+              "to": 2500,
+              "pot_before": 2520,
+              "to_call_before": 2480,
+              "bet_before": 20,
+              "full_raise": false
+            }
+          ],
+          "board": [],
+          "shown": []
+        }
+      },
+      {
+        "bot": "Bravo",
+        "hand_id": "h-new-win",
+        "ended_at": "2026-10-03T00:06:00+00:00",
+        "net": 2000,
+        "pot": 4000,
+        "winners": "Bravo",
+        "hole": "AhKd",
+        "board": "",
+        "summary": {
+          "players": [
+            [
+              0,
+              "Fish"
+            ],
+            [
+              1,
+              "Bravo"
+            ]
+          ],
+          "button": 0,
+          "bb": 20,
+          "stacks": [
+            [
+              0,
+              5000
+            ],
+            [
+              1,
+              5000
+            ]
+          ],
+          "history": [
+            {
+              "seat": 1,
+              "street": "Preflop",
+              "kind": "Raise",
+              "to": 2000,
+              "pot_before": 30,
+              "to_call_before": 10,
+              "bet_before": 20,
+              "full_raise": true
+            },
+            {
+              "seat": 0,
+              "street": "Preflop",
+              "kind": "Call",
+              "to": 2000,
+              "pot_before": 2010,
+              "to_call_before": 1990,
+              "bet_before": 10,
+              "full_raise": false
+            }
+          ],
+          "board": [],
+          "shown": []
+        }
+      },
+      {
+        "bot": "Alpha",
+        "hand_id": "h-new-fold",
+        "ended_at": "2026-10-03T00:07:00+00:00",
+        "net": 10,
+        "pot": 20,
+        "winners": "Alpha",
+        "hole": "AhKd",
+        "board": "",
+        "summary": {
+          "players": [
+            [
+              0,
+              "Alpha"
+            ],
+            [
+              1,
+              "Newbie"
+            ]
+          ],
+          "button": 0,
+          "bb": 20,
+          "stacks": [
+            [
+              0,
+              5000
+            ],
+            [
+              1,
+              5000
+            ]
+          ],
+          "history": [
+            {
+              "seat": 1,
+              "street": "Preflop",
+              "kind": "Fold",
+              "to": 0,
+              "pot_before": 30,
+              "to_call_before": 10,
+              "bet_before": 20,
+              "full_raise": false
+            }
+          ],
+          "board": [],
+          "shown": []
+        }
+      }
+    ],
+    "events": [
+      {
+        "bot": "Alpha",
+        "message": "hand upload failed: connection reset (table 42, attempt 3)"
+      }
+    ]
+  },
+  "models": {
+    "players": {
+      "Villain": {
+        "hands": 200.0,
+        "vpip": {
+          "opp": 200.0,
+          "hit": 60
+        },
+        "pfr": {
+          "opp": 200.0,
+          "hit": 20
+        },
+        "open_raise": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "limp": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "three_bet": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "call_open": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "fold_to_3bet": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "four_bet": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "bet_first": [
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          },
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          },
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          }
+        ],
+        "fold_vs_bet": [
+          {
+            "opp": 12.0,
+            "hit": 5.0
+          },
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          },
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          }
+        ],
+        "raise_vs_bet": [
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          },
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          },
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          }
+        ],
+        "fold_vs_size": [
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          },
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          },
+          {
+            "opp": 0.0,
+            "hit": 0.0
+          }
+        ],
+        "cbet": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "fold_to_cbet": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "wtsd": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "river_bluff": {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        "showdowns": 0.0
+      }
+    },
+    "population": {
+      "hands": 0.0,
+      "vpip": {
+        "opp": 0.0,
+        "hit": 0
+      },
+      "pfr": {
+        "opp": 0.0,
+        "hit": 0
+      },
+      "open_raise": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "limp": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "three_bet": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "call_open": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "fold_to_3bet": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "four_bet": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "bet_first": [
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        }
+      ],
+      "fold_vs_bet": [
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        }
+      ],
+      "raise_vs_bet": [
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        }
+      ],
+      "fold_vs_size": [
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        },
+        {
+          "opp": 0.0,
+          "hit": 0.0
+        }
+      ],
+      "cbet": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "fold_to_cbet": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "wtsd": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "river_bluff": {
+        "opp": 0.0,
+        "hit": 0.0
+      },
+      "showdowns": 0.0
+    }
+  }
+}

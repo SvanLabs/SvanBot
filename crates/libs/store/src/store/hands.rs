@@ -5,6 +5,8 @@ use rusqlite::{OptionalExtension, params};
 
 mod blinds;
 pub use blinds::EvResultWithBlind;
+mod tools;
+pub use tools::MonitorRow;
 mod players;
 pub use players::PlayerHandWithBlind;
 

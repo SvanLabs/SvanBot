@@ -242,6 +242,20 @@ impl HistoryDb {
         Ok(conn.query_row("SELECT json FROM raw WHERE hand_id = ?1", [hand_id], |r| self.codec.text(r.get_ref(0)?)).optional()?)
     }
 
+    /// (bot, hand_id, started_at, profit) of every export row starting at or after `since` (RFC
+    /// 3339 text, compared as SQLite text like the fleet check did). The profit column is filled at
+    /// insert; a row still in text form reads the export JSON (0229).
+    pub fn raw_after(&self, since: &str) -> Result<Vec<(String, String, String, i64)>> {
+        let conn = self.conn.lock();
+        let mut st = conn.prepare(
+            "SELECT bot, hand_id, COALESCE(started_at, ''),
+                    COALESCE(profit, CASE WHEN typeof(json) = 'text' AND json_valid(json) THEN json_extract(json, '$.profit') END, 0)
+             FROM raw WHERE COALESCE(started_at, '') >= ?1",
+        )?;
+        let rows = st.query_map([since], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Corpus rows per source.
     pub fn corpus_counts(&self) -> Vec<(String, i64)> {
         let conn = self.conn.lock();

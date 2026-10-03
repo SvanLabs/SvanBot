@@ -29,6 +29,10 @@ pub struct HeadToHead {
     pub hands: f64,
     sum: f64,
     sum_sq: f64,
+    /// The single worst hand, so one cooler does not read as a leak (0209). Not part of any
+    /// serialized read: it exists for [`Self::mean_without_biggest_loss`].
+    #[serde(skip)]
+    low: f64,
 }
 
 /// A reconciled chip flow in big blinds of the hand it came from, or `None` when the
@@ -43,6 +47,7 @@ impl HeadToHead {
         self.hands += 1.0;
         self.sum += net_bb;
         self.sum_sq += net_bb * net_bb;
+        self.low = if self.hands == 1.0 { net_bb } else { self.low.min(net_bb) };
     }
 
     /// Mean big blinds per priced hand.
@@ -50,14 +55,24 @@ impl HeadToHead {
         sv10_stats::moments::mean(self.hands, self.sum)
     }
 
+    /// Mean with the single worst hand removed, so one cooler does not read as a leak (0209).
+    pub fn mean_without_biggest_loss(&self) -> f64 {
+        if self.hands < 2.0 { self.mean() } else { (self.sum - self.low) / (self.hands - 1.0) }
+    }
+
     /// Half-width of the interval of the mean at `z` standard errors, in big blinds per hand.
     fn half_width(&self, z: f64) -> f64 {
         sv10_stats::moments::half_width(self.hands, self.sum, self.sum_sq, z)
     }
 
+    /// Upper end of the interval of the mean at `z` standard errors, in big blinds per hand.
+    pub fn upper(&self, z: f64) -> f64 {
+        self.mean() + self.half_width(z)
+    }
+
     /// Upper end of this opponent's own 95% interval of the mean, in big blinds per hand.
     pub fn upper_95(&self) -> f64 {
-        self.mean() + self.half_width(1.96)
+        self.upper(1.96)
     }
 
     /// Whether this opponent beats us over at least `min_hands` hands, at 95% family-wise across

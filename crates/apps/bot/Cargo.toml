@@ -28,6 +28,11 @@ name = "ingest"
 path = "src/bin/ingest.rs"
 test = false
 
+[[bin]]
+name = "monitor"
+path = "src/bin/monitor.rs"
+test = false
+
 [dependencies]
 sv10-core.workspace = true
 sv10-digest.workspace = true
