@@ -59,6 +59,10 @@ otherwise cost the first hour.
 | [`docs/SPEC-data.md`](SPEC-data.md) | What is stored, in which format, and how is it protected? | you touch the store, a schema or a backup |
 | [`docs/SPEC-learner.md`](SPEC-learner.md) | How does the learner search, and what must a change prove before it plays live? | you touch the learner or a promotion gate |
 | [`docs/SPEC-dashboard.md`](SPEC-dashboard.md) | What does each dashboard endpoint and panel promise? | you touch the API or `web/` |
+| [`docs/SPEC-scoring.md`](SPEC-scoring.md) | What is the season score, and which entries count? | you read or display a rank or leaderboard |
+| [`docs/SPEC-payouts.md`](SPEC-payouts.md) | How do season prizes pay, and does prize value change play? | you discuss prizes or season-end play |
+| [`docs/SPEC-competitions.md`](SPEC-competitions.md) | What are private competitions, and does SvanBot play them? | you consider private-competition support |
+| [`docs/SPEC-pro.md`](SPEC-pro.md) | What do Pro and Portfolio endpoints offer, and does SvanBot call them? | you touch tiers, keys or the fleet cap |
 | [`docs/RELEASE.md`](RELEASE.md) | How is a version cut and verified? | you are tagging a release |
 | [`docs/AI-PROVENANCE.md`](AI-PROVENANCE.md) | Which AI systems are on record for this repository? | you want the provenance rule's evidence, not its statement |
 | [`docs/SUPPORT.md`](SUPPORT.md) | Where does my question go? | you are stuck |
