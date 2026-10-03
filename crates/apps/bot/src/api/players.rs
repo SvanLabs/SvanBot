@@ -175,12 +175,12 @@ pub(super) async fn player_card(State(s): State<Arc<Shared>>, Path(name): Path<S
         card["avatar_url"] = json!(shared.avatars.read().get(&name).and_then(|a| crate::avatar_url(&shared.config.rest_base, a)));
         card["reputation"] = json!(shared.reputation.read().get(&name).cloned());
         card["vs_us"] = record(&hands, &name, &ours, |b| shared.current_name(b));
-        // Our net in the hands they sat in is a table result; the head-to-head read is the chip
-        // flow attributed to their seat, the number every other surface shows (0277).
+        // Our net in the hands they sat in is a table result; the head-to-head read is the
+        // big-blind flow attributed to their seat, the number every other surface shows (0277).
         card["vs_seat"] = if is_us {
             Value::Null
         } else {
-            crate::headtohead::read_one(&shared.head_to_head.read(), &name, MIN_SEAT_HANDS, shared.big_blind()).unwrap_or(Value::Null)
+            crate::headtohead::read_one(&shared.head_to_head.read(), &name, MIN_SEAT_HANDS).unwrap_or(Value::Null)
         };
         card["ours"] = json!(is_us);
         Ok(Some(card))

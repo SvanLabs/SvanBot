@@ -245,7 +245,6 @@ pub fn report(
     fleet: &[String],
     h2h: &HashMap<String, crate::headtohead::HeadToHead>,
     calibration: Option<&Value>,
-    bb: f64,
     season: Option<&crate::season::CurrentSeason>,
 ) -> anyhow::Result<Value> {
     let hands = load(store, fleet)?;
@@ -326,7 +325,7 @@ pub fn report(
     let mut opp: Vec<Value> = h2h
         .iter()
         .filter(|(_, v)| v.hands >= 100.0)
-        .map(|(n, v)| json!({"name": n, "hands": v.hands as i64, "bb100": v.mean() / bb * 100.0, "upper_bb100": v.upper_95() / bb * 100.0, "beats_us": v.beats_us(300.0, tested)}))
+        .map(|(n, v)| json!({"name": n, "hands": v.hands as i64, "bb100": v.mean() * 100.0, "upper_bb100": v.upper_95() * 100.0, "beats_us": v.beats_us(300.0, tested)}))
         .collect();
     opp.sort_by(|a, b| a["bb100"].as_f64().partial_cmp(&b["bb100"].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
     opp.truncate(15);

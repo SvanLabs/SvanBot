@@ -110,7 +110,7 @@ pub fn fleet_report(store: &Store, bb: f64, which: String, losers: usize, bots: 
     h2h.sort_by(|a, b| a.1.mean().partial_cmp(&b.1.mean()).unwrap_or(std::cmp::Ordering::Equal));
     let tested = h2h.len();
     println!(
-        "== head-to-head (chips moved between us and them in champion hands, 150+; experiment-arm hands excluded, 0361; * = beats us at 95% across all {tested} tested, z {:.2})",
+        "== head-to-head (big blinds moved between us and them in champion hands, 150+; experiment-arm hands excluded, 0361; * = beats us at 95% across all {tested} tested, z {:.2})",
         sv10_stats::normal::family_z(tested)
     );
     for (name, h) in h2h.iter().take(12) {
@@ -118,8 +118,8 @@ pub fn fleet_report(store: &Store, bb: f64, which: String, losers: usize, bots: 
             "{:>20}: {:>5} hands {:>+8.1} bb/100, own 95% upper {:>+7.1}{}",
             name,
             h.hands as i64,
-            h.mean() / bb * 100.0,
-            h.upper_95() / bb * 100.0,
+            h.mean() * 100.0,
+            h.upper_95() * 100.0,
             if h.beats_us(150.0, tested) { " *" } else { "" }
         );
     }

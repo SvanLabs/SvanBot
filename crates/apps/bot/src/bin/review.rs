@@ -129,7 +129,7 @@ fn main() -> Result<()> {
     if which == "leaks" {
         // The dashboard's leak finder, printed as JSON (head-to-head omitted).
         let fleet = store.bot_names()?;
-        println!("{}", serde_json::to_string_pretty(&sv10_bot::analysis::report(&store, &fleet, &HashMap::new(), None, bb, None)?)?);
+        println!("{}", serde_json::to_string_pretty(&sv10_bot::analysis::report(&store, &fleet, &HashMap::new(), None, None)?)?);
         return Ok(());
     }
     if which == "ledger" {

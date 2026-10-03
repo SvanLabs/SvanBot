@@ -125,9 +125,10 @@ pub struct Scan {
 ///
 /// One pass per scan, from the live ledger (0328). The two risk instruments used to share one
 /// function, so the scan called it twice and every nemesis was reported — and ticketed — twice.
-/// `bb` is the store's big blind: pricing these at a constant would disagree with the rivals
-/// card beside them on the dashboard, which is read at the store's own big blind (#611).
-pub fn nemesis(h2h: &std::collections::HashMap<String, HeadToHead>, bb: f64) -> Vec<Finding> {
+///
+/// The ledger prices every hand in its own recorded blind, so every surface that shows a rivalry
+/// number shows the same one with no blind argument to disagree on.
+pub fn nemesis(h2h: &std::collections::HashMap<String, HeadToHead>) -> Vec<Finding> {
     let tested = crate::headtohead::tested(h2h, 150.0);
     h2h.iter()
         .filter(|(_, h)| h.hands >= 150.0 && h.beats_us(150.0, tested))
@@ -139,9 +140,9 @@ pub fn nemesis(h2h: &std::collections::HashMap<String, HeadToHead>, bb: f64) -> 
                 format!(
                     "{:.0} shared hands of champion play (experiment-arm hands excluded, 0291), {:+.1} bb/100, 95% family-wise across {tested} opponents",
                     h.hands,
-                    h.mean() / bb * 100.0
+                    h.mean() * 100.0
                 ),
-                h.mean() / bb * 100.0,
+                h.mean() * 100.0,
                 0.0,
             )
         })
@@ -268,8 +269,7 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
     }
 
     // The nemesis test.
-    let bb = store.latest_big_blind().ok().flatten().unwrap_or(crate::live::DEFAULT_BIG_BLIND).max(1) as f64;
-    findings.extend(nemesis(h2h, bb));
+    findings.extend(nemesis(h2h));
 
     // Style drift (0332): our own preflop mix, the last day against the six before.
     let at = |hours: i64| (chrono::Utc::now() - chrono::Duration::hours(hours)).to_rfc3339();
