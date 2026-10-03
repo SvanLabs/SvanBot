@@ -179,6 +179,7 @@ pub(super) async fn handle(
                     };
                     let chosen = between_hands(&HandEnd {
                         moves_ok: shared.season_clock.read().table_moves_allowed(Instant::now()),
+                        stablemate: stablemate_at_table(&tracker.seats, tracker.hero_seat, &shared.config.bots),
                         hands_at_table: tracker.hands_at_table,
                         seek_top_rank: shared.config.seek_top_rank,
                         quality: &quality,
@@ -409,6 +410,11 @@ async fn move_tables(
     let (line, event, switch) = match chosen {
         Move::Seek(reason) => (format!("table seeking: re-queueing after {hands} hands — {reason}"), Some(reason), true),
         Move::Tough(summary) => (format!("table selection: leaving a tough table after {hands} hands ({summary})"), Some(summary), true),
+        Move::Stablemate(name) => (
+            format!("fair play: same-owner bot {name} seated here; leaving after {hands} hands to re-queue elsewhere"),
+            Some(format!("fair play: same-owner table ({name})")),
+            false,
+        ),
         Move::Bank => (
             format!("banking winnings: table stack {stack} ({} bb); leaving to rejoin with a fresh buy-in", stack / tracker.bb.max(1)),
             Some("banking winnings".to_string()),

@@ -43,7 +43,7 @@ use quality::table_quality;
 use rest::balance_from;
 use rest::prepare_buy_in;
 pub use rest::rest_get;
-use seat::{HandEnd, Leave, Move, Seat, between_hands, top_up_funded};
+use seat::{HandEnd, Leave, Move, Seat, between_hands, stablemate_at_table, top_up_funded};
 
 pub(super) struct Conn {
     out: mpsc::UnboundedSender<Value>,

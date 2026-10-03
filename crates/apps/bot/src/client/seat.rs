@@ -3,7 +3,9 @@
 //! the frames; the state and the order of the reasons live here.
 
 use super::TableQuality;
+use crate::config::BotConfig;
 use std::time::Duration;
+use sv10_venue::tracker::SeatView;
 
 /// Why a `leave_table` was sent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,12 +79,17 @@ pub(super) enum Move {
     Bank,
     /// Short stack: check the off-table balance and rejoin deeper if it can fund it.
     TopUp,
+    /// A same-owner bot is seated at this table (its name): the venue's fair-play rules never allow
+    /// it (docs/SPEC-pro.md), so the seat leaves at once.
+    Stablemate(String),
 }
 
 /// What the between-hands choice looks at.
 pub(super) struct HandEnd<'a> {
     /// Table moves are allowed (not near the season end).
     pub moves_ok: bool,
+    /// A same-owner bot seated at this table (its name), from [`stablemate_at_table`].
+    pub stablemate: Option<String>,
     /// Hands played at this table.
     pub hands_at_table: u32,
     /// `seek_top_rank` from the config (0 = no seeking).
@@ -111,8 +118,14 @@ fn within(since: Option<Duration>, secs: u64) -> bool {
     since.is_some_and(|d| d < Duration::from_secs(secs))
 }
 
-/// The move to make after this hand, first reason wins: seek, tough table, bank, top up.
+/// The move to make after this hand, first reason wins: fair play, seek, tough table, bank, top up.
 pub(super) fn between_hands(h: &HandEnd) -> Option<Move> {
+    // Fair play first, and above the move window: two same-owner bots must never share a table
+    // (docs/SPEC-pro.md). This is not a voluntary table move, so the season-end freeze does not
+    // suppress it — staying seated together is the rule violation, not leaving.
+    if let Some(name) = &h.stablemate {
+        return Some(Move::Stablemate(name.clone()));
+    }
     if !h.moves_ok {
         return None;
     }
@@ -158,6 +171,22 @@ pub(super) fn top_up_funded(stack: i64, balance: i64, max_buy_in: i64) -> bool {
     (balance + stack).min(max_buy_in) >= stack * 2 && balance >= 1000
 }
 
+/// The first same-owner bot seated at this table, other than our own seat, by configured name —
+/// the venue's fair-play rules never allow two (docs/SPEC-pro.md), and configured names cannot
+/// false-positive.
+pub(super) fn stablemate_at_table(
+    seats: &std::collections::BTreeMap<usize, SeatView>,
+    own_seat: Option<usize>,
+    fleet: &[BotConfig],
+) -> Option<String> {
+    seats
+        .iter()
+        .filter(|(seat, _)| Some(**seat) != own_seat)
+        .map(|(_, view)| &view.name)
+        .find(|name| fleet.iter().any(|b| b.name == **name))
+        .cloned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,6 +198,7 @@ mod tests {
     fn end(q: &TableQuality) -> HandEnd<'_> {
         HandEnd {
             moves_ok: true,
+            stablemate: None,
             hands_at_table: 7,
             seek_top_rank: 30,
             quality: q,
@@ -181,6 +211,29 @@ mod tests {
             total_chips: None,
             max_buy_in: 5_000,
         }
+    }
+
+    #[test]
+    fn a_same_owner_bot_at_the_table_forces_a_leave_even_in_the_freeze() {
+        // The venue's fair-play rules: never two same-owner bots at one table (docs/SPEC-pro.md).
+        let seats = |entries: &[(usize, &str)]| -> std::collections::BTreeMap<usize, SeatView> {
+            entries.iter().map(|&(i, n)| (i, SeatView { seat: i, name: n.into(), ..Default::default() })).collect()
+        };
+        let fleet: Vec<BotConfig> = ["Alpha", "Beta"].iter().map(|n| BotConfig { name: n.to_string(), api_key: String::new() }).collect();
+        assert_eq!(
+            stablemate_at_table(&seats(&[(1, "Alpha"), (3, "Beta")]), Some(1), &fleet),
+            Some("Beta".to_string()),
+            "our own seat is never a stablemate"
+        );
+        assert_eq!(stablemate_at_table(&seats(&[(1, "Alpha"), (3, "Stranger")]), Some(1), &fleet), None);
+        assert_eq!(stablemate_at_table(&seats(&[(0, "Beta")]), None, &fleet), Some("Beta".to_string()));
+        let q = table(1, 0, 3, false);
+        let frozen = HandEnd { moves_ok: false, stablemate: Some("Beta".into()), ..end(&q) };
+        assert_eq!(
+            between_hands(&frozen),
+            Some(Move::Stablemate("Beta".into())),
+            "the season-end freeze does not suppress the fair-play leave"
+        );
     }
 
     #[test]
