@@ -248,6 +248,11 @@ self-calibration, the fitted range model, the learner's champion and training st
 finder's own lines, positions, outcomes, trend and advice, and the achievement badges, which stay
 earned across a rollover.
 
+Leak-finder rates are normalized by each hand's own recorded blind: the report counts only
+priced hands in bb/100 and confidence intervals, keeps chip totals over every settled hand,
+and names the priced sample (`priced_hands`) when it differs from all settled hands. A hand
+with no positive recorded blind never enters a rate.
+
 
 
 ## Invariants
