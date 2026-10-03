@@ -166,6 +166,7 @@ case "$mode" in
     run_suite "adopt-upstream tests (run bash scripts/tests/adopt-upstream.sh)" bash scripts/tests/adopt-upstream.sh
     run_suite "file-size tests (run bash scripts/tests/file-size.sh)" bash scripts/tests/file-size.sh
     run_suite "build-lock tests (run bash scripts/tests/build-lock.sh)" bash scripts/tests/build-lock.sh
+    run_suite "patch-inbox tests (run bash scripts/tests/patch-inbox.sh)" bash scripts/tests/patch-inbox.sh
     run_suite "clean.sh artifact-layout tests (run bash scripts/tests/clean.sh)" bash scripts/tests/clean.sh
     run_suite "systemd unit tests (run bash scripts/tests/units.sh)" bash scripts/tests/units.sh
     [ "$mode" = lint ] && { step_end; step "ok (lint, $(($(date +%s) - check_t0)) s)"; exit 0; }
