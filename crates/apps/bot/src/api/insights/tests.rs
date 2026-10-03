@@ -329,3 +329,30 @@ fn the_leak_finder_reads_every_season_but_reports_this_ones_result_separately() 
     assert_eq!(unscoped["season"]["scoped"], false);
     assert_eq!(unscoped["season"]["chips"], 908_000, "no boundary means nothing is dropped, and the panel says so");
 }
+
+#[test]
+fn the_leak_finder_normalizes_each_hand_by_its_own_recorded_blind() {
+    let shared = Shared::for_test("analysis-mixed-blind", &["b"]);
+    // +10 chips at BB 10 and +20 chips at BB 20 are both +1 bb/hand.
+    for (id, net, bb) in [("m1", 10i64, 10i64), ("m2", 20, 20)] {
+        let mut row = hand_at("b", id, "AhKd", "2c3c4c5c7d", 400, net, false);
+        let summary = HandSummary {
+            players: vec![(0, "b".into())],
+            button: 0,
+            bb,
+            history: Vec::new(),
+            board: Vec::new(),
+            shown: Vec::new(),
+            stacks: Vec::new(),
+        };
+        row.summary = serde_json::to_string(&summary).unwrap();
+        shared.store.insert_hand(&row).unwrap();
+    }
+    for current in [10.0, 20.0, 50.0] {
+        let report = crate::analysis::report(&shared.store, &["b".to_string()], &HashMap::new(), None, current, None).unwrap();
+        assert_eq!(report["overall"]["bb100"], 100.0, "mixed blinds average +100 bb/100 at current {current}");
+        assert_eq!(report["overall"]["priced_hands"], 2);
+        assert_eq!(report["season"]["bb100"], 100.0, "the unscoped season matches overall at current {current}");
+        assert_eq!(report["trend"][0]["bb100"], 100.0, "the trend block prices its own hands at current {current}");
+    }
+}
