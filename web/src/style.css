@@ -503,3 +503,19 @@ body{background:radial-gradient(1200px 600px at 8% -10%,#e4b9561a,transparent 60
 [data-theme="light"] .docs-body pre{background:#f3f4ea}
 [data-theme="light"] .docs-body pre code{color:#2e3224}
 [data-theme="light"] .docs-table th{border-bottom-color:#c8ccb6}
+
+/* Surfaces whose base rule is a dark literal, not a token. Left alone, they keep the dark rectangle
+   while `--text` flips to near-black on top — about 1.2:1. Each override re-inks the whole surface,
+   background and ink together, so nothing inherits into a dark box (PR #734 review). */
+[data-theme="light"] .error-banner,[data-theme="light"] .connection-banner{background:#fdf3d7;border-color:#c9a44e;color:#4a3608}
+[data-theme="light"] .panel-explanation{background:#f2f3e9;color:#2e3224}
+[data-theme="light"] .update-banner{background:#f7f0d4;border-color:#c9a44e;color:#4a3608}
+[data-theme="light"] .stale-note{background:#f7f0d4;border-color:#c9a44e;color:#6b4a0c}
+[data-theme="light"] .ev-tip{background:#f2f3e9;border-color:#c3c7af;color:#2e3224}
+[data-theme="light"] .highlight:hover{background:#eceee0}
+[data-theme="light"] .host-list code{background:#f1f2e8}
+[data-theme="light"] .pc-big,[data-theme="light"] .pc-form,[data-theme="light"] .pc-panel,[data-theme="light"] .pc-report,[data-theme="light"] .pc-standing>div,[data-theme="light"] .pc-recent,[data-theme="light"] .quiz-score div{background:#f3f4ea;border-color:#d7dbc8}
+[data-theme="light"] .pc-recent li{background:#ffffff;border-color:#d7dbc8}
+[data-theme="light"] .pc-big.negative b,[data-theme="light"] .pc-recent .negative{color:#a8453c}
+[data-theme="light"] .quiz-option{background:linear-gradient(180deg,#ffffff,#f0f1e7);border-color:#b6bc9f}
+[data-theme="light"] .quiz-option small{color:#5f6553}
