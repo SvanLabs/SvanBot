@@ -183,6 +183,13 @@ if [ "$before" != "$target" ]; then
     adopt_upstream
   fi
 fi
+# What the health gate below needs, read before the install moves anything: which verified build is
+# installed now, and whether a bot is actually running it. After a hot swap the pid files briefly name
+# a process that has already exited, so the same question asked afterwards reads the fleet as down.
+fleet_running=0
+scripts/rollback.sh --fleet-running && fleet_running=1
+previous_installed=$(scripts/rollback.sh --installed-commit 2>/dev/null || true)
+
 # release.sh reports its own stages; a failure there moves the checkout back.
 if ! SV10_UPDATE_RUN=1 "${SV10_RELEASE_SCRIPT:-scripts/release.sh}"; then
   if [ "$before" != "$target" ]; then
@@ -190,5 +197,36 @@ if ! SV10_UPDATE_RUN=1 "${SV10_RELEASE_SCRIPT:-scripts/release.sh}"; then
   fi
   progress fail "" "release failed; the fleet keeps playing the installed build"
   exit 1
+fi
+
+# Installing the files is not the same as the fleet running them (issue #726). A binary that answers
+# `--version` and dies at startup passes every files-only check, gets installed, and then crash-loops
+# while keepalive counts supervisors and still says "fleet up". Wait, bounded, for /api/health to
+# report the installed commit; anything else restores the previous verified build, loudly, instead of
+# leaving play down. A box with no fleet running has nothing to verify and skips the gate.
+if [ "$fleet_running" = 1 ]; then
+  installed=$(scripts/rollback.sh --installed-commit 2>/dev/null || true)
+  if [ -z "$installed" ]; then
+    echo "update: warning: the release installed no commit identity; the fleet cannot be verified" >&2
+  elif ! scripts/rollback.sh --await-health "$installed"; then
+    rolled_back=0
+    if [ -n "$previous_installed" ] && scripts/rollback.sh "$previous_installed"; then
+      rolled_back=1
+    fi
+    if [ "$rolled_back" = 1 ]; then
+      echo "update: rolled back to the verified build $previous_installed; the fleet keeps playing it" >&2
+      progress fail install "the new build did not answer /api/health with its commit; rolled back to $previous_installed"
+    elif [ -n "$previous_installed" ]; then
+      echo "update: the automatic rollback to $previous_installed failed; the fleet may still be on $installed" >&2
+      progress fail install "the new build did not answer /api/health and the rollback failed; run scripts/rollback.sh $previous_installed by hand"
+    else
+      echo "update: no previous verified install to roll back to" >&2
+      progress fail install "the new build did not answer /api/health and there is no previous verified install to roll back to"
+    fi
+    if [ "$rolled_back" = 1 ] && [ "$before" != "$target" ]; then
+      git reset --quiet --keep "$before" && echo "update: checkout restored to $(git rev-parse --short "$before"), so the source matches the build the fleet runs"
+    fi
+    exit 1
+  fi
 fi
 progress installed "$(git rev-parse --short HEAD)"

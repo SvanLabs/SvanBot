@@ -18,9 +18,9 @@ All commands run from the repository root. Binaries live in `target/release/`.
 |---|---|
 | Start fleet + learner + dashboard | `scripts/start.sh` (returns when a single, head, or worker supervisor is running; otherwise builds if binaries are missing; `REBUILD=1` forces) |
 | Stop everything | `scripts/stop.sh [--hold 30m\|8h\|forever]`: the keepalive leaves the fleet down for the hold (default 30 min); `systemctl --user stop svanbot10` holds forever; `scripts/start.sh` clears it |
-| Keepalive | `scripts/keepalive.sh` restarts `svanbot10.service` when no supervisor runs, no hold is in force and no release holds the lock; decisions in `artifacts/logs/keepalive.log`, `KEEPALIVE_DRY=1` to check. Install once: `scripts/units.sh && systemctl --user enable --now svanbot10-keepalive.timer` |
+| Keepalive | `scripts/keepalive.sh` repairs an interrupted release swap first (`artifacts/release-swap.journal` left by a killed install), then restarts `svanbot10.service` when no supervisor runs, no hold is in force and no release holds the lock; decisions in `artifacts/logs/keepalive.log`, `KEEPALIVE_DRY=1` to check. Install once: `scripts/units.sh && systemctl --user enable --now svanbot10-keepalive.timer` |
 | Rename a bot | Change its name in `.env` (`SVANBOT_MAIN_NAME` / `BOT_n_NAME`) and restart. Its season stays one record because each start links the names under the API key and stores the configured name first, so command-line reports also follow repeated renames and renaming back. For names used before that record existed, set `SVANBOT_ALIASES=New:Old[,New2:Old2]` once. The server export labels older hands with the new name, so fleet-check matches export rows by hand id |
-| Update from GitHub (one click) | Dashboard → Releases & updates → **Update**: fetches the update branch (`SVANBOT_UPDATE_BRANCH`, default `main`; `SVANBOT_UPDATE_REMOTE`, default `origin`), fast-forwards this checkout, runs `scripts/release.sh`, and shows a progress bar (stages, time left, bots still playing, the hot swap). By hand: `scripts/update.sh`; `scripts/update.sh --check` only fetches and prints `<behind> <commit>`. It refuses uncommitted build inputs and local commits the branch lacks; a checkout that is *ahead* of the branch with every one of its commits on a remote branch has nothing to install, and the run says which branch line it is on and exits 0 without building anything (#394); a checkout whose history is unrelated to the branch is a different repository and moves onto it only with `SVANBOT_ADOPT_UPSTREAM=1` (see *Moving a checkout onto this repository*); a failed release restores the checkout, and play never stops. **First Update on an older install**: the installed build predates the fetch, so run `git pull` once (then click Update or run `scripts/release.sh`) |
+| Update from GitHub (one click) | Dashboard → Releases & updates → **Update**: fetches the update branch (`SVANBOT_UPDATE_BRANCH`, default `main`; `SVANBOT_UPDATE_REMOTE`, default `origin`), fast-forwards this checkout, runs `scripts/release.sh`, and shows a progress bar (stages, time left, bots still playing, the hot swap). By hand: `scripts/update.sh`; `scripts/update.sh --check` only fetches and prints `<behind> <commit>`. It refuses uncommitted build inputs and local commits the branch lacks; a checkout that is *ahead* of the branch with every one of its commits on a remote branch has nothing to install, and the run says which branch line it is on and exits 0 without building anything (#394); a checkout whose history is unrelated to the branch is a different repository and moves onto it only with `SVANBOT_ADOPT_UPSTREAM=1` (see *Moving a checkout onto this repository*); a failed release restores the checkout, and play never stops. When the fleet was running, the run finishes only after `/api/health` reports the installed commit; a build that never comes up is rolled back to the previous verified snapshot and the progress card says so (see *Dashboard updates*). **First Update on an older install**: the installed build predates the fetch, so run `git pull` once (then click Update or run `scripts/release.sh`) |
 | Ship a new build without stopping play | `scripts/release.sh` (committed tree; lint, the test build and the release build side by side at idle CPU priority, then the tests; ~40 s for a one-file change, ~4 min cold; installs atomically; the fleet hot-swaps when no bot is mid-turn, the learner between steps (at most ~2 min); every stage prints its time and one over 120 s is a warning, and a stage over budget keeps its log as `target/stage/<stage>.over-budget.log`; the build stage names another cargo holding its build lock before waiting on it (`scripts/build-lock.sh`), because that wait is charged to the build and reads afterwards as a slow compile; history in `artifacts/releases.log`, progress in `artifacts/release-progress.json`) |
 | Restart only the fleet | `scripts/restart-bot.sh` |
 | Repair missing supervisors while healthy bots keep playing | `scripts/start.sh --repair`; keepalive checks the configured head/workers, learner, analyst, monitor and log rotation, and requests the fleet service's reload for partial failures. Existing children are adopted until they exit; no duplicate writer is launched. Operator holds and release locks suppress repair |
@@ -323,9 +323,19 @@ children, rather than matching every deployment's learner/analyst by a global co
 in `target/stage` and the dashboard in a separate target staging directory, runs the workspace
 tests, checks the required binaries, then installs exact executable and web directory sets through
 `scripts/rollback.sh --install`. Target and web must share a filesystem so the directory renames are
-atomic; a later swap failure performs compensating renames back to the complete prior sets. The
-commit is baked into `--version` and `/api/health`, and the run output is tee'd to
-`artifacts/release.log` (install records stay in `artifacts/releases.log`).
+atomic; a later swap failure performs compensating renames back to the complete prior sets. Before
+anything is written, `scripts/rollback.sh --check-space` fails the run closed unless the release root
+has `SV10_MIN_FREE_MB` (default 4096 MB) free. The commit is baked into `--version` and
+`/api/health`, and the run output is tee'd to `artifacts/release.log` (install records stay in
+`artifacts/releases.log`).
+
+A crash between those renames — SIGKILL, OOM, a power cut — is repaired, not left half installed:
+`rollback.sh` flushes `artifacts/release-swap.journal` before its first rename, and the next release
+or rollback, `scripts/rollback.sh --repair`, or the keepalive timer puts the previous verified sets
+back (or removes both managed directories when there was no previous install). The journal is
+removed as soon as the new sets are in place, so a kill during cleanup keeps the new build. After
+the install the release run's own bookkeeping (staging cleanup, `releases.log`) is best-effort: a
+failure there is logged, never reported as a failed release, because the new build is already live.
 
 Before lint or build, the release script resolves the latest installed identity and creates
 `artifacts/release-snapshots/<commit>/`. The snapshot contains every regular executable in
@@ -363,6 +373,16 @@ or a concurrent run; lock at `artifacts/release.lock`, removed however the run e
 the time left and the bots still playing, then the hot swap per process; a reload mid-update picks the
 run up again. On failure it names the stage; the fleet keeps playing the installed build and the
 checkout returns to it.
+
+**The install is verified end to end.** When the fleet was running when the update started (measured
+from the installed binary's own pids, not the pid files alone), the run does not finish at the
+install: it waits — bounded by `SV10_HEALTH_TIMEOUT` (default 240 s) — for `/api/health` to report
+the installed commit. A build that `--version` answers for but that crash-loops on startup never gets
+there, so on timeout or a wrong commit `update.sh` restores the previous verified snapshot through
+`scripts/rollback.sh`, moves the checkout back with it, and ends with the failure and the rollback
+named on the progress card instead of a green `installed` over a dead fleet. A fleet that was already
+stopped tells nothing about the new build's liveness, so the gate is skipped there and the run stops
+at `installed` as before.
 
 **Roll back to a saved build**: every update snapshots the
 build it replaces; the widget lists them, and a confirmed **Roll back** runs `scripts/update.sh

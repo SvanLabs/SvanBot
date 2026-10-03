@@ -210,6 +210,29 @@ if SV10_RELEASE_ROOT="$test_root" SV10_RELEASE_TEST_FAIL_AFTER_BIN_SWAP=1 "$roll
 fi
 [ "$(tree_digest)" = "$before_failed_rollback" ] || fail "mid-install failure did not restore release B"
 
+# A SIGKILL between the swap's renames (OOM, a stop, power loss) leaves a half-installed tree: after
+# the first rename there is no target/release at all, so the supervisors crash-loop and a later
+# release refuses the tree ("installed sets are incomplete"). The journal written and flushed before
+# the first rename is the record that makes it repairable (issue #726).
+before_killed_swap=$(tree_digest)
+if SV10_RELEASE_ROOT="$test_root" SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP=1 "$rollback" "$commit_a" >/dev/null 2>&1; then
+  fail "an injected kill during the swap reported success"
+fi
+[ -f "$test_root/artifacts/release-swap.journal" ] || fail "a killed swap left no journal"
+[ ! -d "$test_root/target/release" ] || fail "the kill fixture did not stop after the first rename"
+[ -d "$test_root/web/dist" ] || fail "the kill fixture touched the dashboard"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --repair
+[ "$(tree_digest)" = "$before_killed_swap" ] || fail "the journal repair did not restore release B"
+[ ! -e "$test_root/artifacts/release-swap.journal" ] || fail "the repair left the journal behind"
+# ... and the next operation repairs by itself, because recovery must not depend on anyone
+# remembering a command.
+if SV10_RELEASE_ROOT="$test_root" SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP=1 "$rollback" "$commit_a" >/dev/null 2>&1; then
+  fail "the second injected kill reported success"
+fi
+SV10_RELEASE_ROOT="$test_root" "$rollback" --install "$test_root/build-B/bin" "$test_root/build-B/web" "$commit_b" >/dev/null
+[ "$(tree_digest)" = "$before_killed_swap" ] || fail "an install after a killed swap did not restore release B"
+[ ! -e "$test_root/artifacts/release-swap.journal" ] || fail "a successful swap left a journal"
+
 # Data-format floor (0229): release A's source has no store codec (format 1), so it is refused while
 # the databases hold compressed columns (format 2), and accepted once `archive unpack` lowered it.
 printf '2\n' > "$test_root/artifacts/data-format"
@@ -255,6 +278,33 @@ grep -q "web/dist/index.html" "$preserved/SHA256SUMS" || fail "preserved copy om
 grep -q "sv10-bot 11.0.0 dev" "$preserved/VERSIONS" || fail "preserved copy did not record versions"
 (cd "$preserved" && sha256sum --check --strict --quiet SHA256SUMS) || fail "preserved copy does not verify"
 [ "$(tree_digest)" = "$before_preserve" ] || fail "preserve-unidentified changed the installed tree"
+
+# An install is complete only once the fleet serves the installed commit (#726). The wait is bounded
+# and its exit status is the gate update.sh turns into an automatic rollback.
+start_health_server "$commit_b"
+SV10_RELEASE_ROOT="$test_root" SV10_HEALTH_URL="$health_url" SV10_HEALTH_TIMEOUT=2 "$rollback" --await-health "$commit_b" ||
+  fail "the health gate refused a fleet reporting the installed commit"
+wait "$health_pid" || true
+health_pid=
+start_health_server 0000000
+gate_t0=$(date +%s)
+if SV10_RELEASE_ROOT="$test_root" SV10_HEALTH_URL="$health_url" SV10_HEALTH_TIMEOUT=1 "$rollback" --await-health "$commit_b" >/dev/null 2>"$test_root/health.err"; then
+  fail "the health gate accepted a fleet that never reported the installed commit"
+fi
+[ "$(($(date +%s) - gate_t0))" -le 10 ] || fail "the health wait was not bounded by SV10_HEALTH_TIMEOUT"
+grep -q "did not answer /api/health with commit $commit_b" "$test_root/health.err" ||
+  fail "the health refusal does not name the commit the fleet should be serving"
+wait "$health_pid" || true
+health_pid=
+
+# Disk preflight (LESSONS 22): fail closed before the snapshot and the build, and run inside
+# release.sh before it snapshots anything.
+SV10_RELEASE_ROOT="$test_root" SV10_MIN_FREE_MB=1 "$rollback" --check-space >/dev/null || fail "the disk preflight refused a root with free space"
+if SV10_RELEASE_ROOT="$test_root" SV10_MIN_FREE_MB=999999999 "$rollback" --check-space >/dev/null 2>&1; then
+  fail "the disk preflight accepted a root that cannot hold a release"
+fi
+awk '/--check-space/ { seen = NR } /rollback.sh --snapshot/ { snapshot = NR } END { exit !(seen && snapshot && seen < snapshot) }' \
+  "$repo_root/scripts/release.sh" || fail "release.sh does not check free space before it snapshots"
 
 if SV10_RELEASE_ROOT=/ "$rollback" "$commit_a" >/dev/null 2>&1; then
   fail "unsafe root / was accepted"

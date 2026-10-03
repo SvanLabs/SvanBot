@@ -17,6 +17,31 @@ set -a; [ ! -f .env ] || source .env; set +a
 [ -z "$caller_fleet" ] || export SVANBOT_FLEET="$caller_fleet"
 [ -z "$caller_learner" ] || export LEARNER="$caller_learner"
 [ -z "$caller_analyst" ] || export ANALYST="$caller_analyst"
+# An interrupted swap (SIGKILL mid-install) leaves a half-installed tree and the journal rollback.sh
+# wrote before its first rename. The release that died cannot repair itself — its EXIT trap never ran
+# — and the supervisors would crash-loop on a missing target/release, so repair here: recovery never
+# needs a terminal (issue #726). A release holding the operation lock is doing its own swap; leave it.
+if [ -f artifacts/release-swap.journal ]; then
+  exec 9> artifacts/release-operation.lock
+  if flock -n 9; then
+    exec 9>&-
+    echo "swap interrupted, repairing"
+    log "an interrupted release swap was found; repairing"
+    if [ "${KEEPALIVE_DRY:-0}" = 1 ]; then
+      log "dry run: not repairing"
+    elif scripts/rollback.sh --repair >> artifacts/logs/keepalive.log 2>&1; then
+      log "interrupted swap repaired; the supervisors restart the restored build"
+    else
+      log "interrupted swap repair failed; run scripts/rollback.sh --repair by hand"
+    fi
+  else
+    exec 9>&-
+    echo "swap interrupted, release in progress"
+    log "an interrupted release swap was found, but a release operation holds the lock"
+    exit 0
+  fi
+fi
+
 hold=none
 if [ -f artifacts/hold-until ]; then
   hold=$(cat artifacts/hold-until)

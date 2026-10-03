@@ -40,6 +40,32 @@ echo "$((now - 1))" > "$root/artifacts/hold-until"
 exec 8> "$root/artifacts/release-operation.lock"; flock -n 8
 [ "$(decide)" = "fleet down, release in progress" ] || fail "restarted during a release operation"
 exec 8>&-
+
+# An interrupted swap: the journal a killed install leaves behind is repaired here, so a crash-looping
+# fleet is restored without anyone opening a terminal (issue #726). The repair itself is stubbed —
+# this suite has no release tree — and systemctl is a fake, because the non-dry run below falls
+# through to the restart decision and must not reach the real systemd user session.
+mkdir -p "$root/fakebin"
+printf '#!/bin/sh\nexit 0\n' > "$root/fakebin/systemctl"
+chmod +x "$root/fakebin/systemctl"
+cat > "$root/scripts/rollback.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> artifacts/swap-repair.calls
+SH
+chmod +x "$root/scripts/rollback.sh"
+: > "$root/artifacts/release-swap.journal"
+out=$(decide)
+case "$out" in *"swap interrupted, repairing"*) ;; *) fail "an interrupted swap was not repaired: $out";; esac
+[ ! -e "$root/artifacts/swap-repair.calls" ] || fail "a dry run repaired the swap"
+grep -q "dry run: not repairing" "$root/artifacts/logs/keepalive.log" || fail "the dry run did not say it skipped the repair"
+PATH="$root/fakebin:$PATH" "$root/scripts/keepalive.sh" >/dev/null
+grep -qx -- '--repair' "$root/artifacts/swap-repair.calls" || fail "keepalive did not repair an interrupted swap"
+grep -q "interrupted swap repaired" "$root/artifacts/logs/keepalive.log" || fail "the repair was not logged"
+# A release holding the operation lock owns its own swap: leave it alone.
+exec 8> "$root/artifacts/release-operation.lock"; flock -n 8
+[ "$(decide)" = "swap interrupted, release in progress" ] || fail "keepalive repaired a swap under a live release"
+exec 8>&-
+rm -f "$root/artifacts/release-swap.journal" "$root/artifacts/swap-repair.calls"
 echo "keepalive: ok"
 
 # Start must recognize both fleet layouts before building or launching processes.
