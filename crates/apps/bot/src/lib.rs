@@ -38,6 +38,7 @@ pub mod reputation;
 pub mod review_calls;
 pub mod review_drift;
 pub mod review_fleet;
+pub mod review_margins;
 pub mod review_recent;
 pub mod review_rerun;
 pub mod review_rival;

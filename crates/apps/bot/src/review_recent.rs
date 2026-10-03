@@ -66,7 +66,10 @@ pub fn recent(store: &Store, bot: &str, n: usize) -> Result<String> {
 /// One (street, action) class of deep re-solves: how many, what the live choices gave up, what the
 /// deep search's best candidate was, and — the split that keeps a modal column honest (0346) — how
 /// many of the disagreements are another *size* of the action we took rather than another action.
-#[derive(Default)]
+///
+/// `Serialize` is what `review audit-by --json` prints (#723), the same class the table row is
+/// formatted from.
+#[derive(Default, serde::Serialize)]
 struct AuditClass {
     /// Verdicts in the class.
     n: usize,
@@ -105,11 +108,43 @@ fn audit_population() -> String {
 /// choice with a model that saw less than the live choice did — every finding 0282–0284 came from
 /// such rows and is being re-measured on v3 (0316). The header therefore always states the mix, and
 /// `version not recorded` rows are excluded by any filter rather than assumed to be old or new.
-pub fn audit_by(store: &Store, days: i64, version: Option<u32>) -> Result<String> {
+pub fn audit_by(store: &Store, days: i64, version: Option<u32>, json: bool) -> Result<String> {
     let since = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
     let all = store.audit_results_since(&since)?;
     let total = all.len();
     let rows = select_version(all, version);
+    // One row per (street, live action), worst total loss first: this is "where do we lose chips",
+    // which the margin report cannot answer because it only sees spots we took.
+    // The recorded action carries its size ("raise:80"), so group by the family: one row per
+    // street and action, not one per bet size.
+    let mut rows_out = audit_classes(&rows);
+    rows_out.sort_by(|a, b| b.1.total.total_cmp(&a.1.total));
+    let (size_only, other): (usize, usize) = rows_out.iter().fold((0, 0), |(s, o), (_, c)| (s + c.size_only, o + c.other_action));
+    let all: f64 = rows.iter().map(|(_, r)| r.gap_bb.max(0.0)).sum();
+    let worst = worst_by_category(store, &rows);
+    if json {
+        // #723: the same `AuditResult` verdicts and `AuditClass` rows the table is built from, so an
+        // agent reads the numbers rather than the layout.
+        let classes: Vec<serde_json::Value> =
+            rows_out.iter().map(|((street, action), c)| serde_json::json!({"street": street, "action": action, "class": c})).collect();
+        let verdicts: Vec<&sv10_store::store::AuditResult> = rows.iter().map(|(_, r)| r).collect();
+        return Ok(serde_json::json!({
+            "days": days,
+            "version": version,
+            "population": audit_population(),
+            "total": total,
+            "graded": rows.len(),
+            "version_mix": version_mix(&rows),
+            "mixed_note": mixed_note(&rows, version),
+            "classes": classes,
+            "size_only": size_only,
+            "other_action": other,
+            "total_gap_bb": all,
+            "verdicts": verdicts,
+            "worst_by_category": worst,
+        })
+        .to_string());
+    }
     if rows.is_empty() {
         return Ok(match version {
             Some(v) => format!(
@@ -128,12 +163,6 @@ pub fn audit_by(store: &Store, days: i64, version: Option<u32>) -> Result<String
         audit_population(),
     );
     out.push_str(&mixed_note(&rows, version));
-    // One row per (street, live action), worst total loss first: this is "where do we lose chips",
-    // which the margin report cannot answer because it only sees spots we took.
-    // The recorded action carries its size ("raise:80"), so group by the family: one row per
-    // street and action, not one per bet size.
-    let mut rows_out = audit_classes(&rows);
-    rows_out.sort_by(|a, b| b.1.total.total_cmp(&a.1.total));
     out.push_str(&format!(
         "   {:<8} {:<8} {:>6} {:>11} {:>9} {:>9} {:>8}   the deep search's commonest best candidate\n",
         "street", "we took", "n", "given up", "per dec", "new size", "new act"
@@ -149,16 +178,14 @@ pub fn audit_by(store: &Store, days: i64, version: Option<u32>) -> Result<String
             c.other_action
         ));
     }
-    let (size_only, other): (usize, usize) = rows_out.iter().fold((0, 0), |(s, o), (_, c)| (s + c.size_only, o + c.other_action));
     out.push_str(&format!(
         "   of the {} verdicts whose best candidate differs from the action we took, {size_only} keep the action and change its \
          size and {other} change the action (0346): a modal column read as \"it would have checked\" over-reads the size changes, \
          and `gap_bb` for one is the cost of the size, not of the action\n",
         size_only + other
     ));
-    let all: f64 = rows.iter().map(|(_, r)| r.gap_bb.max(0.0)).sum();
     out.push_str(&format!("\n   total {all:.1} bb given up over {} decisions ({:.3} bb each)\n", rows.len(), all / rows.len() as f64));
-    out.push_str(&worst_by_category(store, &rows));
+    out.push_str(&worst.text());
     Ok(out)
 }
 
@@ -237,15 +264,42 @@ fn mixed_note(rows: &[Graded], version: Option<u32>) -> String {
     )
 }
 
+/// Categories the attribution table prints: the tail is one or two decisions each and adds rows
+/// nobody reads.
+const WORST_CATEGORIES: usize = 12;
+
+/// One category's share of the worst disagreements: how many, and the big blinds given up.
+#[derive(Default, serde::Serialize)]
+struct CategoryLoss {
+    category: String,
+    n: usize,
+    gap_bb: f64,
+}
+
+/// The category attribution table: the sample it was read over, how many verdicts had no decision
+/// record to attribute, and the rows, biggest loss first.
+///
+/// `Serialize` is what `review audit-by --json` prints (#723); [`WorstByCategory::text`] prints the
+/// same rows, so the two renders cannot drift apart.
+#[derive(Default, serde::Serialize)]
+struct WorstByCategory {
+    /// Verdicts with a positive gap the table was read over (at most 400).
+    sample: usize,
+    /// Of those, the ones with no decision record to attribute.
+    unattributed: usize,
+    /// Per category, at most [`WORST_CATEGORIES`], biggest loss first.
+    rows: Vec<CategoryLoss>,
+}
+
 /// The recorded category of the decisions the deep search disagreed with most: the audit row has no
 /// category, so each one is matched to the decision record the bot stored for that hand (the
 /// candidate whose action and amount it took). This is the only place the calibration's categories
 /// and the analyst's "what it cost" meet, and it is what settles whether a category-level
 /// miscalibration is a decision-level loss (0273).
-fn worst_by_category(store: &Store, rows: &[(String, sv10_store::store::AuditResult)]) -> String {
-    let mut worst: Vec<&(String, sv10_store::store::AuditResult)> = rows.iter().filter(|(_, r)| r.gap_bb > 0.0).collect();
+fn worst_by_category(store: &Store, rows: &[Graded]) -> WorstByCategory {
+    let mut worst: Vec<&Graded> = rows.iter().filter(|(_, r)| r.gap_bb > 0.0).collect();
     worst.sort_by(|a, b| b.1.gap_bb.total_cmp(&a.1.gap_bb));
-    let sample: Vec<&(String, sv10_store::store::AuditResult)> = worst.iter().take(400).copied().collect();
+    let sample: Vec<&Graded> = worst.iter().take(400).copied().collect();
     let mut by_category: std::collections::BTreeMap<String, (usize, f64)> = Default::default();
     let mut unattributed = 0usize;
     for (_, r) in &sample {
@@ -257,23 +311,27 @@ fn worst_by_category(store: &Store, rows: &[(String, sv10_store::store::AuditRes
         c.0 += 1;
         c.1 += r.gap_bb;
     }
-    if by_category.is_empty() {
-        return format!("   the worst {unattributed} disagreements had no recorded decision to attribute them to\n");
+    let mut cats: Vec<CategoryLoss> = by_category.into_iter().map(|(category, (n, gap_bb))| CategoryLoss { category, n, gap_bb }).collect();
+    cats.sort_by(|a, b| b.gap_bb.total_cmp(&a.gap_bb));
+    cats.truncate(WORST_CATEGORIES);
+    WorstByCategory { sample: sample.len(), unattributed, rows: cats }
+}
+
+impl WorstByCategory {
+    /// The table as the text report prints it.
+    fn text(&self) -> String {
+        if self.rows.is_empty() {
+            return format!("   the worst {} disagreements had no recorded decision to attribute them to\n", self.unattributed);
+        }
+        let mut out = format!(
+            "\n   the {} worst disagreements, by the category the bot priced ({} unattributed):\n   {:<24} {:>5} {:>10}\n",
+            self.sample, self.unattributed, "category", "n", "given up"
+        );
+        for c in &self.rows {
+            out.push_str(&format!("   {:<24} {:>5} {:>10.1}\n", c.category, c.n, c.gap_bb));
+        }
+        out
     }
-    let mut out = format!(
-        "\n   the {} worst disagreements, by the category the bot priced ({} unattributed):\n   {:<24} {:>5} {:>10}\n",
-        sample.len(),
-        unattributed,
-        "category",
-        "n",
-        "given up"
-    );
-    let mut rows: Vec<(String, (usize, f64))> = by_category.into_iter().collect();
-    rows.sort_by(|a, b| b.1.1.total_cmp(&a.1.1));
-    for (cat, (n, total)) in rows.into_iter().take(12) {
-        out.push_str(&format!("   {cat:<24} {n:>5} {total:>10.1}\n"));
-    }
-    out
 }
 
 /// The category of the candidate a decision took, from the record the bot stored for that hand.
@@ -307,104 +365,4 @@ fn decision_category(store: &Store, r: &sv10_store::store::AuditResult) -> Optio
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recent_reports_95_percent_intervals_from_stored_results() {
-        use sv10_store::store::HandRow;
-        let dir = std::env::temp_dir().join(format!("sv10-recent-interval-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let store = Store::open(&dir.join("hands.db")).unwrap();
-        for (i, (net, ev)) in [(-20, -10.0), (20, 10.0)].into_iter().enumerate() {
-            let id = format!("h{i}");
-            store
-                .insert_hand(&HandRow {
-                    bot: "A".into(),
-                    hand_id: id.clone(),
-                    ended_at: format!("2026-09-29T00:00:0{i}Z"),
-                    net: Some(net),
-                    summary: r#"{"bb":20}"#.into(),
-                    ..Default::default()
-                })
-                .unwrap();
-            store.set_ev_nets(&[("A".into(), id, ev)]).unwrap();
-        }
-        // Population SD is 20 chips for net, 10 for EV. In bb/100 the 95% half-widths
-        // are 1.96 * SD / sqrt(2) / 20 * 100 = 138.59 and 69.30 respectively.
-        let report = recent(&store, "A", 2).unwrap();
-        assert!(report.contains("net +0.0 bb/100 (95% -139..+139)"), "{report}");
-        assert!(report.contains("all-in EV +0.0 bb/100 (95% -69..+69)"), "{report}");
-        drop(store);
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-
-    fn graded(version: Option<u32>, gap: f64) -> Graded {
-        (
-            "2026-09-27T00:00:00Z".into(),
-            sv10_store::store::AuditResult {
-                street: "turn".into(),
-                live_action: "raise".into(),
-                gap_bb: gap,
-                replay_version: version,
-                ..Default::default()
-            },
-        )
-    }
-
-    /// 0316: a decision-loss class must be readable on the records that carry the live inputs, and a
-    /// mixed window must say so — the turn/river findings (0282–0284) were measured on records that
-    /// did not, and this is the instrument that re-measures them.
-    #[test]
-    fn a_measurement_can_be_restricted_to_one_replay_version_and_says_what_it_mixed() {
-        let rows = vec![graded(None, 9.0), graded(Some(2), 5.0), graded(Some(3), 1.0), graded(Some(3), 1.0)];
-        // All four rows, and the header names what they are made of, largest share first.
-        assert_eq!(version_mix(&rows), "v3 2, version not recorded 1, v2 1");
-        // A version filter takes only that version — never the unrecorded rows, which could be either.
-        let only3 = select_version(rows.clone(), Some(3));
-        assert_eq!(only3.iter().map(|(_, r)| r.gap_bb).collect::<Vec<_>>(), [1.0, 1.0]);
-        assert_eq!(select_version(rows.clone(), Some(2)).len(), 1);
-        assert!(select_version(rows.clone(), Some(4)).is_empty(), "a version nobody graded");
-        assert_eq!(select_version(rows.clone(), None).len(), 4, "no filter keeps the whole window");
-        // The note fires only for a mixed, unfiltered table, and names the fix.
-        let note = mixed_note(&rows, None);
-        // Two of the four rows are not the current version: the unrecorded one and the v2 one.
-        assert!(note.contains("2 of 4") && note.contains("audit-by <days> 3"), "{note}");
-        assert!(mixed_note(&rows, Some(3)).is_empty(), "a filtered table is not mixed");
-        assert!(mixed_note(&[graded(Some(3), 1.0)], None).is_empty(), "all current: nothing to say");
-    }
-
-    /// 0346: a disagreement is not a preference. Most of what the deep search's modal column says it
-    /// "would have played" is another *size* of the action we took, so a class counts the two apart
-    /// and a row read as "it would have checked" (0281) can no longer be read off it.
-    #[test]
-    fn a_size_change_is_counted_apart_from_a_different_action() {
-        let row = |live: &str, deep: &str, gap: f64| {
-            (
-                "2026-09-27T00:00:00Z".into(),
-                sv10_store::store::AuditResult {
-                    street: "turn".into(),
-                    live_action: live.into(),
-                    deep_action: deep.into(),
-                    gap_bb: gap,
-                    replay_version: Some(3),
-                    ..Default::default()
-                },
-            )
-        };
-        let rows = vec![
-            row("raise:800", "raise:1605", 2.0),
-            row("raise:800", "raise:400", 1.0),
-            row("raise:800", "check", 3.0),
-            row("raise:800", "raise:800", 0.0),
-        ];
-        let classes = audit_classes(&rows);
-        assert_eq!(classes.len(), 1, "the sized actions are one (street, action) class");
-        let ((street, action), c) = &classes[0];
-        assert_eq!((street.as_str(), action.as_str()), ("turn", "raise"));
-        assert_eq!((c.n, c.total), (4, 6.0));
-        // Two keep the action and change its size; one changes the action; the exact match is neither.
-        assert_eq!((c.size_only, c.other_action), (2, 1));
-        assert_eq!(c.deep["raise:1605"], 1, "every best candidate is counted, an agreement included");
-    }
-}
+mod tests;

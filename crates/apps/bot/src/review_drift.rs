@@ -297,9 +297,15 @@ fn start_drift(store: &Store) -> Option<DriftRun> {
 /// The stored drift row as one line, with what it was measured on and whether it is the row the
 /// analyst would store now — the only surface that prints it, so a basis named only inside the kv
 /// is not left as visible as a hand query (0366).
-pub fn drift(store: &Store) -> Result<String> {
+///
+/// `json` (#723) prints the stored row itself — the object the analyst wrote, exactly as stored —
+/// with the same verdict beside it, instead of the line the row is read into.
+pub fn drift(store: &Store, json: bool) -> Result<String> {
     let row = store.get_kv(crate::ANALYST_DRIFT_KEY)?;
     let champion = store.get_kv(crate::PARAMS_KEY)?;
+    if json {
+        return Ok(render_json(row.as_deref(), champion.as_deref()));
+    }
     Ok(render(row.as_deref(), champion.as_deref()))
 }
 
@@ -336,8 +342,15 @@ fn render(row: Option<&str>, champion: Option<&str>) -> String {
         field("versions"),
         value.get("fits").and_then(|v| v.as_str()).unwrap_or("?"),
     );
+    format!("{line}\n   {}\n", verdict(&value, champion))
+}
+
+/// The words that end the drift line: current, or why the row is due for a re-check (0358, 0366).
+/// Shared by the text line and the JSON render, so the two cannot disagree about a row's status.
+fn verdict(value: &serde_json::Value, champion: Option<&str>) -> String {
+    let basis = value.get("basis").and_then(|v| v.as_str()).unwrap_or("");
     let stored = value.get("digest").and_then(|v| v.as_str()).unwrap_or("");
-    let verdict = if basis != DRIFT_BASIS {
+    if basis != DRIFT_BASIS {
         format!(
             "due for a re-check: measured on a superseded basis ({}), the analyst measures on {DRIFT_BASIS}",
             if basis.is_empty() { "none stored".to_string() } else { format!("{basis:?}") }
@@ -348,8 +361,23 @@ fn render(row: Option<&str>, champion: Option<&str>) -> String {
             Some(now) => format!("due for a re-check: the champion changed since it was measured ({stored} -> {now})"),
             None => "no champion (params.v1) stored to compare the row's digest with".to_string(),
         }
-    };
-    format!("{line}\n   {verdict}\n")
+    }
+}
+
+/// [`drift`] as JSON (#723): the stored row exactly as the analyst wrote it (so every field it
+/// carries survives), the basis the row was measured on — the same one the text line's
+/// `drift [basis]` names, and the current basis only in the verdict when the row is superseded —
+/// and the verdict.
+fn render_json(row: Option<&str>, champion: Option<&str>) -> String {
+    const NO_ROW: &str = "no row stored — the analyst measures one when idle, once the champion or the basis changes";
+    match row.and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok()) {
+        Some(value) => {
+            let basis = value.get("basis").cloned().unwrap_or(serde_json::Value::Null);
+            let v = verdict(&value, champion);
+            json!({"basis": basis, "verdict": v, "row": value}).to_string()
+        }
+        None => json!({"basis": serde_json::Value::Null, "verdict": NO_ROW, "row": serde_json::Value::Null}).to_string(),
+    }
 }
 
 /// A stored RFC 3339 time cut to the minute, for a row that prints a window.

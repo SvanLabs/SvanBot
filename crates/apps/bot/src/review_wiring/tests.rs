@@ -57,6 +57,16 @@ fn a_stored_report_round_trips_and_a_tiny_sample_is_not_stored() {
     assert_eq!(back, report);
     assert_eq!(back.rows.len(), VARIANTS.len());
     assert_eq!(back.rows[0].component, VARIANTS[0].name, "the table prints in measurement order");
+    // #723: `--json` is one parseable object over the same report, and the text table still opens
+    // with the lines it always did.
+    let json: serde_json::Value = serde_json::from_str(&report_json(&report).unwrap()).unwrap();
+    assert_eq!(json["sample"], 200);
+    assert_eq!(json["rows"][0]["component"], VARIANTS[0].name);
+    assert_eq!(json["calibration"][0]["flipped"], 1_794);
+    assert_eq!(json["streets"][0][0], "preflop");
+    let text = report_text(&report);
+    assert!(text.starts_with("0 of 200 re-run twice with identical inputs gave different results\n"), "{text}");
+    assert!(text.contains("self-calibration over every decision of the last 24 h"), "{text}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

@@ -104,13 +104,23 @@ fn the_audit_lists_every_hand_of_a_target_with_its_arm() {
     }
     let id = live.target.as_ref().unwrap().id.clone();
     let mut out = Vec::new();
-    review(&store, Some(&id), &mut out).unwrap();
+    review(&store, Some(&id), &mut out, false).unwrap();
     let text = String::from_utf8(out).unwrap();
     assert!(text.contains("1 treatment / 1 control hands"), "{text}");
     assert!(text.contains("D            treatment h1") && text.contains("E            control   h2"), "{text}");
     let mut out = Vec::new();
-    review(&store, None, &mut out).unwrap();
+    review(&store, None, &mut out, false).unwrap();
     assert!(String::from_utf8(out).unwrap().contains(&id));
+    // #723: `--json` is one parseable object carrying every hand the text rows name.
+    let mut out = Vec::new();
+    review(&store, Some(&id), &mut out, true).unwrap();
+    let json: Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(json["target"], id.as_str());
+    let rows = json["hands"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "{json}");
+    assert_eq!(rows[0]["bot"], "D");
+    assert_eq!(rows[0]["arm"], "treatment");
+    assert!(rows[0]["hand_id"].is_string() && rows[0]["net"].is_number(), "{json}");
 }
 
 #[test]

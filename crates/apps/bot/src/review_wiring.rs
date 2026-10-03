@@ -15,6 +15,10 @@ use sv10_store::store::Store;
 
 use crate::replay::{Corrections, ReplayRecord, identical, rerun};
 
+mod calibration;
+use calibration::calibration_from;
+pub use calibration::{CALIBRATION_HOURS, CalibrationFlips, calibration_flips};
+
 /// One way of switching a component off, and whether a spot has the component to switch off (#315:
 /// "moves nothing" and "was not there to move anything" read the same without it).
 struct Variant {
@@ -187,78 +191,6 @@ pub struct WiringReport {
     pub streets: Vec<(String, usize)>,
 }
 
-/// Hours of the decision log the calibration count reads.
-pub const CALIBRATION_HOURS: i64 = 24;
-
-/// On one street, how many decisions the self-calibration bias decided (0332).
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CalibrationFlips {
-    /// `preflop`, `flop`, `turn` or `river`.
-    pub street: String,
-    /// Decisions with two or more priced options.
-    pub decisions: usize,
-    /// Of those, the ones whose best action changes when each candidate's applied bias is removed.
-    pub flipped: usize,
-    /// `flipped` as a share of `decisions`, percent.
-    pub share_pct: f64,
-    /// The commonest change, `without -> with` (e.g. `fold -> call`), and how many.
-    pub main: String,
-    /// See [`CalibrationFlips::main`].
-    pub main_count: usize,
-}
-
-/// Count, per street, the decisions whose best action (by family: every raise size is `raise`) differs
-/// with and without the calibration bias recorded on each candidate. Pure over `(street, detail JSON)`.
-pub fn calibration_flips(rows: &[(String, String)]) -> Vec<CalibrationFlips> {
-    // Per street: decisions with a choice, and each (without, with) change of best action.
-    type Changes = std::collections::BTreeMap<(String, String), usize>;
-    let mut by: std::collections::BTreeMap<&str, (usize, Changes)> = Default::default();
-    for (street, detail) in rows {
-        let Ok(d) = serde_json::from_str::<serde_json::Value>(detail) else { continue };
-        let cands: Vec<(&str, f64, f64)> = d["candidates"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|c| Some((c["action"].as_str()?, c["ev"].as_f64()?, c["bias"].as_f64().unwrap_or(0.0))))
-            .collect();
-        if cands.len() < 2 {
-            continue;
-        }
-        let best = |f: &dyn Fn(&(&str, f64, f64)) -> f64| cands.iter().max_by(|a, b| f(a).total_cmp(&f(b))).map(|c| c.0).unwrap_or("");
-        let (with, without) = (best(&|c| c.1), best(&|c| c.1 - c.2));
-        let entry = by.entry(street.as_str()).or_default();
-        entry.0 += 1;
-        if with != without {
-            *entry.1.entry((without.to_string(), with.to_string())).or_default() += 1;
-        }
-    }
-    let order = |s: &str| ["preflop", "flop", "turn", "river"].iter().position(|x| *x == s).unwrap_or(4);
-    let mut out: Vec<CalibrationFlips> = by
-        .into_iter()
-        .map(|(street, (n, flips))| {
-            let flipped = flips.values().sum();
-            let (main, main_count) =
-                flips.iter().max_by_key(|(_, c)| **c).map(|((a, b), c)| (format!("{a} -> {b}"), *c)).unwrap_or_default();
-            CalibrationFlips {
-                street: street.to_string(),
-                decisions: n,
-                flipped,
-                share_pct: flipped as f64 * 100.0 / n.max(1) as f64,
-                main,
-                main_count,
-            }
-        })
-        .collect();
-    out.sort_by_key(|f| order(&f.street));
-    out
-}
-
-/// [`calibration_flips`] over the store's last [`CALIBRATION_HOURS`] of decisions.
-fn calibration_from(store: &Store) -> Result<Vec<CalibrationFlips>> {
-    let since = (chrono::Utc::now() - chrono::Duration::hours(CALIBRATION_HOURS)).to_rfc3339();
-    Ok(calibration_flips(&store.decision_details_since(&since)?))
-}
-
 /// Load the newest `n` recorded big decisions with the network each used.
 fn load_cases(store: &Store, n: usize) -> Result<Vec<(ReplayRecord, Option<Mlp>)>> {
     let mut cases: Vec<(ReplayRecord, Option<Mlp>)> = Vec::new();
@@ -369,16 +301,23 @@ pub fn refresh(store: &Store, n: usize) -> Result<WiringReport> {
     let mut report = measure(cases, &crate::playerfits::PlayerFits::load(store)?);
     report.calibration = calibration_from(store)?;
     if report.sample >= MIN_SAMPLE {
-        store.put_kv(WIRING_KEY, &serde_json::to_string(&report)?)?;
+        store.put_kv(WIRING_KEY, &report_json(&report)?)?;
     }
     Ok(report)
 }
 
+/// Whether `args` asks for the JSON render (`review wiring --json`, #723).
+pub fn wants_json(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--json")
+}
+
 pub fn wiring(store: &Store, args: &[String]) -> Result<()> {
+    let json = wants_json(args);
     let n = args.iter().find_map(|a| a.parse::<usize>().ok()).unwrap_or(200);
     let fits = crate::playerfits::PlayerFits::load(store)?;
     let cases = load_cases(store, n)?;
-    if args.iter().any(|a| a == "--diag") {
+    // Diagnostics are lines of their own and would break the one-object contract of `--json`.
+    if !json && args.iter().any(|a| a == "--diag") {
         for (rec, nn) in &cases {
             let d = rerun(rec, &rec.params, nn.as_ref());
             if identical(rec, &d) {
@@ -412,26 +351,60 @@ pub fn wiring(store: &Store, args: &[String]) -> Result<()> {
     }
     let mut report = measure(cases, &fits);
     report.calibration = calibration_from(store)?;
-    print_report(&report);
-    if report.sample < MIN_SAMPLE {
-        println!("\nnot stored: a sample of {} is under the {MIN_SAMPLE} a stored report needs", report.sample);
-    } else if let Err(e) = store.put_kv(WIRING_KEY, &serde_json::to_string(&report)?) {
+    // `--json` (#723) prints the same `WiringReport` the dashboard's row carries; the text table is
+    // the default.
+    if json {
+        println!("{}", report_json(&report)?);
+    } else {
+        print_report(&report);
+    }
+    let note = if report.sample < MIN_SAMPLE {
+        Some(format!("not stored: a sample of {} is under the {MIN_SAMPLE} a stored report needs", report.sample))
+    } else if let Err(e) = store.put_kv(WIRING_KEY, &report_json(&report)?) {
         // The measurement stands even when the row cannot be written; say so rather than fail the run.
-        println!("\nstored row not written ({e}): the dashboard panel will keep the previous one");
+        Some(format!("stored row not written ({e}): the dashboard panel will keep the previous one"))
+    } else {
+        None
+    };
+    if let Some(note) = note {
+        if json {
+            // stdout is exactly one JSON object; the operator still sees why nothing was stored.
+            eprintln!("\n{note}");
+        } else {
+            println!("\n{note}");
+        }
     }
     Ok(())
 }
 
-/// The measurement, as the CLI prints it.
+/// The measurement, as the CLI prints it. One function for the text, so a test can pin it whole
+/// (the 500-line rule keeps it here, not in a printer).
 fn print_report(r: &WiringReport) {
-    println!("{} of {} re-run twice with identical inputs gave different results", r.unstable, r.sample);
-    println!(
+    print!("{}", report_text(r));
+}
+
+/// The measurement as one JSON object (#723): the same [`WiringReport`] the dashboard's row carries
+/// and the text table is formatted from, so both an agent and a test read the values rather than
+/// the layout. One function, so the CLI and the stored row cannot diverge.
+pub fn report_json(r: &WiringReport) -> Result<String> {
+    Ok(serde_json::to_string(r)?)
+}
+
+/// The text table [`print_report`] writes, as a string: the default render, which `--json` leaves
+/// untouched (#723).
+pub fn report_text(r: &WiringReport) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(out, "{} of {} re-run twice with identical inputs gave different results", r.unstable, r.sample);
+    let _ = writeln!(
+        out,
         "{} recorded big decisions: {} replay exactly as recorded; {} with today's per-opponent corrections added; {} recorded their corrections (replay v3)",
         r.sample, r.exact, r.exact_with_current, r.carrying_corrections
     );
     // 0316: the acceptance for the missing-corrections fix is exactness on the records that carry
     // them, over a day of them — the pre-v3 rows above are inexact by construction and say nothing.
-    println!(
+    let _ = writeln!(
+        out,
         "{}",
         match r.v3 {
             0 => "no replay-v3 records in this sample yet: exactness on the records that carry the live inputs is not measurable here"
@@ -442,26 +415,37 @@ fn print_report(r: &WiringReport) {
             _ => format!("{} of {} replay-v3 records (the ones that carry the live inputs) replay exactly as recorded", r.v3_exact, r.v3),
         }
     );
-    println!("{} of {} decisions picked a candidate below the best EV (the mixing temperature at work)", r.chosen_not_best, r.sample);
+    let _ = writeln!(
+        out,
+        "{} of {} decisions picked a candidate below the best EV (the mixing temperature at work)",
+        r.chosen_not_best, r.sample
+    );
     let mix: Vec<String> = r.streets.iter().map(|(s, n)| format!("{s} {n}")).collect();
-    println!("sample by street: {}\n", mix.join(", "));
-    println!("{:<50} {:>7} {:>9} {:>12} {:>12}", "component switched off", "on", "changed", "cost bb/dec", "max bb");
+    let _ = writeln!(out, "sample by street: {}\n", mix.join(", "));
+    let _ = writeln!(out, "{:<50} {:>7} {:>9} {:>12} {:>12}", "component switched off", "on", "changed", "cost bb/dec", "max bb");
     for row in &r.rows {
         let on = row.installed.map_or("?".to_string(), |n| n.to_string());
-        println!("{:<50} {:>7} {:>5} {:>3.0}% {:>12.3} {:>12.1}", row.component, on, row.changed, row.share_pct, row.cost_bb, row.max_bb);
+        let _ = writeln!(
+            out,
+            "{:<50} {:>7} {:>5} {:>3.0}% {:>12.3} {:>12.1}",
+            row.component, on, row.changed, row.share_pct, row.cost_bb, row.max_bb
+        );
     }
-    println!("\n'on': decisions that had the component to switch off — 'changed' 0 of 'on' 0 is not measured, not idle.");
-    println!("'changed': decisions whose action or size moves with the component off. 'cost': what the moved");
-    println!("choice gives up under the full model (same seed, same samples) — the component's value on these spots.");
-    println!(
+    let _ = writeln!(out, "\n'on': decisions that had the component to switch off — 'changed' 0 of 'on' 0 is not measured, not idle.");
+    let _ = writeln!(out, "'changed': decisions whose action or size moves with the component off. 'cost': what the moved");
+    let _ = writeln!(out, "choice gives up under the full model (same seed, same samples) — the component's value on these spots.");
+    let _ = writeln!(
+        out,
         "\nself-calibration over every decision of the last {CALIBRATION_HOURS} h (best action with and without each candidate's bias):"
     );
     for f in &r.calibration {
-        println!(
+        let _ = writeln!(
+            out,
             "  {:<8} {:>7} decisions  {:>6} flipped ({:>4.1}%)  mostly {} ({})",
             f.street, f.decisions, f.flipped, f.share_pct, f.main, f.main_count
         );
     }
+    out
 }
 
 #[cfg(test)]

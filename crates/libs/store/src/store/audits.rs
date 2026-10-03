@@ -25,7 +25,10 @@ pub struct AuditJob {
 }
 
 /// The analyst's verdict on one live decision.
-#[derive(Clone, Debug, Default, PartialEq)]
+///
+/// `Serialize` is what `review audit-by --json` prints, the same rows the text table is built from
+/// (#723): one shape, two renders.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
 pub struct AuditResult {
     /// Bot that decided.
     pub bot: String,

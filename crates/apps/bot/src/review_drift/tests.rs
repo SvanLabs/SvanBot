@@ -286,6 +286,39 @@ fn the_drift_row_names_its_basis_and_says_when_it_is_due() {
     assert!(render(Some(&row(DRIFT_BASIS, &digest)), None).contains("no champion (params.v1) stored"));
 }
 
+/// #723: `--json` is one parseable object carrying the stored row exactly as the analyst wrote it
+/// and the same verdict the text line ends with; the text path is unchanged.
+#[test]
+fn the_json_render_carries_the_row_and_the_same_verdict() {
+    let champion = r#"{"call_margin":-0.045}"#;
+    let digest = params_digest(champion);
+    let store = Store::open(&dir("json").join("t.db")).unwrap();
+    store.put_kv(DRIFT_KEY, &row(DRIFT_BASIS, &digest)).unwrap();
+    store.put_kv(PARAMS_KEY, champion).unwrap();
+    let text = drift(&store, false).unwrap();
+    assert!(text.contains("current: champion"), "{text}");
+    let json: serde_json::Value = serde_json::from_str(&drift(&store, true).unwrap()).unwrap();
+    assert_eq!(json["basis"], DRIFT_BASIS);
+    assert_eq!(json["row"]["flips"], 2);
+    assert_eq!(json["row"]["population"]["ids"], "3471-3518");
+    assert!(json["verdict"].as_str().unwrap().contains("current: champion"), "{json}");
+    // A row on a superseded basis: the JSON's `basis` is the row's own — the one the text line
+    // names — and the current basis appears only inside the verdict (review of #723).
+    store.put_kv(DRIFT_KEY, &row("champion-alone/v0", &digest)).unwrap();
+    let text = drift(&store, false).unwrap();
+    assert!(text.contains("drift [champion-alone/v0]"), "{text}");
+    let json: serde_json::Value = serde_json::from_str(&drift(&store, true).unwrap()).unwrap();
+    assert_eq!(json["basis"], "champion-alone/v0");
+    assert_eq!(json["row"]["basis"], "champion-alone/v0");
+    let verdict = json["verdict"].as_str().unwrap();
+    assert!(verdict.contains("superseded basis (\"champion-alone/v0\")"), "{verdict}");
+    assert!(verdict.contains(&format!("the analyst measures on {DRIFT_BASIS}")), "{verdict}");
+    let none: serde_json::Value = serde_json::from_str(&render_json(None, Some(champion))).unwrap();
+    assert!(none["row"].is_null(), "{none}");
+    assert!(none["basis"].is_null(), "no row, no basis: {none}");
+    assert!(none["verdict"].as_str().unwrap().contains("no row stored"), "{none}");
+}
+
 /// A row as the analyst writes it, with `basis`/`digest` overridable so the two ways a row can
 /// be superseded — an older basis tag, or a champion that moved — are both exercised.
 fn row(basis: &str, digest: &str) -> String {
