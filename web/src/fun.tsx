@@ -4,6 +4,7 @@ import type { Bot, Decision, SeasonScope, Training } from './types';
 import { request, SESSION_EVENT, StaleNote, usePoll } from './api';
 import { fmt, sgn, share, time, SUITS } from './format';
 import { NamesIn, PlayerName } from './playername';
+import { BoundaryPrototype } from './prototype-boundary'; // PROTOTYPE #704 — delete with the branch
 
 const suit = SUITS;
 const BOT_COLORS = ['#e4b956', '#6daa98', '#b68578', '#8fa2d8', '#c79bd6'];
@@ -77,6 +78,7 @@ export function SeasonRace() {
   const chipsPerHour = fleetStart && fleetEnd && fleetHours >= 5 / 60 ? (fleetEnd.total - fleetStart.total) / fleetHours : null;
   const freshness = loading && !lb ? 'Loading leaderboard' : stale ? `Leaderboard data stale${lb?.updated != null ? ` · last update ${time(lb.updated)}` : ''}` : lb?.updated != null ? `Updated ${time(lb.updated)}` : 'Leaderboard live';
   return <div className="race">
+    <BoundaryPrototype />{/* PROTOTYPE #704 — delete with the branch */}
     <StaleNote poll={statePoll} />
     <StaleNote poll={fleetPoll} />
     <div className={`race-hero ${stale ? 'stale' : ''}`}>
