@@ -116,9 +116,9 @@ mod tests {
         // Shark beats us over 400 hands: tough, and never chased even though it ranks higher.
         let mut ledger = crate::headtohead::HeadToHead::default();
         for _ in 0..400 {
-            ledger.add(-60.0);
+            ledger.add(-3.0);
         }
-        ledger.add(10.0);
+        ledger.add(0.5);
         shared.head_to_head.write().insert("Shark".into(), ledger);
         let mut t = TableTracker::default();
         t.reset_table();

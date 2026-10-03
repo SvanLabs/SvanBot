@@ -317,7 +317,7 @@ fn the_leak_finder_reads_every_season_but_reports_this_ones_result_separately() 
         shared.store.insert_hand(&row).unwrap();
     }
     let season = season_13();
-    let report = crate::analysis::report(&shared.store, &["b".to_string()], &HashMap::new(), None, 20.0, Some(&season)).unwrap();
+    let report = crate::analysis::report(&shared.store, &["b".to_string()], &HashMap::new(), None, Some(&season)).unwrap();
     assert_eq!(report["hands"], 2, "leaks are learning: they read every season");
     assert_eq!(report["overall"]["chips"], 908_000);
     assert_eq!(report["season"]["scoped"], true);
@@ -325,7 +325,7 @@ fn the_leak_finder_reads_every_season_but_reports_this_ones_result_separately() 
     assert_eq!(report["season"]["hands"], 1);
     assert_eq!(report["season"]["chips"], 8_000);
 
-    let unscoped = crate::analysis::report(&shared.store, &["b".to_string()], &HashMap::new(), None, 20.0, None).unwrap();
+    let unscoped = crate::analysis::report(&shared.store, &["b".to_string()], &HashMap::new(), None, None).unwrap();
     assert_eq!(unscoped["season"]["scoped"], false);
     assert_eq!(unscoped["season"]["chips"], 908_000, "no boundary means nothing is dropped, and the panel says so");
 }
@@ -348,11 +348,11 @@ fn the_leak_finder_normalizes_each_hand_by_its_own_recorded_blind() {
         row.summary = serde_json::to_string(&summary).unwrap();
         shared.store.insert_hand(&row).unwrap();
     }
-    for current in [10.0, 20.0, 50.0] {
-        let report = crate::analysis::report(&shared.store, &["b".to_string()], &HashMap::new(), None, current, None).unwrap();
-        assert_eq!(report["overall"]["bb100"], 100.0, "mixed blinds average +100 bb/100 at current {current}");
-        assert_eq!(report["overall"]["priced_hands"], 2);
-        assert_eq!(report["season"]["bb100"], 100.0, "the unscoped season matches overall at current {current}");
-        assert_eq!(report["trend"][0]["bb100"], 100.0, "the trend block prices its own hands at current {current}");
-    }
+    // With no blind argument left to vary, one report proves the mixed-blind pricing: the
+    // per-hand normalization is structural, not a divisor the caller supplies.
+    let report = crate::analysis::report(&shared.store, &["b".to_string()], &HashMap::new(), None, None).unwrap();
+    assert_eq!(report["overall"]["bb100"], 100.0, "mixed blinds average +100 bb/100");
+    assert_eq!(report["overall"]["priced_hands"], 2);
+    assert_eq!(report["season"]["bb100"], 100.0, "the unscoped season matches overall");
+    assert_eq!(report["trend"][0]["bb100"], 100.0, "the trend block prices its own hands");
 }

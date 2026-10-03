@@ -148,7 +148,7 @@ fn a_nemesis_appears_once_in_a_scan() {
     let store = Store::open(&dir.join("svanbot10.db")).unwrap();
     let mut bully = HeadToHead::default();
     for i in 0..200 {
-        bully.add(if i % 2 == 0 { -60.0 } else { -40.0 });
+        bully.add(if i % 2 == 0 { -3.0 } else { -2.0 });
     }
     let h2h = std::collections::HashMap::from([("Bully".to_string(), bully)]);
     let scan = scan(&store, &h2h, 1_000.0);
@@ -477,23 +477,21 @@ fn a_scan_states_one_explanation_per_family_and_the_rows_carry_their_numbers() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The nemesis verdict is priced at the big blind it is given, not at a constant (#611).
+/// The nemesis verdict is priced in each hand's own recorded blind, so every surface that
+/// shows a rivalry number shows the same one with no blind argument to disagree on.
 ///
-/// A store whose hands are not at bb 20 printed a number that disagreed with the rivals card beside
-/// it, which has always been read at the store's own big blind.
+/// A ledger that loses a steady 12.5 bb/100 reads the same on the findings card and the
+/// rivals panel, whatever the current blind is.
 #[test]
-fn a_nemesis_is_priced_at_the_big_blind_it_is_given() {
+fn a_nemesis_is_priced_in_recorded_blinds_on_every_surface() {
     let mut h = HeadToHead::default();
     for _ in 0..200 {
-        h.add(-250.0);
+        h.add(-0.125);
     }
     let map = std::collections::HashMap::from([("Bully".to_string(), h)]);
-    let at = |bb: f64| {
-        let found = nemesis(&map, bb);
-        assert_eq!(found.len(), 1, "a constant -250 chips a hand over 200 hands is a nemesis");
-        found[0].value
-    };
-    // -250 chips a hand is -1250 bb/100 at bb 20 and -500 at bb 50: the same ledger, the store's rate.
-    assert!((at(20.0) + 1250.0).abs() < 1e-9, "{}", at(20.0));
-    assert!((at(50.0) + 500.0).abs() < 1e-9, "{}", at(50.0));
+    let found = nemesis(&map);
+    assert_eq!(found.len(), 1, "a constant -0.125 bb a hand over 200 hands is a nemesis");
+    assert!((found[0].value + 12.5).abs() < 1e-9, "{}", found[0].value);
+    let read = crate::headtohead::read_one(&map, "Bully", 150.0).unwrap();
+    assert_eq!(read["bb_per_100"], -12.5, "the rivals panel reads the same rate");
 }

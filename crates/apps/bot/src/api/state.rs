@@ -721,10 +721,9 @@ pub(super) fn compute_profile_json(s: &Shared, logical: usize) -> Value {
 /// Rivalry cards (0180): nemeses and donors from the live head-to-head ledger, 150+ shared hands.
 pub(super) async fn rivals(State(s): State<Arc<Shared>>) -> Response {
     off_runtime(move || {
-        let bb = s.bots.first().map(|b| b.read().big_blind).filter(|b| *b > 0).unwrap_or(20) as f64;
         let avatars: HashMap<String, String> =
             s.avatars.read().iter().filter_map(|(n, a)| Some((n.clone(), crate::avatar_url(&s.config.rest_base, a)?))).collect();
-        Json(crate::headtohead::rivals(&s.head_to_head.read(), &avatars, 150.0, bb, 5))
+        Json(crate::headtohead::rivals(&s.head_to_head.read(), &avatars, 150.0, 5))
     })
     .await
     .into_response()

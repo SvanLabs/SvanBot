@@ -303,9 +303,8 @@ pub(super) async fn analysis(State(s): State<Arc<Shared>>) -> Result<Json<Value>
         let fleet = s2.fleet_names();
         let h2h = s2.head_to_head.read().clone();
         let calibration = stored_json(&s2, crate::CALIBRATION_KEY)?;
-        let bb = s2.big_blind();
         let season = s2.season();
-        store_read("leak analysis hands", crate::analysis::report(&s2.store, &fleet, &h2h, calibration.as_ref(), bb, season.as_ref()))
+        store_read("leak analysis hands", crate::analysis::report(&s2.store, &fleet, &h2h, calibration.as_ref(), season.as_ref()))
     })
     .await??;
     cache.at = Some(Instant::now());
