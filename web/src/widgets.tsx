@@ -1,9 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, EyeOff, Grip, Plus, RotateCcw } from 'lucide-react';
 import { readLocal, writeLocal } from './storage';
+import { request } from './api';
+import { WidgetIdContext } from './ui';
+import type { DashboardLayout } from './types';
 
 export type Column = 'left' | 'center' | 'right';
-export type Layout = Record<Column, string[]> & { hidden: string[] };
+/** The board's arrangement, typed by the API contract (`web/src/types.ts`): the same document the
+ * server stores, so the board and the endpoint cannot drift. */
+export type Layout = DashboardLayout;
 export interface Widget { id: string; title: string; node: React.ReactNode }
 
 const COLUMNS: Column[] = ['left', 'center', 'right'];
@@ -15,6 +20,11 @@ export function loadLayout(defaults: Layout): Layout {
   // The read itself cannot throw (storage.ts); the parse still can on a value that is not JSON.
   let stored: Partial<Layout> | undefined;
   try { stored = JSON.parse(readLocal(STORAGE_KEY) || 'null') || undefined; } catch { stored = undefined; }
+  return reconcile(stored, defaults);
+}
+
+/** A layout from anywhere — this browser or the server (#729) — reconciled the same way. */
+function reconcile(stored: Partial<Layout> | null | undefined, defaults: Layout): Layout {
   if (!stored) return clone(defaults);
   const known = new Set([...COLUMNS.flatMap(c => defaults[c]), ...defaults.hidden]);
   const seen = new Set<string>();
@@ -108,7 +118,23 @@ export function WidgetBoard({ widgets, defaults, editing, onDoneEditing, view = 
   const [target, setTarget] = useState<{column: Column; beforeId?: string}>();
   const press = React.useRef<{id: string; x: number; y: number; pointer: number} | undefined>(undefined);
   const byId = new Map(widgets.map(w => [w.id, w]));
-  const setLayout = (next: Layout) => { setLayoutState(next); save(next); };
+  // The arrangement lives on the server (#729) so it survives a browser change; this browser renders
+  // its own copy at once, keeps it when the endpoint cannot be reached, and an answer that arrives
+  // after the operator has already arranged something does not overwrite it.
+  const arranged = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    request<DashboardLayout | null>('/layout').then(stored => {
+      if (!alive || !stored || arranged.current) return;
+      const next = reconcile(stored, defaults);
+      setLayoutState(next);
+      save(next); // remember it here too, so the next load has the arrangement even without the server
+    }).catch(() => { /* no endpoint: the browser-local layout stands */ });
+    return () => { alive = false; };
+    // Mount only: the first `defaults` is the one this mount reconciles against (main.tsx passes a
+    // fresh literal each render, and a later one is the same board).
+  }, []);
+  const setLayout = (next: Layout) => { arranged.current = true; setLayoutState(next); save(next); request('/layout', next).catch(() => {}); };
 
   // Pointer-driven dragging (mouse, pen and touch alike): the dragged widget ignores hit-testing,
   // so the element under the pointer is the drop target; the upper half of a widget inserts before
@@ -162,7 +188,7 @@ export function WidgetBoard({ widgets, defaults, editing, onDoneEditing, view = 
 
   return <>
     {editing && <div className="layout-bar" role="toolbar" aria-label="Arrange widgets">
-      <span>Drag widgets by their bar, or use the arrows. Your layout is saved in this browser.</span>
+      <span>Drag widgets by their bar, or use the arrows. Your layout is saved on the server, with this browser's copy as the fallback.</span>
       {layout.hidden.length > 0 && <span className="layout-hidden">{layout.hidden.map(id => <button key={id} className="button" onClick={() => setLayout(moveWidget(layout, id, 'right'))}><Plus size={12}/>{byId.get(id)?.title || id}</button>)}</span>}
       <button className="button" onClick={() => setLayout(clone(defaults))}><RotateCcw size={12}/>Reset layout</button>
       <button className="button primary" onClick={onDoneEditing}>Done</button>
@@ -183,7 +209,7 @@ export function WidgetBoard({ widgets, defaults, editing, onDoneEditing, view = 
                 <button className="icon-button" aria-label={`Hide ${widget.title}`} onClick={() => { const next = moveWidget(layout, id, 'left'); next.left = next.left.filter(x => x !== id); next.hidden.push(id); setLayout(next); }}><EyeOff size={13}/></button>
               </span>
             </div>}
-            {widget.node}
+            <WidgetIdContext.Provider value={id}>{widget.node}</WidgetIdContext.Provider>
           </div>;
         })}
         {editing && <div className="widget-drop-zone">Drop here</div>}

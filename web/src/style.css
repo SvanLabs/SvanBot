@@ -399,3 +399,11 @@ body{background:radial-gradient(1200px 600px at 8% -10%,#e4b9561a,transparent 60
 .funnel-chip.promotion{border-color:#4e7a5c;color:var(--mint)}
 .funnel-chip.promotion b{color:var(--mint)}
 .funnel-knobs{margin-top:10px;font:10px var(--mono);color:var(--muted)}
+
+/* The whole panel bar toggles collapse, and the chevron stays the explicit affordance (#729): the
+   bar says so with a pointer, and the controls inside it — the info button, a link in `aside` —
+   keep their own. */
+.panel-heading{cursor:pointer}
+/* The workspace tools have no room for the collapse-all label on a phone, and the page must not
+   scroll sideways: the icon keeps the control, its `aria-label` keeps its name. */
+@media(max-width:760px){.workspace-tools .collapse-label{display:none}}

@@ -25,6 +25,7 @@ mod games;
 mod hands;
 mod insights;
 mod intel;
+mod layout;
 mod monitor;
 mod opponents;
 mod players;
@@ -46,6 +47,7 @@ use games::*;
 use hands::*;
 use insights::*;
 use intel::*;
+use layout::*;
 use monitor::*;
 use opponents::*;
 use players::*;
@@ -102,9 +104,12 @@ fn store_read<T>(what: &str, r: Result<T>) -> Result<T, ApiError> {
     r.map_err(|e| server_error(&format!("store unreadable ({what})"), e))
 }
 
-/// Missing stored evidence is distinct from a failed read or an unreadable existing record.
+/// Missing stored evidence is distinct from a failed read or an unreadable existing record. An empty
+/// value is the store's way of clearing a key (the learner's run key is written that way), and reads
+/// as missing rather than as unreadable JSON.
 fn stored_json(s: &Shared, key: &str) -> Result<Option<Value>, ApiError> {
     store_read(key, s.store.get_kv(key))?
+        .filter(|raw| !raw.is_empty())
         .map(|raw| serde_json::from_str(&raw).map_err(|e| server_error(&format!("stored JSON unreadable ({key})"), e)))
         .transpose()
 }
@@ -223,6 +228,9 @@ pub async fn serve(shared: Arc<Shared>) -> Result<()> {
         )
         .route("/api/session", post(session))
         .route("/api/state", get(state))
+        // The dashboard board's arrangement (#729). Dashboard-only on purpose: the public TV's
+        // router (`tv::router`) does not mount it, and never renders the board.
+        .route("/api/layout", get(get_layout).post(save_layout))
         .route("/api/events", get(events))
         .route("/api/raw", get(raw_state))
         .route("/api/bots/{slot}/hands", get(hands))

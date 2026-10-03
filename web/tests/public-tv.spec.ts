@@ -67,6 +67,9 @@ test('the TV renders a live table with no session, no operator affordances and n
   await expect(page.locator('.seat-plate.scoutable')).toHaveCount(0);
   await expect(page.locator('.tv-commentary')).toHaveCount(0);
   await expect(page.getByRole('link', {name: 'Exit TV'})).toHaveCount(0);
+  // The board and its panels belong to the dashboard: the TV keeps its fixed default, and a stored
+  // operator layout cannot reach it (#729).
+  await expect(page.locator('.dashboard-grid, .panel-heading')).toHaveCount(0);
   // No login form, and the listener's only session route was never asked for: it has none.
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   expect(sessions, 'the TV asked for an operator session').toBe(0);
