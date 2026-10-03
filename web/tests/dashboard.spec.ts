@@ -315,6 +315,33 @@ test('layout settings persist and mobile has no horizontal overflow', async ({ p
   await page.screenshot({path:'../artifacts/dashboard-mobile.png',fullPage:true});
 });
 
+test('fleet settings (buy-in, seek rank) are editable from the settings modal', async ({ page }) => {
+  // The save round-trips through the real endpoint (proved by tests/setup.spec.ts); here the
+  // request contract is what matters, and the sandbox's short env key would fail plan()'s
+  // validation, so the POST is captured at the boundary and answered.
+  const posted: {body?: {buy_in: number; seek_top_rank: number; bots: {name: string; enabled: boolean; from_slot?: number}[]}} = {};
+  await page.route('**/api/setup', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    posted.body = route.request().postDataJSON();
+    return route.fulfill({json: {ok: true, restart: 'scheduled'}});
+  });
+  await page.goto('/');
+  const before = await (await page.request.get('/api/setup')).json();
+  await page.getByRole('button', {name:'Open settings'}).click();
+  // The inputs start from the server's saved values, not a hardcoded default.
+  await expect(page.getByLabel('Buy-in')).toHaveValue(String(before.buy_in));
+  await expect(page.getByLabel('Seek top rank')).toHaveValue(String(before.seek_top_rank));
+  await page.getByLabel('Buy-in').fill('3500');
+  await page.getByLabel('Seek top rank').fill('12');
+  await page.getByRole('button', {name:'Save fleet settings'}).click();
+  await expect(page.locator('.modal').getByRole('status')).toContainText('The fleet restarts');
+  expect(posted.body?.buy_in).toBe(3500);
+  expect(posted.body?.seek_top_rank).toBe(12);
+  // The configured bots ride along unchanged, each keeping its stored key by slot.
+  expect(posted.body?.bots.length).toBe(before.bots.length);
+  expect(posted.body?.bots.every(b => typeof b.from_slot === 'number')).toBe(true);
+});
+
 test('start button sends the selected bot command', async ({ page }) => {
   let command: unknown;
   await page.route('**/api/bots/*/command', async route => {
