@@ -8,6 +8,11 @@
 .env
 /web/tsconfig.tsbuildinfo
 
+# Local secrets and scratch space — never committed (.key/ holds a private key)
+/.key/
+/.scratch/
+*.pem
+
 # Claude Code local state
 /.claude/scheduled_tasks.lock
 /.claude/settings.local.json
