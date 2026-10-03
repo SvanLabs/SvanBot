@@ -94,11 +94,11 @@ fn ensure_daily_backup(dir: &std::path::Path, hourly: &std::path::Path, now: &ch
 }
 
 /// Hourly copies kept on the SSD (`SVANBOT_HOURLY_BACKUPS`, default 3, or 2 when the hourlies are
-/// mirrored to a second disk): at ~630 MB each that is under 2 GB, and anything older is covered by
-/// the nightly archive.
+/// mirrored): at ~630 MB each that is under 2 GB, and anything older is covered by the nightly
+/// archive.
 pub(super) fn hourly_backups_kept(mirrored: bool) -> usize {
-    // Three on the SSD: about 1.7 GB, and anything older lives in the nightly archive on the
-    // second disk. With the opt-in mirror, two.
+    // Three on the SSD: about 1.7 GB, and anything older lives in the nightly archive. With the
+    // opt-in mirror (a second disk, or the dedicated same-disk folder of #725), two.
     std::env::var("SVANBOT_HOURLY_BACKUPS").ok().and_then(|v| v.parse().ok()).unwrap_or(if mirrored { 2 } else { 3 }).clamp(2, 48)
 }
 
@@ -115,27 +115,34 @@ pub(super) fn mirror_setting(value: Option<&str>) -> Option<usize> {
     value.and_then(|v| v.trim().parse::<usize>().ok()).filter(|n| *n > 0).map(|n| n.clamp(2, 168))
 }
 
-/// Where hourly copies are mirrored (0229): `<archive dir>/hourly` when the archive directory is on
-/// another disk than `artifacts/` (here the 1 TB HDD), so the 120 GB SSD keeps two hourlies instead
-/// of six and a day of hourly points still exists.
-fn backup_mirror(shared: &Shared) -> Option<std::path::PathBuf> {
+/// Where hourly copies are mirrored (0229, #725): `<archive dir>/hourly`, a folder of its own. On
+/// another disk it is a disk-loss copy; when no second device exists the same-disk folder is still
+/// accepted — it survives deletion and rotation mistakes — and the step reports [`Mirror::SameDisk`]
+/// rather than `ok`. `None` when the archive directory or `artifacts/` cannot be read.
+pub(super) fn backup_mirror(shared: &Shared) -> Option<(std::path::PathBuf, bool)> {
     use std::os::unix::fs::MetadataExt;
-    let archive = &shared.config.archive_dir;
-    let (a, b) = (std::fs::metadata(archive).ok()?.dev(), std::fs::metadata(&shared.config.artifacts).ok()?.dev());
-    (a != b).then(|| archive.join("hourly"))
+    let dir = shared.config.archive_dir.join("hourly");
+    // Both reads must land: an unreadable directory is no mirror, not a guess (the same-disk flag
+    // is the second element).
+    let (archive_dev, artifacts_dev) =
+        (std::fs::metadata(&shared.config.archive_dir).ok()?.dev(), std::fs::metadata(&shared.config.artifacts).ok()?.dev());
+    Some((dir, archive_dev == artifacts_dev))
 }
 
-/// How the mirror step ended for the hour just written (0292). The status row the dashboard reads
-/// carries this, so a mirror that stops working shows up there instead of only in a log line.
+/// How the mirror step ended for the hour just written (0292, #725). The status row the dashboard
+/// reads carries this, so a mirror that stops working shows up there instead of only in a log line.
 #[derive(Debug, Clone)]
 pub(super) enum Mirror {
     /// The mirror is switched off (the default since 2026-09-27).
     Off,
-    /// The archive directory is on the same disk as the database: nothing is mirrored (0229).
+    /// No mirror folder could be resolved: the archive directory or `artifacts/` is unreadable (0229).
     Absent,
     /// The pair is on the second disk.
     Copied,
-    /// Deliberately skipped: the second disk lacks room for three more copies and 1 GB.
+    /// The pair is in `<archive>/hourly` on the same disk as the databases (#725): it guards against
+    /// deletion and rotation mistakes, not the loss of the disk, so it is never reported as `ok`.
+    SameDisk,
+    /// Deliberately skipped: the mirror folder lacks room for three more copies and 1 GB.
     NoRoom,
     /// The mirror failed; the reason names the step that failed.
     Failed(String),
@@ -147,6 +154,7 @@ impl Mirror {
             Mirror::Off => ("off", None),
             Mirror::Absent => ("absent", None),
             Mirror::Copied => ("ok", None),
+            Mirror::SameDisk => ("same_disk", None),
             Mirror::NoRoom => ("no_room", None),
             Mirror::Failed(e) => ("failed", Some(e.as_str())),
         };
@@ -169,8 +177,9 @@ fn discard(paths: &[&std::path::Path]) {
     }
 }
 
-/// Move a sealed hourly backup (and its sidecar) onto the second disk, then keep the newest `keep`
-/// there. Skipped when the mirror lacks room for three more copies and 1 GB.
+/// Move a sealed hourly backup (and its sidecar) into the mirror folder (the second disk, or the
+/// dedicated same-disk folder), then keep the newest `keep` there. Skipped when the mirror lacks
+/// room for three more copies and 1 GB.
 ///
 /// The pair used to be copied to a temporary name, read back against its seal and renamed. The
 /// second disk returns `EUCLEAN` (os error 117, "structure needs cleaning") to that dance — 22
@@ -286,7 +295,8 @@ pub(super) fn write_backup_status(
         "checked_at": now.timestamp(), "database_check": "ok", "digests_checked": digest_checked, "digest_mismatches": digest_bad,
         "last_backup": hourly.file_name().map(|n| n.to_string_lossy().to_string()), "archive": shared.config.archive_dir.display().to_string(),
         "archive_latest": archive_latest, "corpus": corpus.into_iter().collect::<std::collections::BTreeMap<_, _>>(),
-        // The second-disk copy of this hour, and why it is not there when it is not (0292).
+        // The copy of this hour that left the SSD backup folder, and why it is not there when it is
+        // not (0292); `same_disk` says it did not leave the disk (#725).
         "mirror": mirror.json(mirror_dir, now.timestamp()),
         "tables": {"flop": sv10_core::tables::loaded(3).is_some(), "turn": sv10_core::tables::loaded(4).is_some()},
     });
@@ -300,14 +310,23 @@ pub(super) fn write_backup_status(
         // and the SSD backups carry on (0292).
         Mirror::Failed(why) => {
             tracing::error!("database backed up to {}, but not mirrored: {why}", hourly.display());
-            shared.log("fleet", "error", format!("backup not mirrored to the second disk: {why}"));
+            // No "second disk" in this line: the mirror may have been the same-disk folder (#725).
+            shared.log("fleet", "error", format!("backup not mirrored: {why}"));
         }
+        // The log line carries the same honesty as the row: this copy is on the databases' disk and
+        // does not survive losing it (#725).
+        Mirror::SameDisk => tracing::info!(
+            "database backed up to {}; the hour is also in {} on the same disk (a deletion guard, not a disk-loss copy)",
+            hourly.display(),
+            mirror_dir.map_or_else(|| "the mirror folder".to_string(), |d| d.display().to_string())
+        ),
         _ => tracing::info!("database backed up to {}", hourly.display()),
     }
 }
 
-/// Hourly consistent database backups: the newest hourlies and dailies on the SSD, a day of
-/// hourlies on the second disk when there is one.
+/// Hourly consistent database backups: the newest hourlies and dailies on the SSD, and a day of
+/// hourlies in the mirror folder when the mirror is on — on a second disk, or in its own same-disk
+/// folder when there is none (#725).
 pub fn backup_database(shared: &Shared) {
     let dir = shared.config.artifacts.join("backups");
     let now = chrono::Utc::now();
@@ -323,20 +342,21 @@ pub fn backup_database(shared: &Shared) {
     // A mirror that fails is loud (log, dashboard status) and never fatal: the SSD copy, the daily
     // copies and the nightly archive still stand on their own (0292).
     let keep = mirror_hourly_kept();
-    let mirror_dir = keep.and(backup_mirror(shared));
-    let mirror_step = match (keep, &mirror_dir) {
+    let mirror = keep.and(backup_mirror(shared));
+    let mirror_step = match (keep, &mirror) {
         (None, _) => Mirror::Off,
         (Some(_), None) => Mirror::Absent,
-        (Some(keep), Some(mirror)) => match mirror_backup(&hourly, mirror, keep) {
+        (Some(keep), Some((dir, same_disk))) => match mirror_backup(&hourly, dir, keep) {
+            Ok(true) if *same_disk => Mirror::SameDisk,
             Ok(true) => Mirror::Copied,
             Ok(false) => Mirror::NoRoom,
             Err(e) => Mirror::Failed(format!("{e:#}")),
         },
     };
-    let mirrored = matches!(mirror_step, Mirror::Copied);
+    let mirrored = matches!(mirror_step, Mirror::Copied | Mirror::SameDisk);
     rotate_backups(&dir, mirrored);
     seal_unsealed_backups(&dir);
-    write_backup_status(shared, &now, &hourly, digest_checked, digest_bad, &mirror_step, mirror_dir.as_deref());
+    write_backup_status(shared, &now, &hourly, digest_checked, digest_bad, &mirror_step, mirror.as_ref().map(|(d, _)| d.as_path()));
 }
 
 /// Free bytes on the filesystem holding `path`.

@@ -190,11 +190,47 @@ fn the_storage_row_says_why_the_second_disk_has_no_copy() {
         row["mirror"]["error"].as_str().unwrap().contains("structural check failed"),
         "the row carries the reason the operator has to act on"
     );
-    assert!(shared.log.lock().iter().any(|l| l.level == "error" && l.message.contains("not mirrored to the second disk")));
+    assert!(shared.log.lock().iter().any(|l| l.level == "error" && l.message.contains("backup not mirrored")));
     super::backup::write_backup_status(&shared, &now, &hourly, 3, 0, &super::backup::Mirror::Copied, None);
     let row: serde_json::Value = serde_json::from_str(&shared.store.get_kv(super::INTEGRITY_STATUS_KEY).unwrap().unwrap()).unwrap();
     assert_eq!(row["mirror"]["state"], "ok");
     assert!(row["mirror"]["error"].is_null());
+}
+
+/// #725: with no second device the mirror is accepted in its own folder under the archive root, and
+/// `backup_mirror` says it is the same disk so the caller can never report it as `ok`.
+#[test]
+fn a_mirror_folder_on_the_databases_disk_is_accepted_and_flagged() {
+    let shared = crate::live::Shared::for_test("mirror-same-disk", &["A"]);
+    // `for_test`'s archive dir is inside `artifacts/` — same disk — and must exist to be read.
+    std::fs::create_dir_all(&shared.config.archive_dir).unwrap();
+    let (dir, same_disk) = super::backup::backup_mirror(&shared).expect("the dedicated hourly folder resolves on one disk");
+    assert_eq!(dir, shared.config.archive_dir.join("hourly"), "the archive root's own hourly folder");
+    assert!(same_disk, "one disk here: the state has to say so");
+    // An unreadable archive directory is still no mirror, not a guess.
+    std::fs::remove_dir_all(&shared.config.archive_dir).unwrap();
+    assert!(super::backup::backup_mirror(&shared).is_none());
+}
+
+/// #725: the same-disk mirror is a real copy of the hour and a real warning. The row says
+/// `same_disk` (never `ok`), and the log line names what it protects against and what it does not.
+#[test]
+fn the_same_disk_mirror_reports_its_own_state_and_log_line() {
+    let shared = crate::live::Shared::for_test("mirror-same-disk-row", &["A"]);
+    let d = dir("mirror-same-disk-row");
+    let now = chrono::Utc::now();
+    let hourly = d.join("svanbot10-2026092614.db");
+    let mirror = d.join("hourly");
+    let ((), log) = crate::testlog::capture(|| {
+        super::backup::write_backup_status(&shared, &now, &hourly, 3, 0, &super::backup::Mirror::SameDisk, Some(&mirror));
+    });
+    let row: serde_json::Value = serde_json::from_str(&shared.store.get_kv(super::INTEGRITY_STATUS_KEY).unwrap().unwrap()).unwrap();
+    assert_eq!(row["mirror"]["state"], "same_disk");
+    assert!(row["mirror"]["error"].is_null());
+    assert_eq!(row["mirror"]["at"], now.timestamp());
+    assert!(row["mirror"]["dir"].as_str().unwrap().ends_with("hourly"), "the mirror's directory is named");
+    assert!(log.contains("same disk") && log.contains("not a disk-loss copy"), "{log}");
+    let _ = std::fs::remove_dir_all(&d);
 }
 
 #[test]

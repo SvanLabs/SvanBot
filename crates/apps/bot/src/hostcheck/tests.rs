@@ -4,6 +4,9 @@
 
 use super::*;
 
+/// A fixture archive folder for the one-disk case (#725); the advice must name it.
+const SAME_DISK_ARCHIVE: &str = "/srv/svanbot10/backups/archive";
+
 fn haswell(microcode: &str) -> String {
     format!(
         "processor\t: 0\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 60\nmodel name\t: Intel(R) Core(TM) i7-4770K CPU @ 3.50GHz\nmicrocode\t: {microcode}\nflags\t\t: fpu sse4_2 avx avx2 bmi2\n"
@@ -28,7 +31,7 @@ fn the_target_box_as_measured_needs_microcode_and_nothing_else() {
         fstrim_enabled: Some(true),
         kernel: Some("6.12.107".into()),
         ssd_free: Some(25 << 30),
-        archive: Some((136 << 30, true)),
+        archive: Some((136 << 30, true, "/backup-disk/svanbot10".into())),
         ..Default::default()
     };
     let c = checks(&src);
@@ -55,7 +58,7 @@ fn drift_is_flagged_with_the_command_to_fix_it() {
         fstrim_enabled: Some(false),
         kernel: None,
         ssd_free: Some(5 << 30),
-        archive: Some((50 << 30, false)),
+        archive: Some((50 << 30, false, SAME_DISK_ARCHIVE.into())),
         ..Default::default()
     };
     let c = checks(&src);
@@ -65,7 +68,15 @@ fn drift_is_flagged_with_the_command_to_fix_it() {
         assert_eq!(check.status, Status::Warn, "{key}");
         assert!(check.advice.is_some(), "{key} has a fix");
     }
-    assert!(get(&c, "archive").advice.as_deref().unwrap().contains("SVANBOT_ARCHIVE_DIR"));
+    // #725: the same-disk row stays a warning, names the dedicated folder, and the only honest fix
+    // is another disk or a share — never a `/backup-disk` path this box does not have.
+    let archive = get(&c, "archive");
+    let advice = archive.advice.as_deref().unwrap();
+    assert!(advice.contains(SAME_DISK_ARCHIVE), "the advice names the folder: {advice}");
+    assert!(advice.contains("second disk") && advice.contains("network share"), "{advice}");
+    assert!(advice.contains("not losing the disk"), "the disk-loss gap is stated: {advice}");
+    assert!(!advice.contains("/backup-disk"), "{advice}");
+    assert!(advice.contains("SVANBOT_ARCHIVE_DIR"), "{advice}");
     assert!(c.iter().all(|x| x.key != "scaling" && x.key != "kernel"), "unreadable facts are left out");
 }
 
@@ -161,7 +172,7 @@ fn reading_the_real_host_never_fails() {
     let src = read(&dir, &dir);
     let c = checks(&src);
     assert!(c.iter().any(|x| x.key == "cpu"));
-    assert!(matches!(src.archive, Some((_, false)) | None), "the same directory is the same disk");
+    assert!(matches!(src.archive, Some((_, false, _)) | None), "the same directory is the same disk");
 }
 
 /// An ext4 error count alone once produced the advice "the disk is failing" and a disk replacement.

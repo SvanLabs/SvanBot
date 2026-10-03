@@ -415,9 +415,11 @@ itself in the background.
 - `review decisions BOT HAND` and `review export HAND` print the JSON (`sqlite3` shows those
   columns as blobs).
 
-**Backups on a second disk.** With `SVANBOT_MIRROR_HOURLY_BACKUPS` set and `SVANBOT_ARCHIVE_DIR`
-on another disk than `artifacts/`, every hourly backup is moved there (sealed pair, off the SSD),
-and the SSD keeps only the two newest. The mirror is off by default.
+**Backups on a second disk — or none.** With `SVANBOT_MIRROR_HOURLY_BACKUPS` set and
+`SVANBOT_ARCHIVE_DIR` on another disk than `artifacts/`, every hourly backup is moved there (sealed
+pair, off the SSD), and the SSD keeps only the two newest. With no second disk the mirror still runs
+into the archive folder's own `hourly/` on the same disk and reports `same_disk`: a guard against
+deletion and rotation mistakes, not against losing the disk (#725). The mirror is off by default.
 
 **Never losing data**
 

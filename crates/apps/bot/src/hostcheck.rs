@@ -72,8 +72,9 @@ pub struct Sources {
     pub heat: Option<Heat>,
     /// Free bytes on the disk holding `artifacts/`.
     pub ssd_free: Option<u64>,
-    /// Free bytes on the archive directory's disk, and whether that is another disk than `artifacts/`.
-    pub archive: Option<(u64, bool)>,
+    /// Free bytes on the archive directory's disk, whether that is another disk than `artifacts/`,
+    /// and the directory itself (named in the same-disk advice, #725).
+    pub archive: Option<(u64, bool, std::path::PathBuf)>,
     /// Every mounted ext4 filesystem's error record (`/sys/fs/ext4/<dev>/`).
     pub filesystems: Vec<FsHealth>,
     /// `/proc/pressure/memory` `full avg300`, percent.
@@ -153,7 +154,8 @@ pub fn read(artifacts: &Path, archive_dir: &Path) -> Sources {
     let systemd = Path::new("/etc/systemd/system").is_dir();
     let fstrim_enabled = systemd.then(|| Path::new("/etc/systemd/system/timers.target.wants/fstrim.timer").exists());
     let dev = |p: &Path| std::fs::metadata(p).ok().map(|m| m.dev());
-    let archive = sv10_rt::free_bytes(archive_dir).map(|free| (free, dev(archive_dir).is_some() && dev(archive_dir) != dev(artifacts)));
+    let archive = sv10_rt::free_bytes(archive_dir)
+        .map(|free| (free, dev(archive_dir).is_some() && dev(archive_dir) != dev(artifacts), archive_dir.to_path_buf()));
     Sources {
         cpuinfo: text("/proc/cpuinfo").unwrap_or_default(),
         meminfo: text("/proc/meminfo").unwrap_or_default(),
@@ -305,7 +307,7 @@ pub fn checks(src: &Sources) -> Vec<Check> {
         push("ssd", "Free space (databases' disk)", gib(free), status, advice);
     }
     match src.archive {
-        Some((free, true)) => {
+        Some((free, true, _)) => {
             let (status, advice) = if free < ARCHIVE_LOW_BYTES {
                 (Status::Warn, Some("prune old archives: ./target/release/archive list, then remove the oldest one-off copies"))
             } else {
@@ -313,13 +315,19 @@ pub fn checks(src: &Sources) -> Vec<Check> {
             };
             push("archive", "Free space (archive disk)", gib(free), status, advice);
         }
-        Some((free, false)) => push(
-            "archive",
-            "Archive disk",
-            format!("same disk as the databases ({} free)", gib(free)),
-            Status::Warn,
-            Some("set SVANBOT_ARCHIVE_DIR=/backup-disk/svanbot10 in .env so the nightly archives go to the HDD"),
-        ),
+        Some((free, false, ref dir)) => {
+            // A dedicated folder on the databases' disk is the honest fallback on a one-disk box
+            // (#725): it survives deletion and rotation mistakes, not losing the disk. The advice
+            // names the folder and the only thing that closes the disk-loss gap — a second disk or a
+            // network share — instead of a path that cannot exist here.
+            let advice = format!(
+                "the nightly archives (and the hourly mirror, when SVANBOT_MIRROR_HOURLY_BACKUPS is on) go to a dedicated folder on this disk ({}): \
+                 that guards against deletion and rotation mistakes, not losing the disk. Only a second disk or a network share closes that gap; \
+                 attach one and point SVANBOT_ARCHIVE_DIR at it",
+                dir.display()
+            );
+            push("archive", "Archive disk", format!("same disk as the databases ({} free)", gib(free)), Status::Warn, Some(&advice));
+        }
         None => {}
     }
 
