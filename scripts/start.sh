@@ -28,9 +28,18 @@ set -a; [ ! -f .env ] || source .env; set +a
 [ -z "$caller_analyst" ] || export ANALYST="$caller_analyst"
 # Only scripts/release.sh writes target/release (LESSONS 31): a missing build, or REBUILD=1, goes
 # through it (tests, then build, install with a recorded commit), never a bare cargo build (0239).
-if [ ! -x target/release/sv10-bot ] || [ ! -x target/release/tables ] || [ ! -f web/dist/index.html ] || [ "${REBUILD:-0}" = "1" ]; then
-  [ "$repair" != 1 ] || { echo "repair: installed build incomplete; healthy processes kept" >&2; exit 1; }
-  echo "No complete installed build: running scripts/release.sh (tests, build, install)."
+# Every tool this script launches is named, so a bundle that silently lacked one (#717's monitor)
+# is caught here instead of as a supervisor relaunching a binary that is not there.
+incomplete=""
+for b in sv10-bot tables monitor; do
+  [ -x "target/release/$b" ] || incomplete="$incomplete $b"
+done
+[ "${LEARNER:-1}" != 1 ] || [ -x target/release/learner ] || incomplete="$incomplete learner"
+[ "${ANALYST:-1}" != 1 ] || [ -x target/release/analyst ] || incomplete="$incomplete analyst"
+[ -f web/dist/index.html ] || incomplete="$incomplete web/dist"
+if [ -n "$incomplete" ] || [ "${REBUILD:-0}" = "1" ]; then
+  [ "$repair" != 1 ] || { echo "repair: installed build incomplete:${incomplete:- rebuild requested}; healthy processes kept" >&2; exit 1; }
+  echo "No complete installed build${incomplete:+ (missing:$incomplete)}; running scripts/release.sh (tests, build, install)."
   scripts/release.sh
 fi
 # Exact board-strength tables (rebuildable in ~30 s; see crates/libs/equity/src/tables.rs).

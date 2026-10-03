@@ -55,11 +55,15 @@ if [ -f MANIFEST ]; then
 fi
 
 mkdir -p target/release artifacts/logs artifacts/backups
-for b in sv10-bot learner analyst sim probe tables review calibrate ingest archive; do
-  [ -x "$src/$b" ] || continue
+missing=""
+for b in sv10-bot learner analyst sim probe tables review monitor calibrate ingest archive; do
+  [ -x "$src/$b" ] || { missing="$missing $b"; continue; }
   # Copy then rename, like scripts/release.sh: running processes keep their inode and hot-swap.
   cp "$src/$b" "target/release/.$b.new" && mv -f "target/release/.$b.new" "target/release/$b"
 done
+# Never silent: a bundle without a tool leaves the installed one in place, and start.sh refuses to
+# run a fleet whose launched tools are missing (#717: the monitor was one of them).
+[ -z "$missing" ] || echo "warning: bundle has no$missing; those binaries were left as installed" >&2
 ./target/release/sv10-bot --version
 echo "Installed x86-64-$level binaries into target/release."
 

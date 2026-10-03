@@ -26,7 +26,7 @@ mkdir -p "$root"/{scripts,artifacts/logs,target/release,web/dist,fakebin}
 unset SVANBOT_FLEET LEARNER ANALYST
 cp "$repo/scripts/start.sh" "$repo/scripts/stop.sh" "$repo/scripts/keepalive.sh" "$root/scripts/"
 [ ! -f "$repo/scripts/supervisors.sh" ] || cp "$repo/scripts/supervisors.sh" "$root/scripts/"
-for tool in sv10-bot learner analyst tables; do
+for tool in sv10-bot learner analyst tables monitor; do
   cat > "$root/target/release/$tool" <<'SH'
 #!/usr/bin/env bash
 echo "${0##*/}:${SVANBOT_ONLY:-}" >> artifacts/launches
@@ -34,12 +34,6 @@ exec sleep 120
 SH
   chmod +x "$root/target/release/$tool"
 done
-cat > "$root/fakebin/python3" <<'SH'
-#!/usr/bin/env bash
-echo monitor >> artifacts/launches
-exec sleep 120
-SH
-chmod +x "$root/fakebin/python3"
 touch "$root/web/dist/index.html" "$root/artifacts/tables-ready"
 mkdir -p "$root/artifacts/tables"
 touch "$root/artifacts/tables/strengths-turn.sv10tbl"

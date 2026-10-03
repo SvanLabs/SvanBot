@@ -89,6 +89,11 @@ const COMMANDS: &[(&str, &str, &str)] = &[
     ),
     ("decisions", "decisions BOT HAND", "our recorded decisions in one hand with their details, as JSON (stored compressed, 0229)"),
     ("export", "export HAND", "the server's hand-history export of one hand from history.db, as JSON (stored compressed, 0229)"),
+    (
+        "unrecorded",
+        "unrecorded [HOURS]",
+        "hands the server exported that this store never recorded: another client plays for our bots while we are disconnected (0151); exit 1 on any in the window",
+    ),
     ("storage", "storage", "the compressed columns: rows still text, free pages, dictionaries and the last compaction pass (0229)"),
     ("state-hash", "state-hash [N]", "state_hash mismatches, newest first: verdict, table and field census (0265)"),
     ("ledger", "ledger", "the learner's rejection ledger: barred and accumulating search transitions (0285)"),
@@ -385,6 +390,12 @@ fn main() -> Result<()> {
             None => anyhow::bail!("hand {hand} is not in history.db"),
         }
         return Ok(());
+    }
+    if which == "unrecorded" {
+        let hours: f64 = args.get(2).and_then(|h| h.parse().ok()).unwrap_or(2.0);
+        let (text, flagged) = sv10_bot::unrecorded::check(&store, &root, hours)?;
+        print!("{text}");
+        std::process::exit(i32::from(flagged));
     }
     if which == "storage" {
         let history = sv10_bot::history::HistoryDb::open(&root.join("artifacts").join("history.db"))?;

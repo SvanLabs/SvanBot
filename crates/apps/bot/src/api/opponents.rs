@@ -11,58 +11,9 @@ pub(super) fn estimate(c: &Counter) -> Value {
     json!({"value": p, "samples": c.opp, "count": c.hit, "standard_error": se, "lower": (p - 1.96 * se).max(0.0), "upper": (p + 1.96 * se).min(1.0)})
 }
 
-pub(super) fn sum3(cs: &[Counter; 3]) -> Counter {
-    Counter { opp: cs.iter().map(|c| c.opp).sum(), hit: cs.iter().map(|c| c.hit).sum() }
-}
-
-pub(super) fn rate(c: &Counter) -> Option<f32> {
-    if c.opp >= 1.0 { Some(c.hit / c.opp) } else { None }
-}
-
-/// Postflop aggression frequency: bets and raises over bets, raises and calls.
-pub(super) fn aggression_counter(st: &PlayerStats) -> Counter {
-    let aggr: f32 = st.bet_first.iter().map(|c| c.hit).sum::<f32>() + st.raise_vs_bet.iter().map(|c| c.hit).sum::<f32>();
-    let calls: f32 = (0..3).map(|i| (st.fold_vs_bet[i].opp - st.fold_vs_bet[i].hit - st.raise_vs_bet[i].hit).max(0.0)).sum();
-    Counter { opp: aggr + calls, hit: aggr }
-}
-
-pub(super) fn style_of(st: &PlayerStats) -> (String, String) {
-    if st.hands < 20.0 {
-        return ("Sampling".into(), format!("{} hands observed; decisions still lean on the population prior.", st.hands as i64));
-    }
-    let vpip = rate(&st.vpip).unwrap_or(0.3);
-    let pfr = rate(&st.pfr).unwrap_or(0.15);
-    let fold = if sum3(&st.fold_vs_bet).opp >= 12.0 { rate(&sum3(&st.fold_vs_bet)) } else { None };
-    let afq = {
-        let c = aggression_counter(st);
-        if c.opp >= 15.0 { rate(&c) } else { None }
-    };
-    let wtsd = if st.wtsd.opp >= 12.0 { rate(&st.wtsd) } else { None };
-    let passive_gap = vpip - pfr;
-    let (style, mut advice): (&str, String) = if vpip >= 0.45 && pfr >= 0.28 && afq.unwrap_or(0.5) >= 0.45 {
-        ("Maniac", "Plays most hands aggressively. Call down lighter, trap strong hands, avoid thin bluffs.".into())
-    } else if vpip >= 0.38 && passive_gap >= 0.2 && fold.map(|f| f <= 0.35).unwrap_or(true) {
-        ("Calling station", "Enters loose and calls. Value bet thinner and larger; bluff almost never.".into())
-    } else if fold.map(|f| f >= 0.6).unwrap_or(false) {
-        ("Overfolder", "Gives up to bets too often. Bet more often with weak hands; smaller bluffs work.".into())
-    } else if fold.map(|f| f <= 0.2).unwrap_or(false) {
-        ("Sticky", "Rarely folds once invested. Stop bluffing; bet strong hands for value every street.".into())
-    } else if vpip <= 0.16 && pfr <= 0.12 {
-        ("Nit", "Very tight. Steal blinds relentlessly; respect their raises and fold marginal hands.".into())
-    } else if vpip <= 0.26 && pfr >= 0.16 && afq.unwrap_or(0.4) >= 0.4 {
-        ("Tight-aggressive", "Solid regular. Stay close to baseline; avoid bloating pots out of position.".into())
-    } else if vpip > 0.26 && pfr >= 0.2 {
-        ("Loose-aggressive", "Wide and aggressive. Defend wider in position and 3-bet their opens for value.".into())
-    } else if passive_gap >= 0.15 {
-        ("Loose-passive", "Limps and calls. Isolate their limps and value bet; their raises mean strength.".into())
-    } else {
-        ("Balanced", "No large leak yet; stick close to the baseline.".into())
-    };
-    if let (Some(w), Some(won)) = (wtsd, rate(&st.won_showdown).filter(|_| st.won_showdown.opp >= 10.0)) {
-        advice.push_str(&format!(" Goes to showdown {:.0}% of flops seen and wins {:.0}% there.", w * 100.0, won * 100.0));
-    }
-    (style.to_string(), advice)
-}
+/// The classifier lives in [`crate::style`], shared with the monitor: one function, so the scout
+/// view and the alert stream never call one player two things (0246).
+pub(super) use crate::style::{aggression_counter, style_of, sum3};
 
 pub(super) fn opponent_json(name: &str, st: &PlayerStats, rep: Option<&crate::reputation::Reputation>) -> Value {
     let (style, mut advice) = style_of(st);

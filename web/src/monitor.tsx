@@ -4,11 +4,11 @@ import { NamesIn } from './playername';
 
 const KIND_CLASS: Record<string, string> = { BIGWIN: 'positive', BIGLOSS: 'negative', NEMESIS: 'negative', STALL: 'amber', ERROR: 'negative', MONITOR: 'amber' };
 const pct = (v: number | null) => v == null ? '—' : `${v.toFixed(1)}%`;
-/** The monitor writes `HH:MM` from its own clock (scripts/monitor.py), with no zone or date, so the
+/** The monitor writes `HH:MM` from its own clock (the `monitor` binary), with no zone or date, so the
  *  browser cannot re-zone it (0295): the panel says whose clock it is instead of implying the viewer's. */
 const HOST_CLOCK = 'The results monitor writes this wall time from the machine that runs it, with no zone or date, so it cannot be shown in your own zone.';
 
-/** Results monitor (scripts/monitor.py) plus machine pressure, replay records and the season check. */
+/** Results monitor (the `monitor` binary) plus machine pressure, replay records and the season check. */
 export function ResultsMonitor() {
   const [data, setData] = useState<MonitorState>();
   const [failed, setFailed] = useState(false);

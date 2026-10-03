@@ -20,6 +20,7 @@ pub mod learner;
 pub mod live;
 pub mod livefits;
 pub mod luck;
+pub mod monitor;
 pub mod multiway;
 pub mod neural;
 pub mod nnresidual;
@@ -49,9 +50,11 @@ pub mod season;
 pub mod seasons;
 pub mod setup;
 pub mod stories;
+pub mod style;
 pub mod tasks;
 #[cfg(test)]
 pub(crate) mod testlog;
+pub mod unrecorded;
 pub mod watchdog;
 
 // Extracted crates live at their own paths (`sv10_store::<module>`, `sv10_rt`, `sv10_venue::<module>`);

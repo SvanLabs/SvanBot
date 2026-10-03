@@ -1,5 +1,5 @@
-//! Results monitor and machine view for the dashboard: the newest alerts and summaries written by
-//! `scripts/monitor.py`, pressure stall information, replay records and the last season check.
+//! Results monitor and machine view for the dashboard: the newest alerts and summaries the
+//! `monitor` binary wrote, pressure stall information, replay records and the last season check.
 
 use super::*;
 
