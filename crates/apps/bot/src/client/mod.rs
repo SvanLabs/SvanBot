@@ -35,6 +35,9 @@ mod recover;
 mod rest;
 mod seat;
 
+// The calibration round (a blocking-pool caller) shares the 0322 locked-write retry (#744).
+pub(crate) use decide::retry_locked_write_blocking;
+
 use decide::act;
 pub use decide::legalize;
 use handler::handle;

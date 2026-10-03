@@ -81,7 +81,7 @@ const LOCKED_WRITE_WAITS: [Duration; 3] = [Duration::from_millis(250), Duration:
 /// retry queue (0247), the decision record and the analyst's audit do not, and 18 audits were lost
 /// that way in ten days. Bounded by the waits it is given, and never on the decision path — callers
 /// spawn it.
-async fn retry_locked_write(waits: &[Duration], mut write: impl FnMut() -> anyhow::Result<()>) -> anyhow::Result<()> {
+pub(crate) async fn retry_locked_write(waits: &[Duration], mut write: impl FnMut() -> anyhow::Result<()>) -> anyhow::Result<()> {
     let mut last = anyhow::anyhow!("no attempt made");
     for wait in waits {
         tokio::time::sleep(*wait).await;
@@ -93,8 +93,27 @@ async fn retry_locked_write(waits: &[Duration], mut write: impl FnMut() -> anyho
     Err(last)
 }
 
+/// The blocking twin of [`retry_locked_write`], for callers already on the blocking pool (the
+/// calibration round): same waits with `std::thread::sleep` so no runtime is needed (#744).
+pub(crate) fn retry_locked_write_blocking(mut write: impl FnMut() -> anyhow::Result<()>) -> anyhow::Result<()> {
+    let mut last = anyhow::anyhow!("no attempt made");
+    for wait in LOCKED_WRITE_WAITS {
+        std::thread::sleep(wait);
+        match write() {
+            Ok(()) => return Ok(()),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
+}
+
 /// Retry a store write that failed on a locked database, off the frame loop, and report the outcome.
-fn spawn_locked_write_retry(shared: &Arc<Shared>, bot: &str, what: &str, write: impl FnMut() -> anyhow::Result<()> + Send + 'static) {
+pub(crate) fn spawn_locked_write_retry(
+    shared: &Arc<Shared>,
+    bot: &str,
+    what: &str,
+    write: impl FnMut() -> anyhow::Result<()> + Send + 'static,
+) {
     let (shared, bot, what) = (shared.clone(), bot.to_string(), what.to_string());
     tokio::spawn(async move {
         match retry_locked_write(&LOCKED_WRITE_WAITS, write).await {
@@ -242,6 +261,12 @@ pub(super) async fn act(
         let net_ref = net.as_ref().map(|(digest, json)| (digest.as_str(), json.as_str()));
         if big && let Err(e) = shared.store.insert_replay(&bot.name, &hand_id, &record, net_ref) {
             shared.log(&bot.name, "warn", format!("replay record not stored: {e}"));
+            let (name, hand, rec) = (bot.name.clone(), hand_id.clone(), record.clone());
+            let net_owned = net_ref.map(|(digest, json)| (digest.to_string(), json.to_string()));
+            let shared2 = shared.clone();
+            spawn_locked_write_retry(shared, &bot.name, "the replay record", move || {
+                shared2.store.insert_replay(&name, &hand, &rec, net_owned.as_ref().map(|(d, j)| (d.as_str(), j.as_str())))
+            });
         }
         if let Err(e) = shared.store.insert_audit(&bot.name, &hand_id, &record, net_ref) {
             shared.log(&bot.name, "warn", format!("decision not queued for the analyst: {e}"));
@@ -338,9 +363,11 @@ mod tests {
     fn a_locked_decision_record_or_audit_is_handed_to_the_retry() {
         let source = include_str!("decide.rs");
         let body = source.split("#[cfg(test)]").next().unwrap();
-        for (lost, what) in
-            [("decision not queued for the analyst", "the analyst audit"), ("decision record not stored", "the decision record")]
-        {
+        for (lost, what) in [
+            ("decision not queued for the analyst", "the analyst audit"),
+            ("decision record not stored", "the decision record"),
+            ("replay record not stored", "the replay record"),
+        ] {
             let at = body.find(lost).unwrap_or_else(|| panic!("{lost} must be logged"));
             let branch = &body[at..body.len().min(at + 800)];
             assert!(branch.contains(&format!("spawn_locked_write_retry(shared, &bot.name, \"{what}\"")), "{lost} must be retried");

@@ -111,8 +111,17 @@ pub fn update_calibration_with(shared: &Shared, persist: bool) {
         Vec::new()
     });
     let (bias, caps, table) = calibration_update(rows, pot_rows, margin_rows);
-    if persist && let Err(e) = shared.store.put_kv(crate::CALIBRATION_KEY, &serde_json::Value::Object(table).to_string()) {
-        shared.log("calibration", "warn", format!("calibration table not stored (corrections still applied live): {e}"));
+    if persist {
+        let json = serde_json::Value::Object(table).to_string();
+        if let Err(e) = shared.store.put_kv(crate::CALIBRATION_KEY, &json) {
+            shared.log("calibration", "warn", format!("calibration table not stored (corrections still applied live): {e}"));
+            // 0322 pattern (#744): a locked database does not cost the row — we are on the blocking
+            // pool, so the blocking twin of the decision-record retry runs here.
+            match crate::client::retry_locked_write_blocking(|| shared.store.put_kv(crate::CALIBRATION_KEY, &json)) {
+                Ok(()) => shared.log("calibration", "info", "the calibration table stored on retry"),
+                Err(e) => shared.log("calibration", "warn", format!("the calibration table lost after retries: {e}")),
+            }
+        }
     }
     let mut params = shared.params.write();
     params.ev_bias = bias;
