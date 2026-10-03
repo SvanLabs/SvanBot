@@ -544,6 +544,7 @@ A profile changes compute only, never strategy. The live budget never drops belo
 | Autonomy / Experiments | Learner state, neural model status, every evaluated challenger |
 | Highlights | Achievements, biggest wins, monster hands, bad beats — click to replay |
 | Activity log | Live events for the selected bot |
+| Notes | One plain-text scratchpad that saves itself while you type: a second after the last keystroke, and at once when you leave the box or the page. The note is stored on the server, so it follows you to another browser, and this browser keeps a copy that renders first and stands when the server cannot be reached. The box always says where the save stands — unsaved, saving, saved, or **not saved and retrying** — and a failed save is retried with backoff rather than swallowed. A character count sits under it; nothing here reaches the tables |
 | TV mode | One full-screen table chosen by the auto-director, with play-by-play commentary; the header's TV button (or `#tv`). The same view is what the public TV listener serves (`SVANBOT_TV_PORT`), with the commentary, the scouting-report buttons and the exit link off, because its audience has no operator token |
 | Docs | This documentation |
 | Bot setup (Settings → Open bot setup, or `#setup`) | Add, rename, reorder, switch off or remove bots, paste and check API keys, set the maximum buy-in and table seeking; saves to `.env` and restarts the fleet between turns |

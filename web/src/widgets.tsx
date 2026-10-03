@@ -85,7 +85,7 @@ const columnLabel: Record<Column, string> = { left: 'left', center: 'centre', ri
 /** The dashboard's views (0237): each shows a subset of the widgets in the user's own arrangement,
  * so the page opens on what matters now instead of one 6,600 px scroll. `all` is the full board. */
 export const VIEWS: { id: string; label: string; widgets: string[] | null }[] = [
-  { id: 'live', label: 'Live', widgets: ['table', 'ticker', 'recent-hands', 'fleet-race', 'monitor', 'highlights', 'activity'] },
+  { id: 'live', label: 'Live', widgets: ['table', 'ticker', 'recent-hands', 'fleet-race', 'monitor', 'highlights', 'activity', 'notes'] },
   { id: 'opponents', label: 'Opponents', widgets: ['opponents', 'intel', 'rivals', 'leaks', 'ranges', 'starting-hands'] },
   { id: 'learning', label: 'Learning', widgets: ['autonomy', 'experiments', 'experiment-mode', 'calibration', 'accuracy', 'wiring', 'champion'] },
   { id: 'results', label: 'Results', widgets: ['performance', 'season-race', 'badges', 'season', 'stories', 'fleet-race', 'highlights'] },

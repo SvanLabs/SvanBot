@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react';
 import { time } from './format';
 
-/** GET (or POST with `body`) `/api{path}`; a non-2xx answer throws the server's `detail`. */
-export async function request<T>(path: string, body?: unknown): Promise<T> {
+/** GET (or POST with `body`) `/api{path}`; a non-2xx answer throws the server's `detail`. `keepalive`
+ *  is for a save on the way out (the notes panel's pagehide): the request outlives the page, which a
+ *  plain fetch does not. */
+export async function request<T>(path: string, body?: unknown, keepalive = false): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json' },
+    keepalive,
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const data = await response.json().catch(() => {
