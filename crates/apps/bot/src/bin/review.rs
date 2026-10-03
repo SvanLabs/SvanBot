@@ -47,7 +47,7 @@ const COMMANDS: &[(&str, &str, &str)] = &[
     ("allin-luck", "allin-luck [NAME...]", "all-in EV adjusted results per bot, and our whole net at named opponents' tables (0213)"),
     (
         "rival",
-        "rival NAME... [since=DATE]",
+        "rival NAME... [since=DATE] [--json]",
         "where the chips go against an opponent: flow and table net with luck removed, by ending, street, pot, position (0317)",
     ),
     ("nn-residual", "nn-residual", "the per-opponent response correction study (0210)"),
@@ -66,25 +66,25 @@ const COMMANDS: &[(&str, &str, &str)] = &[
     ),
     (
         "audit-by",
-        "audit-by [DAYS] [REPLAY_VERSION]",
+        "audit-by [DAYS] [REPLAY_VERSION] [--json]",
         "the deep re-solve's post-pricing tactics: what the live choice gave up under the prices it used, by street, by the action we took, and by the category the bot priced (0273); on the analyst's big spots, never the pricing residual (0346); the version argument reads one record version alone (0316)",
     ),
     (
         "margins",
-        "margins [DAYS] [CATEGORY...]",
+        "margins [DAYS] [CATEGORY...] [--json]",
         "the pricing residual at the decision margin: realized minus the uncorrected price, and the same after the installed correction, over every settled decision (0222, 0346)",
     ),
     ("autonomy", "autonomy", "the autonomy watchdog's view: which learning loops are reporting and which are stale (0222)"),
     ("verify-digests", "verify-digests [FILE]", "recompute every stored hand digest (and FILE's SHA-256); exit 1 on any mismatch"),
     (
         "replay",
-        "replay [N | id=ID] [--current]",
+        "replay [N | id=ID] [--current] [--json]",
         "re-run recorded big decisions bit for bit, or with today's champion knobs on the record's own prices; the footer names the basis",
     ),
-    ("wiring", "wiring [N]", "switch each live component off on the newest N big decisions: share changed and its EV cost (0316)"),
+    ("wiring", "wiring [N] [--json]", "switch each live component off on the newest N big decisions: share changed and its EV cost (0316)"),
     (
         "drift",
-        "drift",
+        "drift [--json]",
         "the analyst's post-promotion drift row: today's champion's flip rate and deep gap on recent big spots, with the basis, budget, population and version mix behind them, and whether the row is due for a re-check (0128, 0366)",
     ),
     ("decisions", "decisions BOT HAND", "our recorded decisions in one hand with their details, as JSON (stored compressed, 0229)"),
@@ -94,7 +94,7 @@ const COMMANDS: &[(&str, &str, &str)] = &[
     ("ledger", "ledger", "the learner's rejection ledger: barred and accumulating search transitions (0285)"),
     (
         "experiment",
-        "experiment [TARGET]",
+        "experiment [TARGET] [--json]",
         "experiment mode: targets with live hands, or one target's estimate and every hand, decision and replay id (0291)",
     ),
     ("help", "help", "this list"),
@@ -110,6 +110,9 @@ fn main() -> Result<()> {
     let bb = store.latest_big_blind()?.unwrap_or(sv10_bot::live::DEFAULT_BIG_BLIND) as f64;
     let args: Vec<String> = std::env::args().collect();
     let which = args.get(1).cloned().unwrap_or_else(|| "all".into());
+    // #723: the machine-readable render of the forensic commands. Text stays the default; the flag
+    // is not a positional argument anywhere below.
+    let json = args.iter().skip(2).any(|a| a == "--json");
     if which == "help" {
         println!("review — studies and checks on the stored hands (read-only unless noted)\n{}", command_list());
         return Ok(());
@@ -137,7 +140,9 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if which == "experiment" {
-        sv10_bot::experiment::review(&store, args.get(2).map(String::as_str), &mut std::io::stdout())?;
+        let target = args.get(2).map(String::as_str).filter(|a| !a.starts_with("--"));
+        let mut out = std::io::stdout();
+        sv10_bot::experiment::review(&store, target, &mut out, json)?;
         return Ok(());
     }
     if which == "state-hash" {
@@ -285,13 +290,15 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if which == "allin-luck" || which == "rival" {
-        let names = &args[2.min(args.len())..];
+        // Flags are not opponent names: `--json` (and `since=`, read by `rival` itself) would
+        // otherwise be looked up as a rival and printed as one never dealt in with.
+        let names: Vec<String> = args.iter().skip(2).filter(|a| !a.starts_with("--")).cloned().collect();
         print!(
             "{}",
             if which == "rival" {
-                sv10_bot::review_rival::rival(&store, names)?
+                sv10_bot::review_rival::rival(&store, &names, json)?
             } else {
-                sv10_bot::review_rival::allin_luck(&store, names)?
+                sv10_bot::review_rival::allin_luck(&store, &names)?
             }
         );
         return Ok(());
@@ -355,50 +362,14 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if which == "audit-by" {
-        let (days, version) = (args.get(2).and_then(|d| d.parse().ok()).unwrap_or(8), args.get(3).and_then(|v| v.parse().ok()));
-        println!("{}", sv10_bot::review_recent::audit_by(&store, days, version)?);
+        let positional: Vec<&String> = args.iter().skip(2).filter(|a| !a.starts_with("--")).collect();
+        let (days, version) =
+            (positional.first().and_then(|d| d.parse().ok()).unwrap_or(8), positional.get(1).and_then(|v| v.parse().ok()));
+        println!("{}", sv10_bot::review_recent::audit_by(&store, days, version, json)?);
         return Ok(());
     }
     if which == "margins" {
-        let days: i64 = args.get(2).and_then(|d| d.parse().ok()).unwrap_or(8);
-        let since = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
-        let cats: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
-        let samples = store.calibration_samples_since(&since)?;
-        let table = store.get_kv(sv10_bot::CALIBRATION_KEY)?;
-        let (bias, bound) = (sv10_stats::margins::installed_bias(table.as_deref()), sv10_stats::margins::bound_by(table.as_deref()));
-        println!(
-            "{} priced decisions in the last {days} days: every settled decision the bot priced and got a stack result for, at every pot \
-             size — the pricing population (the deep audit's is its big spots only, `review audit-by`)",
-            samples.len()
-        );
-        println!(
-            "   residual = realized - predicted (bb) on the UNCORRECTED price, the quantity self-calibration is fitted from; 'after correction' \
-             subtracts the installed correction at its largest size, since in play a penalty is capped at its supported per-pot residual (0207); \
-             * = off at 95% after that"
-        );
-        for (cat, bins) in sv10_stats::margins::margins(&samples, &cats, &bias) {
-            if bins.is_empty() {
-                continue;
-            }
-            println!(
-                "{cat}  (live correction {:+.2} bb, set by {})",
-                bias.get(&cat).copied().unwrap_or(0.0),
-                bound.get(&cat).map_or("?", |b| b)
-            );
-            for b in bins {
-                println!(
-                    "  {} pred [{:>5}, {:>5})  n {:6}  residual {:+7.2} ± {:5.2}  after correction {:+7.2}{}",
-                    if b.at_margin() { "margin" } else { "      " },
-                    b.lo,
-                    b.hi,
-                    b.n,
-                    b.residual,
-                    b.half_width,
-                    b.after_correction,
-                    if b.miscalibrated() { " *" } else { "" }
-                );
-            }
-        }
+        print!("{}", sv10_bot::review_margins::report(&store, &args[2..], json)?);
         return Ok(());
     }
     if which == "decisions" {
@@ -479,7 +450,7 @@ fn main() -> Result<()> {
         return sv10_bot::review_wiring::wiring(&store, &args[2..]);
     }
     if which == "drift" {
-        print!("{}", sv10_bot::review_drift::drift(&store)?);
+        print!("{}", sv10_bot::review_drift::drift(&store, json)?);
         return Ok(());
     }
     let losers: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);

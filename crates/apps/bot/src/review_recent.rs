@@ -66,7 +66,10 @@ pub fn recent(store: &Store, bot: &str, n: usize) -> Result<String> {
 /// One (street, action) class of deep re-solves: how many, what the live choices gave up, what the
 /// deep search's best candidate was, and — the split that keeps a modal column honest (0346) — how
 /// many of the disagreements are another *size* of the action we took rather than another action.
-#[derive(Default)]
+///
+/// `Serialize` is what `review audit-by --json` prints (#723), the same class the table row is
+/// formatted from.
+#[derive(Default, serde::Serialize)]
 struct AuditClass {
     /// Verdicts in the class.
     n: usize,
@@ -105,11 +108,43 @@ fn audit_population() -> String {
 /// choice with a model that saw less than the live choice did — every finding 0282–0284 came from
 /// such rows and is being re-measured on v3 (0316). The header therefore always states the mix, and
 /// `version not recorded` rows are excluded by any filter rather than assumed to be old or new.
-pub fn audit_by(store: &Store, days: i64, version: Option<u32>) -> Result<String> {
+pub fn audit_by(store: &Store, days: i64, version: Option<u32>, json: bool) -> Result<String> {
     let since = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
     let all = store.audit_results_since(&since)?;
     let total = all.len();
     let rows = select_version(all, version);
+    // One row per (street, live action), worst total loss first: this is "where do we lose chips",
+    // which the margin report cannot answer because it only sees spots we took.
+    // The recorded action carries its size ("raise:80"), so group by the family: one row per
+    // street and action, not one per bet size.
+    let mut rows_out = audit_classes(&rows);
+    rows_out.sort_by(|a, b| b.1.total.total_cmp(&a.1.total));
+    let (size_only, other): (usize, usize) = rows_out.iter().fold((0, 0), |(s, o), (_, c)| (s + c.size_only, o + c.other_action));
+    let all: f64 = rows.iter().map(|(_, r)| r.gap_bb.max(0.0)).sum();
+    let worst = worst_by_category(store, &rows);
+    if json {
+        // #723: the same `AuditResult` verdicts and `AuditClass` rows the table is built from, so an
+        // agent reads the numbers rather than the layout.
+        let classes: Vec<serde_json::Value> =
+            rows_out.iter().map(|((street, action), c)| serde_json::json!({"street": street, "action": action, "class": c})).collect();
+        let verdicts: Vec<&sv10_store::store::AuditResult> = rows.iter().map(|(_, r)| r).collect();
+        return Ok(serde_json::json!({
+            "days": days,
+            "version": version,
+            "population": audit_population(),
+            "total": total,
+            "graded": rows.len(),
+            "version_mix": version_mix(&rows),
+            "mixed_note": mixed_note(&rows, version),
+            "classes": classes,
+            "size_only": size_only,
+            "other_action": other,
+            "total_gap_bb": all,
+            "verdicts": verdicts,
+            "worst_by_category": worst,
+        })
+        .to_string());
+    }
     if rows.is_empty() {
         return Ok(match version {
             Some(v) => format!(
@@ -128,12 +163,6 @@ pub fn audit_by(store: &Store, days: i64, version: Option<u32>) -> Result<String
         audit_population(),
     );
     out.push_str(&mixed_note(&rows, version));
-    // One row per (street, live action), worst total loss first: this is "where do we lose chips",
-    // which the margin report cannot answer because it only sees spots we took.
-    // The recorded action carries its size ("raise:80"), so group by the family: one row per
-    // street and action, not one per bet size.
-    let mut rows_out = audit_classes(&rows);
-    rows_out.sort_by(|a, b| b.1.total.total_cmp(&a.1.total));
     out.push_str(&format!(
         "   {:<8} {:<8} {:>6} {:>11} {:>9} {:>9} {:>8}   the deep search's commonest best candidate\n",
         "street", "we took", "n", "given up", "per dec", "new size", "new act"
@@ -149,16 +178,14 @@ pub fn audit_by(store: &Store, days: i64, version: Option<u32>) -> Result<String
             c.other_action
         ));
     }
-    let (size_only, other): (usize, usize) = rows_out.iter().fold((0, 0), |(s, o), (_, c)| (s + c.size_only, o + c.other_action));
     out.push_str(&format!(
         "   of the {} verdicts whose best candidate differs from the action we took, {size_only} keep the action and change its \
          size and {other} change the action (0346): a modal column read as \"it would have checked\" over-reads the size changes, \
          and `gap_bb` for one is the cost of the size, not of the action\n",
         size_only + other
     ));
-    let all: f64 = rows.iter().map(|(_, r)| r.gap_bb.max(0.0)).sum();
     out.push_str(&format!("\n   total {all:.1} bb given up over {} decisions ({:.3} bb each)\n", rows.len(), all / rows.len() as f64));
-    out.push_str(&worst_by_category(store, &rows));
+    out.push_str(&worst.text());
     Ok(out)
 }
 
@@ -237,15 +264,42 @@ fn mixed_note(rows: &[Graded], version: Option<u32>) -> String {
     )
 }
 
+/// Categories the attribution table prints: the tail is one or two decisions each and adds rows
+/// nobody reads.
+const WORST_CATEGORIES: usize = 12;
+
+/// One category's share of the worst disagreements: how many, and the big blinds given up.
+#[derive(Default, serde::Serialize)]
+struct CategoryLoss {
+    category: String,
+    n: usize,
+    gap_bb: f64,
+}
+
+/// The category attribution table: the sample it was read over, how many verdicts had no decision
+/// record to attribute, and the rows, biggest loss first.
+///
+/// `Serialize` is what `review audit-by --json` prints (#723); [`WorstByCategory::text`] prints the
+/// same rows, so the two renders cannot drift apart.
+#[derive(Default, serde::Serialize)]
+struct WorstByCategory {
+    /// Verdicts with a positive gap the table was read over (at most 400).
+    sample: usize,
+    /// Of those, the ones with no decision record to attribute.
+    unattributed: usize,
+    /// Per category, at most [`WORST_CATEGORIES`], biggest loss first.
+    rows: Vec<CategoryLoss>,
+}
+
 /// The recorded category of the decisions the deep search disagreed with most: the audit row has no
 /// category, so each one is matched to the decision record the bot stored for that hand (the
 /// candidate whose action and amount it took). This is the only place the calibration's categories
 /// and the analyst's "what it cost" meet, and it is what settles whether a category-level
 /// miscalibration is a decision-level loss (0273).
-fn worst_by_category(store: &Store, rows: &[(String, sv10_store::store::AuditResult)]) -> String {
-    let mut worst: Vec<&(String, sv10_store::store::AuditResult)> = rows.iter().filter(|(_, r)| r.gap_bb > 0.0).collect();
+fn worst_by_category(store: &Store, rows: &[Graded]) -> WorstByCategory {
+    let mut worst: Vec<&Graded> = rows.iter().filter(|(_, r)| r.gap_bb > 0.0).collect();
     worst.sort_by(|a, b| b.1.gap_bb.total_cmp(&a.1.gap_bb));
-    let sample: Vec<&(String, sv10_store::store::AuditResult)> = worst.iter().take(400).copied().collect();
+    let sample: Vec<&Graded> = worst.iter().take(400).copied().collect();
     let mut by_category: std::collections::BTreeMap<String, (usize, f64)> = Default::default();
     let mut unattributed = 0usize;
     for (_, r) in &sample {
@@ -257,23 +311,27 @@ fn worst_by_category(store: &Store, rows: &[(String, sv10_store::store::AuditRes
         c.0 += 1;
         c.1 += r.gap_bb;
     }
-    if by_category.is_empty() {
-        return format!("   the worst {unattributed} disagreements had no recorded decision to attribute them to\n");
+    let mut cats: Vec<CategoryLoss> = by_category.into_iter().map(|(category, (n, gap_bb))| CategoryLoss { category, n, gap_bb }).collect();
+    cats.sort_by(|a, b| b.gap_bb.total_cmp(&a.gap_bb));
+    cats.truncate(WORST_CATEGORIES);
+    WorstByCategory { sample: sample.len(), unattributed, rows: cats }
+}
+
+impl WorstByCategory {
+    /// The table as the text report prints it.
+    fn text(&self) -> String {
+        if self.rows.is_empty() {
+            return format!("   the worst {} disagreements had no recorded decision to attribute them to\n", self.unattributed);
+        }
+        let mut out = format!(
+            "\n   the {} worst disagreements, by the category the bot priced ({} unattributed):\n   {:<24} {:>5} {:>10}\n",
+            self.sample, self.unattributed, "category", "n", "given up"
+        );
+        for c in &self.rows {
+            out.push_str(&format!("   {:<24} {:>5} {:>10.1}\n", c.category, c.n, c.gap_bb));
+        }
+        out
     }
-    let mut out = format!(
-        "\n   the {} worst disagreements, by the category the bot priced ({} unattributed):\n   {:<24} {:>5} {:>10}\n",
-        sample.len(),
-        unattributed,
-        "category",
-        "n",
-        "given up"
-    );
-    let mut rows: Vec<(String, (usize, f64))> = by_category.into_iter().collect();
-    rows.sort_by(|a, b| b.1.1.total_cmp(&a.1.1));
-    for (cat, (n, total)) in rows.into_iter().take(12) {
-        out.push_str(&format!("   {cat:<24} {n:>5} {total:>10.1}\n"));
-    }
-    out
 }
 
 /// The category of the candidate a decision took, from the record the bot stored for that hand.
@@ -406,5 +464,22 @@ mod tests {
         // Two keep the action and change its size; one changes the action; the exact match is neither.
         assert_eq!((c.size_only, c.other_action), (2, 1));
         assert_eq!(c.deep["raise:1605"], 1, "every best candidate is counted, an agreement included");
+    }
+
+    /// #723: `--json` is one parseable object over the same `AuditResult` verdicts and class rows the
+    /// table is built from, and the empty-window text is what an operator read before the flag existed.
+    #[test]
+    fn the_audit_json_parses_and_the_empty_text_is_unchanged() {
+        let dir = std::env::temp_dir().join(format!("sv10-audit-json-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("t.db")).unwrap();
+        assert_eq!(audit_by(&store, 8, None, false).unwrap(), "no analyst re-solves in the last 8 days");
+        let json: serde_json::Value = serde_json::from_str(&audit_by(&store, 8, Some(3), true).unwrap()).unwrap();
+        assert_eq!((json["days"].as_i64(), json["version"].as_u64()), (Some(8), Some(3)));
+        assert_eq!(json["graded"], 0);
+        assert_eq!(json["classes"].as_array().map(Vec::len), Some(0));
+        assert_eq!(json["verdicts"].as_array().map(Vec::len), Some(0));
+        assert!(json["population"].as_str().unwrap().contains("deep search re-solves"), "{json}");
     }
 }

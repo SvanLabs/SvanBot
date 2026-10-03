@@ -21,7 +21,10 @@ use sv10_core::model::HandSummary;
 use sv10_store::store::{HandRow, Store};
 
 /// One hand in which chips moved between us and the rival, classified.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// `Serialize` is what `review rival --json` prints (#723), the same struct the report's tables and
+/// its biggest-confrontations lines are built from.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct Confrontation {
     /// `they fold`, `we fold` or `showdown`.
     pub ending: &'static str,
@@ -183,18 +186,25 @@ fn fleet_rows(store: &Store) -> Result<Vec<HandRow>> {
     Ok(rows)
 }
 
+/// One group table's rows: the group key, confrontations in it, flow and luck-removed flow in bb.
+type GroupRow = (String, usize, f64, f64);
+
 /// The rival report for each of `args` naming an opponent (0317); a `since=DATE` argument (RFC 3339
 /// or `YYYY-MM-DD`) keeps only hands that ended then or later. A window matters: the five largest
 /// pots against the heaviest rival were all played before banking (0204) capped table stacks.
-pub fn rival(store: &Store, args: &[String]) -> Result<String> {
+///
+/// `json` (#723) prints one JSON object per run instead of the tables: the same `Confrontation`
+/// structs, group rows and rates, so an agent reads the numbers rather than the layout.
+pub fn rival(store: &Store, args: &[String], json: bool) -> Result<String> {
     let since = args.iter().find_map(|a| a.strip_prefix("since=")).unwrap_or("");
-    let names: Vec<&String> = args.iter().filter(|a| !a.starts_with("since=")).collect();
+    let names: Vec<&String> = args.iter().filter(|a| !a.starts_with("since=") && !a.starts_with("--")).collect();
     let rows: Vec<HandRow> = fleet_rows(store)?.into_iter().filter(|r| r.ended_at.as_str() >= since).collect();
     // The flow half of this report splits the ledger's number, so it shares the ledger's population:
     // champion play, the experiment arms' treatment hands left out (0361). The whole net keeps them.
     let treated = store.treatment_hands()?;
     let ordinary = |r: &HandRow| !treated.contains(&(r.bot.clone(), r.hand_id.clone()));
-    let mut out = if since.is_empty() { String::new() } else { format!("hands ended since {since}\n") };
+    let mut out = if since.is_empty() || json { String::new() } else { format!("hands ended since {since}\n") };
+    let mut rivals: Vec<serde_json::Value> = Vec::new();
     for name in names {
         let needle = format!("{}]", serde_json::Value::String(name.clone()));
         let (mut dealt, mut table_net, mut table_ev, mut flow, mut flow_ev) = (0usize, vec![], vec![], vec![], vec![]);
@@ -241,13 +251,84 @@ pub fn rival(store: &Store, args: &[String]) -> Result<String> {
             }
         }
         if dealt == 0 {
-            let _ = writeln!(out, "{name}: never dealt in with our bots\n");
+            if json {
+                rivals.push(serde_json::json!({"name": name, "hands": 0, "note": "never dealt in with our bots"}));
+            } else {
+                let _ = writeln!(out, "{name}: never dealt in with our bots\n");
+            }
             continue;
         }
         let line = |v: &[f64]| {
             let (m, h) = rate(v);
             format!("{m:+8.1} ± {h:5.1} bb/100 ({:+.1}..{:+.1})", m - h, m + h)
         };
+        // The group tables are built here, once, and read by both renders (#723).
+        let groups: [(&str, Key); 6] = [
+            ("how it ended", |c| c.ending.to_string()),
+            ("ended on", |c| format!("{:?} {}", c.street, c.ending)),
+            ("pot type", |c| c.pot_type.to_string()),
+            ("position", |c| if c.in_position { "we act last".into() } else { "they act last".into() }),
+            ("last preflop raise", |c| c.opener.to_string()),
+            ("pot type × opener", |c| format!("{} by {}", c.pot_type, c.opener)),
+        ];
+        let mut tables: Vec<(&str, Vec<GroupRow>)> = Vec::new();
+        for (title, key) in groups {
+            let mut by: BTreeMap<String, (usize, f64, f64)> = BTreeMap::new();
+            for (c, _, _) in &found {
+                let e = by.entry(key(c)).or_default();
+                e.0 += 1;
+                e.1 += c.flow_bb;
+                e.2 += c.flow_bb + c.luck_bb;
+            }
+            let mut rows: Vec<GroupRow> = by.into_iter().map(|(k, (n, sum, ev))| (k, n, sum, ev)).collect();
+            rows.sort_by(|a, b| a.3.total_cmp(&b.3));
+            tables.push((title, rows));
+        }
+        found.sort_by(|a, b| a.0.flow_bb.abs().total_cmp(&b.0.flow_bb.abs()).reverse());
+        if json {
+            let table_json: Vec<serde_json::Value> = tables
+                .iter()
+                .map(|(title, rows)| {
+                    let rows: Vec<serde_json::Value> = rows
+                        .iter()
+                        .map(|(k, n, sum, ev)| {
+                            serde_json::json!({"key": k, "n": n, "bb100": sum / dealt as f64 * 100.0,
+                                "ev_bb100": ev / dealt as f64 * 100.0, "bb_per_conf": ev / (*n).max(1) as f64})
+                        })
+                        .collect();
+                    serde_json::json!({"by": title, "rows": rows})
+                })
+                .collect();
+            let cbet: Vec<serde_json::Value> = ["all", "no pair of ours", "one pair", "two pair+"]
+                .iter()
+                .map(|key| {
+                    // The same tallies the text's `shares` lines read, an empty tally when the
+                    // holding never came up (the text prints it as `n 0`).
+                    serde_json::json!({"holding": key,
+                        "theirs": theirs.get(*key).cloned().unwrap_or_default(),
+                        "others": others.get(*key).cloned().unwrap_or_default()})
+                })
+                .collect();
+            let r = |v: &[f64]| {
+                let (m, h) = rate(v);
+                serde_json::json!({"bb100": m, "half_width": h})
+            };
+            rivals.push(serde_json::json!({
+                "name": name,
+                "hands": dealt,
+                "confrontations": found.len(),
+                "unreconciled": unreconciled,
+                "flow": r(&flow),
+                "flow_luck_removed": r(&flow_ev),
+                "table_net": r(&table_net),
+                "table_net_luck_removed": r(&table_ev),
+                "to_prove": hands_to_prove(&flow_ev),
+                "cbet_answers": cbet,
+                "groups": table_json,
+                "biggest": found.iter().take(8).map(|(c, bot, id)| serde_json::json!({"bot": bot, "hand": id, "confrontation": c})).collect::<Vec<_>>(),
+            }));
+            continue;
+        }
         let _ = writeln!(
             out,
             "{name}: {dealt} hands dealt in with our bots (every hand), {} champion confrontations (chips moved between us), {unreconciled} not reconciled",
@@ -263,31 +344,14 @@ pub fn rival(store: &Store, args: &[String]) -> Result<String> {
             let (t, o) = (theirs.get(key).cloned().unwrap_or_default(), others.get(key).cloned().unwrap_or_default());
             let _ = writeln!(out, "    {key:<16} {} | {}", shares(&t), shares(&o));
         }
-        let groups: [(&str, Key); 6] = [
-            ("how it ended", |c| c.ending.to_string()),
-            ("ended on", |c| format!("{:?} {}", c.street, c.ending)),
-            ("pot type", |c| c.pot_type.to_string()),
-            ("position", |c| if c.in_position { "we act last".into() } else { "they act last".into() }),
-            ("last preflop raise", |c| c.opener.to_string()),
-            ("pot type × opener", |c| format!("{} by {}", c.pot_type, c.opener)),
-        ];
-        for (title, key) in groups {
-            let mut by: BTreeMap<String, (usize, f64, f64)> = BTreeMap::new();
-            for (c, _, _) in &found {
-                let e = by.entry(key(c)).or_default();
-                e.0 += 1;
-                e.1 += c.flow_bb;
-                e.2 += c.flow_bb + c.luck_bb;
-            }
-            let mut rows: Vec<_> = by.into_iter().collect();
-            rows.sort_by(|a, b| a.1.2.total_cmp(&b.1.2));
+        for (title, rows) in &tables {
             let _ = writeln!(out, "  {title:<24} {:>7} {:>11} {:>11} {:>9}", "n", "bb/100", "ev bb/100", "bb/conf");
-            for (k, (n, sum, ev)) in rows {
+            for (k, n, sum, ev) in rows {
                 let per100 = |x: f64| x / dealt as f64 * 100.0;
-                let _ = writeln!(out, "    {k:<22} {n:>7} {:>+11.1} {:>+11.1} {:>+9.2}", per100(sum), per100(ev), ev / n.max(1) as f64);
+                let _ =
+                    writeln!(out, "    {k:<22} {n:>7} {:>+11.1} {:>+11.1} {:>+9.2}", per100(*sum), per100(*ev), ev / (*n).max(1) as f64);
             }
         }
-        found.sort_by(|a, b| a.0.flow_bb.abs().total_cmp(&b.0.flow_bb.abs()).reverse());
         let _ = writeln!(out, "  biggest confrontations (bb, luck removed):");
         for (c, bot, id) in found.iter().take(8) {
             let _ = writeln!(
@@ -302,6 +366,13 @@ pub fn rival(store: &Store, args: &[String]) -> Result<String> {
             );
         }
         out.push('\n');
+    }
+    if json {
+        return Ok(serde_json::json!({
+            "since": if since.is_empty() { serde_json::Value::Null } else { serde_json::json!(since) },
+            "rivals": rivals,
+        })
+        .to_string());
     }
     out.push_str(
         "'bb/100': each class's share of the flow per 100 hands dealt in together (the rows add up to the flow).\n\
@@ -373,70 +444,4 @@ pub fn allin_luck(store: &Store, names: &[String]) -> Result<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The live all-in hand of `sv10_core::flow`'s tests: SurSvan (seat 4, big blind) shoves the flop,
-    /// POKER_STUDY_AI (seat 5, the preflop raiser) calls 2,000, Bertabot folds.
-    const ALL_IN: &str = r#"{"players":[[0,"MissCard"],[1,"jonnaBee"],[2,"Bertabot"],[3,"RObert"],[4,"SurSvan"],[5,"POKER_STUDY_AI"]],"button":2,"bb":20,"history":[{"seat":5,"street":"Preflop","kind":"Raise","to":50,"pot_before":30,"to_call_before":20,"bet_before":0,"full_raise":true},{"seat":0,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":1,"street":"Preflop","kind":"Fold","to":0,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":2,"street":"Preflop","kind":"Call","to":50,"pot_before":80,"to_call_before":50,"bet_before":0,"full_raise":false},{"seat":3,"street":"Preflop","kind":"Fold","to":0,"pot_before":130,"to_call_before":40,"bet_before":10,"full_raise":false},{"seat":4,"street":"Preflop","kind":"Call","to":50,"pot_before":130,"to_call_before":30,"bet_before":20,"full_raise":false},{"seat":4,"street":"Flop","kind":"AllIn","to":0,"pot_before":160,"to_call_before":0,"bet_before":0,"full_raise":false},{"seat":5,"street":"Flop","kind":"Raise","to":4629,"pot_before":2110,"to_call_before":1950,"bet_before":0,"full_raise":true},{"seat":2,"street":"Flop","kind":"Fold","to":0,"pot_before":6739,"to_call_before":4629,"bet_before":0,"full_raise":false}],"board":["5d","As","3s","6s","Th"],"shown":[[4,["Ts","Ac"]],[5,["Ah","5h"]]]}"#;
-
-    /// 0317: a confrontation is classified by how it ended, the pot type, position and the preflop
-    /// raiser, and the rival's share of an all-in's luck is exactly 2·min(contribution)/pot of ours.
-    #[test]
-    fn a_heads_up_all_in_is_classified_and_its_luck_split_exactly() {
-        let h: HandSummary = serde_json::from_str(ALL_IN).unwrap();
-        // We lost 2,000 to seat 5; our all-in EV was 600 chips better than the result.
-        let c = classify(&h, 4, 5, -2_000.0, 600.0, 4_060).unwrap();
-        assert_eq!((c.ending, c.street, c.pot_type, c.opener), ("showdown", Street::Flop, "single-raised", "they"));
-        assert!(!c.in_position, "seat 5 acts after the big blind postflop");
-        assert_eq!(c.flow_bb, -100.0);
-        // 2 · min(2,000, 2,000) / 4,060 of the 600-chip adjustment, in big blinds.
-        assert!((c.luck_bb - 600.0 * 4_000.0 / 4_060.0 / 20.0).abs() < 1e-9, "{}", c.luck_bb);
-        // Against the folder: they folded on the flop, and no luck is theirs (they were not all in).
-        let f = classify(&h, 4, 2, 50.0, 600.0, 4_060).unwrap();
-        assert_eq!((f.ending, f.street, f.luck_bb), ("they fold", Street::Flop, 0.0));
-        assert_eq!(classify(&h, 4, 0, 0.0, 600.0, 4_060), None, "no chips moved: not a confrontation");
-    }
-
-    /// 0317: the c-bet answer is found only when the rival raised last preflop, bet the flop first,
-    /// and we acted after the bet — here POKER_STUDY_AI raised, but we led the flop, so it is no c-bet.
-    #[test]
-    fn a_flop_c_bet_answer_needs_the_raiser_to_bet_first() {
-        let h: HandSummary = serde_json::from_str(ALL_IN).unwrap();
-        assert_eq!(cbet_answer(&h, 4), None, "we shoved first: not a c-bet");
-        let mut bet = h.clone();
-        // Seat 5 bets the flop first; we (seat 4) fold, then Bertabot calls.
-        bet.history.truncate(6);
-        let r = |seat, kind, to, pot_before, to_call_before| sv10_core::engine::ActionRecord {
-            seat,
-            street: Street::Flop,
-            kind,
-            to,
-            pot_before,
-            to_call_before,
-            bet_before: 0,
-            full_raise: kind == ActionKind::Raise,
-            think_ms: None,
-            ..h.history[0].clone()
-        };
-        bet.history.push(r(4, ActionKind::Check, 0, 160, 0));
-        bet.history.push(r(5, ActionKind::Raise, 100, 160, 0));
-        bet.history.push(r(2, ActionKind::Call, 100, 260, 100));
-        bet.history.push(r(4, ActionKind::Fold, 0, 360, 100));
-        assert_eq!(cbet_answer(&bet, 4), Some((5, "fold")));
-        assert_eq!(cbet_answer(&bet, 5), None, "the raiser does not answer its own c-bet");
-    }
-
-    /// The honest reading of "always win": a lower bound above zero, or how far away it is.
-    #[test]
-    fn hands_to_prove_a_win_follow_the_rate_and_the_spread() {
-        let losing = vec![-1.0, 1.0, -2.0, 0.5];
-        assert!(hands_to_prove(&losing).starts_with("not ahead"));
-        // A mean of 0.1 bb with a 1 bb spread needs about (1.96 · 1 / 0.1)² ≈ 384 hands.
-        let small: Vec<f64> = (0..100).map(|i| if i % 2 == 0 { 1.1 } else { -0.9 }).collect();
-        let text = hands_to_prove(&small);
-        assert!(text.starts_with("about 38"), "{text}");
-        let clear: Vec<f64> = (0..400).map(|i| if i % 2 == 0 { 1.5 } else { -0.5 }).collect();
-        assert!(hands_to_prove(&clear).starts_with("proven"));
-    }
-}
+mod tests;

@@ -419,9 +419,18 @@ pub fn view(shared: &Shared, now: f64) -> Value {
 /// `review experiment [TARGET]`: without a target, every target with live hands and the stored
 /// mode; with one, its estimate and gate, then every hand with its arm, result, decision ids and
 /// replay ids (`review replay id=N` re-runs a recorded decision bit for bit).
-pub fn review(store: &sv10_store::store::Store, target: Option<&str>, out: &mut impl std::io::Write) -> anyhow::Result<()> {
+///
+/// `json` (#723) prints one JSON object instead of the lines: the stored `ModeState`, the `Verdicts`
+/// and each target's `Estimate` are the structs the text is formatted from, so an agent reads the
+/// same numbers.
+pub fn review(store: &sv10_store::store::Store, target: Option<&str>, out: &mut impl std::io::Write, json: bool) -> anyhow::Result<()> {
     let Some(target) = target else {
         let mode: Option<ModeState> = store.get_kv(MODE_KEY)?.and_then(|s| serde_json::from_str(&s).ok());
+        if json {
+            let verdicts = store.get_kv(VERDICTS_KEY)?.and_then(|s| serde_json::from_str::<Verdicts>(&s).ok()).unwrap_or_default();
+            writeln!(out, "{}", json!({"mode": mode, "verdicts": verdicts, "targets": store.experiment_targets()?}))?;
+            return Ok(());
+        }
         match mode {
             Some(m) => writeln!(
                 out,
@@ -444,6 +453,16 @@ pub fn review(store: &sv10_store::store::Store, target: Option<&str>, out: &mut 
     };
     let hands = store.target_hands(target)?;
     let e = Estimate::of(&hands);
+    if json {
+        let mut rows = Vec::new();
+        for h in &hands {
+            let (decisions, replays) = store.hand_audit_ids(&h.bot, &h.hand_id)?;
+            rows.push(json!({"ts": h.ts, "bot": h.bot, "hand_id": h.hand_id, "arm": h.arm, "net": h.net,
+                "decisions": decisions, "replays": replays}));
+        }
+        writeln!(out, "{}", json!({"target": target, "estimate": e, "next_gate": e.next_gate(), "verdict": e.verdict(), "hands": rows}))?;
+        return Ok(());
+    }
     writeln!(
         out,
         "{target}: treatment − control {:+.1} bb/100 (95% {:+.1}..{:+.1}); {} treatment / {} control hands; {}; verdict {:?}",

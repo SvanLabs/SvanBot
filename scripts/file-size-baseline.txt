@@ -1,6 +1,5 @@
 # path lines — files over 500 lines when the limit was adopted (may shrink, never grow)
 crates/apps/bot/src/api/state.rs 939
-crates/apps/bot/src/bin/review.rs 546
 crates/deps/pack/src/deflate.rs 603
 crates/libs/model/src/oprange/mod.rs 588
 crates/libs/policy/src/policy/mod.rs 705

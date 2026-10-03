@@ -84,8 +84,23 @@ fn price_basis(recorded: &Params, params: &Params) -> &'static str {
     }
 }
 
-pub fn replay(store: &Store, args: &[String]) -> Result<()> {
+/// One run's outcome: the text the CLI prints (the default), whether it was a `--current` what-if,
+/// and the counts the exit code reads.
+pub struct Report {
+    /// The text rows and footer, or — `--json` (#723) — one JSON object.
+    pub out: String,
+    /// The run re-solved today's champion knobs rather than the recorded parameters.
+    pub current: bool,
+    /// Rows that replayed bit-identically.
+    pub same: usize,
+    /// Rows replayed.
+    pub total: usize,
+}
+
+/// Build the report for `args`; `json` prints one object instead of the text rows.
+pub fn report(store: &Store, args: &[String], json: bool) -> Result<Report> {
     use crate::replay::{ReplayRecord, exact_inputs, identical, rerun};
+    use std::fmt::Write as _;
     let current = args.iter().any(|a| a == "--current");
     let id = args.iter().find_map(|a| a.strip_prefix("id=")).and_then(|v| v.parse().ok());
     let n = args.iter().find_map(|a| a.parse::<usize>().ok()).unwrap_or(10);
@@ -95,12 +110,19 @@ pub fn replay(store: &Store, args: &[String]) -> Result<()> {
     // depend on the record (a test holds `label` to that).
     let what = source.label(&Params::default(), &source.params(&Params::default(), live.as_ref()));
     let (mut same, mut moved, mut total) = (0, 0, 0);
+    let mut out = String::new();
+    let mut rows: Vec<serde_json::Value> = Vec::new();
     for row in store.replays(n, id)? {
-        let (rid, ts, bot, hand, json) = (row.id, crate::local_time(&row.ts), row.bot, row.hand_id, row.record);
-        let rec: ReplayRecord = match serde_json::from_str(&json) {
+        let (rid, ts, bot, hand, record) = (row.id, crate::local_time(&row.ts), row.bot, row.hand_id, row.record);
+        let rec: ReplayRecord = match serde_json::from_str(&record) {
             Ok(r) => r,
             Err(e) => {
-                println!("#{rid} unreadable: {e}");
+                // stdout is exactly one JSON object in JSON mode, so the note goes to stderr.
+                if json {
+                    eprintln!("#{rid} unreadable: {e}");
+                } else {
+                    println!("#{rid} unreadable: {e}");
+                }
                 continue;
             }
         };
@@ -121,7 +143,27 @@ pub fn replay(store: &Store, args: &[String]) -> Result<()> {
             moved += 1;
         }
         let sit = &rec.situation;
-        println!(
+        let status = if !inputs_exact {
+            "what-if inputs"
+        } else if exact {
+            "identical"
+        } else if changed {
+            "CHANGED"
+        } else {
+            "same action, EVs differ"
+        };
+        if json {
+            rows.push(serde_json::json!({
+                "id": rid, "ts": ts, "bot": bot, "hand": hand, "street": sit.street.name(),
+                "pot_bb": sit.pot / sit.bb.max(1), "call_bb": sit.call_amount / sit.bb.max(1),
+                "recorded": {"action": rec.action.0, "amount": rec.action.1},
+                "replay": {"action": d.action_name, "amount": d.amount},
+                "identical": exact, "changed": changed, "inputs_exact": inputs_exact, "status": status,
+            }));
+            continue;
+        }
+        let _ = writeln!(
+            out,
             "#{rid} {ts} {bot} hand {hand} {} pot {} bb, call {} bb: recorded {} {:?} -> replay {} {:?} {}",
             sit.street.name(),
             sit.pot / sit.bb.max(1),
@@ -130,19 +172,26 @@ pub fn replay(store: &Store, args: &[String]) -> Result<()> {
             rec.action.1,
             d.action_name,
             d.amount,
-            if !inputs_exact {
-                "what-if inputs"
-            } else if exact {
-                "identical"
-            } else if changed {
-                "CHANGED"
-            } else {
-                "same action, EVs differ"
-            }
+            status
         );
     }
-    println!("{total} replayed ({what}): {same} bit-identical, {moved} with a different action");
-    if !current && same < total {
+    if json {
+        // The footer's numbers and the rows above them, one object.
+        out = serde_json::json!({
+            "basis": what, "current": current, "total": total, "identical": same, "moved": moved, "rows": rows,
+        })
+        .to_string();
+    } else {
+        let _ = writeln!(out, "{total} replayed ({what}): {same} bit-identical, {moved} with a different action");
+    }
+    Ok(Report { out, current, same, total })
+}
+
+pub fn replay(store: &Store, args: &[String]) -> Result<()> {
+    let json = args.iter().any(|a| a == "--json");
+    let r = report(store, args, json)?;
+    print!("{}", r.out);
+    if !r.current && r.same < r.total {
         std::process::exit(1);
     }
     Ok(())
@@ -271,5 +320,23 @@ mod tests {
             let second = source.label(&other, &source.params(&other, live));
             assert_eq!(first, second, "{source:?} names the record it was handed");
         }
+    }
+
+    /// #723: `--json` is one parseable object over the same rows and footer numbers, and the text
+    /// footer is what a script read before the flag existed (with no rows: nothing replayed).
+    #[test]
+    fn the_replay_json_parses_and_the_text_footer_is_unchanged() {
+        let dir = std::env::temp_dir().join(format!("sv10-replay-json-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("t.db")).unwrap();
+        let text = report(&store, &[], false).unwrap();
+        assert_eq!(text.out, "0 replayed (the recorded parameters): 0 bit-identical, 0 with a different action\n");
+        assert!(!text.current && text.total == 0, "nothing replayed, and the exit code reads this");
+        let json: serde_json::Value = serde_json::from_str(&report(&store, &["--json".into()], true).unwrap().out).unwrap();
+        assert_eq!(json["basis"], "the recorded parameters");
+        assert_eq!((json["total"].as_u64(), json["identical"].as_u64(), json["moved"].as_u64()), (Some(0), Some(0), Some(0)));
+        assert_eq!(json["current"], false);
+        assert_eq!(json["rows"].as_array().map(Vec::len), Some(0));
     }
 }

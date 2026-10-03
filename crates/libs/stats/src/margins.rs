@@ -31,7 +31,12 @@ pub const MARGIN: (f64, f64) = (-1.0, 1.0);
 pub const MIN_BIN: usize = 30;
 
 /// One predicted-EV bin of one category.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// `Serialize` is what `review margins --json` prints, the same bins the text table is built from
+/// (#723). `at_margin` and `miscalibrated` are not fields: both are derived from the bin's own
+/// numbers ([`MarginBin::at_margin`], [`MarginBin::miscalibrated`]), so a reader applies the same
+/// rule the text marks with `margin`/`*`.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct MarginBin {
     /// Lower edge of the bin (bb).
     pub lo: f64,
