@@ -198,7 +198,8 @@ of our own play decays on the same cadence, so it describes how we have been pla
   same-origin referrer policy.
 - **Seat history**: dashboard hand lists, replays, opponent results and own-player cards read all
   stored names of a renamed seat through `api::seat_history`. Recent limits apply to the combined
-  history; replay decisions use the bot name stored on the selected hand.
+  history; replay decisions use the bot name stored on the selected hand. The card's `vs_us` rates
+  normalize each settled result by its recorded positive blind; unpriced hands stay in chip totals.
 - **Realtime dashboard** (`/api/events`, SSE): table events (`action`, `board`, `result`,
   `decision`, `hand`) are forwarded as they happen; every bot update sends that bot's whole live
   table (`api::state::table_json`, a few KB, each opponent seat with its model `read`) as a
