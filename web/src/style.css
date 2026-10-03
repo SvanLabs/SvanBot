@@ -519,3 +519,15 @@ body{background:radial-gradient(1200px 600px at 8% -10%,#e4b9561a,transparent 60
 [data-theme="light"] .pc-big.negative b,[data-theme="light"] .pc-recent .negative{color:#a8453c}
 [data-theme="light"] .quiz-option{background:linear-gradient(180deg,#ffffff,#f0f1e7);border-color:#b6bc9f}
 [data-theme="light"] .quiz-option small{color:#5f6553}
+
+/* The operator's notes scratchpad (#730): one plain-text box that saves itself. Tokens only, so the
+   light theme (#728) re-inks it with the rest of the room. */
+.notes-input{display:block;width:calc(100% - 28px);margin:14px;min-height:150px;resize:vertical;padding:10px;background:var(--bg);border:1px solid var(--line);border-radius:5px;color:inherit;font:12px/1.8 Inter,sans-serif}
+.notes-input:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+.notes-input::placeholder{color:var(--muted);opacity:.75}
+.notes-state{font:10px var(--mono);color:var(--muted);white-space:nowrap}
+.notes-state[data-state="unsaved"]{color:var(--amber)}
+.notes-state[data-state="failed"]{color:var(--red)}
+.notes-state[data-state="saved"]{color:var(--mint)}
+.notes-foot{margin:0 14px 15px;font-size:11px;line-height:1.7;color:var(--muted)}
+.notes-foot .count{display:block;margin-top:6px;font:10px var(--mono)}

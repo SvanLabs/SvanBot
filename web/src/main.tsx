@@ -29,6 +29,7 @@ import { announceSession, StaleNote, usePoll } from './api';
 import { PokerTable, TvMode, DecisionStrip } from './table';
 import { scopeLabel, Performance, Autonomy, RecentExperiments, ExperimentModePanel, Season, Profile, SearchFunnel } from './training';
 import { Replay, StartingHands } from './panels';
+import { NotesPanel } from './notes';
 import { IntelPanel } from './intel';
 import { TimelinePanel } from './timeline';
 import { readLocal, writeLocal } from './storage';
@@ -53,7 +54,7 @@ function statusPhrase(bot?: Bot) {
 /** Where each widget sits until the operator arranges the board (#729). The board and the collapse
  *  control read the same document the server stores, so the widgets one names are the widgets the
  *  other acts on. */
-const WIDGET_DEFAULTS: DashboardLayout = {left:['autonomy', 'experiments', 'experiment-mode', 'calibration', 'accuracy', 'wiring', 'highlights', 'health', 'privacy'], center:['table', 'ranges', 'ticker', 'leaks', 'fleet-race', 'starting-hands', 'recent-hands', 'opponents'], right:['monitor', 'updates', 'host', 'season-race', 'badges', 'rivals', 'intel', 'stories', 'performance', 'champion', 'season', 'activity'], hidden:[]};
+const WIDGET_DEFAULTS: DashboardLayout = {left:['autonomy', 'experiments', 'experiment-mode', 'calibration', 'accuracy', 'wiring', 'highlights', 'health', 'privacy'], center:['table', 'ranges', 'ticker', 'leaks', 'fleet-race', 'starting-hands', 'recent-hands', 'opponents'], right:['monitor', 'updates', 'host', 'season-race', 'badges', 'rivals', 'intel', 'stories', 'performance', 'champion', 'season', 'activity', 'notes'], hidden:[]};
 const ALL_WIDGET_IDS = [...WIDGET_DEFAULTS.left, ...WIDGET_DEFAULTS.center, ...WIDGET_DEFAULTS.right, ...WIDGET_DEFAULTS.hidden];
 
 function App() {
@@ -305,6 +306,7 @@ function App() {
     {id:'performance', title:'Performance', node:<Panel title="Performance" icon={<TrendingUp size={15}/>} aside={<span className="tag">{scopeLabel(bot?.metrics.season).toUpperCase()}</span>}><Performance metrics={bot?.metrics}/></Panel>},
     {id:'champion', title:'Champion profile', node:<Panel title="Champion profile" icon={<Layers size={15}/>}><Profile training={snapshot?.training} bot={bot}/>{snapshot?.training.can_rollback && <button className="button rollback" disabled={busy} onClick={()=>trainingCommand('rollback')}><RotateCcw size={12}/>Restore previous champion</button>}</Panel>},
     {id:'season', title:'Season ledger', node:<Season bot={bot}/>},
+    {id:'notes', title:'Notes', node:<NotesPanel/>},
     {id:'activity', title:'Activity log', node:<Panel title="Activity log" icon={<Terminal size={15}/>} aside={<span className="live-label"><span className="status-dot"/>LIVE</span>}><label className="log-search"><Search size={12}/><input aria-label="Search activity" placeholder="Filter activity…" value={logQuery} onChange={event=>setLogQuery(event.target.value)}/></label><div className="log-list">{snapshot?.logs.filter(log=>(log.slot === bot?.slot || log.slot === null) && log.message.toLowerCase().includes(logQuery.toLowerCase())).slice(0,15).map(log=><div className={`log-entry ${log.level}`} key={log.id}><time>{time(log.ts, { seconds: true })}</time><p>{log.message}</p></div>)}{!snapshot?.logs.length && <div className="log-placeholder"><span>&gt;_</span>System ready.<br/>Waiting for your first session.</div>}</div></Panel>},
       ]}/>
       <footer><span><Spade size={12}/> SVANBOT <span className="footer-separator">/</span> Built on proven control-room foundations.</span><span>LOCAL CONTROL ROOM</span></footer>

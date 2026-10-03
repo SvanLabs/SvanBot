@@ -27,6 +27,7 @@ mod insights;
 mod intel;
 mod layout;
 mod monitor;
+mod notes;
 mod opponents;
 mod players;
 mod releases;
@@ -49,6 +50,7 @@ use insights::*;
 use intel::*;
 use layout::*;
 use monitor::*;
+use notes::*;
 use opponents::*;
 use players::*;
 use releases::checkout::*;
@@ -231,6 +233,9 @@ pub async fn serve(shared: Arc<Shared>) -> Result<()> {
         // The dashboard board's arrangement (#729). Dashboard-only on purpose: the public TV's
         // router (`tv::router`) does not mount it, and never renders the board.
         .route("/api/layout", get(get_layout).post(save_layout))
+        // The operator's notes scratchpad (#730), dashboard-only for the same reason: the public
+        // TV's router answers 404 to every `/api/` path it does not serve, and never renders the board.
+        .route("/api/notes", get(get_notes).post(save_notes))
         .route("/api/events", get(events))
         .route("/api/raw", get(raw_state))
         .route("/api/bots/{slot}/hands", get(hands))

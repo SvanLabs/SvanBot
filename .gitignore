@@ -2,7 +2,9 @@
 /artifacts/*
 !/artifacts/README.md
 /web/dist/
-/web/node_modules/
+# No trailing slash: the pattern must also cover the `web/node_modules` symlink that worktrees use
+# to reach the main checkout's install, which a directory-only pattern leaves untracked and addable.
+/web/node_modules
 /web/test-results/
 /web/playwright-report/
 .env

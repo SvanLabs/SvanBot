@@ -53,6 +53,11 @@ export interface Snapshot { bots: Bot[]; training: Training; logs: Log[]; update
  *  the browser-local copy renders until that answer arrives and remains the fallback when the
  *  endpoint cannot be reached. Panel collapse is a reading preference and stays local. */
 export interface DashboardLayout { left: string[]; center: string[]; right: string[]; hidden: string[] }
+/** The operator's notes scratchpad (`GET`/`POST /api/notes`, #730): one plain-text document, saved
+ *  on the server so it survives a browser change, with this browser's copy (`svan-notes:v1`) as what
+ *  renders before the answer arrives and what stands when the endpoint cannot be reached. `GET`
+ *  answers `null` when nothing is stored — the client then keeps the copy it remembers. */
+export interface DashboardNotes { text: string }
 export interface Hand { id:number; hand_id:string; ts:number; hole:string[]; board:string[]; net:number | null; big_blind:number; version:string }
 export interface PositionSegments { early: { vpip: Estimate | null; pfr: Estimate | null }; late: { vpip: Estimate | null; pfr: Estimate | null } }
 export interface Opponent { style?: string; advice?: string; name: string; evidence_hands?: number; vpip?: Estimate; pfr?: Estimate; aggression?: Estimate; fold_to_bet?: Estimate; by_position?: PositionSegments }

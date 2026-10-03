@@ -73,6 +73,23 @@ mutation, and keeps the `svan-layout:v1` browser copy as what renders before the
 what stays when the endpoint cannot be reached. The public TV renders its own fixed table view and
 never reads the layout, and never asks the endpoint.
 
+## Operator notes (`GET`/`POST /api/notes`)
+
+`GET /api/notes` returns the operator's scratchpad — `{text}`, one plain-text note
+(`web/src/types.ts` `DashboardNotes`) — or `null` when none is stored. `POST /api/notes` stores the
+note and answers with what was stored; a body that is not `{text: string}`, or text past the 20,000
+character cap, is refused with 400 and changes nothing, and empty text clears the stored note (the
+store's convention for "nothing stored"). The document is one JSON value in the kv store
+(`dashboard.notes.v1`), so a note survives a browser change. Panel: `web/src/notes.tsx`, on the board
+as the `notes` widget.
+
+The client saves a second after the last keystroke, and at once on blur and on `pagehide` (a
+`keepalive` request, which a plain fetch would lose with the page). A save that fails stays on screen
+as failed and retries with doubling backoff rather than looking saved (LESSONS 24). Browser-local
+keys `svan-notes:v1` and `svan-notes:unsaved` hold the note and whether it reached the server: the
+local copy renders before the answer arrives, and the flag keeps a later load from adopting an older
+stored note over keystrokes that never got through. The public TV never mounts the endpoint.
+
 ## Per-opponent reads (`GET /api/intel`)
 
 `{fits: [{id: "fold"|"response"|"sizing", title, reads, stored, active, evidence: {gain_mnats,
