@@ -120,7 +120,7 @@ snapshot still accepts an empty board. This guards recovery frames without inven
 | `GET /season/me` | Balance before buy-in and top-up (spec: season chips, rank, hands) |
 | `POST /season/rebuy` | 1,500 chips when the balance is below the 1,000 minimum; honours `Retry-After` |
 | `GET /season/current` | Season clock: `winding_down`, `time_remaining_seconds` (no table moves while winding down), plus `season_number`, `season_id`, `start_date` (the boundary for season-scoped dashboard panels) |
-| `GET /season/leaderboard`, `/season/list`, `/season/{id}/leaderboard` | Ranks, reputation book, table seeking (30/min and 60/min per-IP limits respected) |
+| `GET /season/leaderboard`, `/season/list`, `/season/{id}/leaderboard` | Ranks, reputation book, table seeking (30/min and 60/min per-IP limits respected). Rank keys on `score = chip_balance + chips_at_table`, with the official display qualified at `min_hands=10` — table seeking passes it explicitly (`crates/apps/bot/src/experiment.rs`), while the reputation fetch reads the unqualified board (`crates/apps/bot/src/reputation.rs`) |
 | `GET /me/hand-history` | Past-hand download (30/min, spaced 2.6 s; stops at the 20,000-hand export cap, `SVANBOT_EXPORT_CAP`, which Pro keys ignore — `pro_tier` from `/season/me` lifts it automatically) |
 | `GET /me/hand-history/export?format=json&season_id=` | Per-season backfill, all ended seasons, 2 pages/bot/pass (undocumented analytics endpoint, verified live 2026-09-15; needs Pro — only Pro keys reach past seasons, Free keys get empty pages; spaced 6 s, the endpoint 429s at the plain 2.6 s pace) |
 
@@ -147,3 +147,8 @@ the calibrate gate.
   deferral. REST remains the fallback if the scheduled rebuy has not landed 30 s after its due time.
 - `action_rejected` with a recoverable code (`stale_turn_token`, `stale_hand_action`, `invalid_action`, `not_your_turn`, `no_hand_in_progress`) triggers a resync, at most 3 per hand. Private `your_turn` messages are never replayed and the 45 s deadline keeps running, so the snapshot's restored token is the only way to act again. The protocol codes (`missing_action_id`, `action_id_conflict`, `legacy_action_protocol`) are logged as errors and never resynced. Spec re-read 2026-09-23: the 45 s action deadline starts when the server sends `your_turn` and is never extended.
 - Idle `waiting_reason` values in `table_state` are not surfaced on the dashboard (non-fatal by spec).
+
+## Out of scope
+
+- Pro/portfolio management endpoints and private competitions (`competition_id` scope): unimplemented and unsupported — no client or config path sends them, and no operator order covers them. Recorded here so the delta audit does not re-open them as gaps.
+- Payout structure beyond the leaderboard score above is undocumented here until verified against a live leaderboard fetch.
