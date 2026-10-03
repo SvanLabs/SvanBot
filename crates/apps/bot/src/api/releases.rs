@@ -30,6 +30,9 @@ pub(super) async fn releases(State(s): State<Arc<Shared>>) -> Response {
             let tip = format!("{remote}/{branch}");
             let target = if git(root, &["rev-parse", "--verify", "--quiet", &tip]).is_some() { tip } else { "HEAD".to_string() };
             let (behind, changelog) = match &installed {
+                // Base for "what would an update install": the installed commit when recorded,
+                // else this checkout's own HEAD — a box with no install record still shows the
+                // line ahead of it instead of a silent empty changelog (issue #757 follow-up).
                 Some((base, _, _)) => {
                     let range = commit_range_to(root, base, &target);
                     let log = range
@@ -40,7 +43,21 @@ pub(super) async fn releases(State(s): State<Arc<Shared>>) -> Response {
                         .collect();
                     (range.len(), log)
                 }
-                _ => (0, Vec::new()),
+                // No install on record (fresh box, wiped progress): measure from this checkout's
+                // HEAD so pending commits still show with their subjects.
+                _ => match &head {
+                    Some((h, _)) => {
+                        let range = commit_range_to(root, h, &target);
+                        let log = range
+                            .iter()
+                            .map(|(c, subject)| {
+                                json!({"commit": c.chars().take(7).collect::<String>(), "subject": subject, "group": changelog_group(subject)})
+                            })
+                            .collect();
+                        (range.len(), log)
+                    }
+                    _ => (0, Vec::new()),
+                },
             };
             (installed, head, behind, dirty, changelog, last_check(&s.config.artifacts))
         }
