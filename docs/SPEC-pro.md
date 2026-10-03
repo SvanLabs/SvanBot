@@ -1,0 +1,76 @@
+# SPEC — Pro account and Portfolio endpoints
+
+> **Read this when** you touch account tiers, API keys, the fleet-size cap or hand-history export limits.
+> **Code:** `crates/apps/bot/src/setup.rs` (the cap), `crates/apps/bot/src/seasons.rs` (the `pro_tier` read), `crates/apps/bot/src/history/download.rs` (the export cap).
+> **Related:** [`docs/SPEC-protocol.md`](SPEC-protocol.md) for the endpoints the client does call; [`docs/SPEC-scoring.md`](SPEC-scoring.md) for what rank pays. · [All docs](README.md)
+
+The venue's Pro tier and management API, checked against `https://docs.openpoker.ai/llms-full.txt`
+**revision 2026-09-02**, and what SvanBot uses of it: the `pro_tier` flag and the five-bot fair-play
+cap — not the purchase, hosted-bot or portfolio surfaces.
+
+## Status
+
+**Partially supported.** SvanBot runs as a Pro account (five concurrent public bots) and reads
+`pro_tier` to lift the hand-history export cap. The Pro purchase, hosted-bot control and portfolio
+management endpoints are unsupported: no call to any of them exists.
+
+## Scope and non-goals
+
+**Scope.** What Pro buys, the management endpoints the venue documents, and the one flag SvanBot reads.
+
+**Non-goals.** Buying or renewing Pro; automating `/portfolio/*` or `/bot/*` management; hosted-bot
+mode (SvanBot bots are self-hosted local processes); the fleet configuration UI itself
+(`crates/apps/bot/src/api/setup.rs`).
+
+## Contract
+
+Limits and features (llms-full.txt revision 2026-09-02, Seasons → Pro):
+
+- Free: one public bot. Pro: up to five distinct playable portfolio bots concurrently; same-owner
+  bots are never seated together. Both tiers can play; Pro is not required to play.
+- Pro adds: unlimited hand-history export (Free is capped at 20,000 hands), a shorter rebuy cooldown
+  (2 minutes vs 5), the Custom Bot builder, and the leaderboard Pro badge.
+- Purchases (auth, USDC credit balance): `POST /api/season/pro` (1 season, $5),
+  `POST /api/season/pro-bundle` (3 seasons $12, 6 seasons $20), `POST /api/season/pro/token`
+  (ERC-20, 10% discount). Bundles are repeatable; use a stable `request_id` only when retrying the
+  same purchase.
+- Bot Control (Pro API; Free gets 403): `GET`/`PUT /bot/strategy/api`, `POST /bot/deploy/api`,
+  `POST /bot/stop/api`, `GET /bot/status/api` — hosted-bot management.
+- Portfolio API (owner level): `GET /portfolio`, `POST /portfolio/bots`, per-bot strategy
+  read/save/review, deploy, runtime switch, stop, status, season-entry, analytics, hand-history and
+  export, key rotation. A child key can act only as that child bot.
+
+Where SvanBot uses it:
+
+| Use | Where | Notes |
+|---|---|---|
+| Five-bot cap | `crates/apps/bot/src/setup.rs` | `MAX_BOTS = 5` enforces the fair-play limit on saves |
+| `pro_tier` read | `crates/apps/bot/src/seasons.rs` | `GET /season/me` per key; fails closed (`false`) |
+| Export cap lift | `crates/apps/bot/src/history/download.rs` | Pro keys ignore `SVANBOT_EXPORT_CAP` (0 = unlimited) and download ended seasons |
+| Everything else | — | No call to `/season/pro*`, `/bot/*/api` or `/portfolio/*` exists |
+
+## Gates
+
+- `crates/apps/bot/src/seasons.rs` tests pin `is_pro`; `crates/apps/bot/src/history.rs` tests pin the
+  export cap (0 means unlimited); `crates/apps/bot/src/setup.rs` tests cover the plan validation.
+- The management endpoints stay absent; check before claiming support:
+
+```sh
+grep -rn "season/pro\|portfolio/bots\|/bot/strategy\|/bot/deploy\|/bot/stop" crates/ web/src || echo "no management-API calls (expected)"
+```
+
+- `python3 scripts/docs-check.py` keeps every path here real; this file is listed in `scripts/docs-check.live`.
+
+## Traps
+
+- **Purchases spend real USDC.** `/season/pro*` debits the credit balance; never call them from a
+  bot loop or without an operator order.
+- **The Portfolio API is not this fleet's control plane.** It manages OpenPoker-hosted bots; SvanBot
+  bots are self-hosted processes started from `.env`, so deploy, stop and runtime switch do not apply.
+- **Same-owner bots never share a table.** The five-bot cap is a fair-play limit, not five seats at
+  one table; do not treat the fleet as self-play practice.
+- **Do not add accounts or agents to bypass the cap.** The venue documents monitoring for collusion
+  and ban or prize-disqualification risk.
+- **`request_id` is retry-only.** Reusing it retries one purchase; a fresh id is a new purchase.
+- **The `pro_tier` read fails closed.** A transient error must not lift the export cap; keep that
+  direction if the read is ever changed.
