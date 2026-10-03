@@ -21,6 +21,7 @@ import { PlayerCardHost, openPlayerCard } from './playercard';
 import { registerNames, SELECT_BOT_EVENT } from './playername';
 import { AccuracyPanel, QuizPage, WiringPanel } from './games';
 import { ActionTicker, BadgeRace, CalibrationPanel, FleetRace, HighlightsPanel, LivePulse, RivalsPanel, SeasonRace, StoriesPanel, WinToasts } from './fun';
+import { BoundaryPrototype } from './prototype-boundary'; // PROTOTYPE #704 — delete with the branch
 import type { Bot, Hand, Opponent, ReplayEvent, Snapshot, TableBot } from './types';
 import { format, signed, percent, suitMap, dotClass, ThemeToggle, api, Card, Panel, Empty } from './ui';
 import { time, TURN_DEADLINE_S } from './format';
@@ -210,6 +211,7 @@ function App() {
     <DashboardHeader bots={snapshot?.bots || []} selectedSlot={bot?.slot} connected={connected} onSelect={slot=>{setSelected(slot);writeLocal('svan-slot',String(slot));}} onSettings={()=>setSettings(true)}/>
     <div className="workspace-header"><div className="breadcrumb"><span>WORKSPACE</span><ChevronRight size={12}/><b>{watchAll ? 'Fleet overview' : bot?.name || 'Control room'}</b><span className="environment-tag">OPENPOKER · VIRTUAL CHIPS</span></div><div className="workspace-tools"><button className={watchAll ? 'text-button active' : 'text-button'} onClick={()=>setWatchAll(!watchAll)}><LayoutGrid size={13}/>{watchAll ? 'Focus table' : 'Watch all'}</button><button className={arranging ? 'text-button active' : 'text-button'} aria-pressed={arranging} onClick={()=>setArranging(!arranging)}><Grip size={13}/>{arranging ? 'Arranging…' : 'Arrange widgets'}</button><span className="updated">{snapshot ? `Updated ${time(snapshot.updated, { seconds: true })}` : 'Waiting for server'}</span></div></div>
     {loginRequired && <form className="error-banner" onSubmit={event=>{event.preventDefault();setLoginAttempt(value=>value+1);}}><label>Operator token <input type="password" autoComplete="off" aria-label="Operator token" value={operatorToken} onChange={event=>setOperatorToken(event.target.value)}/></label><button className="button" type="submit">Unlock control room</button><span>Use SVANBOT_WEB__OPERATOR_TOKEN from .env. Plain HTTP is supported; keep the token private.</span></form>}
+    <BoundaryPrototype />{/* PROTOTYPE #704 — delete with the branch: app-level so every view shows it */}
     {error && <div className="error-banner" role="alert"><WifiOff size={15}/>{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
     {!connected && snapshot && <div className="connection-banner"><Radio size={14}/>Connection interrupted. Showing the last received state; controls reconnect automatically.</div>}
     {helpRoute.startsWith("#help") && <HelpPage/>}
