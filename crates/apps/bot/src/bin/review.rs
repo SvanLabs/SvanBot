@@ -398,27 +398,7 @@ fn main() -> Result<()> {
         std::process::exit(i32::from(flagged));
     }
     if which == "storage" {
-        let history = sv10_bot::history::HistoryDb::open(&root.join("artifacts").join("history.db"))?;
-        let mb = |b: u64| format!("{:.1} MB", b as f64 / 1e6);
-        let size = |f: &str| std::fs::metadata(root.join("artifacts").join(f)).map(|m| m.len()).unwrap_or(0);
-        println!(
-            "data format {} (this build reads {})",
-            sv10_store::packed::data_format(&root.join("artifacts")),
-            sv10_store::packed::DATA_FORMAT
-        );
-        println!("svanbot10.db {}, {} in free pages", mb(size("svanbot10.db")), mb(store.free_bytes()?));
-        for (family, n) in store.text_rows()? {
-            println!("  {family:20} {n} rows still text");
-        }
-        println!("history.db   {}, {} in free pages", mb(size("history.db")), mb(history.free_bytes()?));
-        for (family, n) in history.text_rows()? {
-            println!("  {family:20} {n} rows still text");
-        }
-        match store.get_kv(sv10_bot::compaction::STATUS_KEY)? {
-            Some(status) => println!("last compaction pass: {status}"),
-            None => println!("no compaction pass recorded yet (the fleet starts one 90 s after it starts)"),
-        }
-        return Ok(());
+        return sv10_bot::review_storage::report(&store, &root);
     }
     if which == "verify-digests" {
         let (checked, bad) = store.verify_hand_digests()?;

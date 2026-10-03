@@ -44,6 +44,7 @@ pub mod review_recent;
 pub mod review_rerun;
 pub mod review_rival;
 pub mod review_season;
+pub mod review_storage;
 pub mod review_wiring;
 pub mod search_ledger;
 pub mod season;
