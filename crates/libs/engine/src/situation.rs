@@ -88,6 +88,10 @@ impl Situation {
     /// The situation as hero can actually play it: any opponent's street bet beyond hero's
     /// total reach (bet + stack) can never be matched, is returned to its owner, and must not
     /// count toward the pot hero is playing for.
+    ///
+    /// The price hero faces is the highest bet left standing, but never above what hero can
+    /// reach and never below the authoritative bring-in hero can still cover: a short all-in
+    /// blind posts less than the bring-in without lowering it for anyone else.
     pub fn without_uncallable(&self) -> Situation {
         let hero = self.hero();
         let reach = hero.bet + hero.stack;
@@ -100,7 +104,9 @@ impl Situation {
                 out.pot -= excess;
             }
         }
-        out.current_bet_to = Some(out.players.iter().map(|player| player.bet).max().unwrap_or(0));
+        let standing = out.players.iter().map(|player| player.bet).max().unwrap_or(0);
+        let playable = self.current_bet_to.map(|auth| auth.min(reach)).unwrap_or(0);
+        out.current_bet_to = Some(standing.max(playable));
         out
     }
 
@@ -389,6 +395,17 @@ pub mod fixtures {
 mod tests {
     use super::fixtures::{river_jam_with_all_ins, uncallable_overshove};
     use super::*;
+
+    #[test]
+    fn short_big_blind_keeps_full_bring_in_after_uncallable_filter() {
+        use sv10_rng::{SeedableRng, rngs::SmallRng};
+        let mut rng = SmallRng::seed_from_u64(7);
+        let hand = Hand::new(&[2_000, 2_000, 15], 0, 10, 20, &mut rng);
+        let names = vec!["hero".to_string(), "sb".to_string(), "bb".to_string()];
+        let sit = Situation::from_hand(&hand, 0, &names);
+        assert_eq!(sit.current_bet(), 20);
+        assert_eq!(sit.without_uncallable().current_bet(), 20, "a short all-in blind is not an uncallable excess");
+    }
 
     #[test]
     fn uncallable_chips_return_to_their_owner() {
