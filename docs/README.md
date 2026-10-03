@@ -23,6 +23,12 @@ to read them all: find what you are about to do, and read that path in order.
    model and the learner, explained for a reader rather than an implementer.
 4. [`docs/CONTEXT.md`](CONTEXT.md) — the vocabulary, when a word means something specific here.
 
+### 🔥 Everything has gone to hell
+
+1. [`docs/HELL.md`](HELL.md) — triage in five minutes: copy-paste commands, then agent prompts.
+   Stop at the first section that explains what you see.
+2. [`docs/OPERATIONS.md`](OPERATIONS.md) — treatment, once triage names the disease.
+
 ### 🛠️ I want to change something
 
 1. [**Your first pull request**](CONTRIBUTING.md#your-first-pull-request) in `docs/CONTRIBUTING.md`
@@ -54,6 +60,7 @@ otherwise cost the first hour.
 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Which processes run, how the crates layer, how one decision is made | you need the whole picture |
 | [`docs/GUIDE.md`](GUIDE.md) | How do I use it, and what is the dashboard showing me? | you are operating it |
 | [`docs/OPERATIONS.md`](OPERATIONS.md) | Which command does this job, and what do I do when something breaks? | you are running a fleet |
+| [`docs/HELL.md`](HELL.md) | What do I paste first when everything is broken? | everything has gone to hell |
 | [`docs/LESSONS.md`](LESSONS.md) | Why is this rule here? | before changing decisions, the learner, the client, data or operations |
 | [`docs/SPEC-protocol.md`](SPEC-protocol.md) | What does the Open Poker WebSocket protocol look like, as implemented? | you touch the client or the tracker |
 | [`docs/SPEC-data.md`](SPEC-data.md) | What is stored, in which format, and how is it protected? | you touch the store, a schema or a backup |
