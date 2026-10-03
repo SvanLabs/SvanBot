@@ -114,6 +114,14 @@ fn update_checks_parse_and_default() {
     assert_eq!(parse_check("0 ef4098e"), Some((0, "ef4098e".to_string())));
     assert_eq!(parse_check(""), None);
     assert_eq!(parse_check("up to date"), None);
+    // Issue #757: branch state rides along; old two-field output still parses with branch-line defaults.
+    assert_eq!(
+        parse_check_full("2 6c6f96b feat/updater-branch-state-757 1\n"),
+        Some((2, "6c6f96b".to_string(), "feat/updater-branch-state-757".to_string(), 1))
+    );
+    assert_eq!(parse_check_full("0 ef4098e main 0"), Some((0, "ef4098e".to_string(), "main".to_string(), 0)));
+    assert_eq!(parse_check_full("0 ef4098e"), Some((0, "ef4098e".to_string(), String::new(), 0)));
+    assert_eq!(parse_check_full(""), None);
     let dir = std::env::temp_dir().join(format!("sv10-update-check-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     assert_eq!(last_check(&dir), None);

@@ -219,6 +219,9 @@ export function UpdatesPanel() {
       {/* `Next update`, not `Checkout`: this is what the next run cannot do, while the card below is
           the run that already finished (#320). On a fleet host the checkout is a playing machine, so
           the tooltip says what the operator can actually do about it. */}
+      {/* The checkout is not on the update branch line (#757): Update follows `source`,
+          so say where the checkout actually is and what returns it — never a silent no-op. */}
+      {(remote?.ahead ?? 0) > 0 && <div><span>Next update</span><b className="amber" title={`This checkout is ${remote?.ahead} commit${(remote?.ahead ?? 0) === 1 ? '' : 's'} ahead of ${remote?.source} on branch ${remote?.branch}; update.sh installs nothing from ahead of the line it follows.`}>Checkout on {remote?.branch}, {remote?.ahead} ahead of {remote?.source} — return it (git checkout {remote?.source?.split('/')[1] ?? 'main'} + pull) to update. The fleet keeps playing the installed build.</b></div>}
       {data.dirty && <div><span>Next update</span><b className="negative" title="An update builds from this checkout and will not start while crates/, web/ or Cargo files have uncommitted changes — the binary would not match any commit. Commit or discard them, or run scripts/release.sh by hand. The fleet keeps playing the installed build.">Blocked — uncommitted build inputs</b></div>}
     </div>
     <StaleNote poll={{ data: progress ?? undefined, error: progressError, updatedAt: progressAt }}/>
@@ -232,6 +235,7 @@ export function UpdatesPanel() {
       {remote?.error && <p className="footnote">This list is the one the last successful check fetched{remote.fetched_at ? ` — ${ago(remote.fetched_at)}` : ''}. Today's commits are not in it.</p>}
       {groups.map(([group, entries]) => <div key={group}><h4 className="changelog-group">{group}</h4><ul className="changelog-list">{entries.map(e => <li key={e.commit}><span className="mono">{e.commit}</span> {e.subject}</li>)}</ul></div>)}
     </section>}
+    {!groups.length && data.update_available && <p className="footnote amber" title="The pending count comes from the update check record; subjects need local refs or an install record, and neither was readable.">Updates are pending but the list is unavailable — no install record and no readable refs on this host. The Update button still installs them; the fleet keeps playing until the swap.</p>}
     {!groups.length && !data.update_available && <p className="footnote">Installed build is the newest{data.installed.at ? ` (installed ${time(data.installed.at, { date: true })})` : ''}.</p>}
     {message && <p className={`footnote ${message.kind === 'error' ? 'negative' : 'positive'}`}>{message.text}</p>}
     <StaleNote poll={{ data: saved, error: savedError, updatedAt: savedAt }}/>

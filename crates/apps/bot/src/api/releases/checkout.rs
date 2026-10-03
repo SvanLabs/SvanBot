@@ -99,14 +99,30 @@ pub struct UpdateCheck {
     pub fetched_at: Option<f64>,
     /// Why the check failed (network, credentials), if it did.
     pub error: Option<String>,
+    /// Branch the fleet checkout sits on, when the check reported it (issue #757).
+    #[serde(default)]
+    pub branch: String,
+    /// Commits in the checkout not on the update branch (0 on the branch line).
+    #[serde(default)]
+    pub ahead: u64,
 }
 
-/// Parse `update.sh --check` output: `<behind> <commit>`.
+/// Parse `update.sh --check` output: `<behind> <commit>`. Older two-field output keeps
+/// parsing; newer output appends `<branch> <ahead>` (issue #757).
 pub fn parse_check(stdout: &str) -> Option<(u64, String)> {
     let mut parts = stdout.split_whitespace();
     let behind = parts.next()?.parse().ok()?;
     let commit = parts.next()?.to_string();
     Some((behind, commit))
+}
+
+/// Full parse including the branch state; absent fields read as on-the-branch-line.
+pub fn parse_check_full(stdout: &str) -> Option<(u64, String, String, u64)> {
+    let (behind, commit) = parse_check(stdout)?;
+    let mut parts = stdout.split_whitespace().skip(2);
+    let branch = parts.next().unwrap_or("").to_string();
+    let ahead = parts.next().unwrap_or("0").parse().ok()?;
+    Some((behind, commit, branch, ahead))
 }
 
 pub(super) fn check_path(artifacts: &std::path::Path) -> std::path::PathBuf {
@@ -135,10 +151,12 @@ pub fn run_update_check(root: &std::path::Path, artifacts: &std::path::Path) -> 
         .stdin(std::process::Stdio::null())
         .output();
     match out {
-        Ok(o) if o.status.success() => match parse_check(&String::from_utf8_lossy(&o.stdout)) {
-            Some((behind, commit)) => {
+        Ok(o) if o.status.success() => match parse_check_full(&String::from_utf8_lossy(&o.stdout)) {
+            Some((behind, commit, branch, ahead)) => {
                 check.behind = behind;
                 check.commit = Some(commit);
+                check.branch = branch;
+                check.ahead = ahead;
                 check.fetched_at = Some(check.checked_at);
             }
             None => check.error = Some("unexpected check output".into()),
