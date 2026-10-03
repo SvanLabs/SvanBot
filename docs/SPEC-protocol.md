@@ -74,7 +74,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 | `hand_start` | `hand_id`, `seat`, `dealer_seat`, `blinds` | New hand in the tracker |
 | `hole_cards` | `cards` | Tracker |
 | `your_turn` | `valid_actions`, `pot`, `community_cards`, `players`, `min_raise`, `max_raise`, `turn_token` | Decision on a blocking thread with an 8 s timeout (the check-or-fold fallback is legalized) |
-| `action_ack` | `client_action_id`, `status` | Ignored |
+| `action_ack` | `client_action_id`, `status` | Ignored — no ack correlation and no same-ID safe retry: every `action` sends a fresh `client_action_id` (`crates/apps/bot/src/client/decide.rs`) and the ack pair is discarded (`crates/apps/bot/src/client/handler.rs`). Post-boundary code gap |
 | `action_rejected` | `code`, `reason`, `details.code` | Logged and counted per bot (dashboard `rej`) |
 | `player_action` | `seat`, `name`, `action`, `amount` (null for check/fold), `street`, `stack`, `pot`; optional `to_call_before`, `pot_before/after`, `stack_before/after`, `contribution_delta`, `action_id` | History record (null amounts read as 0) |
 | `community_cards` | `cards`, `street` | Board and street change |
@@ -83,7 +83,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 | `busted` | `options` | Logged; the table exit arrives as `player_left`, and the next join buys in from the balance (refilled by the server's auto-rebuy when short) |
 | `auto_rebuy_scheduled` | `cooldown_seconds` | Records the due time; joins wait for it (plus 30 s grace) instead of racing a REST rebuy into a 429 |
 | `rebuy_confirmed` | `chip_balance` | Clears the pending auto-rebuy; rejoins if our stack is gone |
-| `auto_rebuy_set` | `enabled` | Logged |
+| `auto_rebuy_set` | `enabled` | Unhandled — no arm in the handler, falls into the catch-all `_` (`crates/apps/bot/src/client/handler.rs`). `auto_rebuy_scheduled` is the signal the client acts on |
 | `chips_skimmed` | `excess`, `new_stack`, `new_balance` | Logged (cap disabled in production) |
 | `player_joined` / `player_left` | `seat`, `name`, `stack` / `reason` | `player_joined` ignored (the next `table_state` carries the seat); our own `player_left` resets the tracker and ends a leave or top-up |
 | `table_closed` | `reason` | Rejoin the lobby |
@@ -100,6 +100,10 @@ snapshot still accepts an empty board. This guards recovery frames without inven
   except a `table_state` repeating the watermark and every `resync_response`. Accepting a resync
   never lowers the watermark, even if its envelope carries an older sequence. We resync on reconnect,
   hash failure or impossible state, never on a gap alone.
+- `stream`: `"event"` or `"state"` on every frame (see `crates/libs/venue/tests/fixtures/hand_capture.jsonl`).
+  Carried, never branched on — the handler dispatches on `type`, not on the stream.
+- `hand_seq`: per-hand sequence on every frame. Dropped from the hash input with the rest of the
+  envelope (`crates/libs/venue/src/statehash.rs`), reported in mismatch diagnostics, otherwise unread.
 - `state_hash` (`statehash::verify`): drop top-level `ts`, `table_seq`, `hand_seq`, `state_hash`;
   compact JSON with sorted keys and `ensure_ascii` escaping; SHA-256; `sha256:` prefix. Matched
   5,248/5,248 archived frames; counts shown per bot on the dashboard. Floats are spelled as
