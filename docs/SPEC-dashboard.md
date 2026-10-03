@@ -88,7 +88,10 @@ The client saves a second after the last keystroke, and at once on blur and on `
 as failed and retries with doubling backoff rather than looking saved (LESSONS 24). Browser-local
 keys `svan-notes:v1` and `svan-notes:unsaved` hold the note and whether it reached the server: the
 local copy renders before the answer arrives, and the flag keeps a later load from adopting an older
-stored note over keystrokes that never got through. The public TV never mounts the endpoint.
+stored note over keystrokes that never got through. With nothing unsent the stored document is the
+truth, so a browser still holding an old copy drops it when the server answers `null` — a cleared
+note stays cleared — and text the flag marks unsent is pushed on load even when the read failed. The
+public TV never mounts the endpoint.
 
 ## Per-opponent reads (`GET /api/intel`)
 

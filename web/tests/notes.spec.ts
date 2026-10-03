@@ -62,6 +62,42 @@ test('a note is stored on the server and is what a reload shows', async ({ page,
   await clear();
 });
 
+test('a browser holding an old copy does not put back a note the server cleared', async ({ page }) => {
+  const posted = await mockNotes(page, { stored: null });
+  await page.addInitScript(() => {
+    localStorage.setItem('svan-notes:v1', 'a note that was cleared elsewhere');
+    localStorage.setItem('svan-notes:unsaved', '0');
+  });
+  await page.goto('/');
+  // Nothing here is unsent, so the server is the truth: it says "nothing stored" and the stale copy
+  // goes, instead of the old text being pushed back over the clear.
+  await expect(box(page)).toHaveValue('');
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), LOCAL_KEY)).toBe('');
+  expect(posted).toEqual([]);
+});
+
+test('text an earlier session could not send is pushed on load, and a refused push says so and retries', async ({ page }) => {
+  const posted: DashboardNotes[] = [];
+  let pushes = 0;
+  await page.addInitScript(() => {
+    localStorage.setItem('svan-notes:v1', 'written while the server was away');
+    localStorage.setItem('svan-notes:unsaved', '1');
+  });
+  await page.route('**/api/notes', route => {
+    if (route.request().method() === 'GET') return route.fulfill({ status: 503, json: { detail: 'notes store unavailable' } });
+    if (pushes++ === 0) return route.fulfill({ status: 503, json: { detail: 'notes store unavailable' } });
+    const body = route.request().postDataJSON() as DashboardNotes;
+    posted.push(body);
+    return route.fulfill({ json: body });
+  });
+  await page.goto('/');
+  await expect(box(page)).toHaveValue('written while the server was away');
+  // The push failed, and the panel says so instead of sitting unsaved and silent.
+  await expect(state(page)).toHaveText('Not saved — retrying…');
+  await expect(state(page)).toHaveText('Saved');
+  expect(posted).toEqual([{ text: 'written while the server was away' }]);
+});
+
 test('an endpoint that cannot be reached falls back to this browser, and loses nothing typed', async ({ page }) => {
   await mockNotes(page, { fail: true });
   await page.goto('/');

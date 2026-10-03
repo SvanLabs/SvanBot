@@ -37,7 +37,9 @@ export function NotesPanel() {
   const [text, setText] = useState(() => readLocal(LOCAL_KEY) ?? '');
   const [state, setState] = useState<SaveState>('idle');
   const latest = useRef(text);   // the newest text: what the debounce, the retries and the flush send
-  const dirty = useRef(false);   // text the server has not confirmed
+  // Text the server has not confirmed, including text an earlier session could not send: it must be
+  // pushed, and a blur or a page hide flushes it, before the panel has been typed in at all.
+  const dirty = useRef(readLocal(LOCAL_DIRTY) === '1');
   const touched = useRef(false); // the operator has typed here: a late server answer must not overwrite it
   const busy = useRef(false);    // one save in flight at a time, so an older one cannot land last
   const attempt = useRef(0);
@@ -79,17 +81,24 @@ export function NotesPanel() {
 
   useEffect(() => {
     let alive = true;
-    // A note the server has never confirmed is this browser's newer copy: never adopt an older stored
-    // one over it, and offer it back as soon as the endpoint answers.
+    // With nothing unsent the server is the truth — including when it answers "nothing stored", which
+    // is what a cleared box leaves there, so a browser still holding the old copy drops it (#738
+    // review). With something unsent this browser has the newer text: never adopt the stored note
+    // over it, push it instead.
     const unsent = readLocal(LOCAL_DIRTY) === '1';
     request<DashboardNotes | null>('/notes').then(stored => {
       if (!alive || touched.current) return;   // the operator typed while this was in flight
-      if (unsent || !stored) { if (unsent || latest.current) void save(); return; }
-      latest.current = stored.text;
-      setText(stored.text);
-      writeLocal(LOCAL_KEY, stored.text);
-      setState('saved');
-    }).catch(() => { /* the endpoint is down: this browser's copy stands, and a save retries */ });
+      if (unsent) { void save(); return; }
+      const text = stored ? stored.text : '';
+      latest.current = text;
+      setText(text);
+      writeLocal(LOCAL_KEY, text);
+      setState(stored ? 'saved' : 'idle');
+    }).catch(() => {
+      // The endpoint is down: this browser's copy renders, but unsent text is not on the server, so
+      // the panel says failed and keeps trying rather than looking as if all were well.
+      if (alive && unsent) void save();
+    });
     return () => { alive = false; };
   }, []);
 
