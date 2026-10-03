@@ -7,7 +7,7 @@ import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import './style.css';
-import { Activity, ArrowUpCircle, ArrowUpRight, Crown, Gauge, Sparkles, Swords, ChevronRight, Cpu, FlaskConical, Grip, History, Layers, LayoutGrid, ListFilter, Radio, RotateCcw, Search, ShieldCheck, Spade, Terminal, TrendingUp, Users, WifiOff, X, Crosshair } from 'lucide-react';
+import { Activity, ArrowUpCircle, ArrowUpRight, ChevronsDownUp, ChevronsUpDown, Crown, Gauge, Sparkles, Swords, ChevronRight, Cpu, FlaskConical, Grip, History, Layers, LayoutGrid, ListFilter, Radio, RotateCcw, Search, ShieldCheck, Spade, Terminal, TrendingUp, Users, WifiOff, X, Crosshair } from 'lucide-react';
 import { HelpPage } from './help';
 import { DocsPage } from './docs';
 import { SetupPage } from './setup';
@@ -16,13 +16,13 @@ import { UpdatesPanel } from './updates';
 import { HostPanel } from './host';
 import { BotControls, DashboardHeader, DecisionTelemetry } from './dashboard';
 import { LeakFinder, RangeExplorer } from './lab';
-import { WidgetBoard, ViewTabs, loadView } from './widgets';
+import { WidgetBoard, ViewTabs, loadView, VIEWS } from './widgets';
 import { PlayerCardHost, openPlayerCard } from './playercard';
 import { registerNames, SELECT_BOT_EVENT } from './playername';
 import { AccuracyPanel, QuizPage, WiringPanel } from './games';
 import { ActionTicker, BadgeRace, CalibrationPanel, FleetRace, HighlightsPanel, LivePulse, RivalsPanel, SeasonRace, StoriesPanel, WinToasts } from './fun';
-import type { Bot, Hand, Opponent, ReplayEvent, Snapshot, TableBot } from './types';
-import { format, signed, percent, suitMap, dotClass, ThemeToggle, api, Card, Panel, Empty } from './ui';
+import type { Bot, DashboardLayout, Hand, Opponent, ReplayEvent, Snapshot, TableBot } from './types';
+import { format, signed, percent, suitMap, dotClass, ThemeToggle, api, Card, Panel, Empty, WidgetIdContext, setPanelsCollapsed, useAllCollapsed } from './ui';
 import { time, TURN_DEADLINE_S } from './format';
 import type { TableTheme } from './ui';
 import { announceSession, StaleNote, usePoll } from './api';
@@ -49,6 +49,12 @@ function statusPhrase(bot?: Bot) {
   const href = bot.table_id ? `${ARENA_URL}/${bot.table_id}` : ARENA_URL;
   return <>{status.slice(0, at.index)} at table <a className="table-link" href={href} target="_blank" rel="noreferrer" title="Watch this table on openpoker.ai">{at[1]}</a></>;
 }
+
+/** Where each widget sits until the operator arranges the board (#729). The board and the collapse
+ *  control read the same document the server stores, so the widgets one names are the widgets the
+ *  other acts on. */
+const WIDGET_DEFAULTS: DashboardLayout = {left:['autonomy', 'experiments', 'experiment-mode', 'calibration', 'accuracy', 'wiring', 'highlights', 'health', 'privacy'], center:['table', 'ranges', 'ticker', 'leaks', 'fleet-race', 'starting-hands', 'recent-hands', 'opponents'], right:['monitor', 'updates', 'host', 'season-race', 'badges', 'rivals', 'intel', 'stories', 'performance', 'champion', 'season', 'activity'], hidden:[]};
+const ALL_WIDGET_IDS = [...WIDGET_DEFAULTS.left, ...WIDGET_DEFAULTS.center, ...WIDGET_DEFAULTS.right, ...WIDGET_DEFAULTS.hidden];
 
 function App() {
   const [helpRoute,setHelpRoute] = useState(location.hash);
@@ -79,6 +85,10 @@ function App() {
   const changeTheme = (theme: TableTheme) => { setTableTheme(theme); writeLocal('svan-table-theme', theme); };
   const [arranging,setArranging] = useState(false);
   const [view,setView] = useState(loadView);
+  // The panels on screen (#729): the view's widgets, plus the Results view's timeline, which renders
+  // outside the board. The workspace's collapse-all acts on exactly these.
+  const viewPanelIds = view === 'all' ? ALL_WIDGET_IDS : [...(VIEWS.find(candidate => candidate.id === view)?.widgets ?? []), ...(view === 'results' ? ['timeline'] : [])];
+  const allCollapsed = useAllCollapsed(viewPanelIds);
   const eventRef = useRef<EventSource | null>(null);
   const bot = snapshot?.bots.find(candidate => candidate.slot === selected) || snapshot?.bots[0];
   const handsPoll = usePoll<Hand[]>(bot ? `/bots/${bot.slot}/hands` : null, 30000);
@@ -208,7 +218,7 @@ function App() {
     <WinToasts bots={snapshot?.bots || []}/>
     <PlayerCardHost bots={snapshot?.bots || []} onReplay={openReplayFor}/>
     <DashboardHeader bots={snapshot?.bots || []} selectedSlot={bot?.slot} connected={connected} onSelect={slot=>{setSelected(slot);writeLocal('svan-slot',String(slot));}} onSettings={()=>setSettings(true)}/>
-    <div className="workspace-header"><div className="breadcrumb"><span>WORKSPACE</span><ChevronRight size={12}/><b>{watchAll ? 'Fleet overview' : bot?.name || 'Control room'}</b><span className="environment-tag">OPENPOKER · VIRTUAL CHIPS</span></div><div className="workspace-tools"><button className={watchAll ? 'text-button active' : 'text-button'} onClick={()=>setWatchAll(!watchAll)}><LayoutGrid size={13}/>{watchAll ? 'Focus table' : 'Watch all'}</button><button className={arranging ? 'text-button active' : 'text-button'} aria-pressed={arranging} onClick={()=>setArranging(!arranging)}><Grip size={13}/>{arranging ? 'Arranging…' : 'Arrange widgets'}</button><span className="updated">{snapshot ? `Updated ${time(snapshot.updated, { seconds: true })}` : 'Waiting for server'}</span></div></div>
+    <div className="workspace-header"><div className="breadcrumb"><span>WORKSPACE</span><ChevronRight size={12}/><b>{watchAll ? 'Fleet overview' : bot?.name || 'Control room'}</b><span className="environment-tag">OPENPOKER · VIRTUAL CHIPS</span></div><div className="workspace-tools"><button className={watchAll ? 'text-button active' : 'text-button'} onClick={()=>setWatchAll(!watchAll)}><LayoutGrid size={13}/>{watchAll ? 'Focus table' : 'Watch all'}</button><button className={arranging ? 'text-button active' : 'text-button'} aria-pressed={arranging} onClick={()=>setArranging(!arranging)}><Grip size={13}/>{arranging ? 'Arranging…' : 'Arrange widgets'}</button><button className={allCollapsed ? 'text-button active' : 'text-button'} aria-label={allCollapsed ? 'Expand all panels' : 'Collapse all panels'} aria-pressed={allCollapsed} onClick={()=>setPanelsCollapsed(viewPanelIds, !allCollapsed)}>{allCollapsed ? <ChevronsDownUp size={13}/> : <ChevronsUpDown size={13}/>}<span className="collapse-label">{allCollapsed ? 'Expand all' : 'Collapse all'}</span></button><span className="updated">{snapshot ? `Updated ${time(snapshot.updated, { seconds: true })}` : 'Waiting for server'}</span></div></div>
     {loginRequired && <form className="error-banner" onSubmit={event=>{event.preventDefault();setLoginAttempt(value=>value+1);}}><label>Operator token <input type="password" autoComplete="off" aria-label="Operator token" value={operatorToken} onChange={event=>setOperatorToken(event.target.value)}/></label><button className="button" type="submit">Unlock control room</button><span>Use SVANBOT_WEB__OPERATOR_TOKEN from .env. Plain HTTP is supported; keep the token private.</span></form>}
     {error && <div className="error-banner" role="alert"><WifiOff size={15}/>{error}<button aria-label="Dismiss error" onClick={()=>setError('')}><X size={16}/></button></div>}
     {!connected && snapshot && <div className="connection-banner"><Radio size={14}/>Connection interrupted. Showing the last received state; controls reconnect automatically.</div>}
@@ -221,8 +231,8 @@ function App() {
       <DecisionTelemetry bot={bot} training={snapshot?.training}/>
       {watchAll && <div className="fleet-grid" aria-label="Live fleet tables">{snapshot?.bots.map(candidate=><section className="fleet-table" key={candidate.slot}><button className="fleet-heading" onClick={()=>{setSelected(candidate.slot);setWatchAll(false);}}><span className={`status-dot ${dotClass(candidate.mode)}`}/><b>{candidate.name}</b><span>{candidate.connected ? candidate.street : candidate.status}</span><ChevronRight size={14}/></button><PokerTable bot={candidate} theme={tableTheme}/><div className="fleet-footer"><span>{candidate.table_id || 'Waiting for table'}</span>{candidate.metrics.error && <span className="footnote amber" title={candidate.metrics.error}>last good reading — store read failed</span>}<b className={candidate.metrics.net_chips < 0 ? 'negative':'positive'}>{signed(candidate.metrics.net_chips)} chips</b></div></section>)}</div>}
       <ViewTabs view={view} onChange={setView}/>
-      {view === 'results' && <TimelinePanel onReplay={openReplayFor}/>}
-      <WidgetBoard view={view} editing={arranging} onDoneEditing={()=>setArranging(false)} defaults={{left:['autonomy', 'experiments', 'experiment-mode', 'calibration', 'accuracy', 'wiring', 'highlights', 'health', 'privacy'], center:['table', 'ranges', 'ticker', 'leaks', 'fleet-race', 'starting-hands', 'recent-hands', 'opponents'], right:['monitor', 'updates', 'host', 'season-race', 'badges', 'rivals', 'intel', 'stories', 'performance', 'champion', 'season', 'activity'], hidden:[]}} widgets={[
+      {view === 'results' && <WidgetIdContext.Provider value="timeline"><TimelinePanel onReplay={openReplayFor}/></WidgetIdContext.Provider>}
+      <WidgetBoard view={view} editing={arranging} onDoneEditing={()=>setArranging(false)} defaults={WIDGET_DEFAULTS} widgets={[
     {id:'autonomy', title:'Autonomy', node:<Panel title="Autonomy" icon={<Cpu size={15}/>} aside={<span className="tag amber">{snapshot?.training.automatic ? 'AUTOPILOT' : 'MANUAL'}</span>}><Autonomy training={snapshot?.training} onCommand={trainingCommand} busy={busy}/></Panel>},
     {id:'experiments', title:'Experiments', node:<Panel title="Experiments" icon={<FlaskConical size={15}/>} aside={<span className="count">{snapshot?.training.experiments.length || 0}</span>}>{snapshot?.training.search_funnel?.total ? <SearchFunnel funnel={snapshot.training.search_funnel}/> : null}{snapshot?.training.experiments.length ? <RecentExperiments training={snapshot.training}/> : <Empty title="The next edge is waiting" detail="Training cycles compare challengers against your current champion." icon={<FlaskConical size={24}/>}/>}</Panel>},
     {id:'experiment-mode', title:'Experiment mode', node:<Panel title="Experiment mode" icon={<FlaskConical size={15}/>} aside={<span className="tag">TOP FOUR</span>}><ExperimentModePanel/></Panel>},

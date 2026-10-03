@@ -48,6 +48,11 @@ export interface Log { id:number; slot:number | null; ts:number; level:string; m
 /** Operations outside the tables: hands awaiting a store retry, the keepalive hold and its last action. */
 export interface Ops { unstored_hands: number; hold_until: number | 'forever' | null; keepalive_last: string | null }
 export interface Snapshot { bots: Bot[]; training: Training; logs: Log[]; updated: number; ops?: Ops; config: {buy_in:number;auto_rebuy:boolean;host:string;port:number;configured_slots:number} }
+/** The dashboard board's arrangement (`GET`/`POST /api/layout`, #729): which widgets the board
+ *  shows, their column and order. Stored on the server so an arrangement survives a browser change;
+ *  the browser-local copy renders until that answer arrives and remains the fallback when the
+ *  endpoint cannot be reached. Panel collapse is a reading preference and stays local. */
+export interface DashboardLayout { left: string[]; center: string[]; right: string[]; hidden: string[] }
 export interface Hand { id:number; hand_id:string; ts:number; hole:string[]; board:string[]; net:number | null; big_blind:number; version:string }
 export interface PositionSegments { early: { vpip: Estimate | null; pfr: Estimate | null }; late: { vpip: Estimate | null; pfr: Estimate | null } }
 export interface Opponent { style?: string; advice?: string; name: string; evidence_hands?: number; vpip?: Estimate; pfr?: Estimate; aggression?: Estimate; fold_to_bet?: Estimate; by_position?: PositionSegments }

@@ -47,11 +47,31 @@ The server caches refresh attempts for 60 seconds. A failed refresh does not adv
   (2,507 px tall on a 1440-wide screen against 6,743 for All), the choice is remembered in the
   browser, arrow keys move between tabs, and "Arrange widgets" always shows the whole board. Views that
   leave a column empty get their own grid template; at phone width everything stacks.
+- Panel collapse is a reading preference and stays in the browser: the whole panel bar toggles it
+  (the info button and a link in the heading do not), the chevron is the explicit affordance, and the
+  workspace's collapse-all/expand-all acts on the current view's panels. The key is the widget id
+  (`svan-panel-collapsed:<id>`), with the pre-#729 title key read as a fallback; the store keeps it
+  in one place so the workspace control can reach every panel on screen.
 - Web modules: `main.tsx` holds the app shell and routing; `ui.tsx` the shared primitives
   (formatters, seat read, table themes, card, panel, empty state); `table.tsx` the live table, TV mode
   (the dashboard's and the public listener's) and decision strip; `training.tsx` the season, performance and learner panels; `panels.tsx` replay,
   the starting-hand guide and the opponent profile. Each opponent seat's `read` carries `size_tell`
   when a per-opponent river sizing tell is installed, shown in the seat tooltip.
+
+## Board layout (`GET`/`POST /api/layout`)
+
+`GET /api/layout` returns the saved arrangement — `{left, center, right, hidden}`, widget ids in
+order (`web/src/types.ts` `DashboardLayout`) — or `null` when none is stored. `POST /api/layout`
+stores the document the Arrange mode produced and answers with what was stored; a `null` body stores
+none, and a body that is not an arrangement is refused with 400 and changes nothing. The document is
+one JSON value in the kv store (`dashboard.layout.v1`), so an arrangement survives a browser change
+and a second operator device.
+
+The client reconciles a stored document against the widgets the running build has: unknown ids are
+dropped and new widgets land in their default column. It writes through the endpoint on every Arrange
+mutation, and keeps the `svan-layout:v1` browser copy as what renders before the answer arrives and
+what stays when the endpoint cannot be reached. The public TV renders its own fixed table view and
+never reads the layout, and never asks the endpoint.
 
 ## Per-opponent reads (`GET /api/intel`)
 
