@@ -61,6 +61,21 @@ Find the row that fits you. Each one is a short path, read in order, and says wh
 Not sure which one? The [documentation map](docs/README.md) lists every document with the question
 it answers.
 
+### 🌱 New here? We love noobs
+
+Nobody is born knowing six-max poker, Rust, or this codebase — most of the fleet's best fixes
+started as "dumb questions." If you want to help make the bot better:
+
+1. Look at the [`good first issue`](https://github.com/SvanLabs/SvanBot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+   list — small, specified, and safe to attempt on a running box.
+2. Read [Your first pull request](#-your-first-pull-request) — branch, gate, open the PR. The gate
+   (`scripts/check.sh full`) tells you exactly what's wrong; green means green.
+3. Stuck on anything? [`docs/HELL.md`](docs/HELL.md) is the five-minute triage page, and
+   [`docs/SUPPORT.md`](docs/SUPPORT.md) says where your question goes.
+
+Comment on the issue you take so two people don't race for it, and don't be shy — a fresh pair of
+eyes beats a clever one.
+
 ---
 
 <a id="highlights"></a>

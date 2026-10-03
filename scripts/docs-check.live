@@ -37,6 +37,7 @@ CLAUDE.md
 .claude/skills/public-tv/SKILL.md
 .claude/skills/restore-store/SKILL.md
 .claude/skills/verify-install/SKILL.md
+.claude/skills/ship-patch/SKILL.md
 llms.txt
 README.md
 docs/CONTRIBUTING.md
@@ -50,6 +51,7 @@ docs/SPEC-learner.md
 docs/SPEC-dashboard.md
 docs/LESSONS.md
 docs/GUIDE.md
+docs/HELL.md
 docs/README.md
 
 docs/agents/local-review.md
