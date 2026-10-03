@@ -95,8 +95,9 @@ tree_digest() {
 git -C "$test_root" init -q
 git -C "$test_root" config user.email test@example.invalid
 git -C "$test_root" config user.name "Release rollback test"
+printf '/target/\n/web/dist/\n' > "$test_root/.gitignore"
 printf 'release A\n' > "$test_root/source.txt"
-git -C "$test_root" add source.txt
+git -C "$test_root" add -A
 git -C "$test_root" commit -qm "release A"
 commit_a=$(git -C "$test_root" rev-parse --short HEAD)
 
@@ -114,6 +115,31 @@ fi
 rm "$test_root/.cargo/config.toml"
 rmdir "$test_root/.cargo"
 SV10_RELEASE_ROOT="$test_root" "$rollback" --validate-source-clean
+
+# A kill between dropping the swap journal and removing the previous sets leaves the scratch
+# directory behind with the journal already gone, so the repair cannot help. Sweep the ones whose
+# owning process is gone — they would otherwise pile up — but never a live pid's, which may be
+# mid-swap, and never a scratch directory a journal still owns.
+killed_pid=999999
+while [ -d "/proc/$killed_pid" ]; do killed_pid=$((killed_pid - 1)); done
+mkdir -p "$test_root/web/.dist.before-swap.$killed_pid" "$test_root/target/.release.before-swap.$killed_pid"
+printf 'old dashboard\n' > "$test_root/web/.dist.before-swap.$killed_pid/index.html"
+printf 'old binary\n' > "$test_root/target/.release.before-swap.$killed_pid/sv10-bot"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --validate-source-clean ||
+  fail "an orphaned swap scratch directory was not swept"
+[ ! -e "$test_root/web/.dist.before-swap.$killed_pid" ] || fail "the sweep left the orphaned dashboard scratch"
+[ ! -e "$test_root/target/.release.before-swap.$killed_pid" ] || fail "the sweep left the orphaned executable scratch"
+mkdir -p "$test_root/web/.dist.before-swap.$$"
+printf 'live swap\n' > "$test_root/web/.dist.before-swap.$$/index.html"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --validate-source-clean ||
+  fail "a live swap's scratch directory read as a build input"
+[ -d "$test_root/web/.dist.before-swap.$$" ] || fail "the sweep removed a live swap's scratch directory"
+rm -rf "$test_root/web/.dist.before-swap.$$"
+# The repair path sweeps too, so `--repair` heals a tree a killed release already left without one.
+mkdir -p "$test_root/web/.dist.failed-swap.$killed_pid"
+printf 'failed swap\n' > "$test_root/web/.dist.failed-swap.$killed_pid/index.html"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --repair >/dev/null
+[ ! -e "$test_root/web/.dist.failed-swap.$killed_pid" ] || fail "--repair left an orphaned swap scratch directory"
 
 # A true first install has the parent directories but neither managed release set.
 mkdir -p "$test_root/target" "$test_root/web"
@@ -210,6 +236,35 @@ if SV10_RELEASE_ROOT="$test_root" SV10_RELEASE_TEST_FAIL_AFTER_BIN_SWAP=1 "$roll
 fi
 [ "$(tree_digest)" = "$before_failed_rollback" ] || fail "mid-install failure did not restore release B"
 
+# A SIGKILL between the swap's renames (OOM, a stop, power loss) leaves a half-installed tree: after
+# the first rename there is no target/release at all, so the supervisors crash-loop and a later
+# release refuses the tree ("installed sets are incomplete"). The journal written and flushed before
+# the first rename is the record that makes it repairable (issue #726).
+before_killed_swap=$(tree_digest)
+if SV10_RELEASE_ROOT="$test_root" SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP=1 "$rollback" "$commit_a" >/dev/null 2>&1; then
+  fail "an injected kill during the swap reported success"
+fi
+[ -f "$test_root/artifacts/release-swap.journal" ] || fail "a killed swap left no journal"
+[ ! -d "$test_root/target/release" ] || fail "the kill fixture did not stop after the first rename"
+[ -d "$test_root/web/dist" ] || fail "the kill fixture touched the dashboard"
+# The journal owns the previous sets, so a scratch directory it names survives the sweep and the
+# interrupted swap is not mistaken for a dirty checkout; the repair restores from it.
+mkdir -p "$test_root/web/.dist.before-swap.$killed_pid"
+printf 'half moved\n' > "$test_root/web/.dist.before-swap.$killed_pid/index.html"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --validate-source-clean ||
+  fail "an interrupted swap read as a dirty checkout"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --repair
+[ "$(tree_digest)" = "$before_killed_swap" ] || fail "the journal repair did not restore release B"
+[ ! -e "$test_root/artifacts/release-swap.journal" ] || fail "the repair left the journal behind"
+# ... and the next operation repairs by itself, because recovery must not depend on anyone
+# remembering a command.
+if SV10_RELEASE_ROOT="$test_root" SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP=1 "$rollback" "$commit_a" >/dev/null 2>&1; then
+  fail "the second injected kill reported success"
+fi
+SV10_RELEASE_ROOT="$test_root" "$rollback" --install "$test_root/build-B/bin" "$test_root/build-B/web" "$commit_b" >/dev/null
+[ "$(tree_digest)" = "$before_killed_swap" ] || fail "an install after a killed swap did not restore release B"
+[ ! -e "$test_root/artifacts/release-swap.journal" ] || fail "a successful swap left a journal"
+
 # Data-format floor (0229): release A's source has no store codec (format 1), so it is refused while
 # the databases hold compressed columns (format 2), and accepted once `archive unpack` lowered it.
 printf '2\n' > "$test_root/artifacts/data-format"
@@ -255,6 +310,77 @@ grep -q "web/dist/index.html" "$preserved/SHA256SUMS" || fail "preserved copy om
 grep -q "sv10-bot 11.0.0 dev" "$preserved/VERSIONS" || fail "preserved copy did not record versions"
 (cd "$preserved" && sha256sum --check --strict --quiet SHA256SUMS) || fail "preserved copy does not verify"
 [ "$(tree_digest)" = "$before_preserve" ] || fail "preserve-unidentified changed the installed tree"
+
+# An install is complete only once the fleet serves the installed commit (#726). The wait is bounded
+# and its exit status is the gate update.sh turns into an automatic rollback.
+start_health_server "$commit_b"
+SV10_RELEASE_ROOT="$test_root" SV10_HEALTH_URL="$health_url" SV10_HEALTH_TIMEOUT=2 "$rollback" --await-health "$commit_b" ||
+  fail "the health gate refused a fleet reporting the installed commit"
+wait "$health_pid" || true
+health_pid=
+start_health_server 0000000
+gate_t0=$(date +%s)
+if SV10_RELEASE_ROOT="$test_root" SV10_HEALTH_URL="$health_url" SV10_HEALTH_TIMEOUT=1 "$rollback" --await-health "$commit_b" >/dev/null 2>"$test_root/health.err"; then
+  fail "the health gate accepted a fleet that never reported the installed commit"
+fi
+[ "$(($(date +%s) - gate_t0))" -le 10 ] || fail "the health wait was not bounded by SV10_HEALTH_TIMEOUT"
+grep -q "did not answer /api/health with commit $commit_b" "$test_root/health.err" ||
+  fail "the health refusal does not name the commit the fleet should be serving"
+wait "$health_pid" || true
+health_pid=
+
+# A supervisor pid file is not proof of a crash-looping fleet (#726): stop.sh removes them, so one
+# left behind belongs to a supervisor that died without cleanup, and its pid may be a recycled live
+# process or a zombie. Counting either one would read a fleet that is simply down as a crash loop,
+# and update.sh would roll back a good install for it.
+mkdir -p "$test_root/artifacts"
+if SV10_RELEASE_ROOT="$test_root" "$rollback" --fleet-supervisors >/dev/null 2>&1; then
+  fail "--fleet-supervisors found a fleet with no pid files"
+fi
+( cd "$test_root" && exec sleep 60 ) &
+supervisor_pid=$!
+echo "$supervisor_pid" > "$test_root/artifacts/supervisor.pid"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --fleet-supervisors ||
+  fail "--fleet-supervisors missed a supervisor running from the release root"
+sleep 60 &
+stale_pid=$!
+echo "$stale_pid" > "$test_root/artifacts/supervisor.pid"
+if SV10_RELEASE_ROOT="$test_root" "$rollback" --fleet-supervisors >/dev/null 2>&1; then
+  fail "--fleet-supervisors counted a pid that is not running from the release root"
+fi
+kill "$stale_pid" 2>/dev/null || true
+# The zombie parent never reaps: the child stays in state Z, which still answers kill -0.
+python3 - "$test_root/artifacts/supervisor.pid" <<'PY' &
+import os, sys, time
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+open(sys.argv[1], "w").write(str(pid))
+time.sleep(60)
+PY
+zombie_keeper=$!
+zombie_pid=
+for _ in $(seq 1 100); do
+  zombie_pid=$(cat "$test_root/artifacts/supervisor.pid" 2>/dev/null || true)
+  [[ $(ps -o stat= -p "$zombie_pid" 2>/dev/null) = Z* ]] && break
+  sleep 0.02
+done
+[[ $(ps -o stat= -p "$zombie_pid" 2>/dev/null) = Z* ]] || fail "the zombie fixture did not become a zombie"
+if SV10_RELEASE_ROOT="$test_root" "$rollback" --fleet-supervisors >/dev/null 2>&1; then
+  fail "--fleet-supervisors counted a zombie as a supervisor"
+fi
+kill "$zombie_keeper" "$supervisor_pid" 2>/dev/null || true
+wait "$zombie_keeper" "$supervisor_pid" 2>/dev/null || true
+rm -f "$test_root/artifacts/supervisor.pid"
+
+# Disk preflight (LESSONS 22): fail closed before the snapshot and the build, and run inside
+# release.sh before it snapshots anything.
+SV10_RELEASE_ROOT="$test_root" SV10_MIN_FREE_MB=1 "$rollback" --check-space >/dev/null || fail "the disk preflight refused a root with free space"
+if SV10_RELEASE_ROOT="$test_root" SV10_MIN_FREE_MB=999999999 "$rollback" --check-space >/dev/null 2>&1; then
+  fail "the disk preflight accepted a root that cannot hold a release"
+fi
+awk '/--check-space/ { seen = NR } /rollback.sh --snapshot/ { snapshot = NR } END { exit !(seen && snapshot && seen < snapshot) }' \
+  "$repo_root/scripts/release.sh" || fail "release.sh does not check free space before it snapshots"
 
 if SV10_RELEASE_ROOT=/ "$rollback" "$commit_a" >/dev/null 2>&1; then
   fail "unsafe root / was accepted"

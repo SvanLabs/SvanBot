@@ -45,19 +45,118 @@ assert_managed_path() {
 
 validate_layout() {
   local rel
-  for rel in target target/release web web/dist artifacts artifacts/release-snapshots artifacts/release-operation.lock artifacts/release.lock artifacts/release.log; do
+  for rel in target target/release web web/dist artifacts artifacts/release-snapshots artifacts/release-operation.lock artifacts/release.lock artifacts/release.log artifacts/release-swap.journal; do
     assert_managed_path "$rel"
   done
 }
 
 validate_source_clean() {
   local dirty
+  # Swap scratch under web/ is the release's own half-moved dashboard, never a build input: an
+  # interrupted swap must not read as a dirty checkout (the sweep and the journal repair clear it).
   dirty=$(git -C "$release_root" status --porcelain --untracked-files=all -- \
-    crates Cargo.toml Cargo.lock build.rs .cargo rust-toolchain rust-toolchain.toml web)
+    crates Cargo.toml Cargo.lock build.rs .cargo rust-toolchain rust-toolchain.toml web \
+    ':(exclude)web/.dist.before-swap.*' ':(exclude)web/.dist.failed-swap.*')
   if [ -n "$dirty" ]; then
     printf '%s\n' "$dirty" >&2
     die "uncommitted or untracked Rust/web build inputs"
   fi
+}
+
+swap_journal() { printf '%s/artifacts/release-swap.journal' "$release_root"; }
+
+# A kill between dropping the journal and removing the previous sets leaves the .before-swap scratch
+# directory behind, and the journal is already gone so the repair below cannot help. Untracked
+# web/.dist.before-swap.<pid> then reads as a build input and validate_source_clean refuses every
+# later release. The pid in the name is the run that made it, so one whose process is gone is an
+# orphan; a live pid may be mid-swap and is left alone.
+sweep_swap_scratch() {
+  local path pid
+  # A journal owns its own scratch directories: the repair below puts them back, so clearing them
+  # here would destroy the previous install it is about to restore.
+  [ ! -f "$(swap_journal)" ] || return 0
+  for path in "$release_root"/target/.release.before-swap.* "$release_root"/target/.release.failed-swap.* \
+              "$release_root"/web/.dist.before-swap.* "$release_root"/web/.dist.failed-swap.*; do
+    [ -e "$path" ] || continue
+    pid=${path##*.}
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+    [ -d "/proc/$pid" ] && continue
+    rm -rf -- "$path"
+  done
+}
+
+# The directory renames that make an install are five steps with no transaction around them: a SIGKILL
+# (OOM, a stop, power loss) between any two leaves the tree half installed — after the first one there
+# is no `target/release` at all and the supervisors crash-loop. This journal is written and flushed
+# before the first rename, so every kill point is accounted for and the next operation — or
+# keepalive's repair, or `rollback.sh --repair` — can put the previous verified sets back (issue #726).
+write_swap_journal() {
+  local staging=$1 old_release=$2 old_web=$3 have_release=$4 have_web=$5 tmp
+  tmp="$release_root/artifacts/release-swap.journal.new.$$"
+  {
+    printf 'release_root=%s\n' "$release_root"
+    printf 'staging=%s\n' "$staging"
+    printf 'old_release=%s\n' "$old_release"
+    printf 'old_web=%s\n' "$old_web"
+    printf 'have_release=%s\n' "$have_release"
+    printf 'have_web=%s\n' "$have_web"
+  } > "$tmp"
+  mv -T "$tmp" "$(swap_journal)"
+  # One flush of the filesystem holding the journal, so the renames below cannot outlive their record.
+  sync -f "$(swap_journal)" 2>/dev/null || sync 2>/dev/null || true
+}
+
+# Restore whatever an interrupted swap left behind. Idempotent: the journal is removed only after the
+# previous sets are back, and a run killed mid-repair is repaired again by the next one.
+repair_interrupted_swap() {
+  local journal root= line key value staging= old_release= old_web= have_release= have_web= restored= path
+  journal=$(swap_journal)
+  [ -f "$journal" ] || { sweep_swap_scratch; return 0; }
+  while IFS= read -r line; do
+    key=${line%%=*}
+    value=${line#*=}
+    case "$key" in
+      release_root) root=$value ;;
+      staging) staging=$value ;;
+      old_release) old_release=$value ;;
+      old_web) old_web=$value ;;
+      have_release) have_release=$value ;;
+      have_web) have_web=$value ;;
+    esac
+  done < "$journal"
+  [ "${root:-}" = "$release_root" ] || die "swap journal names another release root: ${root:-<none>}"
+  for path in "$staging" "$old_release" "$old_web"; do
+    case "$path" in "$release_root"/*) ;; *) die "swap journal names a path outside the release root: ${path:-<none>}" ;; esac
+  done
+  case "$staging" in
+    "$release_root"/target/.install-*|"$release_root"/target/.rollback-*) ;;
+    *) die "swap journal names an unexpected staging directory: ${staging:-<none>}" ;;
+  esac
+  echo "rollback: repairing an interrupted release swap (journal $journal)" >&2
+  # A killed run's EXIT trap never ran, so its staging tree — and the copy about to be installed — is
+  # still there. Removing both staged sets is what leaves the tree consistent either way.
+  rm -rf -- "$staging"
+  if [ "$have_release" = 1 ] && [ -e "$old_release" ]; then
+    rm -rf -- "$release_root/target/release"
+    mv -- "$old_release" "$release_root/target/release"
+    restored=1
+  elif [ "$have_release" = 0 ] && [ -e "$release_root/target/release" ]; then
+    # A first install that never finished: there was no previous set, so none is installed again.
+    rm -rf -- "$release_root/target/release"
+    restored=1
+  fi
+  if [ "$have_web" = 1 ] && [ -e "$old_web" ]; then
+    rm -rf -- "$release_root/web/dist"
+    mv -- "$old_web" "$release_root/web/dist"
+    restored=1
+  elif [ "$have_web" = 0 ] && [ -e "$release_root/web/dist" ]; then
+    rm -rf -- "$release_root/web/dist"
+    restored=1
+  fi
+  rm -f -- "$journal"
+  [ -z "$restored" ] || echo "rollback: restored the previous install; installed commit is now $(installed_commit || echo unidentified)" >&2
+  # The journal is gone: whatever scratch is left now belongs to a run that died earlier.
+  sweep_swap_scratch
 }
 
 acquire_operation_lock() {
@@ -68,10 +167,11 @@ acquire_operation_lock() {
     target=$(readlink -f "/proc/$$/fd/$inherited" 2>/dev/null || true)
     [ "$target" = "$lock" ] || die "inherited release lock does not identify the managed lock file"
     flock -n "$inherited" || die "inherited release operation lock is not held"
-    return
+  else
+    exec {operation_lock_fd}> "$lock"
+    flock -n "$operation_lock_fd" || die "another release, snapshot, or rollback operation is active"
   fi
-  exec {operation_lock_fd}> "$lock"
-  flock -n "$operation_lock_fd" || die "another release, snapshot, or rollback operation is active"
+  repair_interrupted_swap
 }
 
 resolve_commit() {
@@ -101,7 +201,7 @@ installed_commit() {
   return 1
 }
 
-legacy_health_commit() {
+health_commit() {
   local url
   local port
   # The dashboard port lives in .env (SVANBOT_WEB_PORT); read only that line.
@@ -118,6 +218,43 @@ print(commit)
 PY
 }
 
+# The install is complete only once the fleet serves the installed commit, not when the files land
+# (issue #726): a binary that answers `--version` and dies at startup is installed by a files-only
+# check and then crash-loops. Bounded: the hot swap itself can take the settle window (20 s) plus the
+# wait for a mid-turn bot (up to 90 s) before the process even restarts, so the default is generous;
+# past it the caller rolls back. `SV10_HEALTH_TIMEOUT` is a whole number of seconds.
+await_health() {
+  local expected=$1 timeout=${SV10_HEALTH_TIMEOUT:-240} deadline now got last=
+  [[ $timeout =~ ^[0-9]+$ ]] || die "SV10_HEALTH_TIMEOUT must be a whole number of seconds"
+  expected=$(resolve_commit "$expected")
+  deadline=$(($(date +%s) + timeout))
+  while :; do
+    got=$(health_commit 2>/dev/null || true)
+    if [ -n "$got" ] && [ "$(resolve_commit "$got" 2>/dev/null || true)" = "$expected" ]; then
+      echo "Health reports the installed commit $expected"
+      return 0
+    fi
+    [ -n "$got" ] && last="; health last reported $got"
+    now=$(date +%s)
+    [ "$now" -lt "$deadline" ] || break
+    sleep 3
+  done
+  die "the fleet did not answer /api/health with commit $expected within ${timeout}s$last"
+}
+
+# Free space the release path needs before it stages anything (LESSONS 22: snapshots and hourly
+# backups filled the root once already). Fails closed here, before a snapshot or a build copy is
+# half-written, rather than after. `SV10_MIN_FREE_MB` overrides the default for small volumes.
+check_space() {
+  local required=${1:-${SV10_MIN_FREE_MB:-4096}} avail_kb
+  [[ $required =~ ^[0-9]+$ ]] || die "SV10_MIN_FREE_MB must be a whole number of megabytes"
+  avail_kb=$(df -Pk "$release_root" | awk 'NR == 2 { print $4 }')
+  [[ $avail_kb =~ ^[0-9]+$ ]] || die "could not read free space for $release_root"
+  [ "$avail_kb" -ge $((required * 1024)) ] ||
+    die "only $((avail_kb / 1024)) MB free on $release_root and a release needs about ${required} MB (SV10_MIN_FREE_MB)"
+  echo "$((avail_kb / 1024)) MB free on $release_root (>= ${required} MB)"
+}
+
 running_installed_bot_is_verified() {
   local pidfile pid
   for pidfile in "$release_root/artifacts/bot.pid" "$release_root/artifacts/head.pid" "$release_root"/artifacts/worker-*.pid; do
@@ -126,6 +263,33 @@ running_installed_bot_is_verified() {
     [[ $pid =~ ^[0-9]+$ ]] || continue
     [ -e "/proc/$pid/exe" ] || continue
     [ "$release_root/target/release/sv10-bot" -ef "/proc/$pid/exe" ] && return 0
+  done
+  return 1
+}
+
+# A new build that crash-loops still has its supervisors restarting it, while a fleet taken down on
+# purpose (stop.sh, a service stop) leaves none. The health gate uses this to tell a build that never
+# came up from a fleet that was stopped while the release ran (issue #726).
+#
+# stop.sh removes the pid files, so one left behind names a supervisor that died without cleanup. Its
+# pid can since have been recycled by an unrelated process, or still be a zombie: either answers
+# `kill -0`, and counting it would read a down fleet as a crash loop and send update.sh into a
+# rollback of a good install. Only a live, non-zombie process running from this checkout counts. The
+# zombie rule is pid_alive's (scripts/supervisors.sh); it is repeated here because this script runs
+# under scratch roots whose scripts/ directory does not carry a copy.
+fleet_supervisors_running() {
+  local pidfile pid root_real
+  root_real=$(readlink -f -- "$release_root" 2>/dev/null) || return 1
+  for pidfile in "$release_root"/artifacts/supervisor.pid "$release_root"/artifacts/head-supervisor.pid \
+                 "$release_root"/artifacts/worker-*-supervisor.pid "$release_root"/artifacts/learner-supervisor.pid \
+                 "$release_root"/artifacts/analyst-supervisor.pid "$release_root"/artifacts/monitor-supervisor.pid \
+                 "$release_root"/artifacts/logrotate.pid; do
+    [ -f "$pidfile" ] || continue
+    pid=$(tr -d '[:space:]' < "$pidfile")
+    [[ $pid =~ ^[1-9][0-9]*$ ]] || continue
+    [[ $(ps -o stat= -p "$pid" 2>/dev/null) != Z* ]] || continue
+    [ "$(readlink -f -- "/proc/$pid/cwd" 2>/dev/null)" = "$root_real" ] || continue
+    return 0
   done
   return 1
 }
@@ -148,7 +312,7 @@ adopt_legacy_identity() {
       die "$name is not an unmarked legacy binary"
   done
   running_installed_bot_is_verified || die "no running process matches the installed legacy sv10-bot inode"
-  health=$(legacy_health_commit) || die "could not read legacy build identity from local health"
+  health=$(health_commit) || die "could not read legacy build identity from local health"
   health=$(resolve_commit "$health")
   [ "$health" = "$expected" ] || die "running health identifies $health, expected $expected"
   tmp="$release_root/target/release/.sv10-installed-commit.new.$$"
@@ -345,48 +509,66 @@ restore_old_install() {
 }
 
 swap_install() {
-  local staged_release=$1 staged_web=$2 old_release old_web failed_release failed_web path have_release=0 have_web=0
+  local staged_release=$1 staged_web=$2 staging old_release old_web failed_release failed_web path have_release=0 have_web=0
   old_release="$release_root/target/.release.before-swap.$$"
   old_web="$release_root/web/.dist.before-swap.$$"
   failed_release="$release_root/target/.release.failed-swap.$$"
   failed_web="$release_root/web/.dist.failed-swap.$$"
   [ "$(stat -c %d "$release_root/target")" = "$(stat -c %d "$release_root/web")" ] ||
     die "target and web are on different filesystems; atomic directory swap is unavailable"
-  if [ "${SV10_RELEASE_TEST_FAIL_AFTER_BIN_SWAP:-0}" = 1 ] && [ "$release_root" = "$script_root" ]; then
-    die "test failure injection is forbidden on the real root"
+  if [ "${SV10_RELEASE_TEST_FAIL_AFTER_BIN_SWAP:-0}" = 1 ] || [ "${SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP:-0}" = 1 ]; then
+    [ "$release_root" != "$script_root" ] || die "test failure injection is forbidden on the real root"
   fi
   for path in "$old_release" "$old_web" "$failed_release" "$failed_web"; do [ ! -e "$path" ] || die "swap scratch path exists: $path"; done
   [ ! -d "$release_root/target/release" ] || have_release=1
   [ ! -d "$release_root/web/dist" ] || have_web=1
   [ "$have_release" = "$have_web" ] || die "installed executable and dashboard sets are incomplete"
+  # The staging tree both callers build (mktemp -d target/.install-<commit>.XXXXXX); the journal names
+  # it so a killed run's leftovers are removed with the repair.
+  staging=$(dirname "$(dirname "$staged_release")")
+  write_swap_journal "$staging" "$old_release" "$old_web" "$have_release" "$have_web"
   if [ "$have_release" = 0 ]; then
     if ! mv "$staged_release" "$release_root/target/release"; then
-      die "could not install the first executable set"
+      fail_swap "could not install the first executable set"
     fi
     if ! mv "$staged_web" "$release_root/web/dist"; then
       mv "$release_root/target/release" "$staged_release"
-      die "could not install the first dashboard set"
+      fail_swap "could not install the first dashboard set"
     fi
+    rm -f -- "$(swap_journal)"
     return
   fi
   mv "$release_root/target/release" "$old_release"
+  if [ "${SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP:-0}" = 1 ]; then
+    kill -9 "$$" # a real SIGKILL at the worst point: no trap, no cleanup, the journal is the record
+  fi
   if ! mv "$staged_release" "$release_root/target/release"; then
     mv "$old_release" "$release_root/target/release"
-    die "could not install staged executable set"
+    fail_swap "could not install staged executable set"
   fi
   if [ "${SV10_RELEASE_TEST_FAIL_AFTER_BIN_SWAP:-0}" = 1 ]; then
     restore_old_install "$failed_release" "$old_release" "$failed_web" "$old_web"
-    die "injected failure after executable swap"
+    fail_swap "injected failure after executable swap"
   fi
   if ! mv "$release_root/web/dist" "$old_web"; then
     restore_old_install "$failed_release" "$old_release" "$failed_web" "$old_web"
-    die "could not stage the previous dashboard for replacement"
+    fail_swap "could not stage the previous dashboard for replacement"
   fi
   if ! mv "$staged_web" "$release_root/web/dist"; then
     restore_old_install "$failed_release" "$old_release" "$failed_web" "$old_web"
-    die "could not install staged dashboard set"
+    fail_swap "could not install staged dashboard set"
   fi
+  # The swap is complete: drop the record before the old sets, so a kill from here on leaves the new
+  # build installed rather than a journal that would roll it back.
+  rm -f -- "$(swap_journal)"
   rm -rf -- "$old_release" "$old_web"
+}
+
+# A swap failure that restored the previous sets by itself is not interrupted: drop the journal so the
+# next operation does not repair a tree that is already consistent.
+fail_swap() {
+  rm -f -- "$(swap_journal)"
+  die "$@"
 }
 
 install_release() {
@@ -474,6 +656,7 @@ case ${1:-} in
     ;;
   --validate-source-clean)
     [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --validate-source-clean"
+    sweep_swap_scratch
     validate_source_clean
     ;;
   --snapshot)
@@ -483,6 +666,28 @@ case ${1:-} in
   --verify)
     [ "$#" -eq 2 ] || die "usage: scripts/rollback.sh --verify <commit>"
     verify_snapshot "$(resolve_commit "$2")"
+    ;;
+  --check-space)
+    [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --check-space"
+    check_space
+    ;;
+  --await-health)
+    [ "$#" -eq 2 ] || die "usage: scripts/rollback.sh --await-health <commit>"
+    await_health "$2"
+    ;;
+  --fleet-running)
+    [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --fleet-running"
+    running_installed_bot_is_verified
+    ;;
+  --fleet-supervisors)
+    [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --fleet-supervisors"
+    fleet_supervisors_running
+    ;;
+  --repair)
+    [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --repair"
+    [ -f "$(swap_journal)" ] || echo "No interrupted release swap to repair"
+    validate_layout
+    acquire_operation_lock
     ;;
   --data-format)
     [ "$#" -eq 2 ] || die "usage: scripts/rollback.sh --data-format <commit>"

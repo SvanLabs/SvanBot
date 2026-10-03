@@ -62,6 +62,11 @@ fi
 commit=$(git rev-parse --short HEAD)
 # Baked into the binaries (`sv10_bot::BUILD_COMMIT`, surfaced on /api/health).
 export SVANBOT_COMMIT="$commit"
+# Free space first: the snapshot below copies the installed sets (~250 MB), the build stages a whole
+# release, and a root that ran out half-way through either leaves junk or fails late (LESSONS 22).
+# Fail closed here, before anything is written.
+echo "== free space"
+scripts/rollback.sh --check-space
 # Snapshot the currently installed release before lint/build can replace binaries or web/dist. A
 # partial or unidentified existing installation fails closed; only a true first install may proceed
 # without a recovery point.
@@ -166,11 +171,15 @@ timed dashboard build_web
 echo "== installing"
 progress stage install
 timed install scripts/rollback.sh --install "$STAGE/release" "$WEB_STAGE" "$commit"
-rm -rf "$WEB_STAGE"
-WEB_STAGE=
-mkdir -p artifacts
-echo "$(date +%FT%T%:z) $commit $(git log -1 --format=%s "$commit" | cut -c1-120)" >> artifacts/releases.log
 took=$(($(date +%s) - release_t0))
+# The new build is live from here: a failure in the bookkeeping below is not a failed release (issue
+# #726). With `set -e` a full disk at this point reported "release failed" for a fleet already playing
+# the new build, and update.sh moved a checkout the installed build had come from.
+rm -rf -- "$WEB_STAGE" || echo "warning: could not remove the dashboard staging $WEB_STAGE" >&2
+WEB_STAGE=
+mkdir -p artifacts 2>/dev/null || echo "warning: could not create artifacts/" >&2
+echo "$(date +%FT%T%:z) $commit $(git log -1 --format=%s "$commit" | cut -c1-120)" >> artifacts/releases.log ||
+  echo "warning: could not append to artifacts/releases.log" >&2
 echo "Installed $commit in $took s. The fleet swaps within ~1 minute, the learner after its current step (watch artifacts/logs/svanbot10.log for 'hot swap')."
 over_budget release "$took"
 if own_run; then progress installed "$commit"; fi

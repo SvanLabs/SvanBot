@@ -4,8 +4,49 @@
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd -P)
 t=$(mktemp -d)
-trap 'rm -rf "$t"' EXIT
+health_pid=
+bot_pid=
+cleanup() {
+  [ -z "${bot_pid:-}" ] || kill "$bot_pid" 2>/dev/null || true
+  [ -z "${health_pid:-}" ] || kill "$health_pid" 2>/dev/null || true
+  rm -rf "$t"
+}
+trap cleanup EXIT
 fail() { echo "update test: $*" >&2; exit 1; }
+
+write_binary() {
+  local path=$1 commit=$2 name
+  name=$(basename "$path")
+  printf '#!/usr/bin/env bash\nprintf '\''%%s\\n'\'' '\''%s 10.0.0 %s'\''\n' "$name" "$commit" > "$path"
+  chmod +x "$path"
+}
+
+# A health endpoint that answers once, like the real one: /api/health reporting `commit`.
+start_health_server() {
+  local commit=$1 port_file="$t/health-port"
+  rm -f "$port_file"
+  python3 - "$port_file" "$commit" <<'PY' &
+import http.server, json, socketserver, sys
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps({"commit": sys.argv[2]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *_):
+        pass
+with socketserver.TCPServer(("127.0.0.1", 0), Handler) as server:
+    open(sys.argv[1], "w").write(str(server.server_address[1]))
+    server.handle_request()
+PY
+  health_pid=$!
+  for _ in $(seq 1 100); do [ -s "$port_file" ] && break; sleep 0.02; done
+  [ -s "$port_file" ] || fail "health fixture did not start"
+  health_url="http://127.0.0.1:$(< "$port_file")/api/health"
+  export SV10_HEALTH_URL="$health_url"
+}
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 unset SV10_RELEASE_LOCK_FD SV10_RELEASE_ROOT SV10_UPDATE_RUN SV10_PROGRESS_DIR SVANBOT_ADOPT_UPSTREAM
 # The fixture's origin has only `main`, so an ambient update branch, remote or fetch timeout left in
@@ -19,7 +60,9 @@ mkdir -p "$t/dev/scripts" "$t/dev/crates"
 cp "$repo/scripts/update.sh" "$repo/scripts/progress.py" "$repo/scripts/rollback.sh" "$t/dev/scripts/"
 echo 'fn a() {}' > "$t/dev/crates/a.rs"
 echo 'operator notes' > "$t/dev/operator-notes.txt"
-printf 'artifacts/\n' > "$t/dev/.gitignore"
+# The fixture ignores what the real checkout ignores: the release test installs real sets of
+# files into target/release and web/dist, and source cleanliness must not read them as edits.
+printf 'artifacts/\ntarget/\nweb/\n' > "$t/dev/.gitignore"
 git -C "$t/dev" add -A && git -C "$t/dev" commit -qm "first" && git -C "$t/dev" -c push.negotiate=false push -q origin HEAD:main
 git clone -q "$t/origin.git" "$t/box"
 box="$t/box"
@@ -218,5 +261,188 @@ if (cd "$t/ahead" && SV10_RELEASE_SCRIPT="$t/release-ok.sh" bash scripts/update.
 fi
 [ "$(git -C "$t/ahead" rev-parse HEAD)" = "$unpushed_head" ] || fail "a checkout with unpushed commits moved"
 grep -q "local commits" "$t/ahead/artifacts/release-progress.json" || fail "no reason given for the refusal"
+
+# 11. The health gate (issue #726): installing the files is not the same as the fleet running them.
+# A build that answers `--version` and dies at startup passes every files-only check and then
+# crash-loops; the update is complete only once /api/health reports the installed commit, and
+# anything else restores the previous verified snapshot with the checkout and play intact.
+gate_commit=$(git -C "$box" rev-parse --short HEAD)
+mkdir -p "$box/target" "$box/web" "$box/artifacts" "$box/fixture/bin" "$box/fixture/web"
+cat > "$t/fleet-bot.c" <<'EOF'
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+int main(int argc, char **argv) {
+  if (argc > 1 && strcmp(argv[1], "--version") == 0) { printf("sv10-bot 10.0.0 %s\n", COMMIT); return 0; }
+  sleep(600);
+  return 0;
+}
+EOF
+cc -O2 -DCOMMIT="\"$gate_commit\"" -o "$box/fixture/bin/sv10-bot" "$t/fleet-bot.c"
+for name in learner analyst; do write_binary "$box/fixture/bin/$name" "$gate_commit"; done
+echo 'gate dashboard' > "$box/fixture/web/index.html"
+(cd "$box" && SV10_RELEASE_ROOT="$box" bash scripts/rollback.sh --install "$box/fixture/bin" "$box/fixture/web" "$gate_commit") >/dev/null
+(cd "$box" && SV10_RELEASE_ROOT="$box" bash scripts/rollback.sh --snapshot "$gate_commit") >/dev/null
+# A bot playing the installed build: the gate asks /proc/<pid>/exe, so a stale pid file cannot
+# answer for a dead fleet.
+"$box/target/release/sv10-bot" &
+bot_pid=$!
+echo "$bot_pid" > "$box/artifacts/bot.pid"
+
+# The stub release "installs" the checked-out commit by moving the marker, the way the real one
+# installs a --version-only build that then crash-loops: the files are there, the fleet never is.
+cat > "$t/release-crashloop.sh" <<'EOF'
+#!/usr/bin/env bash
+set -e
+python3 scripts/progress.py stage snapshot
+python3 scripts/progress.py stage install
+printf '%s\n' "$(git rev-parse --short HEAD)" > target/release/.sv10-installed-commit
+echo "stub: installed a build that answers --version and never serves /api/health"
+EOF
+chmod +x "$t/release-crashloop.sh"
+export SV10_HEALTH_TIMEOUT=2
+
+push g
+before_gate=$(git -C "$box" rev-parse HEAD)
+start_health_server "$gate_commit"
+if run "$t/release-crashloop.sh" >/dev/null 2>&1; then
+  fail "an update whose build never answered /api/health reported success"
+fi
+[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$gate_commit" ] ||
+  fail "the health gate did not roll back to the previous verified build"
+[ "$(git -C "$box" rev-parse HEAD)" = "$before_gate" ] || fail "a rolled-back update left the checkout on the failed commit"
+kill -0 "$bot_pid" || fail "the health gate stopped the fleet it was supposed to keep playing"
+[[ "$(state)" == failed* ]] || fail "progress after a failed health gate: $(state)"
+grep -q "did not answer /api/health" "$box/artifacts/release-progress.json" || fail "the progress record does not say the build failed to come up"
+grep -q "rolled back to the verified build" "$box/artifacts/release.log" || fail "the release log does not report the rollback"
+wait "$health_pid" || true
+health_pid=
+
+# With no fleet playing there is nothing to verify: a stopped box (or a first install) is not blocked
+# by a gate that could only ever time out.
+kill "$bot_pid"
+wait "$bot_pid" 2>/dev/null || true
+bot_pid=
+rm "$box/artifacts/bot.pid"
+run "$t/release-crashloop.sh" >/dev/null || fail "a release on a stopped fleet was refused"
+[[ "$(state)" == installed* ]] || fail "a stopped fleet skipped the gate but failed the run: $(state)"
+
+# A fleet that does report the installed commit passes the gate and the run completes.
+push h
+export SV10_HEALTH_TIMEOUT=2
+start_health_server "$(git -C "$t/dev" rev-parse --short HEAD)"
+"$box/target/release/sv10-bot" &
+bot_pid=$!
+echo "$bot_pid" > "$box/artifacts/bot.pid"
+run "$t/release-crashloop.sh" >/dev/null || fail "the health gate refused a fleet reporting the installed commit"
+[[ "$(state)" == installed* ]] || fail "progress after a verified install: $(state)"
+wait "$health_pid" || true
+health_pid=
+unset SV10_HEALTH_TIMEOUT SV10_HEALTH_URL
+
+# 12. The fleet can stop while the release runs (a stop.sh, a service stop). Then there is nothing
+# left to verify and nothing broken, so the install is kept and reported unverified: rolling back
+# would undo a good update, and the old build was no more verified than the new one.
+push i
+stop_commit=$(git -C "$box" rev-parse --short HEAD)    # the build the fixture binaries below carry
+run_commit=$(git -C "$t/dev" rev-parse --short HEAD)
+previous_marker=$(cat "$box/target/release/.sv10-installed-commit")
+cat > "$t/release-fleet-stops.sh" <<'EOF'
+#!/usr/bin/env bash
+set -e
+python3 scripts/progress.py stage snapshot
+python3 scripts/progress.py stage install
+printf '%s\n' "$(git rev-parse --short HEAD)" > target/release/.sv10-installed-commit
+kill "$(cat artifacts/bot.pid)" 2>/dev/null || true
+rm -f artifacts/bot.pid
+echo "stub: installed a build, then the fleet stopped"
+EOF
+chmod +x "$t/release-fleet-stops.sh"
+export SV10_HEALTH_TIMEOUT=2
+"$box/target/release/sv10-bot" &
+bot_pid=$!
+echo "$bot_pid" > "$box/artifacts/bot.pid"
+start_health_server 0000000
+run "$t/release-fleet-stops.sh" >/dev/null || fail "a release whose fleet stopped mid-run was refused"
+wait "$bot_pid" 2>/dev/null || true
+bot_pid=
+[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$run_commit" ] ||
+  fail "a fleet that stopped during the release had its install rolled back"
+[ "$(cat "$box/target/release/.sv10-installed-commit")" != "$previous_marker" ] || fail "the update installed nothing"
+[ "$(git -C "$box" rev-parse --short HEAD)" = "$run_commit" ] || fail "an unverified install moved the checkout back"
+[[ "$(state)" == installed* ]] || fail "progress after an unverified install: $(state)"
+grep -q "the install is unverified" "$box/artifacts/release.log" || fail "the run did not report the install as unverified"
+wait "$health_pid" || true
+health_pid=
+
+# 13. The same shape with a supervisor still alive is a build that never came up, not a fleet stopped
+# on purpose: the gate must still roll back to the verified snapshot.
+push j
+cc -O2 -DCOMMIT="\"$stop_commit\"" -o "$box/fixture/bin/sv10-bot" "$t/fleet-bot.c"
+for name in learner analyst; do write_binary "$box/fixture/bin/$name" "$stop_commit"; done
+(cd "$box" && SV10_RELEASE_ROOT="$box" bash scripts/rollback.sh --install "$box/fixture/bin" "$box/fixture/web" "$stop_commit") >/dev/null
+(cd "$box" && SV10_RELEASE_ROOT="$box" bash scripts/rollback.sh --snapshot "$stop_commit") >/dev/null
+cat > "$t/release-crashloop-supervised.sh" <<'EOF'
+#!/usr/bin/env bash
+set -e
+python3 scripts/progress.py stage snapshot
+python3 scripts/progress.py stage install
+printf '%s\n' "$(git rev-parse --short HEAD)" > target/release/.sv10-installed-commit
+kill "$(cat artifacts/bot.pid)" 2>/dev/null || true
+rm -f artifacts/bot.pid
+echo "stub: installed a build that crash-loops while the supervisor restarts it"
+EOF
+chmod +x "$t/release-crashloop-supervised.sh"
+# From the release root, the way start.sh launches one: --fleet-supervisors only counts a
+# supervisor process that is really this checkout's.
+( cd "$box" && exec sleep 60 ) &
+supervisor_pid=$!
+echo "$supervisor_pid" > "$box/artifacts/supervisor.pid"
+"$box/target/release/sv10-bot" &
+bot_pid=$!
+echo "$bot_pid" > "$box/artifacts/bot.pid"
+start_health_server 0000000
+before_supervised=$(git -C "$box" rev-parse HEAD)
+if run "$t/release-crashloop-supervised.sh" >/dev/null 2>&1; then fail "a crash-looping build reported success"; fi
+wait "$bot_pid" 2>/dev/null || true
+bot_pid=
+[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$stop_commit" ] ||
+  fail "a live supervisor did not make the gate roll back the crash-looping build"
+[ "$(git -C "$box" rev-parse HEAD)" = "$before_supervised" ] || fail "the rolled-back crash-loop left the checkout on the failed commit"
+grep -q "rolled back to the verified build" "$box/artifacts/release.log" || fail "the supervised crash-loop was not reported as rolled back"
+kill "$supervisor_pid" 2>/dev/null || true
+wait "$supervisor_pid" 2>/dev/null || true
+rm -f "$box/artifacts/supervisor.pid"
+wait "$health_pid" || true
+health_pid=
+
+# 14. A previous install with no verified snapshot cannot be a rollback target: naming it as the
+# manual fallback would hand the operator a command that fails the same way.
+push k
+unverified_commit=$(git -C "$t/dev" rev-parse --short HEAD)
+# The installed marker names a commit with no snapshot: adopt-legacy and markerless installs leave
+# exactly this shape, and the manual fallback must not name a commit that cannot be restored.
+printf '%s\n' "$run_commit" > "$box/target/release/.sv10-installed-commit"
+# From the release root, the way start.sh launches one: --fleet-supervisors only counts a
+# supervisor process that is really this checkout's.
+( cd "$box" && exec sleep 60 ) &
+supervisor_pid=$!
+echo "$supervisor_pid" > "$box/artifacts/supervisor.pid"
+"$box/target/release/sv10-bot" &
+bot_pid=$!
+echo "$bot_pid" > "$box/artifacts/bot.pid"
+start_health_server 0000000
+if run "$t/release-crashloop-supervised.sh" >/dev/null 2>&1; then fail "a build with no rollback target reported success"; fi
+wait "$bot_pid" 2>/dev/null || true
+bot_pid=
+[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$unverified_commit" ] || fail "a rollback ran without a verified target"
+[ "$(git -C "$box" rev-parse --short HEAD)" = "$unverified_commit" ] || fail "a missing rollback target moved the checkout"
+grep -q "no verified rollback target" "$box/artifacts/release.log" || fail "the run did not name the missing rollback target"
+kill "$supervisor_pid" 2>/dev/null || true
+wait "$supervisor_pid" 2>/dev/null || true
+rm -f "$box/artifacts/supervisor.pid"
+wait "$health_pid" || true
+health_pid=
+unset SV10_HEALTH_TIMEOUT SV10_HEALTH_URL
 
 echo "update tests: ok"
