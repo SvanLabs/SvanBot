@@ -122,6 +122,29 @@ export interface PlayerCard {
     recent?: KeyHand[] | null };
 }
 
+/** `GET /api/analysis` (leak finder): every recorded hand grouped into leaks. Rates use each
+ *  hand's own recorded blind; `priced_hands` counts the hands that had a positive one, when the
+ *  API supplies the count. Older payloads omit it and report every rate over all hands. */
+export interface LeakLineRow { key: string; label: string; hands: number; /** Hands with a positive recorded blind behind the bb rates, when supplied. */ priced_hands?: number; total_chips: number; bb_per_hand: number | null; low_bb: number | null; high_bb: number | null; share_bb100: number | null }
+export interface LeakResult { hands?: number; priced_hands?: number; bb100: number | null; low_bb100: number | null; high_bb100: number | null; chips: number }
+export interface LeakSeasonResult extends LeakResult { scoped: boolean; number: number | null; started_at: number | null }
+export interface LeakTrendBlock { block: number; hands_end: number; priced_hands?: number; bb100: number | null; cumulative_bb: number | null; until?: string | null }
+export interface LeakOpponent { name: string; hands: number; priced_hands?: number; bb100: number | null; upper_bb100: number | null; beats_us: boolean }
+export interface LeakTrip { street: string; bet_into_us: number; bet_into_us_n: number; bet_elsewhere: number; bet_elsewhere_n: number; z: number; our_fold: number; faced: number; mdf_fold: number; flagged: boolean }
+export interface LeakSuggestion { severity: 'high' | 'medium' | 'info'; title: string; evidence: string; action: string }
+export interface LeakAnalysis {
+  hands: number; priced_hands?: number;
+  /** This season's result, and which season that is. */
+  season?: LeakSeasonResult;
+  /** Every recorded hand: the leaks themselves are learning and carry across seasons. */
+  overall: LeakResult;
+  costly_lines: LeakLineRow[]; best_lines: LeakLineRow[]; outcomes: LeakLineRow[]; positions: LeakLineRow[];
+  trend: LeakTrendBlock[];
+  tripwires: LeakTrip[];
+  opponents: LeakOpponent[];
+  suggestions: LeakSuggestion[];
+}
+
 /** One per-opponent fit on the Per-opponent reads panel (`GET /api/intel`, 0222). */
 export interface IntelFit {
   id: 'fold' | 'response' | 'sizing';

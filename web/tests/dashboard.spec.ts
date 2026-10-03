@@ -896,6 +896,41 @@ test('own card labels the recorded-blind rate sample only when the API supplies 
   await expect(card.locator('.pc-scoreboard .pc-big').nth(2).locator('small')).toHaveText('actual · EV +30 over 3 hands');
 });
 
+test('leak finder labels the recorded-blind sample only when the API supplies it', async ({page}) => {
+  const row = {key:'B/X', label:'Bet then check', hands:60, total_chips:-300,
+    bb_per_hand:-0.25, low_bb:-0.4, high_bb:-0.1, share_bb100:-1.5};
+  const base = {
+    hands:1000,
+    overall:{bb100:4, low_bb100:1, high_bb100:7, chips:800},
+    season:{hands:600, bb100:4, low_bb100:0, high_bb100:8, chips:480, scoped:false, number:null, started_at:null},
+    costly_lines:[row], best_lines:[], outcomes:[], positions:[],
+    trend:[{block:0, hands_end:250, bb100:4, cumulative_bb:50}, {block:1, hands_end:500, bb100:4, cumulative_bb:100}],
+    tripwires:[], opponents:[{name:'Rival', hands:400, bb100:-3, upper_bb100:1, beats_us:false}],
+    suggestions:[],
+  };
+  let payload: Record<string, unknown> = base;
+  await page.route('**/api/analysis', route => route.fulfill({json: payload}));
+  await page.goto('/');
+  const leaks = page.locator('[data-widget="leaks"]');
+  await expect(leaks.locator('.lab-summary div').nth(1).locator('small')).toHaveText('bb/100 · 95% 0 .. +8 · 600 hands');
+  await expect(leaks).not.toContainText('recorded blinds');
+
+  payload = {
+    ...base, hands:1000, priced_hands:800,
+    overall:{...base.overall, priced_hands:800, bb100:null, low_bb100:null, high_bb100:null},
+    season:{...base.season, priced_hands:500, bb100:null, low_bb100:null, high_bb100:null},
+    costly_lines:[{...row, priced_hands:48, bb_per_hand:null, low_bb:null, high_bb:null, share_bb100:null}],
+    opponents:[{name:'Rival', hands:400, priced_hands:320, bb100:-3, upper_bb100:1, beats_us:false}],
+  };
+  await leaks.getByRole('button', {name:'Refresh'}).click();
+  await expect(leaks.locator('.lab-summary div').nth(1).locator('small')).toHaveText('bb/100 · 95% — .. — · 500 hands with recorded blinds');
+  await expect(leaks.locator('.lab-summary div').nth(1).locator('b')).toHaveText('—');
+  await expect(leaks.locator('.lab-summary')).toContainText('1,000');
+  await leaks.getByRole('button', {name:'Lines', exact:true}).click();
+  await expect(leaks.locator('.lab-table').first()).toContainText('48 with recorded blinds');
+  await expect(leaks.locator('.lab-table').first()).toContainText('-300');
+});
+
 test('an opponent row opens the one scout view with our record, the corrections and key hands', async ({ page }) => {
   // 0296: the Opponent intelligence table became a list, and the row opens the single view that
   // replaced the table, the read list and the profile drawer.
