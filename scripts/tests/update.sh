@@ -340,4 +340,103 @@ wait "$health_pid" || true
 health_pid=
 unset SV10_HEALTH_TIMEOUT SV10_HEALTH_URL
 
+# 12. The fleet can stop while the release runs (a stop.sh, a service stop). Then there is nothing
+# left to verify and nothing broken, so the install is kept and reported unverified: rolling back
+# would undo a good update, and the old build was no more verified than the new one.
+push i
+stop_commit=$(git -C "$box" rev-parse --short HEAD)    # the build the fixture binaries below carry
+run_commit=$(git -C "$t/dev" rev-parse --short HEAD)
+previous_marker=$(cat "$box/target/release/.sv10-installed-commit")
+cat > "$t/release-fleet-stops.sh" <<'EOF'
+#!/usr/bin/env bash
+set -e
+python3 scripts/progress.py stage snapshot
+python3 scripts/progress.py stage install
+printf '%s\n' "$(git rev-parse --short HEAD)" > target/release/.sv10-installed-commit
+kill "$(cat artifacts/bot.pid)" 2>/dev/null || true
+rm -f artifacts/bot.pid
+echo "stub: installed a build, then the fleet stopped"
+EOF
+chmod +x "$t/release-fleet-stops.sh"
+export SV10_HEALTH_TIMEOUT=2
+"$box/target/release/sv10-bot" &
+bot_pid=$!
+echo "$bot_pid" > "$box/artifacts/bot.pid"
+start_health_server 0000000
+run "$t/release-fleet-stops.sh" >/dev/null || fail "a release whose fleet stopped mid-run was refused"
+wait "$bot_pid" 2>/dev/null || true
+bot_pid=
+[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$run_commit" ] ||
+  fail "a fleet that stopped during the release had its install rolled back"
+[ "$(cat "$box/target/release/.sv10-installed-commit")" != "$previous_marker" ] || fail "the update installed nothing"
+[ "$(git -C "$box" rev-parse --short HEAD)" = "$run_commit" ] || fail "an unverified install moved the checkout back"
+[[ "$(state)" == installed* ]] || fail "progress after an unverified install: $(state)"
+grep -q "the install is unverified" "$box/artifacts/release.log" || fail "the run did not report the install as unverified"
+wait "$health_pid" || true
+health_pid=
+
+# 13. The same shape with a supervisor still alive is a build that never came up, not a fleet stopped
+# on purpose: the gate must still roll back to the verified snapshot.
+push j
+cc -O2 -DCOMMIT="\"$stop_commit\"" -o "$box/fixture/bin/sv10-bot" "$t/fleet-bot.c"
+for name in learner analyst; do write_binary "$box/fixture/bin/$name" "$stop_commit"; done
+(cd "$box" && SV10_RELEASE_ROOT="$box" bash scripts/rollback.sh --install "$box/fixture/bin" "$box/fixture/web" "$stop_commit") >/dev/null
+(cd "$box" && SV10_RELEASE_ROOT="$box" bash scripts/rollback.sh --snapshot "$stop_commit") >/dev/null
+cat > "$t/release-crashloop-supervised.sh" <<'EOF'
+#!/usr/bin/env bash
+set -e
+python3 scripts/progress.py stage snapshot
+python3 scripts/progress.py stage install
+printf '%s\n' "$(git rev-parse --short HEAD)" > target/release/.sv10-installed-commit
+kill "$(cat artifacts/bot.pid)" 2>/dev/null || true
+rm -f artifacts/bot.pid
+echo "stub: installed a build that crash-loops while the supervisor restarts it"
+EOF
+chmod +x "$t/release-crashloop-supervised.sh"
+sleep 60 & supervisor_pid=$!
+echo "$supervisor_pid" > "$box/artifacts/supervisor.pid"
+"$box/target/release/sv10-bot" &
+bot_pid=$!
+echo "$bot_pid" > "$box/artifacts/bot.pid"
+start_health_server 0000000
+before_supervised=$(git -C "$box" rev-parse HEAD)
+if run "$t/release-crashloop-supervised.sh" >/dev/null 2>&1; then fail "a crash-looping build reported success"; fi
+wait "$bot_pid" 2>/dev/null || true
+bot_pid=
+[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$stop_commit" ] ||
+  fail "a live supervisor did not make the gate roll back the crash-looping build"
+[ "$(git -C "$box" rev-parse HEAD)" = "$before_supervised" ] || fail "the rolled-back crash-loop left the checkout on the failed commit"
+grep -q "rolled back to the verified build" "$box/artifacts/release.log" || fail "the supervised crash-loop was not reported as rolled back"
+kill "$supervisor_pid" 2>/dev/null || true
+wait "$supervisor_pid" 2>/dev/null || true
+rm -f "$box/artifacts/supervisor.pid"
+wait "$health_pid" || true
+health_pid=
+
+# 14. A previous install with no verified snapshot cannot be a rollback target: naming it as the
+# manual fallback would hand the operator a command that fails the same way.
+push k
+unverified_commit=$(git -C "$t/dev" rev-parse --short HEAD)
+# The installed marker names a commit with no snapshot: adopt-legacy and markerless installs leave
+# exactly this shape, and the manual fallback must not name a commit that cannot be restored.
+printf '%s\n' "$run_commit" > "$box/target/release/.sv10-installed-commit"
+sleep 60 & supervisor_pid=$!
+echo "$supervisor_pid" > "$box/artifacts/supervisor.pid"
+"$box/target/release/sv10-bot" &
+bot_pid=$!
+echo "$bot_pid" > "$box/artifacts/bot.pid"
+start_health_server 0000000
+if run "$t/release-crashloop-supervised.sh" >/dev/null 2>&1; then fail "a build with no rollback target reported success"; fi
+wait "$bot_pid" 2>/dev/null || true
+bot_pid=
+[ "$(cat "$box/target/release/.sv10-installed-commit")" = "$unverified_commit" ] || fail "a rollback ran without a verified target"
+[ "$(git -C "$box" rev-parse --short HEAD)" = "$unverified_commit" ] || fail "a missing rollback target moved the checkout"
+grep -q "no verified rollback target" "$box/artifacts/release.log" || fail "the run did not name the missing rollback target"
+kill "$supervisor_pid" 2>/dev/null || true
+wait "$supervisor_pid" 2>/dev/null || true
+rm -f "$box/artifacts/supervisor.pid"
+wait "$health_pid" || true
+health_pid=
+unset SV10_HEALTH_TIMEOUT SV10_HEALTH_URL
+
 echo "update tests: ok"

@@ -52,8 +52,11 @@ validate_layout() {
 
 validate_source_clean() {
   local dirty
+  # Swap scratch under web/ is the release's own half-moved dashboard, never a build input: an
+  # interrupted swap must not read as a dirty checkout (the sweep and the journal repair clear it).
   dirty=$(git -C "$release_root" status --porcelain --untracked-files=all -- \
-    crates Cargo.toml Cargo.lock build.rs .cargo rust-toolchain rust-toolchain.toml web)
+    crates Cargo.toml Cargo.lock build.rs .cargo rust-toolchain rust-toolchain.toml web \
+    ':(exclude)web/.dist.before-swap.*' ':(exclude)web/.dist.failed-swap.*')
   if [ -n "$dirty" ]; then
     printf '%s\n' "$dirty" >&2
     die "uncommitted or untracked Rust/web build inputs"
@@ -61,6 +64,26 @@ validate_source_clean() {
 }
 
 swap_journal() { printf '%s/artifacts/release-swap.journal' "$release_root"; }
+
+# A kill between dropping the journal and removing the previous sets leaves the .before-swap scratch
+# directory behind, and the journal is already gone so the repair below cannot help. Untracked
+# web/.dist.before-swap.<pid> then reads as a build input and validate_source_clean refuses every
+# later release. The pid in the name is the run that made it, so one whose process is gone is an
+# orphan; a live pid may be mid-swap and is left alone.
+sweep_swap_scratch() {
+  local path pid
+  # A journal owns its own scratch directories: the repair below puts them back, so clearing them
+  # here would destroy the previous install it is about to restore.
+  [ ! -f "$(swap_journal)" ] || return 0
+  for path in "$release_root"/target/.release.before-swap.* "$release_root"/target/.release.failed-swap.* \
+              "$release_root"/web/.dist.before-swap.* "$release_root"/web/.dist.failed-swap.*; do
+    [ -e "$path" ] || continue
+    pid=${path##*.}
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+    [ -d "/proc/$pid" ] && continue
+    rm -rf -- "$path"
+  done
+}
 
 # The directory renames that make an install are five steps with no transaction around them: a SIGKILL
 # (OOM, a stop, power loss) between any two leaves the tree half installed — after the first one there
@@ -88,7 +111,7 @@ write_swap_journal() {
 repair_interrupted_swap() {
   local journal root= line key value staging= old_release= old_web= have_release= have_web= restored= path
   journal=$(swap_journal)
-  [ -f "$journal" ] || return 0
+  [ -f "$journal" ] || { sweep_swap_scratch; return 0; }
   while IFS= read -r line; do
     key=${line%%=*}
     value=${line#*=}
@@ -132,6 +155,8 @@ repair_interrupted_swap() {
   fi
   rm -f -- "$journal"
   [ -z "$restored" ] || echo "rollback: restored the previous install; installed commit is now $(installed_commit || echo unidentified)" >&2
+  # The journal is gone: whatever scratch is left now belongs to a run that died earlier.
+  sweep_swap_scratch
 }
 
 acquire_operation_lock() {
@@ -238,6 +263,21 @@ running_installed_bot_is_verified() {
     [[ $pid =~ ^[0-9]+$ ]] || continue
     [ -e "/proc/$pid/exe" ] || continue
     [ "$release_root/target/release/sv10-bot" -ef "/proc/$pid/exe" ] && return 0
+  done
+  return 1
+}
+
+# A new build that crash-loops still has its supervisors restarting it, while a fleet taken down on
+# purpose (stop.sh, a service stop) leaves none. The health gate uses this to tell a build that never
+# came up from a fleet that was stopped while the release ran (issue #726).
+fleet_supervisors_running() {
+  local pidfile
+  for pidfile in "$release_root"/artifacts/supervisor.pid "$release_root"/artifacts/head-supervisor.pid \
+                 "$release_root"/artifacts/worker-*-supervisor.pid "$release_root"/artifacts/learner-supervisor.pid \
+                 "$release_root"/artifacts/analyst-supervisor.pid "$release_root"/artifacts/monitor-supervisor.pid \
+                 "$release_root"/artifacts/logrotate.pid; do
+    [ -f "$pidfile" ] || continue
+    kill -0 "$(tr -d '[:space:]' < "$pidfile")" 2>/dev/null && return 0
   done
   return 1
 }
@@ -604,6 +644,7 @@ case ${1:-} in
     ;;
   --validate-source-clean)
     [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --validate-source-clean"
+    sweep_swap_scratch
     validate_source_clean
     ;;
   --snapshot)
@@ -625,6 +666,10 @@ case ${1:-} in
   --fleet-running)
     [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --fleet-running"
     running_installed_bot_is_verified
+    ;;
+  --fleet-supervisors)
+    [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --fleet-supervisors"
+    fleet_supervisors_running
     ;;
   --repair)
     [ "$#" -eq 1 ] || die "usage: scripts/rollback.sh --repair"

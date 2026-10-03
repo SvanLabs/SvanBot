@@ -95,8 +95,9 @@ tree_digest() {
 git -C "$test_root" init -q
 git -C "$test_root" config user.email test@example.invalid
 git -C "$test_root" config user.name "Release rollback test"
+printf '/target/\n/web/dist/\n' > "$test_root/.gitignore"
 printf 'release A\n' > "$test_root/source.txt"
-git -C "$test_root" add source.txt
+git -C "$test_root" add -A
 git -C "$test_root" commit -qm "release A"
 commit_a=$(git -C "$test_root" rev-parse --short HEAD)
 
@@ -114,6 +115,31 @@ fi
 rm "$test_root/.cargo/config.toml"
 rmdir "$test_root/.cargo"
 SV10_RELEASE_ROOT="$test_root" "$rollback" --validate-source-clean
+
+# A kill between dropping the swap journal and removing the previous sets leaves the scratch
+# directory behind with the journal already gone, so the repair cannot help. Sweep the ones whose
+# owning process is gone — they would otherwise pile up — but never a live pid's, which may be
+# mid-swap, and never a scratch directory a journal still owns.
+killed_pid=999999
+while [ -d "/proc/$killed_pid" ]; do killed_pid=$((killed_pid - 1)); done
+mkdir -p "$test_root/web/.dist.before-swap.$killed_pid" "$test_root/target/.release.before-swap.$killed_pid"
+printf 'old dashboard\n' > "$test_root/web/.dist.before-swap.$killed_pid/index.html"
+printf 'old binary\n' > "$test_root/target/.release.before-swap.$killed_pid/sv10-bot"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --validate-source-clean ||
+  fail "an orphaned swap scratch directory was not swept"
+[ ! -e "$test_root/web/.dist.before-swap.$killed_pid" ] || fail "the sweep left the orphaned dashboard scratch"
+[ ! -e "$test_root/target/.release.before-swap.$killed_pid" ] || fail "the sweep left the orphaned executable scratch"
+mkdir -p "$test_root/web/.dist.before-swap.$$"
+printf 'live swap\n' > "$test_root/web/.dist.before-swap.$$/index.html"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --validate-source-clean ||
+  fail "a live swap's scratch directory read as a build input"
+[ -d "$test_root/web/.dist.before-swap.$$" ] || fail "the sweep removed a live swap's scratch directory"
+rm -rf "$test_root/web/.dist.before-swap.$$"
+# The repair path sweeps too, so `--repair` heals a tree a killed release already left without one.
+mkdir -p "$test_root/web/.dist.failed-swap.$killed_pid"
+printf 'failed swap\n' > "$test_root/web/.dist.failed-swap.$killed_pid/index.html"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --repair >/dev/null
+[ ! -e "$test_root/web/.dist.failed-swap.$killed_pid" ] || fail "--repair left an orphaned swap scratch directory"
 
 # A true first install has the parent directories but neither managed release set.
 mkdir -p "$test_root/target" "$test_root/web"
@@ -221,6 +247,12 @@ fi
 [ -f "$test_root/artifacts/release-swap.journal" ] || fail "a killed swap left no journal"
 [ ! -d "$test_root/target/release" ] || fail "the kill fixture did not stop after the first rename"
 [ -d "$test_root/web/dist" ] || fail "the kill fixture touched the dashboard"
+# The journal owns the previous sets, so a scratch directory it names survives the sweep and the
+# interrupted swap is not mistaken for a dirty checkout; the repair restores from it.
+mkdir -p "$test_root/web/.dist.before-swap.$killed_pid"
+printf 'half moved\n' > "$test_root/web/.dist.before-swap.$killed_pid/index.html"
+SV10_RELEASE_ROOT="$test_root" "$rollback" --validate-source-clean ||
+  fail "an interrupted swap read as a dirty checkout"
 SV10_RELEASE_ROOT="$test_root" "$rollback" --repair
 [ "$(tree_digest)" = "$before_killed_swap" ] || fail "the journal repair did not restore release B"
 [ ! -e "$test_root/artifacts/release-swap.journal" ] || fail "the repair left the journal behind"

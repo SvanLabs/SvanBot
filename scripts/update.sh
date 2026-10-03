@@ -209,24 +209,37 @@ if [ "$fleet_running" = 1 ]; then
   if [ -z "$installed" ]; then
     echo "update: warning: the release installed no commit identity; the fleet cannot be verified" >&2
   elif ! scripts/rollback.sh --await-health "$installed"; then
-    rolled_back=0
-    if [ -n "$previous_installed" ] && scripts/rollback.sh "$previous_installed"; then
-      rolled_back=1
-    fi
-    if [ "$rolled_back" = 1 ]; then
-      echo "update: rolled back to the verified build $previous_installed; the fleet keeps playing it" >&2
-      progress fail install "the new build did not answer /api/health with its commit; rolled back to $previous_installed"
-    elif [ -n "$previous_installed" ]; then
-      echo "update: the automatic rollback to $previous_installed failed; the fleet may still be on $installed" >&2
-      progress fail install "the new build did not answer /api/health and the rollback failed; run scripts/rollback.sh $previous_installed by hand"
+    if ! scripts/rollback.sh --fleet-running && ! scripts/rollback.sh --fleet-supervisors; then
+      # The fleet stopped while the release ran (stop.sh, a service stop): nothing is left to verify
+      # and nothing is broken, so keep the install instead of undoing a good update.
+      echo "update: installed $installed, but the fleet stopped during the release; the install is unverified — start the fleet and check /api/health" >&2
     else
-      echo "update: no previous verified install to roll back to" >&2
-      progress fail install "the new build did not answer /api/health and there is no previous verified install to roll back to"
+      rolled_back=0
+      # Name only a previous commit that can actually be restored: a markerless or adopted install has
+      # a commit in releases.log but no verified snapshot, and handing the operator that command would
+      # fail the same way the automatic rollback just did.
+      rollback_target=
+      if [ -n "$previous_installed" ] && scripts/rollback.sh --verify "$previous_installed" >/dev/null 2>&1; then
+        rollback_target=$previous_installed
+      fi
+      if [ -n "$rollback_target" ] && scripts/rollback.sh "$rollback_target"; then
+        rolled_back=1
+      fi
+      if [ "$rolled_back" = 1 ]; then
+        echo "update: rolled back to the verified build $rollback_target; the fleet keeps playing it" >&2
+        progress fail install "the new build did not answer /api/health with its commit; rolled back to $rollback_target"
+      elif [ -n "$rollback_target" ]; then
+        echo "update: the automatic rollback to $rollback_target failed; the fleet may still be on $installed" >&2
+        progress fail install "the new build did not answer /api/health and the rollback failed; run scripts/rollback.sh $rollback_target by hand"
+      else
+        echo "update: the new build did not answer /api/health and no verified rollback target exists; the fleet may still be on $installed" >&2
+        progress fail install "the new build did not answer /api/health and no verified rollback target exists; fix the build, release again, or restore a snapshot by hand"
+      fi
+      if [ "$rolled_back" = 1 ] && [ "$before" != "$target" ]; then
+        git reset --quiet --keep "$before" && echo "update: checkout restored to $(git rev-parse --short "$before"), so the source matches the build the fleet runs"
+      fi
+      exit 1
     fi
-    if [ "$rolled_back" = 1 ] && [ "$before" != "$target" ]; then
-      git reset --quiet --keep "$before" && echo "update: checkout restored to $(git rev-parse --short "$before"), so the source matches the build the fleet runs"
-    fi
-    exit 1
   fi
 fi
 progress installed "$(git rev-parse --short HEAD)"

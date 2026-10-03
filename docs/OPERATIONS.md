@@ -333,7 +333,11 @@ A crash between those renames — SIGKILL, OOM, a power cut — is repaired, not
 `rollback.sh` flushes `artifacts/release-swap.journal` before its first rename, and the next release
 or rollback, `scripts/rollback.sh --repair`, or the keepalive timer puts the previous verified sets
 back (or removes both managed directories when there was no previous install). The journal is
-removed as soon as the new sets are in place, so a kill during cleanup keeps the new build. After
+removed as soon as the new sets are in place, so a kill during cleanup keeps the new build; scratch
+directories such a kill can still leave (`target/.release.before-swap.<pid>`,
+`web/.dist.before-swap.<pid>`) are swept by the next operation once the process that made them is
+gone — never while a journal still owns them, and never a live pid's — so they cannot read as
+untracked build inputs. After
 the install the release run's own bookkeeping (staging cleanup, `releases.log`) is best-effort: a
 failure there is logged, never reported as a failed release, because the new build is already live.
 
@@ -380,9 +384,13 @@ install: it waits — bounded by `SV10_HEALTH_TIMEOUT` (default 240 s) — for `
 the installed commit. A build that `--version` answers for but that crash-loops on startup never gets
 there, so on timeout or a wrong commit `update.sh` restores the previous verified snapshot through
 `scripts/rollback.sh`, moves the checkout back with it, and ends with the failure and the rollback
-named on the progress card instead of a green `installed` over a dead fleet. A fleet that was already
-stopped tells nothing about the new build's liveness, so the gate is skipped there and the run stops
-at `installed` as before.
+named on the progress card instead of a green `installed` over a dead fleet. A fleet that went down
+while the release ran is told apart from one that never came up by what is left behind: with a
+supervisor still restarting dead bots the build is crash-looping and the rollback fires, while with
+no fleet left at all (a stop.sh, a service stop) there is nothing to verify and nothing broken, so
+the install is kept and the run reports it as unverified. A fleet that was already stopped when the
+update started skips the gate entirely. A previous install with no verified snapshot is never named
+as the fallback, and the run says there is no rollback target instead.
 
 **Roll back to a saved build**: every update snapshots the
 build it replaces; the widget lists them, and a confirmed **Roll back** runs `scripts/update.sh
