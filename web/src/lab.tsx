@@ -3,30 +3,21 @@ import { request, StaleNote, usePoll } from './api';
 import { fmt as fmtNum, sgn as sgnNum } from './format';
 import { PlayerName } from './playername';
 
+import type { LeakAnalysis as Analysis, LeakLineRow as LineRow } from './types';
+
 const fmt = (v: number | null | undefined, d = 0) => fmtNum(v, d, true);
 const sgn = (v: number | null | undefined, d = 0) => sgnNum(v, d, true);
 const pct = (v: number | null | undefined, d = 0) => v == null ? '—' : `${fmt(v * 100, d)}%`;
 const RANKS = 'AKQJT98765432';
 
-interface LineRow { key: string; label: string; hands: number; total_chips: number; bb_per_hand: number; low_bb: number; high_bb: number; share_bb100: number }
-interface Suggestion { severity: 'high' | 'medium' | 'info'; title: string; evidence: string; action: string }
-interface Trip { street: string; bet_into_us: number; bet_into_us_n: number; bet_elsewhere: number; bet_elsewhere_n: number; z: number; our_fold: number; faced: number; mdf_fold: number; flagged: boolean }
-interface Result { hands?: number; bb100: number; low_bb100: number; high_bb100: number; chips: number }
-interface Analysis {
-  hands: number;
-  /** This season's result, and which season that is. */
-  season?: Result & { scoped: boolean; number: number | null; started_at: number | null };
-  /** Every recorded hand: the leaks themselves are learning and carry across seasons. */
-  overall: Result;
-  costly_lines: LineRow[]; best_lines: LineRow[]; outcomes: LineRow[]; positions: LineRow[];
-  trend: { block: number; hands_end: number; bb100: number; cumulative_bb: number }[];
-  tripwires: Trip[];
-  opponents: { name: string; hands: number; bb100: number; upper_bb100: number; beats_us: boolean }[];
-  suggestions: Suggestion[];
-}
+/** Hands behind a win rate: the recorded-blind sample when the API names it, else every hand. */
+const sampleLabel = (priced: number | null | undefined, hands: number | null | undefined) =>
+  priced == null ? `${fmt(hands)} hands` : `${fmt(priced)} hands with recorded blinds`;
 
-/** Interval bar: the 95% range of bb per hand around zero, with the mean marked. */
+/** Interval bar: the 95% range of bb per hand around zero, with the mean marked. A row with no
+ *  priced hand has no rate to draw, so it reads as a dash. */
 function Interval({ row, scale }: { row: LineRow; scale: number }) {
+  if (row.bb_per_hand == null || row.low_bb == null || row.high_bb == null) return <span className="interval">—</span>;
   const x = (v: number) => 50 + Math.max(-50, Math.min(50, v / scale * 50));
   const lo = x(isFinite(row.low_bb) ? row.low_bb : -scale), hi = x(isFinite(row.high_bb) ? row.high_bb : scale);
   return <span className="interval" title={`95%: ${sgn(row.low_bb, 2)} .. ${sgn(row.high_bb, 2)} bb per hand`}>
@@ -37,25 +28,25 @@ function Interval({ row, scale }: { row: LineRow; scale: number }) {
 }
 
 function LineTable({ rows, empty }: { rows: LineRow[]; empty: string }) {
-  const scale = Math.max(1, ...rows.map(r => Math.abs(r.bb_per_hand) * 2));
+  const scale = Math.max(1, ...rows.map(r => Math.abs(r.bb_per_hand ?? 0) * 2));
   if (!rows.length) return <p className="footnote">{empty}</p>;
   return <div className="data-table-wrap"><table className="data-table lab-table"><thead><tr><th>SPOT</th><th>HANDS</th><th>CHIPS</th><th>BB / HAND · 95%</th><th>BB/100 SHARE</th></tr></thead>
-    <tbody>{rows.map(r => <tr key={r.key}><td title={r.key}><b>{r.label || r.key}</b><small>{r.key}</small></td><td>{fmt(r.hands)}</td><td className={r.total_chips < 0 ? 'negative' : 'positive'}>{sgn(r.total_chips)}</td><td><Interval row={r} scale={scale} /><small>{sgn(r.bb_per_hand, 2)}</small></td><td className={r.share_bb100 < 0 ? 'negative' : 'positive'}>{sgn(r.share_bb100, 1)}</td></tr>)}</tbody></table></div>;
+    <tbody>{rows.map(r => <tr key={r.key}><td title={r.key}><b>{r.label || r.key}</b><small>{r.key}</small></td><td>{fmt(r.hands)}{r.priced_hands != null && r.priced_hands !== r.hands ? <small>{fmt(r.priced_hands)} with recorded blinds</small> : null}</td><td className={r.total_chips < 0 ? 'negative' : 'positive'}>{sgn(r.total_chips)}</td><td><Interval row={r} scale={scale} /><small>{sgn(r.bb_per_hand, 2)}</small></td><td className={(r.share_bb100 ?? 0) < 0 ? 'negative' : 'positive'}>{sgn(r.share_bb100, 1)}</td></tr>)}</tbody></table></div>;
 }
 
 function Trend({ points }: { points: Analysis['trend'] }) {
   if (points.length < 2) return <p className="footnote">The trend needs at least 500 hands.</p>;
   const w = 400, h = 150, pad = 12;
-  const cum = points.map(p => p.cumulative_bb);
+  const cum = points.map(p => p.cumulative_bb ?? 0);
   const lo = Math.min(0, ...cum), hi = Math.max(1, ...cum);
   const X = (i: number) => pad + i / (points.length - 1) * (w - 2 * pad);
   const Y = (v: number) => h - pad - (v - lo) / (hi - lo) * (h - 2 * pad);
-  const maxBar = Math.max(1, ...points.map(p => Math.abs(p.bb100)));
+  const maxBar = Math.max(1, ...points.map(p => Math.abs(p.bb100 ?? 0)));
   return <div className="lab-trend">
     <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Cumulative big blinds won">
       <line x1={pad} x2={w - pad} y1={Y(0)} y2={Y(0)} stroke="var(--line)" strokeDasharray="3 5" />
-      {points.map((p, i) => <rect key={i} x={X(i) - 3} width={6} y={p.bb100 >= 0 ? Y(0) - p.bb100 / maxBar * 30 : Y(0)} height={Math.abs(p.bb100) / maxBar * 30} fill={p.bb100 >= 0 ? '#6daa9855' : '#b6857855'}><title>{`Hands ${p.hands_end - 250}–${p.hands_end}: ${sgn(p.bb100, 0)} bb/100`}</title></rect>)}
-      <polyline points={points.map((p, i) => `${X(i)},${Y(p.cumulative_bb)}`).join(' ')} fill="none" stroke="#e4b956" strokeWidth="2.2" />
+      {points.map((p, i) => <rect key={i} x={X(i) - 3} width={6} y={(p.bb100 ?? 0) >= 0 ? Y(0) - (p.bb100 ?? 0) / maxBar * 30 : Y(0)} height={Math.abs(p.bb100 ?? 0) / maxBar * 30} fill={(p.bb100 ?? 0) >= 0 ? '#6daa9855' : '#b6857855'}><title>{`Hands ${p.hands_end - 250}–${p.hands_end}: ${sgn(p.bb100, 0)} bb/100`}</title></rect>)}
+      <polyline points={points.map((p, i) => `${X(i)},${Y(p.cumulative_bb ?? 0)}`).join(' ')} fill="none" stroke="#e4b956" strokeWidth="2.2" />
     </svg>
     <p className="footnote">Line: cumulative big blinds. Bars: bb/100 of each 250-hand block (hover for values). Blocks swing widely; trust the line.</p>
   </div>;
@@ -74,7 +65,7 @@ export function LeakFinder() {
     <StaleNote poll={analysis} />
     <div className="lab-summary">
       <div><label>HANDS ANALYSED</label><b>{fmt(data.hands)}</b><small>every season</small></div>
-      <div><label>WIN RATE · {season}</label><b className={result.bb100 < 0 ? 'negative' : 'positive'}>{sgn(result.bb100, 1)}</b><small>bb/100 · 95% {sgn(result.low_bb100, 0)} .. {sgn(result.high_bb100, 0)} · {fmt(result.hands ?? data.hands)} hands</small></div>
+      <div><label>WIN RATE · {season}</label><b className={(result.bb100 ?? 0) < 0 ? 'negative' : 'positive'}>{sgn(result.bb100, 1)}</b><small>bb/100 · 95% {sgn(result.low_bb100, 0)} .. {sgn(result.high_bb100, 0)} · {sampleLabel(result.priced_hands, result.hands ?? data.hands)}</small></div>
       <div><label>NET · {season}</label><b className={result.chips < 0 ? 'negative' : 'positive'}>{sgn(result.chips)}</b><small>chips · lifetime {sgn(data.overall.chips)} at {sgn(data.overall.bb100, 1)} bb/100</small></div>
       <button className="button" onClick={refresh} title="Reports refresh every five minutes">Refresh</button>
     </div>
@@ -84,7 +75,7 @@ export function LeakFinder() {
     {tab === 'lines' && <><p className="footnote">Our own action sequence per street (B bet, R raise, C call, X check, F fold; - no action), worst first. 20+ hands each. The interval bar is red when a line loses with 95% confidence.</p><LineTable rows={data.costly_lines} empty="No line has 20 hands yet." /><p className="footnote">Best lines</p><LineTable rows={data.best_lines} empty="" /></>}
     {tab === 'outcomes' && <><p className="footnote">How hands ended for us. "Bet or raised, then folded" is the classic leak: chips put in with a hand that could not continue.</p><LineTable rows={data.outcomes} empty="Collecting hands…" /></>}
     {tab === 'positions' && <><p className="footnote">Results by seat. Blinds lose for everyone; compare the others against each other.</p><LineTable rows={data.positions} empty="Collecting hands…" /></>}
-    {tab === 'opponents' && <div className="data-table-wrap"><table className="data-table lab-table"><thead><tr><th>OPPONENT</th><th>HANDS</th><th>OUR BB/100</th><th>95% UPPER</th><th /></tr></thead><tbody>{data.opponents.map(o => <tr key={o.name}><td><b><PlayerName name={o.name}/></b></td><td>{fmt(o.hands)}</td><td className={o.bb100 < 0 ? 'negative' : 'positive'}>{sgn(o.bb100, 0)}</td><td>{sgn(o.upper_bb100, 0)}</td><td>{o.beats_us ? <span className="tag amber">BEATS US</span> : ''}</td></tr>)}</tbody></table><p className="footnote">Chips that moved between us and each opponent in the champion hands they were dealt into (the experiment arms' treatment hands are excluded from the ledger, 0361): what they won from us, minus what we won from them. The 95% upper bound is theirs alone; "Beats us" needs 300+ hands and a bound below zero after correcting for every opponent tested, since among a hundred players a few clear 95% by luck.</p></div>}
+    {tab === 'opponents' && <div className="data-table-wrap"><table className="data-table lab-table"><thead><tr><th>OPPONENT</th><th>HANDS</th><th>OUR BB/100</th><th>95% UPPER</th><th /></tr></thead><tbody>{data.opponents.map(o => <tr key={o.name}><td><b><PlayerName name={o.name}/></b></td><td>{fmt(o.hands)}{o.priced_hands != null && o.priced_hands !== o.hands ? <small>{fmt(o.priced_hands)} with recorded blinds</small> : null}</td><td className={(o.bb100 ?? 0) < 0 ? 'negative' : 'positive'}>{sgn(o.bb100, 0)}</td><td>{sgn(o.upper_bb100, 0)}</td><td>{o.beats_us ? <span className="tag amber">BEATS US</span> : ''}</td></tr>)}</tbody></table><p className="footnote">Chips that moved between us and each opponent in the champion hands they were dealt into (the experiment arms' treatment hands are excluded from the ledger, 0361): what they won from us, minus what we won from them. The 95% upper bound is theirs alone; "Beats us" needs 300+ hands and a bound below zero after correcting for every opponent tested, since among a hundred players a few clear 95% by luck.</p></div>}
     {tab === 'exploit' && <div className="data-table-wrap"><table className="data-table lab-table"><thead><tr><th>STREET</th><th>THEY BET INTO US</th><th>ELSEWHERE</th><th>Z</th><th>WE FOLD</th><th>MDF FOLD</th><th /></tr></thead><tbody>{data.tripwires.map(t => <tr key={t.street}><td><b>{t.street}</b></td><td>{pct(t.bet_into_us)}<small>{fmt(t.bet_into_us_n)} spots</small></td><td>{pct(t.bet_elsewhere)}<small>{fmt(t.bet_elsewhere_n)} spots</small></td><td className={t.z > 2 ? 'negative' : ''}>{sgn(t.z, 1)}</td><td>{pct(t.our_fold)}<small>{fmt(t.faced)} faced</small></td><td>{pct(t.mdf_fold)}</td><td>{t.flagged ? <span className="tag amber">TARGETED</span> : <span className="tag">OK</span>}</td></tr>)}</tbody></table><p className="footnote">Are opponents exploiting our folds? If they bet into us significantly more often than into others (z &gt; 2) while we fold more than the minimum defence frequency, their bets contain extra bluffs and we should call wider.</p></div>}
     {tab === 'trend' && <Trend points={data.trend} />}
   </div>;
