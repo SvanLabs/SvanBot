@@ -20,6 +20,10 @@ await_file() {
   fail "missing $1"
 }
 mkdir -p "$root"/{scripts,artifacts/logs,target/release,web/dist,fakebin}
+# The scratch tree has no operator: caller-exported SVANBOT_FLEET/LEARNER/ANALYST (which
+# scripts/start.sh restores over .env) must not leak the live tree's shape into it, or the
+# split section repairs all-in-one and head-supervisor.pid never appears (#694).
+unset SVANBOT_FLEET LEARNER ANALYST
 cp "$repo/scripts/start.sh" "$repo/scripts/stop.sh" "$repo/scripts/keepalive.sh" "$root/scripts/"
 [ ! -f "$repo/scripts/supervisors.sh" ] || cp "$repo/scripts/supervisors.sh" "$root/scripts/"
 for tool in sv10-bot learner analyst tables; do
