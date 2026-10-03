@@ -10,6 +10,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
+# Node lives in ~/.local/bin on the reference box, and the fleet's own PATH (which a
+# dashboard-triggered release inherits) does not include it — without this the dashboard
+# build stage dies with `npm: command not found` after lint and tests pass (#696).
+[ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"
 SVANBOT_BUILD_STAGES=2 source scripts/resources.sh
 
 # Progress for the dashboard's bar (0236). Under scripts/update.sh (SV10_UPDATE_RUN=1) the run, its
