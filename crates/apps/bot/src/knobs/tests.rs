@@ -111,6 +111,7 @@ fn the_search_never_proposes_a_value_off_the_bar() {
                 "temperature" => p.temperature = v,
                 "raise_gate" => p.raise_gate = v,
                 "hero_image" => p.hero_image = v,
+                "preflop_discount" => p.preflop_discount = v,
                 "tiered_all_in_fold_pricing" => p.tiered_all_in_fold_pricing = v >= 0.5,
                 "bet_size_scale" => p.bet_sizes = [0.33, 0.55, 0.8, 1.2].iter().map(|b| b * v).collect(),
                 other => panic!("{other} has no assignment in this test"),

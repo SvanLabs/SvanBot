@@ -118,6 +118,10 @@ pub struct Params {
     /// strength result supports replacing the existing one-pot approximation (#665).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub tiered_all_in_fold_pricing: bool,
+    /// Share of each player still to act behind a preflop raise that is priced as continuing: their
+    /// `call_open + three_bet` rate (capped at 0.8) times this takes that share of hero's equity away
+    /// (#746). 0.5 is the long-standing flat factor, so a station and a nit differ only by their rates.
+    pub preflop_discount: f64,
 }
 
 impl Default for Params {
@@ -161,6 +165,7 @@ impl Default for Params {
             overbet_call_slope: 0.0,
             deal_chunks: 1,
             tiered_all_in_fold_pricing: false,
+            preflop_discount: 0.5,
         }
     }
 }

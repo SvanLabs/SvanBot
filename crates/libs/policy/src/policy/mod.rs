@@ -123,7 +123,7 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
             if r.acted_this_street {
                 v.push(i);
             } else {
-                discount *= 1.0 - 0.5 * (r.profile.call_open + r.profile.three_bet).min(0.8) as f64;
+                discount *= 1.0 - params.preflop_discount * (r.profile.call_open + r.profile.three_bet).min(0.8) as f64;
             }
         }
         if v.is_empty() { (0..responders.len()).collect() } else { v }

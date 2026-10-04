@@ -60,6 +60,9 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     step_knob("raise_gate", -0.15 * step, &|c, v| c.raise_gate = v);
     step_knob("hero_image", 0.25 * step, &|c, v| c.hero_image = v);
     step_knob("hero_image", -0.25 * step, &|c, v| c.hero_image = v);
+    // The flat 0.5 on the players still to act behind a preflop raise, now a knob (#746).
+    step_knob("preflop_discount", 0.1 * step, &|c, v| c.preflop_discount = v);
+    step_knob("preflop_discount", -0.1 * step, &|c, v| c.preflop_discount = v);
     // Stack-depth-aware preflop sizing (0171).
     step_knob("short_open_bb", -0.25 * step, &|c, v| c.short_open_bb = v);
     step_knob("short_open_bb", 0.25 * step, &|c, v| c.short_open_bb = v);
