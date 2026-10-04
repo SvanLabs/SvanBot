@@ -59,6 +59,10 @@ pub struct StreetFit {
     pub active: bool,
     /// Installed shift (refitted on all samples; 0 when inactive).
     pub shift: f64,
+    /// Too few held-out samples for the gate to say anything (#748): reported as `starved` instead of
+    /// a silent "not installed". The threshold is not lowered; fewer bots only mean it takes longer.
+    #[serde(default)]
+    pub starved: bool,
 }
 
 /// Stored fold calibration: installed shifts plus the per-street evidence.
@@ -143,12 +147,14 @@ fn fit_street(samples: &[FoldSample], street: usize, max_shift: f64) -> StreetFi
         let n = v.len();
         fit.n = n;
         if n == 0 {
+            fit.starved = true;
             return fit;
         }
         fit.predicted = v.iter().map(|s| s.raw).sum::<f64>() / n as f64;
         fit.actual = v.iter().filter(|s| s.folded).count() as f64 / n as f64;
         let (train, test) = v.split_at(n / 2);
         if test.len() < MIN_HELD_OUT {
+            fit.starved = true;
             return fit;
         }
         fit.train_shift = best_shift(train, max_shift);
@@ -381,6 +387,22 @@ mod tests {
         assert_eq!(calibrated.shift, [0.0; 3]);
         let thin = fit(&samples(1, 300, 0.30, 0.10), 1.0);
         assert!(!thin.streets[1].active, "150 held-out samples are below the minimum");
+    }
+
+    #[test]
+    fn a_street_too_thin_for_the_gate_is_starved_and_a_fed_one_is_not() {
+        // One bot sees about a fifth of the fleet's bets (#748): the minimum is not lowered, the street says why.
+        let solo = fit(&samples(1, 300, 0.30, 0.10), 1.0);
+        assert!(solo.streets[1].starved && !solo.streets[1].active, "{:?}", solo.streets[1]);
+        assert!(fit(&[], 1.0).streets.iter().all(|s| s.starved), "no samples at all is starved too");
+        let fed = fit(&samples(1, 4_000, 0.30, 0.10), 1.0);
+        assert!(!fed.streets[1].starved && fed.streets[1].active, "{:?}", fed.streets[1]);
+        let calibrated = fit(&samples(0, 4_000, 0.25, 0.25), 1.0);
+        assert!(!calibrated.streets[0].starved && !calibrated.streets[0].active, "fed but already calibrated is not starved");
+        let mut old = serde_json::to_value(StreetFit::default()).unwrap();
+        old.as_object_mut().unwrap().remove("starved");
+        let stored: StreetFit = serde_json::from_value(old).unwrap();
+        assert!(!stored.starved, "a fit stored before the field existed reads as not starved");
     }
 
     #[test]

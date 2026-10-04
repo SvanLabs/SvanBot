@@ -394,7 +394,7 @@ pub fn view(shared: &Shared, now: f64) -> Value {
     } else if m.active_at(now) {
         live.store_error.clone().or(live.no_target.clone())
     } else {
-        m.last_transition.as_ref().map(|t| t.reason.clone())
+        m.unavailable().or_else(|| m.last_transition.as_ref().map(|t| t.reason.clone()))
     };
     json!({
         "status": status,
