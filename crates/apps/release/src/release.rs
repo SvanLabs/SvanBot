@@ -172,7 +172,9 @@ impl Release {
     }
 
     fn command(&self, mut command: Command) -> Command {
-        command.current_dir(self.path()).env_clear().envs(self.env.iter().map(|(k, v)| (k, v)));
+        // The lock descriptor is this process's own: a child that inherited the name but not the file
+        // (the tests, hermetic by design) would find a lock it does not hold and refuse.
+        command.current_dir(self.path()).env_clear().envs(self.env.iter().map(|(k, v)| (k, v))).env_remove("SV10_RELEASE_LOCK_FD");
         command
     }
 
@@ -337,7 +339,7 @@ impl Release {
     /// failure prints its tail.
     fn build(&self, commit: &str, stage: &Path, skip_tests: bool) -> bool {
         let plan = jobs(skip_tests);
-        let mut running: Vec<(&Job, Instant, std::io::Result<Child>)> = Vec::new();
+        let mut running: Vec<(&Job, std::thread::JoinHandle<(bool, u64)>)> = Vec::new();
         for job in &plan {
             if job.name == "release-build" {
                 // Another cargo in `target/stage` holds cargo's build lock and the job then reports that wait
@@ -345,12 +347,19 @@ impl Release {
                 let mut probe = self.command(Command::new("scripts/build-lock.sh"));
                 self.ui.run(probe.arg("target/stage/release"));
             }
-            running.push((job, Instant::now(), self.start(job, commit, stage)));
+            // Each job is timed by its own waiter, so a job that ends early is not charged for the ones before it.
+            let (started, child) = (Instant::now(), self.start(job, commit, stage));
+            running.push((
+                job,
+                std::thread::spawn(move || {
+                    let ok = child.and_then(|mut c| c.wait()).is_ok_and(|s| s.success());
+                    (ok, started.elapsed().as_secs())
+                }),
+            ));
         }
         let mut failed = false;
-        for (job, started, child) in running {
-            let ok = child.and_then(|mut c| c.wait()).is_ok_and(|s| s.success());
-            let secs = started.elapsed().as_secs();
+        for (job, waiter) in running {
+            let (ok, secs) = waiter.join().unwrap_or((false, 0));
             let log = stage.join(format!("{}.log", job.name));
             if ok {
                 self.ui.say(&format!("   {} ok ({secs} s)", job.name));

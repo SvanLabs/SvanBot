@@ -187,6 +187,7 @@ fn a_swap_killed_halfway_is_repaired_to_the_previous_install() {
         .env("HOME", std::env::temp_dir())
         .env("SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP", "1")
         .env("SV10_SCRIPT_ROOT", &elsewhere)
+        .env_remove("SV10_RELEASE_LOCK_FD")
         .status()
         .unwrap();
     assert_eq!(status.signal(), Some(9), "the child died of SIGKILL, not of a result");
