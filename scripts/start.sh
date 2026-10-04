@@ -26,25 +26,16 @@ set -a; [ ! -f .env ] || source .env; set +a
 [ -z "$caller_fleet" ] || export SVANBOT_FLEET="$caller_fleet"
 [ -z "$caller_learner" ] || export LEARNER="$caller_learner"
 [ -z "$caller_analyst" ] || export ANALYST="$caller_analyst"
-# Only scripts/release.sh writes target/release (LESSONS 31): a missing build, or REBUILD=1, goes
-# through it (tests, then build, install with a recorded commit), never a bare cargo build (0239).
-# Every tool this script launches is named, so a bundle that silently lacked one (#717's monitor)
-# is caught here instead of as a supervisor relaunching a binary that is not there.
-incomplete=""
-for b in sv10-bot tables monitor; do
-  [ -x "target/release/$b" ] || incomplete="$incomplete $b"
-done
-[ "${LEARNER:-1}" != 1 ] || [ -x target/release/learner ] || incomplete="$incomplete learner"
-[ "${ANALYST:-1}" != 1 ] || [ -x target/release/analyst ] || incomplete="$incomplete analyst"
-[ -f web/dist/index.html ] || incomplete="$incomplete web/dist"
-if [ -n "$incomplete" ] || [ "${REBUILD:-0}" = "1" ]; then
-  [ "$repair" != 1 ] || { echo "repair: installed build incomplete:${incomplete:- rebuild requested}; healthy processes kept" >&2; exit 1; }
-  echo "No complete installed build${incomplete:+ (missing:$incomplete)}; running scripts/release.sh (tests, build, install)."
-  scripts/release.sh
-fi
+# start.sh never builds: only scripts/release.sh writes target/release (LESSONS 31), and a start that
+# needs a release to pass stays down when the gate fails (#790). sv10-bot is essential; a missing
+# supporting tool is skipped with a warning.
+[ "${REBUILD:-0}" != 1 ] || { echo "REBUILD is gone: run scripts/release.sh, then scripts/start.sh." >&2; exit 2; }
+has_tool sv10-bot || { echo "No installed sv10-bot; run scripts/release.sh first." >&2; exit 1; }
+skipped=$(missing_supporting | paste -sd' ')
+[ -z "$skipped" ] || echo "warning: starting without: $skipped (scripts/release.sh installs them)" >&2
 # Exact board-strength tables (rebuildable in ~30 s; see crates/libs/equity/src/tables.rs).
-if [ ! -f artifacts/tables/strengths-turn.sv10tbl ]; then
-  ./target/release/tables build
+if [ ! -f artifacts/tables/strengths-turn.sv10tbl ] && has_tool tables; then
+  ./target/release/tables build || echo "warning: tables build failed; the bots play without them" >&2
 fi
 rm -f artifacts/stop.flag artifacts/hold-until
 if [ "${SVANBOT_FLEET:-all}" = split ]; then
@@ -75,13 +66,15 @@ nohup bash -c '
 ' > /dev/null 2>&1 &
 echo $! > artifacts/logrotate.pid
 fi
-if [ "${LEARNER:-1}" = 1 ]; then
+if [ "${LEARNER:-1}" = 1 ] && has_tool learner; then
   ensure_supervisor artifacts/learner-supervisor.pid learner artifacts/learner.pid artifacts/logs/learner.log
 fi
-if [ "${ANALYST:-1}" = 1 ]; then
+if [ "${ANALYST:-1}" = 1 ] && has_tool analyst; then
   ensure_supervisor artifacts/analyst-supervisor.pid analyst artifacts/analyst.pid artifacts/logs/analyst.log
 fi
-ensure_supervisor artifacts/monitor-supervisor.pid monitor artifacts/monitor.pid artifacts/logs/monitor.log
+if has_tool monitor; then
+  ensure_supervisor artifacts/monitor-supervisor.pid monitor artifacts/monitor.pid artifacts/logs/monitor.log
+fi
 sleep 2
 if [ -f artifacts/fleet.pids ]; then
   echo "Started learner, analyst and monitor alongside the split fleet (scripts/status.sh shows every process)."

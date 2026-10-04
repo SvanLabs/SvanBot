@@ -46,7 +46,7 @@ for c in warn:
 sqlite3 "file:artifacts/svanbot10.db?mode=ro" "with names as (select json_extract(k.value, '\$[0]') as current, j.value as name from kv k, json_each(k.value) j where k.key like 'bot.names.%')
   select coalesce(n.current, h.bot), count(*), sum(h.net), round(100.0*sum(h.net*1.0/coalesce(json_extract(h.summary, '\$.bb'), 20))/count(*),1)
   from hands h left join names n on n.name = h.bot where h.net is not null group by 1 order by 1;" 2>/dev/null
-for p in learner analyst; do pgrep -f "target/release/$p" >/dev/null && echo "$p running" || echo "$p NOT running"; done
+for p in learner analyst monitor; do pgrep -f "target/release/$p" >/dev/null && echo "$p running" || echo "$p NOT running"; done
 sqlite3 "file:artifacts/svanbot10.db?mode=ro" "select 'decision audit 24h: ' || count(*) || ' decisions, ' || coalesce(round(100.0*sum(live_action = deep_action)/count(*),1),0) || '% same action, mean gap ' || coalesce(round(avg(gap_bb),2),0) || ' bb, queue ' || (select count(*) from audit_queue) from decision_audit where ts >= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-1 day');" 2>/dev/null
 [ -x target/release/archive ] && echo "archive: $(./target/release/archive list 2>/dev/null | tail -1)"
 systemctl --user list-timers svanbot10-archive.timer --no-pager 2>/dev/null | sed -n 2p

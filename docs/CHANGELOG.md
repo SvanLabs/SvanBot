@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `scripts/start.sh` no longer diverts into `scripts/release.sh` when the installed bundle lacks a tool.
+  A failing release gate used to leave the whole fleet down (#786). It now starts whenever `sv10-bot`
+  is installed, skips a missing supporting tool with a warning, and `REBUILD=1` is removed.
+
 ## [10.0.2] - 2026-09-29
 
 The fleet's supervision, observability and data story: fresh installs start on boot, the public
