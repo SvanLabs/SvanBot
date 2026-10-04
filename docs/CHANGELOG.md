@@ -9,6 +9,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The flop and turn strength tables load on a background thread at process start. A split-mode worker (no dashboard poll to
+  load them early) used to pay the whole checksum pass inside its first flop or turn decision after every restart (#779).
 - `sv10-bot` exits on SIGTERM. `main` used to return into a runtime drop that waits for every blocking task, and the
   release watch never returns, so the process stayed alive after "shutting down; saving models" until a KILL
   (`scripts/restart-bot.sh` left four workers offline for 3 minutes on 2026-10-04). The supervisor restarts it either way.

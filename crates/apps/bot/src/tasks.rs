@@ -24,6 +24,22 @@ pub use hands::{MAX_HAND_RETRIES, MAX_UNSTORED_HANDS, bound_unstored, retry_unst
 pub use models::{fold_new_hands, recover_models, refresh_models_from_store};
 pub use scan::run_findings_scan;
 
+/// Load the flop and turn strength tables off the decision path, once per process. They load on first
+/// use, and a split-mode worker has no dashboard poll to do it early, so its first flop or turn decision
+/// after every restart paid the whole checksum pass (~0.1 s per 90 MB; #779). A decision that arrives
+/// while this runs waits on the same initializer instead of loading twice.
+pub fn warm_tables() -> std::thread::JoinHandle<(bool, bool)> {
+    std::thread::Builder::new()
+        .name("warm-tables".into())
+        .spawn(|| {
+            let began = std::time::Instant::now();
+            let (flop, turn) = (sv10_core::tables::loaded(3).is_some(), sv10_core::tables::loaded(4).is_some());
+            tracing::info!("board tables warmed in {} ms (flop {flop}, turn {turn})", began.elapsed().as_millis());
+            (flop, turn)
+        })
+        .expect("spawn the table warm-up thread")
+}
+
 /// Start every bot session and background loop.
 pub fn spawn_all(shared: &Arc<Shared>) {
     if !shared.config.head {

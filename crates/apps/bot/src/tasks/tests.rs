@@ -463,3 +463,9 @@ async fn a_panicked_or_cancelled_session_restarts() {
     let cancelled = cancelled.await;
     assert_eq!(super::after_session(&cancelled, "run"), super::AfterSession::Restart);
 }
+
+#[test]
+fn the_table_warm_up_reports_what_the_decision_path_will_see() {
+    let (flop, turn) = super::warm_tables().join().expect("the warm-up thread finished");
+    assert_eq!((flop, turn), (sv10_core::tables::loaded(3).is_some(), sv10_core::tables::loaded(4).is_some()));
+}
