@@ -155,6 +155,21 @@ async fn off_and_nothing_make_no_request_at_all() {
     assert_eq!(state, State::default(), "not even last_attempt_at moves");
 }
 
+/// The operator's rule (2026-10-04): renewal spends the account's credit balance and nothing else, never
+/// real money. The one purchase call is `POST /season/pro-bundle` ("from credit balance", `402` when the
+/// balance is short); the token purchase, the single-season endpoint and anything wallet-shaped must
+/// never appear in the module.
+#[test]
+fn only_the_credit_bundle_endpoint_is_ever_called() {
+    let source = include_str!("../proauto.rs");
+    assert!(source.contains("/season/pro-bundle"), "the credit bundle endpoint is the purchase");
+    for forbidden in ["season/pro/token", "season/pro/quote", "/season/pro\"", "wallet", "deposit", "tx_hash", "usdc", "stripe", "payment"]
+    {
+        assert!(!source.to_ascii_lowercase().contains(forbidden), "proauto.rs must not mention {forbidden}");
+    }
+    assert_eq!(source.matches(".post(").count(), 1, "exactly one POST in the module");
+}
+
 #[test]
 fn settings_default_off_and_snap_to_a_real_bundle() {
     let with = |pairs: &'static [(&'static str, &'static str)]| {
