@@ -206,7 +206,24 @@ pub(super) async fn release_progress(State(s): State<Arc<Shared>>) -> Json<Value
             .and_then(|v| v["commit"].as_str().map(String::from))
     };
     let workers = worker_commits(&s);
-    let playing = s.bots.iter().filter(|b| b.read().mode == "playing").count();
+    let now = now_secs();
+    let playing = s
+        .bots
+        .iter()
+        .filter(|b| {
+            let b = b.read();
+            if b.mode == "playing" {
+                return true;
+            }
+            // Split fleet: the head never spawns bots, so an offline local slot reads
+            // through its worker's heartbeat — the same substitution the raw bot views
+            // apply, or the updater reports a playing fleet as 0 of N.
+            if b.mode != "offline" || !s.config.head {
+                return false;
+            }
+            crate::live::read_remote_bot(&s.store, &b.name, now).is_some_and(|(remote, _)| remote.mode == "playing")
+        })
+        .count();
     let short = |c: &str| c.chars().take(7).collect::<String>();
     view["swap"] = json!({
         "target": target,
