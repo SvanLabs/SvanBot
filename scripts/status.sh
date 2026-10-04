@@ -41,6 +41,15 @@ print("host check: everything as recommended" if not warn else "host check: %d w
 for c in warn:
     print("  %s: %s%s" % (c.get("label") or c.get("key"), c.get("value"), (" -> " + c["advice"]) if c.get("advice") else ""))
 ' 2>/dev/null || true
+# The agent worktrees under .scratch grow without a reaper (#763): warn, never fail, past a budget
+# (SVANBOT_SCRATCH_WARN_GB, default 10); scripts/reap-worktrees.sh says what can go.
+if [ -d .scratch ]; then
+  scratch_kb=$(du -sk .scratch 2>/dev/null | cut -f1)
+  scratch_limit=${SVANBOT_SCRATCH_WARN_GB:-10}
+  if [[ ${scratch_kb:-0} =~ ^[0-9]+$ ]] && [[ $scratch_limit =~ ^[0-9]+$ ]] && [ "$scratch_kb" -gt $((scratch_limit * 1048576)) ]; then
+    echo "scratch: .scratch holds $((scratch_kb / 1048576)) GB (over $scratch_limit GB): scripts/reap-worktrees.sh lists the worktrees that can go"
+  fi
+fi
 # Per bot: hands, net and bb/100, a renamed bot's names merged under its current one (the key's name list,
 # identity.rs; SvanBotV7 is SvanBotV10), each hand at its own big blind, read-only (0246).
 sqlite3 "file:artifacts/svanbot10.db?mode=ro" "with names as (select json_extract(k.value, '\$[0]') as current, j.value as name from kv k, json_each(k.value) j where k.key like 'bot.names.%')
