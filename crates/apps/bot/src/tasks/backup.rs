@@ -46,7 +46,7 @@ fn verify_live_database(shared: &Shared) -> (i64, i64) {
 }
 
 /// Drop rows the backup must not carry forward: queued audits past a day, old audit results,
-/// expired replay records and scan snapshots no longer being read.
+/// expired replay records, scan snapshots no longer being read and the activity log past its age.
 fn prune_backup_sources(shared: &Shared) {
     // Queued audits are dropped after a day (the analyst was not running); results are kept
     // `AUDIT_RESULT_DAYS`, which is also the longest window the findings scan measures a rare class
@@ -66,6 +66,13 @@ fn prune_backup_sources(shared: &Shared) {
     match shared.store.prune_scan_snapshots(sv10_store::store::SCAN_SNAPSHOT_DAYS) {
         Ok(n) if n > 0 => tracing::info!("pruned {n} scan snapshots no scan has read for {} days", sv10_store::store::SCAN_SNAPSHOT_DAYS),
         Err(e) => tracing::warn!("pruning scan snapshots failed: {e}"),
+        _ => {}
+    }
+    // The activity log was the one table with no retention (#778): ordinary lines go after a week,
+    // the warn and error rows the timeline reads after 90 days.
+    match shared.store.prune_events(sv10_store::store::EVENTS_INFO_DAYS, sv10_store::store::EVENTS_ALERT_DAYS) {
+        Ok(n) if n > 0 => tracing::info!("pruned {n} old activity log rows"),
+        Err(e) => tracing::warn!("pruning the activity log failed: {e}"),
         _ => {}
     }
 }
