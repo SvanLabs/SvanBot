@@ -178,7 +178,7 @@ fn the_rollback_surface_prints_the_scripts_lines_and_usage() {
         rollback(&f.root, &args(&["--validate-layout", "x"]), &[], &mut out).unwrap_err().to_string(),
         "usage: scripts/rollback.sh --validate-layout"
     );
-    assert!(matches!(rollback(&f.root, &args(&["--install", "a", "b", "c"]), &[], &mut out), Err(ReleaseError::NotBuilt(_))));
+    assert!(matches!(rollback(&f.root, &args(&["--await-health", "c"]), &[], &mut out), Err(ReleaseError::NotBuilt(_))));
     let env = vec![("SV10_MIN_FREE_MB".to_string(), "x".to_string())];
     assert_eq!(rollback(&f.root, &args(&["--check-space"]), &env, &mut out).unwrap_err(), ReleaseError::SpaceSetting);
     let mut out = String::new();

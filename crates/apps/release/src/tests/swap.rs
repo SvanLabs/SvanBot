@@ -1,8 +1,7 @@
 //! The write side: the operation lock, the swap journal and its repair, the scratch sweep, the
 //! directory swap and the snapshot restore, against throwaway roots.
 
-use super::fixture::{Fixture, git};
-use crate::cli::rollback;
+use super::fixture::{Fixture, git, rollback_retrying as rollback};
 use crate::error::ReleaseError;
 use crate::layout::Root;
 use crate::swap::{self, Inject};

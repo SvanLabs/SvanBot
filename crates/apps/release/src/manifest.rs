@@ -134,3 +134,22 @@ pub fn reject_special(dir: &Path) -> Result<()> {
         Err(e) => Err(ReleaseError::Io(format!("find: {}: {e}", dir.display()))),
     }
 }
+
+/// `write_manifest`: `SHA256SUMS` in `base` listing every file under the two trees in byte order, in
+/// `sha256sum`'s format, then checked against the files it was just made from.
+pub fn write(base: &Path) -> Result<()> {
+    let mut text = String::new();
+    for path in actual_paths(base)? {
+        if path.chars().any(char::is_whitespace) {
+            return Err(ReleaseError::ManifestWhitespace(path));
+        }
+        let hash = hash_file(&base.join(&path)).map_err(|e| ReleaseError::Io(format!("cannot hash {path}: {e}")))?;
+        text.push_str(&format!("{hash}  {path}\n"));
+    }
+    if text.is_empty() {
+        return Err(ReleaseError::ManifestEmpty);
+    }
+    let file = base.join("SHA256SUMS");
+    std::fs::write(&file, &text).map_err(|e| ReleaseError::Io(format!("cannot write {}: {e}", file.display())))?;
+    verify_tree(base, &text)
+}

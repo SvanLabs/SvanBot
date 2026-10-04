@@ -44,6 +44,10 @@ pub enum ReleaseError {
         required: u64,
     },
     LockBusy,
+    ManifestWhitespace(String),
+    ManifestEmpty,
+    /// A refusal that is only ever raised in one place; carries the whole message.
+    Refused(String),
     LockForeign,
     LockNotHeld,
     /// The swap journal cannot be trusted; carries the whole message.
@@ -97,6 +101,9 @@ impl fmt::Display for ReleaseError {
             SpaceLow { avail_mb, root, required } => {
                 write!(f, "only {avail_mb} MB free on {root} and a release needs about {required} MB (SV10_MIN_FREE_MB)")
             }
+            ManifestWhitespace(p) => write!(f, "release path contains whitespace: {p}"),
+            ManifestEmpty => write!(f, "release manifest would be empty"),
+            Refused(m) => write!(f, "{m}"),
             LockBusy => write!(f, "another release, snapshot, or rollback operation is active"),
             LockForeign => write!(f, "inherited release lock does not identify the managed lock file"),
             LockNotHeld => write!(f, "inherited release operation lock is not held"),

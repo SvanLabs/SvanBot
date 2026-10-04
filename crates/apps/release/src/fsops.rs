@@ -74,3 +74,24 @@ impl Drop for Scratch {
         let _ = remove_all(&self.0);
     }
 }
+
+/// `find from -maxdepth 1 -type f -perm /111 ! -name '.*'` copied with `cp -p`: the executables of
+/// a release directory, with their modes and times, and nothing hidden (the identity marker is
+/// written separately).
+pub fn copy_executables(from: &Path, to: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    for entry in std::fs::read_dir(from).map_err(|e| io("cannot read", from, e))? {
+        let entry = entry.map_err(|e| io("cannot read", from, e))?;
+        let name = entry.file_name();
+        let meta = std::fs::symlink_metadata(entry.path()).map_err(|e| io("cannot inspect", &entry.path(), e))?;
+        if !meta.is_file() || meta.permissions().mode() & 0o111 == 0 || name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let dst = to.join(&name);
+        std::fs::copy(entry.path(), &dst).map_err(|e| io("cannot copy", &entry.path(), e))?;
+        let file = std::fs::File::options().write(true).open(&dst).map_err(|e| io("cannot open", &dst, e))?;
+        let modified = meta.modified().map_err(|e| io("cannot read the time of", &entry.path(), e))?;
+        file.set_times(FileTimes::new().set_modified(modified)).map_err(|e| io("cannot set the time of", &dst, e))?;
+    }
+    Ok(())
+}

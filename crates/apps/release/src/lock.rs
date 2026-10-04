@@ -33,7 +33,10 @@ pub fn acquire(root: &Root, inherited: Option<&str>) -> Result<Operation> {
         }
         None => {
             let file = File::create(&lock).map_err(|e| ReleaseError::Io(format!("cannot open {}: {e}", lock.display())))?;
-            file.try_lock().map_err(|_| ReleaseError::LockBusy)?;
+            file.try_lock().map_err(|e| match e {
+                std::fs::TryLockError::WouldBlock => ReleaseError::LockBusy,
+                std::fs::TryLockError::Error(e) => ReleaseError::Io(format!("cannot lock {}: {e}", lock.display())),
+            })?;
             Operation { _file: Some(file) }
         }
     };
