@@ -236,7 +236,15 @@ impl Installs {
                     self.slots[slot] = Some(raw);
                     let changed = own.is_some() || shared.bots[slot].read().slot_params.is_some();
                     let msg = if own.is_some() { "own strategy parameters are now live" } else { "plays the shared champion again" };
-                    shared.bots[slot].write().slot_params = own;
+                    let version = shared
+                        .store
+                        .get_kv(&crate::learner::lane::Lane::bot(&name).key(crate::LEARNER_LINEAGE_KEY))?
+                        .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+                        .and_then(|l| l.last().cloned());
+                    let mut bot = shared.bots[slot].write();
+                    bot.slot_params = own;
+                    bot.slot_version = version;
+                    drop(bot);
                     if changed {
                         shared.log(&name, "info", msg);
                     }

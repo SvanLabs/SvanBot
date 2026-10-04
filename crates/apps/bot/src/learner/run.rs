@@ -149,6 +149,9 @@ pub struct SearchRun {
     pub start_rowid: i64,
     /// Start time (seconds since the epoch).
     pub started: f64,
+    /// The lineage this search is for (the shared champion in a store that has no lineages).
+    #[serde(default)]
+    pub lane: super::lane::Lane,
     /// Champion version searched against.
     pub champion_version: String,
     /// Evidence epoch the search is measured under (the ledger's and the target queue's scope).
@@ -394,6 +397,7 @@ mod tests {
             cycle: 7,
             start_rowid: 1,
             started: 2.0,
+            lane: super::super::lane::Lane::bot("A"),
             champion_version: "sv10-ev-9".into(),
             refit_rowid: 3,
             champion_digest: digest("{}"),

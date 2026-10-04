@@ -203,6 +203,9 @@ pub struct BotLive {
     /// This bot's own lineage knobs (`params.slot.<bot>`, ADR 0002), `None` while the shared champion plays.
     #[serde(skip)]
     pub slot_params: Option<Params>,
+    /// Version name of that lineage's newest champion (recorded with each decision), when it has one.
+    #[serde(skip)]
+    pub slot_version: Option<String>,
     /// The hand in progress, saved when the process exits so the next one can finish it (0315).
     #[serde(skip)]
     pub open_hand: Option<sv10_venue::tracker::OpenHand>,

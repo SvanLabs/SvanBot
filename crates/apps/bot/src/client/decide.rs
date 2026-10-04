@@ -177,7 +177,7 @@ pub(super) async fn act(
                     live.adopt_promoted(own);
                 }
                 let params = policy2.params(&live);
-                let version = shared2.champion_version.read().clone();
+                let version = shared2.bots[slot].read().slot_version.clone().unwrap_or_else(|| shared2.champion_version.read().clone());
                 let nn = shared2.nn.read().clone();
                 let mut r = SmallRng::seed_from_u64(seed);
                 let d = decide_with(&sit2, &models, &params, nn.as_deref(), &mut r);

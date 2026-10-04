@@ -4,6 +4,7 @@
 //! two minutes and a release waits at most one step.
 
 pub mod funnel;
+pub mod lane;
 pub mod pool;
 pub mod progress;
 pub mod refit;
@@ -54,17 +55,12 @@ pub fn load_models(store: &Store) -> ModelStore {
 
 /// The champion's stored parameters.
 pub fn load_params(store: &Store) -> Params {
-    store.get_kv(crate::PARAMS_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    lane::Lane::default().params(store)
 }
 
 /// The promoted versions, oldest first.
 pub fn load_lineage(store: &Store) -> Vec<String> {
-    store
-        .get_kv(crate::LEARNER_LINEAGE_KEY)
-        .ok()
-        .flatten()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| vec!["sv10-ev-1".to_string()])
+    lane::Lane::default().lineage(store)
 }
 
 /// Publish the learner's status for the dashboard. A write that does not land says so (issue #326):
@@ -99,12 +95,17 @@ pub fn push_experiment(store: &Store, e: Value) {
 /// exactly. A failed write leaves the older queue, which the fleet refuses once its scope moves on.
 pub fn publish_targets(
     store: &Store,
+    lane: &lane::Lane,
     ledger: &search_ledger::Ledger,
     champion: &Params,
     cycle: u64,
     confirming: Option<Target>,
     (tables, hands): (usize, usize),
 ) {
+    // The experiment pair assumes one champion; it is retired while lineages differ (ADR 0002).
+    if !lane.is_shared() {
+        return;
+    }
     let mut proposals = pool::challengers(champion, cycle);
     proposals.extend(pool::challengers(champion, cycle + 1));
     let queue = experiment_target::build_queue(ledger, &proposals, confirming, tables, hands, now());
