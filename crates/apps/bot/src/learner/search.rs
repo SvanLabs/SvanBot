@@ -65,7 +65,12 @@ impl Scope {
 /// What a search plays: the champion (search parameters), the population snapshot and the live
 /// response net. `bench` freezes it into its fixture (0335).
 pub fn inputs(store: &Store) -> (Params, ModelStore, Option<Arc<Mlp>>) {
-    let sc = Scope::load(store, &Lane::default());
+    lane_inputs(store, &Lane::default())
+}
+
+/// What a paired evaluation of `lane` plays: its champion, the population snapshot and the live net.
+pub fn lane_inputs(store: &Store, lane: &Lane) -> (Params, ModelStore, Option<Arc<Mlp>>) {
+    let sc = Scope::load(store, lane);
     let nn = neural::active_response_net(store.get_kv(NN_KEY).ok().flatten().and_then(|j| serde_json::from_str::<StoredNet>(&j).ok()));
     (sc.champion, sc.models, nn)
 }
