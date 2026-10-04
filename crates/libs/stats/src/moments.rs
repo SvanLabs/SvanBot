@@ -61,9 +61,84 @@ pub fn mean_half_width(xs: &[f64], z: f64) -> (f64, f64) {
     (m, z * (v / n).sqrt())
 }
 
+/// Two-sided 95% Student-t critical values the benchmark tools report intervals with (0335), by
+/// degrees of freedom: tabulated at 1..=10, 14, 19 and 29, rounded upward. A degree of freedom
+/// between rows takes the row below it (the larger value), so an interval is never narrower than the
+/// textbook's. The table is the contract, not an approximation of [`crate::normal::normal_quantile`].
+const T975: [(usize, f64); 13] = [
+    (1, 12.71),
+    (2, 4.31),
+    (3, 3.19),
+    (4, 2.78),
+    (5, 2.58),
+    (6, 2.45),
+    (7, 2.37),
+    (8, 2.31),
+    (9, 2.27),
+    (10, 2.23),
+    (14, 2.15),
+    (19, 2.10),
+    (29, 2.05),
+];
+
+/// The critical value at `df` degrees of freedom: the largest tabulated row at or below it, and
+/// infinite below the first row (no interval from fewer than two values).
+pub fn t975(df: usize) -> f64 {
+    T975.iter().rev().find(|&&(k, _)| df >= k).map_or(f64::INFINITY, |&(_, t)| t)
+}
+
+/// Mean of `xs` and the half-width of its 95% t-interval (sample standard deviation, n − 1), or
+/// `None` under two values. The paired-ratio interval `ab` reports: a gain counts only when the
+/// interval excludes 1.
+pub fn t_interval(xs: &[f64]) -> Option<(f64, f64)> {
+    if xs.len() < 2 {
+        return None;
+    }
+    let n = xs.len() as f64;
+    let m = xs.iter().sum::<f64>() / n;
+    let sd = (xs.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
+    Some((m, t975(xs.len() - 1) * sd / n.sqrt()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn t_table_never_understates_the_textbook() {
+        // NIST/SEMATECH handbook, Student-t critical values, probability 0.975.
+        let nist = [
+            (1, 12.706),
+            (2, 4.303),
+            (3, 3.182),
+            (5, 2.571),
+            (7, 2.365),
+            (9, 2.262),
+            (10, 2.228),
+            (11, 2.201),
+            (14, 2.145),
+            (19, 2.093),
+            (29, 2.045),
+            (30, 2.042),
+        ];
+        for (df, critical) in nist {
+            assert!(t975(df) >= critical, "df {df}");
+        }
+        assert!(t975(1000) > 1.96, "a large sample keeps the last row, not the normal");
+        assert!((1..100).map(t975).collect::<Vec<_>>().windows(2).all(|w| w[0] >= w[1]));
+        assert_eq!(t975(0), f64::INFINITY);
+        assert_eq!((t975(11), t975(13), t975(14), t975(15)), (2.23, 2.23, 2.15, 2.15));
+    }
+
+    #[test]
+    fn t_interval_is_the_paired_ratio_interval() {
+        assert_eq!(t_interval(&[1.0]), None);
+        // Two values, df 1: mean 1.5, sd √0.5, half-width 12.71·√0.5/√2.
+        let (mean, half) = t_interval(&[1.0, 2.0]).unwrap();
+        assert_eq!(mean, 1.5);
+        assert!((half - 12.71 * 0.5f64.sqrt() / 2f64.sqrt()).abs() < 1e-12);
+        assert_eq!(t_interval(&[3.0, 3.0, 3.0]), Some((3.0, 0.0)));
+    }
 
     #[test]
     fn running_and_sample_forms_agree_with_the_textbook() {

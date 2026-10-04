@@ -117,7 +117,7 @@ transaction, so committed table pages are included while the fleet is running.
 Build comparisons with `scripts/build-ab.py` retain compiler output and the diagnostic log path
 when a build exceeds its timeout, including runs that produced only one output stream.
 
-Benchmark intervals in `scripts/bench-ab.py` and `scripts/build-ab.py` use conservative
+Benchmark intervals in `ab` (`crates/apps/core/src/bin/ab.rs`, table in `crates/libs/stats/src/moments.rs`) and `scripts/build-ab.py` use conservative
 Student-t multipliers: rounded upward, with the nearest lower tabulated degree of freedom
 and the last finite-sample bound retained for larger samples.
 
@@ -182,7 +182,7 @@ The workload is frozen in `artifacts/bench-fixture.json`: `learner bench-fixture
 live store (the champion as searches play it, the population models, the response net and this
 machine's sample budgets); with no fixture the archetype pool and default parameters stand in.
 
-Two builds are compared with `scripts/bench-ab.py BASE NEW --suite learner --repeat 10`, which
+Two builds are compared with `target/dev/release/ab BASE NEW --suite learner --repeat 10` (build it with `CARGO_TARGET_DIR=target/dev cargo build --profile release -p sv10-core --bin ab`), which
 alternates them back to back on the shared machine and reports the paired ratio with a 95%
 t-interval — a gain counts only when the interval excludes 1, and the checksums must match. `perf` is
 blocked on this host (`perf_event_paranoid` 3, no root); `--profile` samples process CPU time with

@@ -18,7 +18,7 @@ class ConservativeCriticalValues(unittest.TestCase):
         # NIST/SEMATECH handbook, Student-t critical values, probability0.975 column.
         references = {1: 12.706, 2: 4.303, 3: 3.182, 5: 2.571, 7: 2.365, 9: 2.262,
                       10: 2.228, 11: 2.201, 14: 2.145, 19: 2.093, 29: 2.045, 30: 2.042}
-        for name in ('bench-ab', 'build-ab'):
+        for name in ('build-ab',):  # `ab` has the same table, tested in sv10-stats
             tool = load(name)
             for df, critical in references.items():
                 with self.subTest(tool=name, df=df):
