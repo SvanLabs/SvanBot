@@ -7,6 +7,7 @@ repo_root=$(cd "$(dirname "$0")/../.." && pwd -P)
 # scripts/start.sh restores over .env) must not leak the live tree's shape into it, or the
 # expected-supervisor list answers for split while the fixture builds all-in-one.
 unset SVANBOT_FLEET LEARNER ANALYST
+export START_API_WAIT=1 SVANBOT_WEB_PORT=1   # start.sh's API check: short, and never the live fleet's
 root=$(mktemp -d)
 sleeper=
 cleanup() { [ -z "$sleeper" ] || kill "$sleeper" 2>/dev/null || true; rm -rf "$root"; }

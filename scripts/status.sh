@@ -56,6 +56,14 @@ systemctl --user list-timers svanbot10-archive.timer --no-pager 2>/dev/null | se
 if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/svanbot10.service" ] && ! scripts/units.sh --check >/dev/null 2>&1; then
   echo "systemd units: the installed copies are not the ones this checkout renders (scripts/units.sh)"
 fi
+# A fleet started by hand lives in the login scope, not in svanbot10.service (#798): systemd does not
+# see it, and a unit restart adopts it. Silent unless the unit is installed here.
+if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/svanbot10.service" ]; then
+  sup=$(cat artifacts/supervisor.pid artifacts/head-supervisor.pid 2>/dev/null | head -1)
+  scope=$(cut -d: -f3 "/proc/${sup:-0}/cgroup" 2>/dev/null)
+  [ -z "$scope" ] || [[ $scope == */svanbot10.service ]] ||
+    echo "fleet cgroup: ${scope##*/}, not svanbot10.service (started by hand; systemctl --user restart svanbot10.service adopts it at a quiet moment)"
+fi
 # Pressure stall information (share of time tasks waited, 60 s average): CPU above ~20% or I/O "full"
 # above ~10% sustained means live play competes for the machine.
 printf 'pressure avg60: cpu %s%%, io full %s%%, memory full %s%%\n' \

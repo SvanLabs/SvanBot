@@ -12,6 +12,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `scripts/start.sh` no longer diverts into `scripts/release.sh` when the installed bundle lacks a tool.
   A failing release gate used to leave the whole fleet down (#786). It now starts whenever `sv10-bot`
   is installed, skips a missing supporting tool with a warning, and `REBUILD=1` is removed.
+- A plain `scripts/start.sh` clears the stop flag and hold first, so a start that fails early cannot leave the
+  forever hold the service's `ExecStop` writes. It prints an API check at the end. A `monitor`, `learner`
+  or `analyst` supervisor whose binary stays missing for five tries exits with one log line (#798).
 
 ## [10.0.2] - 2026-09-29
 
