@@ -18,6 +18,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   after "shutting down; saving models" made the restart a no-op and left four bots offline for 3 minutes (#803).
 - The activity log (`events`) is pruned with the hourly backup: ordinary lines after 7 days, warn and error rows
   (what the timeline reads) after 90. It was the one table with no retention (#778).
+- A `portfolio_pro_required` refusal (Pro lapsed) queues the join on the normal ladder (8 s up to 120 s) instead of waiting for the
+  2-minute unseated watchdog, so the bots seat within seconds of a renewal. The tier alarm and key gate stay open on #775.
 - `scripts/start.sh` no longer diverts into `scripts/release.sh` when the installed bundle lacks a tool.
   A failing release gate used to leave the whole fleet down (#786). It now starts whenever `sv10-bot`
   is installed, skips a missing supporting tool with a warning, and `REBUILD=1` is removed.

@@ -186,6 +186,20 @@ async fn a_connection_refusal_ends_the_session_and_backs_off() {
     assert_eq!(next_backoff(Some(&SessionEnd::Closed), Duration::from_secs(40), brief), one);
 }
 
+/// 2026-10-04: Pro lapsed at the season turn and the venue refused four joins with
+/// `portfolio_pro_required`. The error used to fall through, so the bots rejoined only through the
+/// 2-minute unseated watchdog; it now queues the join for the session loop's ladder (8 s up to 120 s).
+#[tokio::test]
+async fn a_pro_refusal_keeps_the_join_queued() {
+    let mut rig = Rig::new("pro-required");
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.seat.pending_join = false;
+    let refusal = json!({"type": "error", "code": "portfolio_pro_required", "message": "Pro is required to run multiple portfolio bots"});
+    assert!(rig.feed_end(&conn, refusal).await.is_none(), "the session stays up");
+    assert!(rig.seat.pending_join, "the join is retried once Pro is back");
+}
+
 /// 0268: the reducer contract asks the client to sort the replay window by `table_seq` and drop
 /// repeats, because `apply_event` is not idempotent. A shuffled window with a duplicate must
 /// produce one action per event, in sequence order.
