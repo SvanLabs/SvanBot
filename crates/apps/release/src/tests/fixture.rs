@@ -6,7 +6,13 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Tests share one process, and a `fork` in one test holds every other test's open descriptors until
+/// its `exec`: a lock looks held, and a script just written looks busy (`ETXTBSY`). Fixtures take
+/// turns, which costs well under a second for the whole suite.
+static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub struct Fixture {
+    _turn: std::sync::MutexGuard<'static, ()>,
     pub dir: PathBuf,
     pub root: Root,
     pub commit: String,
@@ -27,6 +33,7 @@ pub fn git(dir: &Path, args: &[&str]) {
 
 impl Fixture {
     pub fn new(tag: &str) -> Fixture {
+        let turn = TURN.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("sv10-release-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -39,7 +46,7 @@ impl Fixture {
         let home = std::env::temp_dir().join(format!("sv10-release-home-{tag}-{}", std::process::id()));
         std::fs::create_dir_all(&home).unwrap();
         let root = Root::open(&dir, Some(&home)).expect("the fixture is a valid root");
-        Fixture { dir, root, commit }
+        Fixture { _turn: turn, dir, root, commit }
     }
 
     /// A fake executable that answers `--version` with `line`.
@@ -77,4 +84,22 @@ impl Fixture {
         std::fs::write(snap.join("SHA256SUMS"), Fixture::manifest(&snap)).unwrap();
         snap
     }
+}
+
+/// `rollback`, retried while the lock is busy. A lock outlives its holder by the moment another
+/// test's `fork` still has the descriptor open before `exec` closes it; tests run in one process,
+/// so a lock taken straight after a release is retried rather than trusted to be free.
+pub fn rollback_retrying(root: &Root, args: &[String], env: &[(String, String)], out: &mut String) -> crate::error::Result<()> {
+    let mut attempt = String::new();
+    for _ in 0..100 {
+        attempt.clear();
+        match crate::cli::rollback(root, args, env, &mut attempt) {
+            Err(crate::error::ReleaseError::LockBusy) => std::thread::sleep(std::time::Duration::from_millis(20)),
+            other => {
+                out.push_str(&attempt);
+                return other;
+            }
+        }
+    }
+    crate::cli::rollback(root, args, env, out)
 }

@@ -15,6 +15,7 @@ pub mod journal;
 pub mod layout;
 pub mod lock;
 pub mod manifest;
+pub mod publish;
 pub mod restore;
 pub mod snapshot;
 pub mod space;

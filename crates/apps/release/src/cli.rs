@@ -3,7 +3,7 @@
 
 use crate::error::{ReleaseError, Result};
 use crate::layout::Root;
-use crate::{gitops, identity, journal, lock, restore, snapshot, space, store_format};
+use crate::{gitops, identity, journal, lock, publish, restore, snapshot, space, store_format};
 use std::path::PathBuf;
 
 /// Entry point: the process exit status for `args` (without the program name).
@@ -102,15 +102,21 @@ pub fn rollback(root: &Root, args: &[String], env: &[(String, String)], out: &mu
             root.validate_layout()?;
             lock::acquire(root, env_of(env, "SV10_RELEASE_LOCK_FD")).map(drop)
         }
-        Some(
-            flag @ ("--snapshot"
-            | "--await-health"
-            | "--fleet-running"
-            | "--fleet-supervisors"
-            | "--preserve-unidentified"
-            | "--adopt-legacy"
-            | "--install"),
-        ) => Err(ReleaseError::NotBuilt(format!("`rollback {flag}`"))),
+        Some("--snapshot") => {
+            arity(2, "--snapshot <commit>")?;
+            publish::create_snapshot(root, &args[1], env, out)
+        }
+        Some("--install") => {
+            arity(4, "--install <binary-dir> <web-dir> <commit>")?;
+            publish::install(root, &args[1], &args[2], &args[3], env, out)
+        }
+        Some("--preserve-unidentified") => {
+            arity(1, "--preserve-unidentified")?;
+            publish::preserve_unidentified(root, env, out)
+        }
+        Some(flag @ ("--adopt-legacy" | "--await-health" | "--fleet-running" | "--fleet-supervisors")) => {
+            Err(ReleaseError::NotBuilt(format!("`rollback {flag}`")))
+        }
         Some(_) if args.len() == 1 => restore::restore(root, &args[0], env, out),
         _ => Err(usage("<commit>")),
     }
