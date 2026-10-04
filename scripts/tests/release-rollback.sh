@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd -P)
+repo=$repo_root
+source "$repo/scripts/tests/lib-release-bin.sh"
 # Hermetic: release.sh runs this under its own lock and exports it; the fixture has its own root.
 unset SV10_RELEASE_LOCK_FD SV10_RELEASE_ROOT SV10_HEALTH_URL SVANBOT_WEB_PORT
 rollback="$repo_root/scripts/rollback.sh"
@@ -379,8 +381,7 @@ SV10_RELEASE_ROOT="$test_root" SV10_MIN_FREE_MB=1 "$rollback" --check-space >/de
 if SV10_RELEASE_ROOT="$test_root" SV10_MIN_FREE_MB=999999999 "$rollback" --check-space >/dev/null 2>&1; then
   fail "the disk preflight accepted a root that cannot hold a release"
 fi
-awk '/--check-space/ { seen = NR } /rollback.sh --snapshot/ { snapshot = NR } END { exit !(seen && snapshot && seen < snapshot) }' \
-  "$repo_root/scripts/release.sh" || fail "release.sh does not check free space before it snapshots"
+# That release checks free space before it snapshots is a unit test of the release sequence (release.rs).
 
 if SV10_RELEASE_ROOT=/ "$rollback" "$commit_a" >/dev/null 2>&1; then
   fail "unsafe root / was accepted"

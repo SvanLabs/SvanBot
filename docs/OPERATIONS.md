@@ -324,12 +324,18 @@ children, rather than matching every deployment's learner/analyst by a global co
 
 ## Hot-swap releases
 
+`scripts/release.sh`, `scripts/update.sh` and `scripts/rollback.sh` are wrappers that `exec` this checkout's own
+installer, `sv10-release` (`crates/apps/release`, #742): it is built into `target/dev` on first use and again
+whenever its sources are newer, never into `target/release`, and `SV10_RELEASE_BIN` names a prebuilt one
+instead. What follows is the installer's behavior, byte-compatible with the scripts it replaced (snapshots,
+`SHA256SUMS`, the swap journal, `release-progress.json`, `releases.log`, the identity marker).
+
 `scripts/release.sh` first validates every managed path and holds
 `artifacts/release-operation.lock` for the complete snapshot/build/install operation. It builds Rust
 in `target/stage` and the dashboard in a separate target staging directory, runs the workspace
 tests, checks the required binaries, then installs exact executable and web directory sets through
 `scripts/rollback.sh --install`. Target and web must share a filesystem so the directory renames are
-atomic; a later swap failure performs compensating renames back to the complete prior sets. Before
+atomic (checked when the swap starts, after the build and the tests, not before); a later swap failure performs compensating renames back to the complete prior sets. Before
 anything is written, `scripts/rollback.sh --check-space` fails the run closed unless the release root
 has `SV10_MIN_FREE_MB` (default 4096 MB) free. The commit is baked into `--version` and
 `/api/health`, and the run output is tee'd to `artifacts/release.log` (install records stay in
@@ -338,7 +344,7 @@ has `SV10_MIN_FREE_MB` (default 4096 MB) free. The commit is baked into `--versi
 A crash between those renames — SIGKILL, OOM, a power cut — is repaired, not left half installed:
 `rollback.sh` flushes `artifacts/release-swap.journal` before its first rename, and the next release
 or rollback, `scripts/rollback.sh --repair`, or the keepalive timer puts the previous verified sets
-back (or removes both managed directories when there was no previous install). The journal is
+back (or, after a killed first install, removes the managed directories it left). The journal is
 removed as soon as the new sets are in place, so a kill during cleanup keeps the new build; scratch
 directories such a kill can still leave (`target/.release.before-swap.<pid>`,
 `web/.dist.before-swap.<pid>`) are swept by the next operation once the process that made them is
@@ -351,7 +357,7 @@ Before lint or build, the release script resolves the latest installed identity 
 `artifacts/release-snapshots/<commit>/`. The snapshot contains every regular executable in
 `target/release`, the complete `web/dist` tree, the installed-commit marker, and `SHA256SUMS`; it
 becomes visible only after every copy and hash check succeeds. Only the newest `SV10_KEEP_SNAPSHOTS`
-(default 5, ~1.3 GB) are kept (older ones archived on 2026-09-24 are in `/backup-disk/svanbot10/release-snapshots`): each new snapshot prunes the oldest, never itself (26 had piled up
+(default 5, ~1.3 GB) are kept (older ones archived on 2026-09-24 were moved by hand to `/backup-disk/svanbot10/release-snapshots`; nothing reads that path): each new snapshot prunes the oldest, never itself (26 had piled up
 when the disk filled on 2026-09-24). An existing snapshot is verified and
 kept, never overwritten. On the one-time transition from legacy two-field `--version` output, the
 marker is adopted only when the latest valid release record, the inode of a running installed bot,
@@ -378,8 +384,8 @@ The Releases & updates widget replaces SSH for routine updates: the installed co
 30 minutes and on **Check now**), and the grouped changelog of what an update would install. **Update**
 opens a confirm dialog, then `POST /api/releases/update` starts `scripts/update.sh` detached in its own
 process group (fetch, fast-forward, `release.sh`, install; refused with 409 on uncommitted build inputs
-or a concurrent run; lock at `artifacts/release.lock`, removed however the run ends, aged out after
-2 h). The progress bar (`GET /api/releases/progress`) weighs the stages by the last run's times, shows
+or a concurrent run; the dashboard path takes `artifacts/release.lock` (a hand-run release never creates it), removed however
+the run ends, aged out after 2 h). The progress bar (`GET /api/releases/progress`) weighs the stages by the last run's times, shows
 the time left and the bots still playing, then the hot swap per process; a reload mid-update picks the
 run up again. On failure it names the stage; the fleet keeps playing the installed build and the
 checkout returns to it.

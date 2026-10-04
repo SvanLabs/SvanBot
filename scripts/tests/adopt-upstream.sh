@@ -4,6 +4,7 @@
 # predates adoption, with runtime state, a .env and uncommitted edits.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd -P)
+source "$repo/scripts/tests/lib-release-bin.sh"
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
 fail() { echo "adopt-upstream test: $*" >&2; exit 1; }
