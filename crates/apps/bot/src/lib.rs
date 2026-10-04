@@ -79,6 +79,10 @@ pub const MODELS_KEY: &str = "models.v1";
 /// and 250 +0.50 mnats per decision. 1,000 sits on the plateau with the tighter interval.
 pub const OPPONENT_HALF_LIFE_HANDS: f32 = 1_000.0;
 pub const PARAMS_KEY: &str = "params.v1";
+/// One bot's own strategy knobs (ADR 0002): `params.slot.<bot name>`, absent while it plays the shared champion.
+pub fn slot_params_key(bot: &str) -> String {
+    format!("params.slot.{bot}")
+}
 pub const LEARNER_STATUS_KEY: &str = "learner.status";
 pub const LEARNER_EXPERIMENTS_KEY: &str = "learner.experiments";
 pub const NN_KEY: &str = "nn.response.v1";

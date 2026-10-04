@@ -200,6 +200,9 @@ pub struct BotLive {
     /// The policy fixed for the current hand (experiment arm or champion, 0291).
     #[serde(skip)]
     pub hand_policy: Option<crate::experiment::HandPolicy>,
+    /// This bot's own lineage knobs (`params.slot.<bot>`, ADR 0002), `None` while the shared champion plays.
+    #[serde(skip)]
+    pub slot_params: Option<Params>,
     /// The hand in progress, saved when the process exits so the next one can finish it (0315).
     #[serde(skip)]
     pub open_hand: Option<sv10_venue::tracker::OpenHand>,

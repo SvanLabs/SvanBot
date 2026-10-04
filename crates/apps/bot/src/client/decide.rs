@@ -172,7 +172,11 @@ pub(super) async fn act(
                 // insert). A clone is ~305 small structs with the heavy per-opponent maps behind
                 // `Arc`, so it costs far less than the 45 ms search it replaces (0252).
                 let models = shared2.models.read().clone();
-                let params = policy2.params(&shared2.params.read());
+                let mut live = shared2.params.read().clone();
+                if let Some(own) = shared2.bots[slot].read().slot_params.clone() {
+                    live.adopt_promoted(own);
+                }
+                let params = policy2.params(&live);
                 let version = shared2.champion_version.read().clone();
                 let nn = shared2.nn.read().clone();
                 let mut r = SmallRng::seed_from_u64(seed);
