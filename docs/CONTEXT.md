@@ -24,6 +24,21 @@ normally run the same champion policy; an active experiment mode may assign a di
 the experiment pair. Fleet results aggregate evidence about policy strength, but the leaderboard
 does not combine their scores.
 
+## Lineage
+
+One bot's own parameter set and promotion history. Every fleet bot has one; all start as copies of
+the champion and diverge only through promotions earned against their own parent.
+
+## Gene transfer
+
+Offering a transition that one lineage has proven to the other lineages as a priority candidate.
+The receiving lineage tests it with its own gate; it is never copied.
+
+## Tournament refresh
+
+A periodic paired round-robin between the lineages' parents. A lineage that another dominates is
+replaced by a copy of the winner.
+
 ## Protected trio
 
 The three fleet bots holding the active public season's first three places when experiment mode
