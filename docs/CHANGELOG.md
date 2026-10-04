@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/reap-worktrees.sh` reports which registered git worktrees are merged, stale, prunable, dirty or live, with sizes
+  and the remove command; it never deletes anything (#763).
+
 ### Fixed
 
 - The flop and turn strength tables load on a background thread at process start. A split-mode worker (no dashboard poll to
