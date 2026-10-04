@@ -260,6 +260,13 @@ fn main() -> Result<()> {
             }
             continue;
         }
+        // A round-robin between the lineages when one is due (ADR 0002 stage 4); only with LEARNER_LINEAGES set.
+        let lanes = learner::lane::Lane::rotation(std::env::var("LEARNER_LINEAGES").ok().as_deref());
+        if let Some(t) = learner::tournament::begin_if_due(&ctx, &lanes, now())? {
+            tracing::info!("starting a tournament between {} lineages", t.parents.len());
+            run::save(&store, &Run::Tournament(Box::new(t)))?;
+            continue;
+        }
         let lineage = learner::load_lineage(&store);
         let start_rowid = store.max_hand_rowid().unwrap_or(pace.last_rowid);
         let started = now();
@@ -359,6 +366,13 @@ fn advance(ctx: &Ctx, run: Run, pace: &mut PacingState, pacing: &Pacing, last_ca
             store.put_kv(PACING_KEY, &serde_json::to_string(&pace)?)?;
             run::clear(store);
             tracing::info!("evidence refresh took {:.0}s; the next one runs on the next new hand", ended - r.started);
+        }
+        Run::Tournament(mut t) => {
+            if learner::tournament::step(ctx, &mut t, step_cap)? {
+                run::clear(store);
+            } else {
+                run::save(store, &Run::Tournament(t))?;
+            }
         }
         Run::Search(mut s) => match learner::search::step(ctx, &mut s, step_cap)? {
             Outcome::Continue => run::save(store, &Run::Search(s))?,

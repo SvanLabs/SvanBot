@@ -123,6 +123,8 @@ pub enum Run {
     Refit(RefitRun),
     /// A champion search.
     Search(Box<SearchRun>),
+    /// A paired round-robin between the lineages' champions.
+    Tournament(Box<super::tournament::TournamentRun>),
 }
 
 /// An evidence refresh in three steps: the range model (daily), the live fits, then the
@@ -430,7 +432,7 @@ mod tests {
                 Stage::Confirm(c) => assert_eq!((s.cycle, c.chunk, c.next_table, c.part.differing), (7, 2, 24, 3)),
                 _ => panic!("stage lost"),
             },
-            Run::Refit(_) => panic!("kind lost"),
+            _ => panic!("kind lost"),
         }
     }
 }
