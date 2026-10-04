@@ -409,6 +409,7 @@ pub fn training_json(s: &Shared) -> Value {
         // was even offered. `learner::funnel` counts at the death instead of reading the list back.
         "search_funnel": crate::learner::funnel::dashboard(&s.store),
         "lineage": lineage,
+        "lineages": crate::learner::lane::dashboard(&s.store, &s.config.bots.iter().map(|b| b.name.clone()).collect::<Vec<_>>()),
         "opponent_profiles_tracked": models.players.len(),
         "neural_ev_status": "inactive",
         "settings": learner_settings(&s.store),
