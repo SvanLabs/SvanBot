@@ -61,8 +61,8 @@ for b in sv10-bot learner analyst sim probe tables review monitor calibrate inge
   # Copy then rename, like scripts/release.sh: running processes keep their inode and hot-swap.
   cp "$src/$b" "target/release/.$b.new" && mv -f "target/release/.$b.new" "target/release/$b"
 done
-# Never silent: a bundle without a tool leaves the installed one in place, and start.sh refuses to
-# run a fleet whose launched tools are missing (#717: the monitor was one of them).
+# Never silent: a bundle without a tool leaves the installed one in place, and start.sh warns about
+# a supporting tool that is missing (#717: the monitor was one) and refuses only without sv10-bot.
 [ -z "$missing" ] || echo "warning: bundle has no$missing; those binaries were left as installed" >&2
 ./target/release/sv10-bot --version
 echo "Installed x86-64-$level binaries into target/release."

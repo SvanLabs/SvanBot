@@ -10,6 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
+source scripts/supervisors.sh
 # Node lives in ~/.local/bin on the reference box, and the fleet's own PATH (which a
 # dashboard-triggered release inherits) does not include it — without this the dashboard
 # build stage dies with `npm: command not found` after lint and tests pass (#696).
@@ -27,7 +28,11 @@ release_exit() {
   # A dashboard update's lock goes however this ends, even before the checks below (0236: an
   # early failure used to leave it, and the button read "running" for two hours).
   if own_run; then rm -f artifacts/release.lock; fi
-  if [ "$status" != 0 ] && own_run; then progress fail "" "release failed (exit $status); the fleet keeps playing the installed build"; fi
+  if [ "$status" != 0 ] && own_run; then
+    # Nothing plays when start.sh was waiting on this release (#790): do not claim a fleet that is not there.
+    if fleet_playing; then state="the fleet keeps playing the installed build"; else state="no fleet is running; scripts/start.sh starts what is installed"; fi
+    progress fail "" "release failed (exit $status); $state"
+  fi
 }
 trap release_exit EXIT
 mkdir -p artifacts

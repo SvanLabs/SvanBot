@@ -20,6 +20,26 @@ fleet_names() {
 
 worker_stem() { printf 'worker-%s' "$(printf '%s\n' "$1" | tr -c 'A-Za-z0-9' '_')"; }
 
+# sv10-bot is the only tool the bots need to play. The rest are supporting: a missing one is skipped
+# with a warning, never a reason to keep the bots down (#790). Only scripts/release.sh installs them.
+has_tool() { [ -x "target/release/$1" ]; }
+
+missing_supporting() {
+  local tool
+  for tool in monitor tables; do has_tool "$tool" || echo "$tool"; done
+  [ "${LEARNER:-1}" != 1 ] || has_tool learner || echo learner
+  [ "${ANALYST:-1}" != 1 ] || has_tool analyst || echo analyst
+  [ -f web/dist/index.html ] || echo web/dist
+}
+
+fleet_playing() {
+  local file
+  for file in artifacts/supervisor.pid artifacts/head-supervisor.pid artifacts/worker-*-supervisor.pid; do
+    pid_alive "$file" && return 0
+  done
+  return 1
+}
+
 expected_supervisors() {
   local name
   if [ "${SVANBOT_FLEET:-all}" = split ]; then
@@ -28,9 +48,10 @@ expected_supervisors() {
   else
     echo artifacts/supervisor.pid
   fi
-  [ "${LEARNER:-1}" != 1 ] || echo artifacts/learner-supervisor.pid
-  [ "${ANALYST:-1}" != 1 ] || echo artifacts/analyst-supervisor.pid
-  echo artifacts/monitor-supervisor.pid
+  # A tool start.sh skipped has no supervisor to expect, or keepalive would reload for it forever.
+  [ "${LEARNER:-1}" != 1 ] || ! has_tool learner || echo artifacts/learner-supervisor.pid
+  [ "${ANALYST:-1}" != 1 ] || ! has_tool analyst || echo artifacts/analyst-supervisor.pid
+  ! has_tool monitor || echo artifacts/monitor-supervisor.pid
   echo artifacts/logrotate.pid
 }
 

@@ -68,7 +68,7 @@ exec 8>&-
 rm -f "$root/artifacts/release-swap.journal" "$root/artifacts/swap-repair.calls"
 echo "keepalive: ok"
 
-# Start must recognize both fleet layouts before building or launching processes.
+# Start must recognize both fleet layouts before launching processes, and never builds.
 cat > "$root/scripts/release.sh" <<'SH'
 #!/usr/bin/env bash
 touch artifacts/unwanted-release
@@ -84,11 +84,14 @@ for pidfile in supervisor.pid head-supervisor.pid worker-bot1-supervisor.pid; do
   rm "$root/artifacts/$pidfile"
 done
 kill "$sleeper"; wait "$sleeper" 2>/dev/null || true; sleeper=
+# A stale pid is not a running fleet: start goes on to the installed-build check, and with no sv10-bot
+# says so instead of diverting into release.sh (#790).
 echo "$((1 << 22))" > "$root/artifacts/head-supervisor.pid"
 if "$root/scripts/start.sh" > "$root/start-output" 2>&1; then
-  fail "a stale split supervisor prevented startup"
+  fail "a stale split supervisor made start succeed without sv10-bot"
 else
-  [ "$?" = 17 ] || fail "stale split startup failed before the release fixture"
+  [ "$?" = 1 ] || fail "stale split startup did not reach the installed-build check"
 fi
-[ -f "$root/artifacts/unwanted-release" ] || fail "stale split supervisor prevented release"
+grep -q 'scripts/release.sh' "$root/start-output" || fail "start did not name release.sh"
+[ ! -f "$root/artifacts/unwanted-release" ] || fail "start diverted into release.sh"
 echo "start supervisor detection: ok"
