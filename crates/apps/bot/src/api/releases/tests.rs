@@ -18,6 +18,26 @@ async fn abandoned_update_progress_recovers_without_operator_intervention() {
     assert_eq!(v["stages"][0]["state"], "failed");
 }
 
+#[tokio::test]
+async fn split_head_counts_remote_playing_bots_in_progress() {
+    use crate::live::{BotLive, heartbeat_key, wrap_heartbeat};
+    // Single process: a locally playing bot counts.
+    let s = Shared::for_test("progress-playing-single", &["A"]);
+    s.bots[0].write().mode = "playing".into();
+    let Json(v) = release_progress(State(s)).await;
+    assert_eq!((v["bots_playing"].as_u64(), v["bots_total"].as_u64()), (Some(1), Some(1)));
+    // Split head: the local slot stays offline, so the fresh worker heartbeat behind
+    // the fleet view raw shows must count — or the updater reads 0 of N playing.
+    let mut s = Shared::for_test("progress-playing-split", &["A"]);
+    let shared = Arc::get_mut(&mut s).expect("sole owner");
+    shared.config.head = true;
+    shared.bots[0].write().mode = "offline".into();
+    let worker = BotLive { name: "A".into(), mode: "playing".into(), ..Default::default() };
+    shared.store.put_kv(&heartbeat_key("A"), &wrap_heartbeat(&worker, now_secs()).to_string()).unwrap();
+    let Json(v) = release_progress(State(s)).await;
+    assert_eq!((v["bots_playing"].as_u64(), v["bots_total"].as_u64()), (Some(1), Some(1)), "a split head counts what raw shows: {v}");
+}
+
 #[test]
 fn a_dead_update_owner_does_not_block_recovery_for_two_hours() {
     let s = Shared::for_test("dead-update-owner", &["A"]);
