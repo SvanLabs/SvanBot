@@ -1,0 +1,20 @@
+[package]
+name = "sv10-release"
+description = "The installer: release, update and rollback of the fleet's executables and dashboard, replacing the shell release path (#742). Hash-verified snapshots, a journalled directory swap, a health gate and automatic rollback; the shell scripts become wrappers around this binary."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "sv10-release"
+path = "src/main.rs"
+
+[dependencies]
+sv10-digest.workspace = true
+sv10-rt.workspace = true
+
+[lints]
+workspace = true

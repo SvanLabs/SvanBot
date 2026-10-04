@@ -104,7 +104,8 @@ matters more than the coverage when you are mid-change.
 - **`crates/libs/`** — poker and data libraries: `sv10-cards`, `sv10-equity`, `sv10-engine`,
   `sv10-nn`, `sv10-model`, `sv10-policy`, `sv10-stats`, `sv10-venue`, `sv10-store`.
 - **`crates/apps/`** — the programs: `sv10-bot` (the live fleet and dashboard API), `sv10-core`
-  (re-exports the libraries and holds the tool binaries).
+  (re-exports the libraries and holds the tool binaries), `sv10-release` (the installer behind
+  `scripts/release.sh`, `scripts/update.sh` and `scripts/rollback.sh`, taken over surface by surface, #742).
 
 **Poker logic does not touch the network, the database or the clock.** A library crate that opens a
 socket or a SQLite handle has broken the architecture the whole design rests on — the libraries are

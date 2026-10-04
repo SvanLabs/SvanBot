@@ -57,7 +57,7 @@ monitor, and log rotation; `scripts/svanbot10.service`, rendered for the checkou
 `crates/` has three folders: `deps/` holds our own foundation crates that replace third-party
 ones (`sv10-rng`, `sv10-digest`, `sv10-rt`, `sv10-mmap`, `sv10-pack`, `sv10-static`; the only
 third-party code they use is `libc` for system calls), `libs/` the poker and data libraries (`sv10-cards`, `-equity`, `-engine`, `-nn`, `-model`,
-`-policy`, `-venue`, `-store`, `-stats`), and `apps/` the programs (`sv10-bot`, `sv10-core`). The root
+`-policy`, `-venue`, `-store`, `-stats`), and `apps/` the programs (`sv10-bot`, `sv10-core`, `sv10-release`). The root
 `Cargo.toml` names every internal path and every third-party version once, in
 `[workspace.dependencies]`; crates depend with `x.workspace = true`. Documents written before
 2026-09-26 name the old flat paths (`crates/<name>`); the crate names did not change:
