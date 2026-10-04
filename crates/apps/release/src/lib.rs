@@ -24,6 +24,8 @@ pub mod snapshot;
 pub mod space;
 pub mod store_format;
 pub mod swap;
+pub mod ui;
+pub mod update;
 
 #[cfg(test)]
 mod tests;

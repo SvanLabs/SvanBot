@@ -10,9 +10,9 @@ use std::path::PathBuf;
 pub fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("rollback") => rollback_main(&args[1..]),
-        Some(surface @ ("release" | "update")) => {
-            let prefix = if surface == "update" { "update: " } else { "" };
-            eprintln!("{prefix}{}", ReleaseError::NotBuilt(format!("`{surface}`")));
+        Some("update") => crate::update::run(&args[1..]),
+        Some("release") => {
+            eprintln!("{}", ReleaseError::NotBuilt("`release`".into()));
             1
         }
         _ => {
@@ -22,7 +22,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
-fn root_from_env() -> Result<Root> {
+pub(crate) fn root_from_env() -> Result<Root> {
     let raw = match std::env::var_os("SV10_RELEASE_ROOT").filter(|v| !v.is_empty()) {
         Some(r) => PathBuf::from(r),
         None => std::env::current_dir().map_err(|e| ReleaseError::Io(format!("cannot read the working directory: {e}")))?,
