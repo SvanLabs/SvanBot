@@ -12,6 +12,9 @@ if [ "$repair" = 0 ]; then
   for file in artifacts/supervisor.pid artifacts/head-supervisor.pid artifacts/worker-*-supervisor.pid; do
     if pid_alive "$file"; then echo "Already running (supervisor pid $(cat "$file"))."; exit 0; fi
   done
+  # Running start.sh means "play now": clear the hold before any check that can exit. The unit's
+  # ExecStop writes a forever hold, so a start that failed early would otherwise leave it (#798).
+  rm -f artifacts/stop.flag artifacts/hold-until
 else
   hold=$(cat artifacts/hold-until 2>/dev/null || true)
   if [ "$hold" = forever ] || { [[ $hold =~ ^[0-9]+$ ]] && [ "$(date +%s)" -lt "$hold" ]; }; then
@@ -35,7 +38,7 @@ skipped=$(missing_supporting | paste -sd' ')
 [ -z "$skipped" ] || echo "warning: starting without: $skipped (scripts/release.sh installs them)" >&2
 # Exact board-strength tables (rebuildable in ~30 s; see crates/libs/equity/src/tables.rs).
 if [ ! -f artifacts/tables/strengths-turn.sv10tbl ] && has_tool tables; then
-  ./target/release/tables build || echo "warning: tables build failed; the bots play without them" >&2
+  ./target/release/tables build || echo "warning: tables build failed; the bots play without them until restarted" >&2
 fi
 rm -f artifacts/stop.flag artifacts/hold-until
 if [ "${SVANBOT_FLEET:-all}" = split ]; then
@@ -80,4 +83,18 @@ if [ -f artifacts/fleet.pids ]; then
   echo "Started learner, analyst and monitor alongside the split fleet (scripts/status.sh shows every process)."
 else
   echo "Started (supervisor pid $(cat artifacts/supervisor.pid 2>/dev/null || echo '?'), bot pid $(cat artifacts/bot.pid 2>/dev/null || echo '?'))."
+fi
+# Print-only check (#798): a slow boot must not fail the unit's ExecStart, so the exit code stays 0.
+if command -v curl >/dev/null; then
+  health=
+  for _ in $(seq 1 "${START_API_WAIT:-20}"); do
+    health=$(curl -s -m 2 "http://127.0.0.1:${SVANBOT_WEB_PORT:-5000}/api/health" 2>/dev/null || true)
+    [[ $health == *'"ok":true'* ]] && break
+    sleep 1
+  done
+  if [[ $health == *'"ok":true'* ]]; then
+    echo "API up, commit $(sed -n 's/.*"commit":"\([^"]*\)".*/\1/p' <<< "$health")."
+  else
+    echo "API not reachable after ${START_API_WAIT:-20} s; see artifacts/logs/svanbot10.log" >&2
+  fi
 fi

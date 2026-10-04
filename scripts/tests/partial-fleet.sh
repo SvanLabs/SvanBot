@@ -24,6 +24,7 @@ mkdir -p "$root"/{scripts,artifacts/logs,target/release,web/dist,fakebin}
 # scripts/start.sh restores over .env) must not leak the live tree's shape into it, or the
 # split section repairs all-in-one and head-supervisor.pid never appears (#694).
 unset SVANBOT_FLEET LEARNER ANALYST
+export START_API_WAIT=1 SVANBOT_WEB_PORT=1   # start.sh's API check: short, and never the live fleet's
 cp "$repo/scripts/start.sh" "$repo/scripts/stop.sh" "$repo/scripts/keepalive.sh" "$root/scripts/"
 [ ! -f "$repo/scripts/supervisors.sh" ] || cp "$repo/scripts/supervisors.sh" "$root/scripts/"
 for tool in sv10-bot learner analyst tables monitor; do

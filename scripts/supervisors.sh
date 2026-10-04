@@ -70,7 +70,7 @@ find_orphan() {
 
 supervised_process() {
   local tool="$1" pidfile="$2" log="$3" role="${4:-}" only="${5:-}"
-  local delay=5 started code child orphan
+  local delay=5 started code child orphan missing=0
   [ "$tool" = sv10-bot ] || delay=30
   if ! pid_alive "$pidfile"; then
     orphan=$(find_orphan "$tool")
@@ -83,7 +83,17 @@ supervised_process() {
       echo "$(date -u +%FT%TZ) adopting existing $tool child $child" >> "$log"
       while pid_alive "$pidfile" && [ ! -f artifacts/stop.flag ]; do sleep 2; done
       code=0
+    elif [ "$tool" != sv10-bot ] && ! has_tool "$tool"; then
+      # A supporting tool that stays gone is not worth a supervisor (#798). Five tries outlast a
+      # release swap, which can remove the binary for a moment; keepalive respawns us once it exists.
+      missing=$((missing + 1))
+      if [ "$missing" -ge 5 ]; then
+        echo "$(date -u +%FT%TZ) $tool is not installed after $missing tries; supervisor exiting (scripts/release.sh installs it)" >> "$log"
+        return 0
+      fi
+      code=127
     else
+      missing=0
       case "$tool" in
         sv10-bot)
           if [ -n "$role" ]; then
