@@ -3,6 +3,10 @@
 # restarts anything, and the copy has no pid files, so stop.sh signals nothing.
 set -euo pipefail
 repo_root=$(cd "$(dirname "$0")/../.." && pwd -P)
+# The scratch tree has no operator: caller-exported SVANBOT_FLEET/LEARNER/ANALYST (which
+# scripts/start.sh restores over .env) must not leak the live tree's shape into it, or the
+# expected-supervisor list answers for split while the fixture builds all-in-one.
+unset SVANBOT_FLEET LEARNER ANALYST
 root=$(mktemp -d)
 sleeper=
 cleanup() { [ -z "$sleeper" ] || kill "$sleeper" 2>/dev/null || true; rm -rf "$root"; }
