@@ -42,7 +42,8 @@ impl Checkout {
         // The helpers a release calls, as stubs; progress.py is the real one.
         write(&dir.join("scripts/host_resources.py"), "import sys\nprint(4) if '--jobs' in sys.argv else None\n", false);
         write(&dir.join("scripts/check.sh"), "#!/bin/sh\nexit 0\n", true);
-        write(&dir.join("scripts/test.py"), "raise SystemExit(0)\n", false);
+        // The tests are hermetic: they must not see the release's own lock descriptor.
+        write(&dir.join("scripts/test.py"), "import os\nraise SystemExit(1 if os.environ.get('SV10_RELEASE_LOCK_FD') else 0)\n", false);
         write(&dir.join("scripts/build-lock.sh"), "#!/bin/sh\nexit 0\n", true);
         std::fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../scripts/progress.py"), dir.join("scripts/progress.py")).unwrap();
         write(&dir.join(".gitignore"), "artifacts/\ntarget/\nweb/dist/\n", false);
