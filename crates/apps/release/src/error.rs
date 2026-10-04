@@ -43,6 +43,20 @@ pub enum ReleaseError {
         root: String,
         required: u64,
     },
+    LockBusy,
+    LockForeign,
+    LockNotHeld,
+    /// The swap journal cannot be trusted; carries the whole message.
+    Journal(String),
+    /// A directory swap could not complete; carries the whole message.
+    Swap(String),
+    SourceDirty,
+    NoInstalledToRestore,
+    StoreTooNew {
+        commit: String,
+        build: u64,
+        store: u64,
+    },
     /// A system call or file operation failed; carries what was being done.
     Io(String),
     /// A surface or flag that this binary has not taken over from the shell script yet.
@@ -83,7 +97,16 @@ impl fmt::Display for ReleaseError {
             SpaceLow { avail_mb, root, required } => {
                 write!(f, "only {avail_mb} MB free on {root} and a release needs about {required} MB (SV10_MIN_FREE_MB)")
             }
-            Io(what) => write!(f, "{what}"),
+            LockBusy => write!(f, "another release, snapshot, or rollback operation is active"),
+            LockForeign => write!(f, "inherited release lock does not identify the managed lock file"),
+            LockNotHeld => write!(f, "inherited release operation lock is not held"),
+            Journal(m) | Swap(m) | Io(m) => write!(f, "{m}"),
+            SourceDirty => write!(f, "uncommitted or untracked Rust/web build inputs"),
+            NoInstalledToRestore => write!(f, "current installed commit cannot be resolved"),
+            StoreTooNew { commit, build, store } => write!(
+                f,
+                "build {commit} reads data format {build} but the databases hold format {store} (compressed columns, 0229); stop the fleet, run ./target/release/archive unpack, then roll back"
+            ),
             NotBuilt(what) => write!(f, "{what} is not built into sv10-release yet; use the shell script"),
         }
     }

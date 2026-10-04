@@ -1,9 +1,12 @@
 //! Small runtime helpers built in-house instead of pulled in as dependencies: `.env` loading,
-//! random v4 identifiers, and filesystem free space.
+//! random v4 identifiers, filesystem free space, and the two process calls the installer needs.
 
 #![warn(missing_docs)]
-// The only unsafe code in the workspace: process environment setup and statvfs(2).
+// The only unsafe code in the workspace: process environment setup, statvfs(2), flock(2), kill(2).
 #![allow(unsafe_code)]
+
+mod process;
+pub use process::{flock_held, kill_self};
 
 use std::path::Path;
 

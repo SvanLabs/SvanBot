@@ -8,13 +8,18 @@
 pub mod binaries;
 pub mod cli;
 pub mod error;
+pub mod fsops;
 pub mod gitops;
 pub mod identity;
+pub mod journal;
 pub mod layout;
+pub mod lock;
 pub mod manifest;
+pub mod restore;
 pub mod snapshot;
 pub mod space;
 pub mod store_format;
+pub mod swap;
 
 #[cfg(test)]
 mod tests;
