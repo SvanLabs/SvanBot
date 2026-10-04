@@ -12,6 +12,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `sv10-bot` exits on SIGTERM. `main` used to return into a runtime drop that waits for every blocking task, and the
   release watch never returns, so the process stayed alive after "shutting down; saving models" until a KILL
   (`scripts/restart-bot.sh` left four workers offline for 3 minutes on 2026-10-04). The supervisor restarts it either way.
+- `scripts/restart-bot.sh` kills a process still alive 10 seconds after SIGTERM, as `stop.sh` does. A build that stayed alive
+  after "shutting down; saving models" made the restart a no-op and left four bots offline for 3 minutes (#803).
 - The activity log (`events`) is pruned with the hourly backup: ordinary lines after 7 days, warn and error rows
   (what the timeline reads) after 90. It was the one table with no retention (#778).
 - `scripts/start.sh` no longer diverts into `scripts/release.sh` when the installed bundle lacks a tool.
