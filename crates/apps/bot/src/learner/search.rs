@@ -19,8 +19,9 @@ use sv10_core::policy::Params;
 use sv10_core::sim::{Arm, PairedSums, paired_sums_arms_stacked};
 use sv10_store::store::Store;
 
+use super::lane::Lane;
 use super::run::{self, Gate, Rate, SLICE_TARGET_SECS, STEP_TARGET_SECS, SearchRun, Stage, table_slice};
-use super::{Ctx, MIN_OPPONENT_HANDS, NN_REUSE_SECS, POPULATION_MODELS_KEY, load_lineage, load_models, load_params, now, status};
+use super::{Ctx, MIN_OPPONENT_HANDS, NN_REUSE_SECS, POPULATION_MODELS_KEY, load_models, now, status};
 use crate::promotion::CHUNK_SCALE;
 use crate::{NN_CANDIDATE_KEY, NN_KEY, StoredNet, neural};
 
@@ -48,10 +49,10 @@ struct Scope {
 }
 
 impl Scope {
-    fn load(store: &Store) -> Scope {
+    fn load(store: &Store, lane: &Lane) -> Scope {
         let models_json = store.get_kv(POPULATION_MODELS_KEY).ok().flatten().unwrap_or_default();
         let models = serde_json::from_str(&models_json).unwrap_or_else(|_| load_models(store));
-        let mut champion = load_params(store);
+        let mut champion = lane.params(store);
         // Live fits correct live play only; challengers are compared without them (SPEC-learner).
         crate::livefits::LiveFits::NONE.apply(&mut champion);
         // Challengers inherit the showdown-fitted range model, so evaluations match live play.
@@ -64,7 +65,7 @@ impl Scope {
 /// What a search plays: the champion (search parameters), the population snapshot and the live
 /// response net. `bench` freezes it into its fixture (0335).
 pub fn inputs(store: &Store) -> (Params, ModelStore, Option<Arc<Mlp>>) {
-    let sc = Scope::load(store);
+    let sc = Scope::load(store, &Lane::default());
     let nn = neural::active_response_net(store.get_kv(NN_KEY).ok().flatten().and_then(|j| serde_json::from_str::<StoredNet>(&j).ok()));
     (sc.champion, sc.models, nn)
 }
@@ -121,7 +122,7 @@ enum Flow {
 
 /// Start a champion search: train (or reuse) the response model and set up the first stage.
 /// `None` when fewer than four opponents have enough hands (the caller waits and retries).
-pub fn begin(ctx: &Ctx, start_rowid: i64, started: f64, refit_rowid: i64) -> anyhow::Result<Option<SearchRun>> {
+pub fn begin(ctx: &Ctx, lane: Lane, start_rowid: i64, started: f64, refit_rowid: i64) -> anyhow::Result<Option<SearchRun>> {
     let store = ctx.store;
     // What the ledger and the target queue are scoped to is the evidence epoch, not the refresh
     // watermark: refreshes run on the hands as they arrive (#314), and a scope that moved with each
@@ -133,8 +134,8 @@ pub fn begin(ctx: &Ctx, start_rowid: i64, started: f64, refit_rowid: i64) -> any
     if store.get_kv(POPULATION_MODELS_KEY).ok().flatten().is_none() {
         store.put_kv(POPULATION_MODELS_KEY, &serde_json::to_string(&load_models(store))?)?;
     }
-    let sc = Scope::load(store);
-    let lineage = load_lineage(store);
+    let sc = Scope::load(store, &lane);
+    let lineage = lane.lineage(store);
     status(
         store,
         json!({"status": "training", "phase": "training neural response model", "automatic": true, "lineage": lineage,
@@ -182,6 +183,7 @@ pub fn begin(ctx: &Ctx, start_rowid: i64, started: f64, refit_rowid: i64) -> any
         cycle,
         start_rowid,
         started,
+        lane,
         champion_version: lineage.last().cloned().unwrap_or_default(),
         refit_rowid,
         champion_digest: run::digest(&sc.champion_json),
@@ -230,7 +232,7 @@ pub fn step(ctx: &Ctx, run: &mut SearchRun, first_cap: f64) -> anyhow::Result<Ou
     if !run.stacks.valid() {
         return Ok(Outcome::Abandoned("the paired stack objective changed"));
     }
-    let sc = Scope::load(ctx.store);
+    let sc = Scope::load(ctx.store, &run.lane);
     if run::digest(&sc.champion_json) != run.champion_digest {
         return Ok(Outcome::Abandoned("the champion's parameters changed"));
     }
@@ -239,7 +241,7 @@ pub fn step(ctx: &Ctx, run: &mut SearchRun, first_cap: f64) -> anyhow::Result<Ou
     }
     let t0 = Instant::now();
     run.steps += 1;
-    let env = env(ctx, &sc, run, load_lineage(ctx.store));
+    let env = env(ctx, &sc, run, run.lane.lineage(ctx.store));
     let mut did = false;
     // The step plans each slice as it comes, never once at the top: the rate a slice is sized from
     // was measured before it, and load that arrives in between is invisible to a plan made earlier

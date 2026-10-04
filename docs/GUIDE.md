@@ -613,6 +613,7 @@ With `SVANBOT_TV_PORT` set, a second listener carries only `/api/health` (answer
 | `SVANBOT_RUNTIME__FLEET_SIZE` | all keys | Limit how many bots run |
 | `SVANBOT_ONLY` | — | Comma-separated bot names to run |
 | `LEARNER_THREADS` | auto | Learner thread override |
+| `LEARNER_LINEAGES` | unset | Comma-separated bot names; the learner then searches one lineage per cycle in turn (`params.slot.<bot>`, ADR 0002). Unset: one shared champion |
 | `SVANBOT_ARCHIVE_DIR` | `artifacts/archive` | Archive root for `archive run` (point it at a second disk) |
 | `SV10_TABLES_DIR` | `artifacts/tables` | Exact board-strength tables (`tables build` creates them) |
 | `CALIBRATE_CORPUS` | — | Set to include corpus hands when measuring the range fit |

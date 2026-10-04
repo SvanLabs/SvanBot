@@ -1,5 +1,6 @@
 //! A search taken in many stored steps decides what one uninterrupted search decides (0334).
 
+use super::super::lane::Lane;
 use super::super::run::{self, RESUME_SLICE_SECS, Rate, Run, SLICE_TARGET_SECS};
 use super::super::{Ctx, POPULATION_MODELS_KEY};
 use super::{Outcome, begin, step};
@@ -23,8 +24,8 @@ fn short_stack_open_candidates_are_exercised_on_recorded_short_tables() {
         })
         .unwrap();
     let ctx = Ctx { hands: 200, ..ctx(&dir, &store) };
-    let mut run = begin(&ctx, store.max_hand_rowid().unwrap(), 0.0, 0).unwrap().unwrap();
-    let sc = super::Scope::load(&store);
+    let mut run = begin(&ctx, Lane::default(), store.max_hand_rowid().unwrap(), 0.0, 0).unwrap().unwrap();
+    let sc = super::Scope::load(&store, &Lane::default());
     let mut env = super::env(&ctx, &sc, &run, vec![]);
     env.proposals = vec![("short_open_bb".into(), 2.5, 3.0, Params { short_open_bb: 3.0, ..sc.champion.clone() })];
     run.stage = super::stages::start_halving(&env, &mut run);
@@ -58,8 +59,8 @@ fn live_supported_confirmation_records_the_whole_offered_funnel() {
     use crate::search_ledger::{Ledger, LedgerEntry, transition_key};
     let (dir, store) = store("live-funnel");
     let ctx = ctx(&dir, &store);
-    let mut run = begin(&ctx, 0, 0.0, 0).unwrap().unwrap();
-    let scope = super::Scope::load(&store);
+    let mut run = begin(&ctx, Lane::default(), 0, 0.0, 0).unwrap().unwrap();
+    let scope = super::Scope::load(&store, &Lane::default());
     let env = super::env(&ctx, &scope, &run, vec![]);
     let mut ledger = Ledger {
         evaluation: run.stacks.digest.clone(),
@@ -69,7 +70,7 @@ fn live_supported_confirmation_records_the_whole_offered_funnel() {
     };
     let (key, old, new, _) = &env.proposals[0];
     ledger.entries.insert(transition_key(key, *old, *new), LedgerEntry { hands: 20, mean_bb: -0.02, se_bb: 0.0, differing: 1 });
-    search_ledger::save(&store, &ledger).unwrap();
+    search_ledger::save(&store, &Lane::default(), &ledger).unwrap();
     let (key, old, new, params) = env
         .proposals
         .iter()
@@ -115,8 +116,8 @@ fn rare_tiered_pricing_gets_distinct_liveness_tables_before_ranking() {
     use sv10_core::sim::PairedSums;
     let (dir, store) = store("tier-liveness");
     let ctx = ctx(&dir, &store);
-    let mut run = begin(&ctx, 0, 0.0, 0).unwrap().unwrap();
-    let scope = super::Scope::load(&store);
+    let mut run = begin(&ctx, Lane::default(), 0, 0.0, 0).unwrap().unwrap();
+    let scope = super::Scope::load(&store, &Lane::default());
     let env = super::env(&ctx, &scope, &run, vec![]);
     run.stage = super::stages::start_halving(&env, &mut run);
     let Stage::Halving(h) = &mut run.stage else { panic!("search must screen candidates") };
@@ -163,14 +164,14 @@ fn rare_tiered_pricing_gets_distinct_liveness_tables_before_ranking() {
 fn search(tag: &str, rate: f64, cap: f64) -> (Outcome, u32, search_ledger::Ledger) {
     let (dir, store) = store(tag);
     let ctx = ctx(&dir, &store);
-    let mut s = begin(&ctx, 0, 0.0, 0).unwrap().expect("five opponents are enough to search");
+    let mut s = begin(&ctx, Lane::default(), 0, 0.0, 0).unwrap().expect("five opponents are enough to search");
     s.rate = Rate(rate);
     run::save(&store, &Run::Search(Box::new(s))).unwrap();
     loop {
         let Some(Run::Search(mut s)) = run::load(&store) else { panic!("the run was stored") };
         let outcome = step(&ctx, &mut s, cap).unwrap();
         if outcome != Outcome::Continue {
-            let ledger = search_ledger::load(&store, &s.champion_version, s.refit_rowid);
+            let ledger = search_ledger::load(&store, &s.lane, &s.champion_version, s.refit_rowid);
             let _ = std::fs::remove_dir_all(&dir);
             return (outcome, s.steps, ledger);
         }
@@ -215,7 +216,7 @@ fn a_search_in_stored_one_slice_steps_decides_as_one_step_does() {
 fn a_champion_change_between_steps_abandons_the_search() {
     let (dir, store) = store("abandon");
     let ctx = ctx(&dir, &store);
-    let mut s = begin(&ctx, 0, 0.0, 0).unwrap().unwrap();
+    let mut s = begin(&ctx, Lane::default(), 0, 0.0, 0).unwrap().unwrap();
     s.rate = Rate(0.02);
     // One step to get the run under way. Deliberately not asserted to be `Continue`: a machine fast
     // enough to finish the whole gate inside the first slice does that instead, and the outcome then
@@ -234,7 +235,7 @@ fn a_champion_change_between_steps_abandons_the_search() {
 fn legacy_or_tampered_stack_accumulators_are_retired() {
     let (dir, store) = store("stack-contract");
     let ctx = ctx(&dir, &store);
-    let mut run = begin(&ctx, 0, 0.0, 0).unwrap().unwrap();
+    let mut run = begin(&ctx, Lane::default(), 0, 0.0, 0).unwrap().unwrap();
     run.stacks.contract = 0;
     assert_eq!(step(&ctx, &mut run, SLICE_TARGET_SECS).unwrap(), Outcome::Abandoned("the paired stack objective changed"));
     run.stacks.contract = super::super::stacks::CONTRACT;

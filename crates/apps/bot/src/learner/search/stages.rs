@@ -25,7 +25,7 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
     let total = e.proposals.len();
     // The rejection ledger (0285): repeats continue their stored interval instead of restarting
     // it, and decided-dead transitions are not proposed while this champion and evidence stand.
-    let ledger = search_ledger::load_evaluated(store, &run.champion_version, run.refit_rowid, &run.stacks.digest);
+    let ledger = search_ledger::load_evaluated(store, &run.lane, &run.champion_version, run.refit_rowid, &run.stacks.digest);
     let fresh = e.proposals.iter().map(|(k, o, n, p)| (k.clone(), *o, *n, p.clone(), None)).collect();
     let (kept, barred) = search_ledger::seed_and_filter(fresh, &ledger, e.ctx.tables, e.ctx.hands);
     if barred > 0 {
@@ -42,7 +42,8 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
     funnel::note(store, funnel::PROPOSED, None, kept.len() as u32);
     // A challenger the experiment pair supported live (0291) goes straight to fresh-deal
     // confirmation: live evidence only prioritizes, the confirmation gate alone promotes.
-    let published: Option<TargetQueue> = store.get_kv(TARGETS_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok());
+    let published: Option<TargetQueue> =
+        store.get_kv(TARGETS_KEY).ok().flatten().filter(|_| run.lane.is_shared()).and_then(|s| serde_json::from_str(&s).ok());
     let verdicts: crate::experiment::Verdicts =
         store.get_kv(crate::experiment::VERDICTS_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     if let Some(t) = experiment_target::live_supported(published.as_ref(), &verdicts, &ledger) {
@@ -57,7 +58,7 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
             Source::Confirmation,
         )
         .with_evaluation(&run.stacks.digest);
-        publish_targets(store, &ledger, &e.sc.champion, run.cycle, Some(confirming), (e.ctx.tables, e.ctx.hands));
+        publish_targets(store, &run.lane, &ledger, &e.sc.champion, run.cycle, Some(confirming), (e.ctx.tables, e.ctx.hands));
         return Stage::Confirm(Box::new(Confirm {
             knob: t.knob,
             old: t.old,
@@ -289,10 +290,10 @@ fn end_halving(e: &Env, run: &mut SearchRun) -> Flow {
             run.ledger_done.push((transition_key(&c.knob, c.old, c.new), p.clone()));
         }
     }
-    let mut ledger = search_ledger::load_evaluated(e.ctx.store, &run.champion_version, run.refit_rowid, &run.stacks.digest);
+    let mut ledger = search_ledger::load_evaluated(e.ctx.store, &run.lane, &run.champion_version, run.refit_rowid, &run.stacks.digest);
     let done: Vec<(String, PairedResult)> = run.ledger_done.iter().map(|(k, v)| (k.clone(), v.to_paired())).collect();
     search_ledger::record(&mut ledger, &done);
-    if let Err(err) = search_ledger::save(e.ctx.store, &ledger) {
+    if let Err(err) = search_ledger::save(e.ctx.store, &run.lane, &ledger) {
         tracing::warn!("cycle {}: rejection ledger not saved ({err}); the next cycle re-simulates", run.cycle);
     }
     let best = pool.into_iter().next().and_then(|c| {
@@ -324,7 +325,7 @@ fn end_halving(e: &Env, run: &mut SearchRun) -> Flow {
         )
         .with_evaluation(&run.stacks.digest)
     });
-    publish_targets(e.ctx.store, &ledger, &e.sc.champion, run.cycle, confirming, (e.ctx.tables, e.ctx.hands));
+    publish_targets(e.ctx.store, &run.lane, &ledger, &e.sc.champion, run.cycle, confirming, (e.ctx.tables, e.ctx.hands));
     match best {
         Some((c, r)) => Flow::Next(Stage::Confirm(Box::new(Confirm {
             params: e.proposals[c.index].3.clone(),

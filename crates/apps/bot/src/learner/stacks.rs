@@ -130,17 +130,18 @@ mod tests {
 
     #[test]
     fn incompatible_ledger_measurements_do_not_seed_a_new_stack_objective() {
+        use crate::learner::lane::Lane;
         use crate::search_ledger::{self, Ledger, LedgerEntry};
         let shared = crate::live::Shared::for_test("stack-ledger", &["A"]);
         let mut old = Ledger { champion: "sv10-ev-1".into(), refit_rowid: 500, ..Default::default() };
         old.entries.insert("dead".into(), LedgerEntry { hands: 10000, mean_bb: -1.0, se_bb: 0.0, differing: 10 });
-        search_ledger::save(&shared.store, &old).unwrap();
-        let fresh = search_ledger::load_evaluated(&shared.store, &old.champion, 500, "recorded-fixture");
+        search_ledger::save(&shared.store, &Lane::default(), &old).unwrap();
+        let fresh = search_ledger::load_evaluated(&shared.store, &Lane::default(), &old.champion, 500, "recorded-fixture");
         assert!(fresh.entries.is_empty());
         let mut current = fresh;
         current.entries.insert("current".into(), LedgerEntry::default());
-        search_ledger::save(&shared.store, &current).unwrap();
-        assert_eq!(search_ledger::load_evaluated(&shared.store, &old.champion, 500, "recorded-fixture").entries.len(), 1);
-        assert!(search_ledger::load_evaluated(&shared.store, &old.champion, 500, "different-fixture").entries.is_empty());
+        search_ledger::save(&shared.store, &Lane::default(), &current).unwrap();
+        assert_eq!(search_ledger::load_evaluated(&shared.store, &Lane::default(), &old.champion, 500, "recorded-fixture").entries.len(), 1);
+        assert!(search_ledger::load_evaluated(&shared.store, &Lane::default(), &old.champion, 500, "different-fixture").entries.is_empty());
     }
 }

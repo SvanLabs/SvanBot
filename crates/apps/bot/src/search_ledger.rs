@@ -21,6 +21,7 @@ use sv10_core::policy::Params;
 use sv10_core::sim::PairedResult;
 use sv10_store::store::Store;
 
+use crate::learner::lane::Lane;
 use crate::promotion::MIN_EDGE_BB;
 
 /// KV key holding the serialized [`Ledger`].
@@ -93,8 +94,8 @@ pub fn is_decisive(entry: &LedgerEntry, tables: usize, hands: usize) -> bool {
 
 /// Load the ledger for this scope. Anything stored under another scope — a promotion or an
 /// evidence refresh since — is retired, and every transition is proposed again.
-pub fn load(store: &Store, champion: &str, refit_rowid: i64) -> Ledger {
-    let stored: Option<Ledger> = store.get_kv(LEDGER_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok());
+pub fn load(store: &Store, lane: &Lane, champion: &str, refit_rowid: i64) -> Ledger {
+    let stored: Option<Ledger> = store.get_kv(&lane.key(LEDGER_KEY)).ok().flatten().and_then(|s| serde_json::from_str(&s).ok());
     match stored {
         Some(l) if l.champion == champion && l.refit_rowid == refit_rowid => l,
         _ => Ledger { champion: champion.to_string(), refit_rowid, ..Default::default() },
@@ -102,8 +103,8 @@ pub fn load(store: &Store, champion: &str, refit_rowid: i64) -> Ledger {
 }
 
 /// A changed fixture retires incompatible single-stack or different-distribution measurements.
-pub fn load_evaluated(store: &Store, champion: &str, refit_rowid: i64, evaluation: &str) -> Ledger {
-    let ledger = load(store, champion, refit_rowid);
+pub fn load_evaluated(store: &Store, lane: &Lane, champion: &str, refit_rowid: i64, evaluation: &str) -> Ledger {
+    let ledger = load(store, lane, champion, refit_rowid);
     if ledger.evaluation == evaluation {
         ledger
     } else {
@@ -113,8 +114,8 @@ pub fn load_evaluated(store: &Store, champion: &str, refit_rowid: i64, evaluatio
 
 /// Persist the ledger. Store write failures are surfaced: a ledger that silently stops
 /// recording would spend the search budget twice without anyone noticing.
-pub fn save(store: &Store, ledger: &Ledger) -> Result<()> {
-    store.put_kv(LEDGER_KEY, &serde_json::to_string(ledger)?)?;
+pub fn save(store: &Store, lane: &Lane, ledger: &Ledger) -> Result<()> {
+    store.put_kv(&lane.key(LEDGER_KEY), &serde_json::to_string(ledger)?)?;
     Ok(())
 }
 
@@ -152,7 +153,7 @@ pub fn review(store: &Store) -> Result<String> {
         store.get_kv(crate::pacing::PACING_KEY)?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     // The same epoch a search would record under, so `review ledger` names the entries that are
     // actually in force rather than looking for a watermark no search has ever stored (#314).
-    let ledger = load(store, &champion, crate::pacing::evidence_epoch(pace.refit_rowid));
+    let ledger = load(store, &Lane::default(), &champion, crate::pacing::evidence_epoch(pace.refit_rowid));
     let hw = sv10_core::hardware::detect();
     Ok(describe(&ledger, hw.tuning.learner_tables, hw.tuning.learner_hands))
 }

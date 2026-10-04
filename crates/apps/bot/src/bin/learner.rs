@@ -329,7 +329,14 @@ fn main() -> Result<()> {
         };
         let begun = match job {
             LearnerJob::Refit => Some(Run::Refit(RefitRun { start_rowid, started, done: 0 })),
-            LearnerJob::Search => learner::search::begin(&ctx, start_rowid, started, pace.refit_rowid)?.map(|s| Run::Search(Box::new(s))),
+            LearnerJob::Search => {
+                // One lineage per cycle in turn (ADR 0002 stage 2): the cycle counter picks the lane, so the
+                // pool is shared by construction and a restart resumes the same rotation.
+                let lanes = learner::lane::Lane::rotation(std::env::var("LEARNER_LINEAGES").ok().as_deref());
+                let cycle: usize = store.get_kv(sv10_bot::LEARNER_CYCLE_KEY).ok().flatten().and_then(|s| s.parse().ok()).unwrap_or(0);
+                let lane = lanes[cycle % lanes.len()].clone();
+                learner::search::begin(&ctx, lane, start_rowid, started, pace.refit_rowid)?.map(|s| Run::Search(Box::new(s)))
+            }
         };
         match begun {
             Some(r) => run::save(&store, &r)?,

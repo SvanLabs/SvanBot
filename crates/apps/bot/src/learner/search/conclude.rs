@@ -18,8 +18,8 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
     let population =
         json!({"id": run.population_id, "opponent_count": e.clones.len(), "evidence": run.evidence, "evaluation": run.stacks.evidence()});
     if outcome == Verdict::Promote {
-        let lineage = super::super::load_lineage(store);
-        let version = format!("sv10-ev-{}", lineage.len() + 1);
+        let lineage = run.lane.lineage(store);
+        let version = run.lane.version(lineage.len() + 1);
         let params_json = serde_json::to_string(&c.params)?;
         let mut promoted = lineage;
         promoted.push(version.clone());
@@ -32,14 +32,16 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
             "rationale": format!("Won search ({:+.2} bb/100) and fresh-deal confirmation ({:+.2} bb/100, lower bound {:+.2}).", c.search.mean_bb * 100.0, confirm.mean_bb * 100.0, confirm.lower_95() * 100.0),
             "population": population
         });
-        super::super::progress::install(store, &params_json, &lineage_json, &promotion)?;
+        super::super::progress::install(store, &run.lane, &params_json, &lineage_json, &promotion)?;
         push_experiment(store, promotion);
         funnel::note(store, funnel::PROMOTED, Some(knob), 1);
         tracing::info!("cycle {cycle}: PROMOTED {version} ({knob} {old:.3}->{new:.3})");
         // Every target was measured against the old champion; the next cycle publishes anew.
-        let empty = TargetQueue { champion: version.clone(), refit_rowid: run.refit_rowid, updated: now(), ..Default::default() };
-        if let Err(err) = serde_json::to_string(&empty).map_err(anyhow::Error::from).and_then(|j| store.put_kv(TARGETS_KEY, &j)) {
-            tracing::warn!("cycle {cycle}: experiment targets not cleared ({err})");
+        if run.lane.is_shared() {
+            let empty = TargetQueue { champion: version.clone(), refit_rowid: run.refit_rowid, updated: now(), ..Default::default() };
+            if let Err(err) = serde_json::to_string(&empty).map_err(anyhow::Error::from).and_then(|j| store.put_kv(TARGETS_KEY, &j)) {
+                tracing::warn!("cycle {cycle}: experiment targets not cleared ({err})");
+            }
         }
         return Ok(true);
     }
@@ -50,7 +52,7 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
     tracing::info!("cycle {cycle}: best candidate failed confirmation ({:+.2} bb/100): {why}", confirm.mean_bb * 100.0);
     funnel::note(store, &format!("confirm/{code}"), Some(knob), 1);
     // A completed fresh-deal rejection is never offered to the experiment pair again.
-    let mut ledger = search_ledger::load_evaluated(store, &run.champion_version, run.refit_rowid, &run.stacks.digest);
+    let mut ledger = search_ledger::load_evaluated(store, &run.lane, &run.champion_version, run.refit_rowid, &run.stacks.digest);
     ledger.confirm_rejected.insert(transition_key(knob, old, new));
     // The result is discarded, not stored: `confirm_rejected` holds only the key, so a key that
     // comes back costs the full confirmation again. Record the measurement beside the key so the
@@ -63,10 +65,10 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
         confirm.lower_95() * 100.0,
         confirm.upper_95() * 100.0
     );
-    if let Err(err) = search_ledger::save(store, &ledger) {
+    if let Err(err) = search_ledger::save(store, &run.lane, &ledger) {
         tracing::warn!("cycle {cycle}: rejection ledger not saved ({err})");
     }
-    publish_targets(store, &ledger, &e.sc.champion, cycle, None, (e.ctx.tables, e.ctx.hands));
+    publish_targets(store, &run.lane, &ledger, &e.sc.champion, cycle, None, (e.ctx.tables, e.ctx.hands));
     push_experiment(
         store,
         json!({
