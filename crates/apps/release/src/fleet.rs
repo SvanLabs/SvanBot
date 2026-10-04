@@ -28,6 +28,15 @@ fn pid_files(root: &Path, fixed: &[&str], suffix: &str) -> Vec<PathBuf> {
     files
 }
 
+/// Whether any fleet supervisor is alive (`fleet_playing` in `supervisors.sh`): its pid file names a
+/// live, non-zombie process. Unlike [`supervisors_running`] it does not ask where the process runs.
+pub fn playing(root: &Path) -> bool {
+    pid_files(root, &["supervisor.pid", "head-supervisor.pid"], "-supervisor.pid").iter().any(|file| {
+        let positive = |t: &str| t.bytes().next().is_some_and(|b| (b'1'..=b'9').contains(&b)) && t.bytes().all(|b| b.is_ascii_digit());
+        pid_in(file, positive).is_some_and(|pid| Path::new(&format!("/proc/{pid}")).exists() && !is_zombie(pid))
+    })
+}
+
 /// Whether a running bot, head or worker process executes the installed `target/release/sv10-bot`
 /// (the same file, by device and inode).
 pub fn installed_bot_running(root: &Path) -> bool {

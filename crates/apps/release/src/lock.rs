@@ -13,6 +13,14 @@ pub struct Operation {
     _file: Option<File>,
 }
 
+impl Operation {
+    /// The descriptor of a lock this process took itself, for in-process steps to treat as inherited.
+    pub fn fd(&self) -> Option<i32> {
+        use std::os::fd::AsRawFd;
+        self._file.as_ref().map(|f| f.as_raw_fd())
+    }
+}
+
 /// Take the lock, then repair whatever an interrupted swap left behind. `inherited` is the value
 /// of `SV10_RELEASE_LOCK_FD`.
 pub fn acquire(root: &Root, inherited: Option<&str>) -> Result<Operation> {

@@ -19,6 +19,7 @@ pub mod layout;
 pub mod lock;
 pub mod manifest;
 pub mod publish;
+pub mod release;
 pub mod restore;
 pub mod snapshot;
 pub mod space;

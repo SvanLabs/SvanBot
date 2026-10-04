@@ -11,10 +11,7 @@ pub fn run(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("rollback") => rollback_main(&args[1..]),
         Some("update") => crate::update::run(&args[1..]),
-        Some("release") => {
-            eprintln!("{}", ReleaseError::NotBuilt("`release`".into()));
-            1
-        }
+        Some("release") => crate::release::run(),
         _ => {
             eprintln!("usage: sv10-release release | update [--check | --rollback <commit>] | rollback <flags>");
             2
