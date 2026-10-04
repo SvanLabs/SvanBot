@@ -129,6 +129,12 @@ fi
 
 # 5. The real adoption path, run from an untracked copy inside the target so that `$(dirname $0)/..` is
 # the deployment and not this checkout.
+# The copy is a wrapper around the Rust installer, and the target has no Rust sources of the right history
+# yet: hand it this checkout's installer.
+if [ -z "${SV10_RELEASE_BIN:-}" ]; then
+  SV10_RELEASE_BIN=$(cd "$here" && source scripts/sv10-release-bin.sh && sv10_release_bin) || die "could not build the installer in $here"
+fi
+export SV10_RELEASE_BIN
 tmp="scripts/.adopt-upstream-$stamp.sh"
 cp "$here/scripts/update.sh" "$dir/$tmp"
 say "adopting: update.sh's own SVANBOT_ADOPT_UPSTREAM path, then release.sh (build, test, install)"

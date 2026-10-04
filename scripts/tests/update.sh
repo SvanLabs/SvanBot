@@ -3,6 +3,7 @@
 # developer clone that pushes, and an operator checkout that updates with a stub release script.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd -P)
+source "$repo/scripts/tests/lib-release-bin.sh"
 t=$(mktemp -d)
 health_pid=
 bot_pid=
