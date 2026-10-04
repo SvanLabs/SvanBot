@@ -63,6 +63,8 @@ pub enum ReleaseError {
     },
     /// A system call or file operation failed; carries what was being done.
     Io(String),
+    /// A probe that answers by exit status only (`--fleet-running`): no message, exit 1.
+    Quiet,
     /// A surface or flag that this binary has not taken over from the shell script yet.
     NotBuilt(String),
 }
@@ -114,6 +116,7 @@ impl fmt::Display for ReleaseError {
                 f,
                 "build {commit} reads data format {build} but the databases hold format {store} (compressed columns, 0229); stop the fleet, run ./target/release/archive unpack, then roll back"
             ),
+            Quiet => Ok(()),
             NotBuilt(what) => write!(f, "{what} is not built into sv10-release yet; use the shell script"),
         }
     }
