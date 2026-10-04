@@ -163,7 +163,11 @@ fn refit_fold(store: &Store, now: f64) {
             s.actual,
             s.held_out_gain * 1000.0,
             s.held_out_lower * 1000.0,
-            verdict(s.active, format!("shift {:+.2}", s.shift))
+            if s.starved {
+                "starved: too few held-out samples to judge".into()
+            } else {
+                verdict(s.active, format!("shift {:+.2}", s.shift))
+            }
         );
     }
     put(store, foldcal::FOLD_CAL_KEY, "fold calibration", &cal);

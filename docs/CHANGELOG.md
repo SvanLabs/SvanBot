@@ -11,6 +11,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `review fold-cal --split` prints each street's fold calibration in four time slices, each scored with the shift fitted on the
   slices before it, to tell a street that drifted from one a single shift cannot describe (#767). Read-only.
+- A fold-calibration street with too few held-out samples for its gate reports `starved` (in the stored fit and the learner log) instead
+  of a silent "not installed". The minimum is not lowered; with one bot the sample window, which counts samples, simply spans
+  a longer time (#748, layer 1).
+- The experiment panel says why a fleet smaller than five never qualifies ("solo — experiments unavailable", or "N of 5 fleet bots")
+  instead of showing the same waiting-for-readings line forever (#748, layer 2).
 - The learner's one-knob search steps both ways on every knob that has room (three-bet in and out of position, four-bet, limper size and
   the raise-fold bonus gained their missing direction; the open-size step down is 0.5 like the step up), and the raise-guard floor scale
   (`raise_gate`) and the own-image weight (`hero_image`) join the search and the dashboard's knob catalogue. The pool grows from 41 to 46

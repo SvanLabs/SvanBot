@@ -148,6 +148,17 @@ impl ModeState {
         }
     }
 
+    /// Why this fleet can never enter the mode, when it cannot: qualifying needs all five bots on the
+    /// board with four at #1–#4 (#748). Silent before, so a solo box looked like a fleet still
+    /// waiting for readings.
+    pub fn unavailable(&self) -> Option<String> {
+        match self.ranks.len() {
+            0 | 5.. => None,
+            1 => Some("solo — experiments unavailable: the mode needs the five-bot fleet on the official board".into()),
+            n => Some(format!("{n} of 5 fleet bots — experiments unavailable: the mode needs all five on the official board")),
+        }
+    }
+
     /// Whether the pair may play an experiment at `now`: active, and its last reading fresh.
     pub fn active_at(&self, now: f64) -> bool {
         self.status == Status::Active && self.last_reading_at.is_some_and(|t| now - t <= STALE_AFTER_SECS && now >= t - 60.0)
@@ -295,6 +306,23 @@ mod tests {
         }
         assert_eq!(m.status, Status::Active);
         m
+    }
+
+    #[test]
+    fn a_fleet_smaller_than_five_says_why_it_never_qualifies() {
+        let mut m = ModeState::start(0.0);
+        assert_eq!(m.unavailable(), None, "no reading yet: nothing to say");
+        let solo = Reading::parse(&season("s13"), &board(&["x", "y", "z", "w", "A"]), &["A".to_string()], 100.0);
+        m.observe(solo, 100.0);
+        assert!(m.unavailable().is_some_and(|r| r.starts_with("solo — experiments unavailable")), "{:?}", m.unavailable());
+        assert_eq!(m.status, Status::Champion);
+        let mut full = ModeState::start(0.0);
+        full.observe(reading(&TOP4, 100.0), 100.0);
+        assert_eq!(full.unavailable(), None, "five bots: qualifying readings are still counted");
+        let three = Reading::parse(&season("s13"), &board(&["A", "B", "C", "x"]), &["A", "B", "C"].map(String::from), 100.0);
+        let mut m3 = ModeState::start(0.0);
+        m3.observe(three, 100.0);
+        assert_eq!(m3.unavailable().as_deref().map(|r| &r[..7]), Some("3 of 5 "));
     }
 
     #[test]
