@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `sv10-release` (#742, first slice): the installer's read-only surfaces in Rust, byte-for-byte with `scripts/rollback.sh`:
+  `sv10-release rollback --verify <commit>`, `--installed-commit`, `--check-space`, `--data-format <commit>` and
+  `--validate-layout`, with the script's usage lines and refusals. Nothing calls it yet; the scripts are unchanged. One
+  difference, deliberate: for a commit that does not resolve, `--verify` prints the one real reason, where the script also prints
+  `snapshot manifest missing:` (an empty commit name leaking out of a subshell).
 - Pro can renew itself (#776, #775). With `SVANBOT_AUTO_RENEW_PRO=1` (default off) the head process buys a `pro-bundle` of up to
   `SVANBOT_AUTO_RENEW_SEASONS` seasons (1, 3 or 6; default 3) from the credit balance when the owner key's `/season/me` reads Free on a
   fresh read, steps down on a `402`, saves each `request_id` before the request, retries a request of unknown fate with the same id,

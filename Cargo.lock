@@ -1639,6 +1639,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "sv10-release"
+version = "10.0.1"
+dependencies = [
+ "sv10-digest",
+ "sv10-rt",
+]
+
+[[package]]
 name = "sv10-rng"
 version = "10.0.1"
 
