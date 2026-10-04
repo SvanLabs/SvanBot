@@ -101,6 +101,20 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     add("bet_size_set", base.len() as f64, other.len() as f64, &|c: &mut Params, _| {
         c.bet_sizes = other.iter().map(|b| b * cur).map(|v| (v * 1e9).round() / 1e9).collect()
     });
+    // One interior size on its own (#760): the 0.55-pot bet (index 1 of four sizes, 2 of seven) moves by 0.1 pot
+    // while the others stay, so the set can take a shape the 4/7 toggle and the global scale cannot. Not a knob:
+    // it proposes a whole size list. A step that would touch a neighbour is not proposed.
+    let mid = if p.bet_sizes.len() == SEVEN.len() { 2 } else { 1 };
+    if p.bet_sizes.len() > mid + 1 {
+        for dir in [1.0, -1.0] {
+            let v = ((p.bet_sizes[mid] + 0.1 * step * dir) * 1e9).round() / 1e9;
+            if v > p.bet_sizes[mid - 1] + 0.03 && v < p.bet_sizes[mid + 1] - 0.03 {
+                let mut sizes = p.bet_sizes.clone();
+                sizes[mid] = v;
+                add("bet_size_mid", p.bet_sizes[mid], v, &move |c: &mut Params, _| c.bet_sizes = sizes.clone());
+            }
+        }
+    }
     // Mixing temperature (0131): the one strategy knob the pool never tried. The confirmation
     // gate admits it only on a positive 95% lower bound.
     add("temperature", p.temperature, p.temperature * (1.0 + 0.3 * step), &|c, v| c.temperature = v);
@@ -177,6 +191,29 @@ mod tests {
                 assert_eq!(c.bet_sizes.len(), 7, "{:?}", c.bet_sizes);
             }
         }
+    }
+
+    #[test]
+    fn one_interior_bet_size_moves_alone_in_either_set() {
+        for sizes in [vec![0.33, 0.55, 0.8, 1.2], vec![0.33, 0.45, 0.55, 0.8, 1.0, 1.2, 1.5]] {
+            let champion = Params { bet_sizes: sizes.clone(), ..Params::default() };
+            let mid = if sizes.len() == 7 { 2 } else { 1 };
+            let moved: Vec<_> = challengers(&champion, 0).into_iter().filter(|(k, _, _, _)| k == "bet_size_mid").collect();
+            // The seven-size set has 0.45 right below 0.55: its step down would land on the neighbour and is not proposed.
+            let want = if sizes.len() == 7 { 1 } else { 2 };
+            assert_eq!(moved.len(), want, "{moved:?}");
+            for (_, old, new, c) in &moved {
+                assert_eq!(*old, sizes[mid]);
+                assert!((new - old).abs() > 0.05);
+                assert_eq!(c.bet_sizes.len(), sizes.len());
+                for (i, (a, b)) in c.bet_sizes.iter().zip(&sizes).enumerate() {
+                    assert!(i == mid || a == b, "only the interior size moves: {:?}", c.bet_sizes);
+                }
+                assert!(c.bet_sizes.windows(2).all(|w| w[0] < w[1]), "sizes stay sorted: {:?}", c.bet_sizes);
+            }
+        }
+        let crowded = Params { bet_sizes: vec![0.33, 0.35, 0.37, 1.2], ..Params::default() };
+        assert!(challengers(&crowded, 0).iter().all(|(k, _, _, _)| k != "bet_size_mid"), "no step that would touch a neighbour");
     }
 
     #[test]

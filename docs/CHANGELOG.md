@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The learner's search can move the 0.55-pot bet size (index 1 of four sizes, 2 of seven) by 0.1 pot while the other sizes stay, so
+  the set can take a shape the four/seven toggle and the global scale cannot; a step that would touch a neighbouring size is not
+  proposed. Two more candidates (50), the promotion gate untouched (#760, item 3).
 - `review fold-cal --split` prints each street's fold calibration in four time slices, each scored with the shift fitted on the
   slices before it, to tell a street that drifted from one a single shift cannot describe (#767). Read-only.
 - A fold-calibration street with too few held-out samples for its gate reports `starved` (in the stored fit and the learner log) instead

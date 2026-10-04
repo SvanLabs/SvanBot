@@ -68,7 +68,7 @@ fn every_knob_the_search_moves_is_one_the_profile_can_draw() {
     let mut searched: Vec<String> = Vec::new();
     for cycle in 0..2 {
         for (knob, _, _, _) in challengers(&Params::default(), cycle) {
-            if knob != "bet_size_set" && !searched.contains(&knob) {
+            if knob != "bet_size_set" && knob != "bet_size_mid" && !searched.contains(&knob) {
                 searched.push(knob);
             }
         }
