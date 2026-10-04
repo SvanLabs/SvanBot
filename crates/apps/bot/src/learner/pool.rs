@@ -33,10 +33,15 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     step_knob("initiative", -0.03 * step, &|c, v| c.initiative = v);
     step_knob("initiative", 0.03 * step, &|c, v| c.initiative = v);
     step_knob("open_bb", 0.5 * step, &|c, v| c.open_bb = v);
-    step_knob("open_bb", -0.25 * step, &|c, v| c.open_bb = v);
+    step_knob("open_bb", -0.5 * step, &|c, v| c.open_bb = v);
+    // Both directions on every knob (#760): a one-sided line left the other side to the global
+    // scale knobs, so a champion walked one way had no way back that the gate could test.
     step_knob("three_bet_ip", 0.4 * step, &|c, v| c.three_bet_ip = v);
+    step_knob("three_bet_ip", -0.4 * step, &|c, v| c.three_bet_ip = v);
     step_knob("three_bet_oop", 0.4 * step, &|c, v| c.three_bet_oop = v);
+    step_knob("three_bet_oop", -0.4 * step, &|c, v| c.three_bet_oop = v);
     step_knob("raise_fold_bonus", -0.04 * step, &|c, v| c.raise_fold_bonus = v);
+    step_knob("raise_fold_bonus", 0.04 * step, &|c, v| c.raise_fold_bonus = v);
     step_knob("realize_weight", 0.15 * step, &|c, v| c.realize_weight = v);
     step_knob("realize_weight", -0.15 * step, &|c, v| c.realize_weight = v);
     step_knob("call_margin", 0.01 * step, &|c, v| c.call_margin = v);
@@ -46,7 +51,15 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     step_knob("raise_risk", 0.3 * step, &|c, v| c.raise_risk = v);
     step_knob("raise_risk", -0.3 * step, &|c, v| c.raise_risk = v);
     step_knob("four_bet", 0.2 * step, &|c, v| c.four_bet = v);
+    step_knob("four_bet", -0.2 * step, &|c, v| c.four_bet = v);
     step_knob("limper_bb", 0.5 * step, &|c, v| c.limper_bb = v);
+    step_knob("limper_bb", -0.5 * step, &|c, v| c.limper_bb = v);
+    // Two fields the search never moved (#760): the raise guard's floor scale and how much of the
+    // image our own play gives is priced in. Neither changes anything until the gate promotes it.
+    step_knob("raise_gate", 0.15 * step, &|c, v| c.raise_gate = v);
+    step_knob("raise_gate", -0.15 * step, &|c, v| c.raise_gate = v);
+    step_knob("hero_image", 0.25 * step, &|c, v| c.hero_image = v);
+    step_knob("hero_image", -0.25 * step, &|c, v| c.hero_image = v);
     // Stack-depth-aware preflop sizing (0171).
     step_knob("short_open_bb", -0.25 * step, &|c, v| c.short_open_bb = v);
     step_knob("short_open_bb", 0.25 * step, &|c, v| c.short_open_bb = v);
@@ -160,6 +173,20 @@ mod tests {
             if k == "bet_size_scale" {
                 assert_eq!(c.bet_sizes.len(), 7, "{:?}", c.bet_sizes);
             }
+        }
+    }
+
+    #[test]
+    fn every_knob_with_room_is_stepped_in_both_directions() {
+        // #760: a one-sided line left a champion walked one way with no tested way back.
+        let p = Params::default();
+        let pool = challengers(&p, 0);
+        for k in knobs::KNOBS.iter().filter(|k| k.key != "tiered_all_in_fold_pricing") {
+            let now = k.get(&p);
+            let moves =
+                |up: bool| pool.iter().any(|(key, _, new, _)| key == k.key && if up { *new > now + 1e-9 } else { *new < now - 1e-9 });
+            assert!(moves(true) || now >= k.max - 1e-9, "{} has no step up from {now}", k.key);
+            assert!(moves(false) || now <= k.min + 1e-9, "{} has no step down from {now}", k.key);
         }
     }
 }
