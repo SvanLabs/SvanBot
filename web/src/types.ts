@@ -69,7 +69,7 @@ export interface SetupState { bots: SetupSlot[]; buy_in: number; seek_top_rank: 
 export interface MonitorLine { time: string; kind: string; text: string }
 export interface MonitorState { monitor: { running: boolean; log_age_seconds: number | null; started: MonitorLine | null; summary: MonitorLine | null; opponents: MonitorLine | null; alerts: MonitorLine[] }; pressure: { cpu: number | null; io: number | null; memory: number | null }; replays: { recorded: number | null; error?: string | null; newest: string | null; keep_days: number }; season_check: { result: string; failures: string[] } | null }
 export interface ChangelogEntry { commit: string; subject: string; group: string }
-export interface UpdateCheck { source: string; commit: string | null; behind: number; checked_at: number; fetched_at?: number | null; error: string | null }
+export interface UpdateCheck { source: string; commit: string | null; behind: number; checked_at: number; fetched_at?: number | null; error: string | null; branch?: string | null; ahead?: number | null }
 export interface ReleasesState { installed: { commit: string | null; at: string | null; subject: string | null }; head: { commit: string | null; subject: string | null }; behind: number; dirty: boolean; update_available: boolean; build: { commit: string; version: string }; changelog: ChangelogEntry[]; remote?: UpdateCheck | null }
 export interface ReleaseLog { running: boolean; log: string[] }
 /** GET /api/host (0241): one host fact, judged; `advice` is the operator's command when `warn`. */

@@ -101,7 +101,7 @@ PY
 
 # 2. New commits on the branch: fast-forward, release, installed commit is the new head.
 push b && push c
-[ "$(cd "$box" && bash scripts/update.sh --check)" = "2 $(git -C "$t/dev" rev-parse --short HEAD)" ] || fail "--check did not report 2 behind"
+[ "$(cd "$box" && bash scripts/update.sh --check)" = "2 $(git -C "$t/dev" rev-parse --short HEAD) $(git -C "$box" branch --show-current) 0" ] || fail "--check did not report 2 behind"
 run "$t/release-ok.sh" >/dev/null || fail "fast-forward update failed"
 [ "$(git -C "$box" rev-parse HEAD)" = "$(git -C "$t/dev" rev-parse HEAD)" ] || fail "checkout not fast-forwarded"
 grep -q "fast-forwarded" "$box/artifacts/release.log" || fail "release.log lacks the fast-forward line"

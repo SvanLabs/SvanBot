@@ -60,7 +60,10 @@ fi
 
 if [ "${1:-}" = "--check" ]; then
   fetch
-  echo "$(git rev-list --count "HEAD..$remote/$branch") $(git rev-parse --short "$remote/$branch")"
+  # Branch state rides along for the dashboard (issue #757): the parser reads the first two
+  # fields, so older readers ignore the rest. NOTE: `cur`, not `branch` — that name is taken.
+  cur=$(git branch --show-current 2>/dev/null || true); cur=${cur:-detached}
+  echo "$(git rev-list --count "HEAD..$remote/$branch") $(git rev-parse --short "$remote/$branch") $cur $(git rev-list --count "$remote/$branch..HEAD")"
   exit 0
 fi
 
