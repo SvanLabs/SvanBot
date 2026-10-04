@@ -3,7 +3,7 @@
 
 use crate::error::{ReleaseError, Result};
 use crate::layout::Root;
-use crate::{gitops, identity, journal, lock, publish, restore, snapshot, space, store_format};
+use crate::{adopt, fleet, gitops, health, identity, journal, lock, publish, restore, snapshot, space, store_format};
 use std::path::PathBuf;
 
 /// Entry point: the process exit status for `args` (without the program name).
@@ -37,7 +37,9 @@ fn rollback_main(args: &[String]) -> i32 {
     match result {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("rollback: {e}");
+            if e != ReleaseError::Quiet {
+                eprintln!("rollback: {e}");
+            }
             1
         }
     }
@@ -114,8 +116,21 @@ pub fn rollback(root: &Root, args: &[String], env: &[(String, String)], out: &mu
             arity(1, "--preserve-unidentified")?;
             publish::preserve_unidentified(root, env, out)
         }
-        Some(flag @ ("--adopt-legacy" | "--await-health" | "--fleet-running" | "--fleet-supervisors")) => {
-            Err(ReleaseError::NotBuilt(format!("`rollback {flag}`")))
+        Some("--await-health") => {
+            arity(2, "--await-health <commit>")?;
+            health::await_commit(root.path(), &args[1], env, out)
+        }
+        Some("--fleet-running") => {
+            arity(1, "--fleet-running")?;
+            if fleet::installed_bot_running(root.path()) { Ok(()) } else { Err(ReleaseError::Quiet) }
+        }
+        Some("--fleet-supervisors") => {
+            arity(1, "--fleet-supervisors")?;
+            if fleet::supervisors_running(root.path()) { Ok(()) } else { Err(ReleaseError::Quiet) }
+        }
+        Some("--adopt-legacy") => {
+            arity(2, "--adopt-legacy <commit>")?;
+            adopt::adopt_legacy(root, &args[1], env, out)
         }
         Some(_) if args.len() == 1 => restore::restore(root, &args[0], env, out),
         _ => Err(usage("<commit>")),

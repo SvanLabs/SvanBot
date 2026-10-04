@@ -5,11 +5,14 @@
 //! `release-progress.json`, `releases.log`, the identity marker and the lock files. The design is
 //! recorded on #716; this crate takes the surfaces over one at a time, read-only ones first.
 
+pub mod adopt;
 pub mod binaries;
 pub mod cli;
 pub mod error;
+pub mod fleet;
 pub mod fsops;
 pub mod gitops;
+pub mod health;
 pub mod identity;
 pub mod journal;
 pub mod layout;
