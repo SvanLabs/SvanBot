@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/reap-worktrees.sh` reports which registered git worktrees are merged, stale, prunable, dirty or live, with sizes
+  and the remove command; it never deletes anything (#763).
+
 ### Fixed
 
 - `sv10-bot` exits on SIGTERM. `main` used to return into a runtime drop that waits for every blocking task, and the
