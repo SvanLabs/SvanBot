@@ -180,6 +180,8 @@ pub struct DriftSlice {
     pub gain: f64,
     /// 95% half-width of the gain.
     pub half_width: f64,
+    /// Gain of the shift fitted on the previous slice alone: what a recency-weighted fit would have earned.
+    pub recent_gain: f64,
 }
 
 /// A street's samples in time order, cut into `slices` equal parts; each part after the first is scored with the shift
@@ -201,6 +203,9 @@ pub fn drift(samples: &[FoldSample], street: usize, slices: usize) -> Vec<DriftS
             continue;
         }
         let shift = best_shift(before, max_shift);
+        let recent = best_shift(&before[before.len().saturating_sub(size)..], max_shift);
+        let mean_gain =
+            |sh: f64| this.iter().map(|s| loss(s.raw, 0.0, s.folded) - loss(s.raw, sh, s.folded)).sum::<f64>() / this.len() as f64;
         let gains: Vec<f64> = this.iter().map(|s| loss(s.raw, 0.0, s.folded) - loss(s.raw, shift, s.folded)).collect();
         let n = this.len() as f64;
         let gain = gains.iter().sum::<f64>() / n;
@@ -212,6 +217,7 @@ pub fn drift(samples: &[FoldSample], street: usize, slices: usize) -> Vec<DriftS
             shift,
             gain,
             half_width: 1.96 * (var / n).sqrt(),
+            recent_gain: mean_gain(recent),
         });
     }
     out
@@ -223,14 +229,15 @@ pub fn drift_lines(samples: &[FoldSample]) -> Vec<String> {
     for (street, name) in [(0, "flop"), (1, "turn"), (2, "river"), (PREFLOP, "preflop")] {
         for (k, d) in drift(samples, street, 4).iter().enumerate() {
             out.push(format!(
-                "{name:7} slice {} n {:6}  predicted {:.3}  actual {:.3}  earlier-fit shift {:+.2}  gain {:+6.1} ± {:4.1} mnats",
+                "{name:7} slice {} n {:6}  predicted {:.3}  actual {:.3}  earlier-fit shift {:+.2}  gain {:+6.1} ± {:4.1} mnats  (previous slice alone: {:+6.1})",
                 k + 2,
                 d.n,
                 d.predicted,
                 d.actual,
                 d.shift,
                 d.gain * 1000.0,
-                d.half_width * 1000.0
+                d.half_width * 1000.0,
+                d.recent_gain * 1000.0
             ));
         }
     }
