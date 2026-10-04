@@ -9,6 +9,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Pro can renew itself (#776, #775). With `SVANBOT_AUTO_RENEW_PRO=1` (default off) the head process buys a `pro-bundle` of up to
+  `SVANBOT_AUTO_RENEW_SEASONS` seasons (1, 3 or 6; default 3) from the credit balance when the owner key's `/season/me` reads Free on a
+  fresh read, steps down on a `402`, saves each `request_id` before the request, retries a request of unknown fate with the same id,
+  and buys nothing more for six hours. Workers tell the head when the venue refuses a join with `portfolio_pro_required`. Off, nothing
+  is bought and no extra request is made; a lapse logs a warning once an hour, and the renewal state is under `ops.pro_renewal` in
+  `/api/state`.
 - The learner's search can move the 0.55-pot bet size (index 1 of four sizes, 2 of seven) by 0.1 pot while the other sizes stay, so
   the set can take a shape the four/seven toggle and the global scale cannot; a step that would touch a neighbouring size is not
   proposed. Two more candidates (50), the promotion gate untouched (#760, item 3).

@@ -61,6 +61,7 @@ pub fn spawn_all(shared: &Arc<Shared>) {
     }
 
     spawn_season_poller(shared);
+    crate::proauto::spawn(shared);
 
     spawn_experiment_poller(shared);
     spawn_experiment_refresh(shared);

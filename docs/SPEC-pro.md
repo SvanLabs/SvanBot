@@ -10,15 +10,17 @@ cap — not the purchase, hosted-bot or portfolio surfaces.
 
 ## Status
 
-**Partially supported.** SvanBot runs as a Pro account (five concurrent public bots) and reads
-`pro_tier` to lift the hand-history export cap. The Pro purchase, hosted-bot control and portfolio
-management endpoints are unsupported: no call to any of them exists.
+**Partially supported.** SvanBot runs as a Pro account (five concurrent public bots), reads
+`pro_tier` to lift the hand-history export cap, and can renew Pro from the credit balance when it
+lapses (`crates/apps/bot/src/proauto.rs`, opt-in, off by default). Hosted-bot control, portfolio
+management and the token purchase are unsupported: no call to any of them exists.
 
 ## Scope and non-goals
 
 **Scope.** What Pro buys, the management endpoints the venue documents, and the one flag SvanBot reads.
 
-**Non-goals.** Buying or renewing Pro; automating `/portfolio/*` or `/bot/*` management; hosted-bot
+**Non-goals.** Buying Pro any way but the opt-in renewal below (no token purchase, no single-season
+endpoint); automating `/portfolio/*` or `/bot/*` management; hosted-bot
 mode (SvanBot bots are self-hosted local processes); the fleet configuration UI itself
 (`crates/apps/bot/src/api/setup.rs`).
 
@@ -47,7 +49,8 @@ Where SvanBot uses it:
 | Five-bot cap | `crates/apps/bot/src/setup.rs`, `crates/apps/bot/src/config.rs` | `MAX_BOTS = 5` enforces the fair-play limit on dashboard saves and on `.env` keys (beyond the cap an error names the rule and the key is ignored) |
 | `pro_tier` read | `crates/apps/bot/src/seasons.rs` | `GET /season/me` per key; fails closed (`false`) |
 | Export cap lift | `crates/apps/bot/src/history/download.rs` | Pro keys ignore `SVANBOT_EXPORT_CAP` (0 = unlimited) and download ended seasons |
-| Everything else | — | No call to `/season/pro*`, `/bot/*/api` or `/portfolio/*` exists |
+| Renewal on lapse | `crates/apps/bot/src/proauto.rs` | `SVANBOT_AUTO_RENEW_PRO=1` (default 0) and `SVANBOT_AUTO_RENEW_SEASONS` (1, 3 or 6; default 3). When the owner key (`SVANBOT_API_KEY`) reads `pro_tier` false on a fresh `GET /season/me`, on a box with more than one key, outside dry run: `POST /season/pro-bundle {seasons, request_id}`, widest bundle first, a `402` (nothing charged) steps down. `request_id` is saved before the request and reused to retry a request of unknown fate; nothing more is bought for six hours after a purchase, and nothing for a week if the owner still reads Free after one (the read is then wrong, not the account). Needs `SVANBOT_API_KEY` as the first bot: a child key reads Free under Pro. Off: no purchase call and no extra venue request, only a warning once an hour when the owner reads Free |
+| Everything else | — | No call to `/bot/*/api`, `/portfolio/*`, `/season/pro` or `/season/pro/token` exists |
 
 ## Gates
 
@@ -56,15 +59,17 @@ Where SvanBot uses it:
 - The management endpoints stay absent; check before claiming support:
 
 ```sh
-grep -rn "season/pro\|portfolio/bots\|/bot/strategy\|/bot/deploy\|/bot/stop" crates/ web/src || echo "no management-API calls (expected)"
+grep -rn "portfolio/bots\|/bot/strategy\|/bot/deploy\|/bot/stop\|season/pro/token" crates/ web/src || echo "no management-API calls (expected)"
+grep -rn "season/pro" crates/ | grep -v "proauto"   # expected: nothing but docs comments
 ```
 
 - `python3 scripts/docs-check.py` keeps every path here real; this file is listed in `scripts/docs-check.live`.
 
 ## Traps
 
-- **Purchases spend real USDC.** `/season/pro*` debits the credit balance; never call them from a
-  bot loop or without an operator order.
+- **Purchases spend real USDC.** `/season/pro*` debits the credit balance. The only caller is the
+  opt-in renewal in `proauto.rs` (off unless `SVANBOT_AUTO_RENEW_PRO=1`); never call a purchase
+  endpoint from anywhere else, and never from a bot loop.
 - **The Portfolio API is not this fleet's control plane.** It manages OpenPoker-hosted bots; SvanBot
   bots are self-hosted processes started from `.env`, so deploy, stop and runtime switch do not apply.
 - **Same-owner bots never share a table.** The five-bot cap is a fair-play limit, not five seats at
