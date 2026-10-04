@@ -3,7 +3,7 @@
 
 use crate::error::{ReleaseError, Result};
 use crate::layout::Root;
-use crate::{identity, snapshot, space, store_format};
+use crate::{gitops, identity, journal, lock, restore, snapshot, space, store_format};
 use std::path::PathBuf;
 
 /// Entry point: the process exit status for `args` (without the program name).
@@ -84,18 +84,34 @@ pub fn rollback(root: &Root, args: &[String], env: &[(String, String)], out: &mu
             out.push_str(&format!("{commit}\n"));
             Ok(())
         }
+        Some("--validate-source-clean") => {
+            arity(1, "--validate-source-clean")?;
+            journal::sweep_scratch(root)?;
+            let dirty = gitops::dirty_inputs(root.path())?;
+            if dirty.is_empty() {
+                return Ok(());
+            }
+            eprintln!("{dirty}");
+            Err(ReleaseError::SourceDirty)
+        }
+        Some("--repair") => {
+            arity(1, "--repair")?;
+            if !journal::path(root).is_file() {
+                out.push_str("No interrupted release swap to repair\n");
+            }
+            root.validate_layout()?;
+            lock::acquire(root, env_of(env, "SV10_RELEASE_LOCK_FD")).map(drop)
+        }
         Some(
-            flag @ ("--validate-source-clean"
-            | "--snapshot"
+            flag @ ("--snapshot"
             | "--await-health"
             | "--fleet-running"
             | "--fleet-supervisors"
-            | "--repair"
             | "--preserve-unidentified"
             | "--adopt-legacy"
             | "--install"),
         ) => Err(ReleaseError::NotBuilt(format!("`rollback {flag}`"))),
-        Some(_) if args.len() == 1 => Err(ReleaseError::NotBuilt("`rollback <commit>`".into())),
+        Some(_) if args.len() == 1 => restore::restore(root, &args[0], env, out),
         _ => Err(usage("<commit>")),
     }
 }

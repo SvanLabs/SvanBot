@@ -30,3 +30,18 @@ pub fn show(root: &Path, commit: &str, path: &str) -> Option<String> {
     let out = Command::new("git").arg("-C").arg(root).arg("show").arg(format!("{commit}:{path}")).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
+
+/// The build inputs that differ from the commit, as `git status --porcelain` lists them (empty when
+/// clean). The release's own half-moved dashboard scratch is not a build input: an interrupted swap
+/// must not read as a dirty checkout (the sweep and the journal repair clear it).
+pub fn dirty_inputs(root: &Path) -> Result<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["status", "--porcelain", "--untracked-files=all", "--"])
+        .args(["crates", "Cargo.toml", "Cargo.lock", "build.rs", ".cargo", "rust-toolchain", "rust-toolchain.toml", "web"])
+        .args([":(exclude)web/.dist.before-swap.*", ":(exclude)web/.dist.failed-swap.*"])
+        .output()
+        .map_err(|e| ReleaseError::Io(format!("cannot run git: {e}")))?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim_end_matches('\n').to_string())
+}

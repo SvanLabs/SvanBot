@@ -265,7 +265,7 @@ Because agents and reviewers read this code in pieces:
 
 ## 6. Safety
 
-- **MUST**: `unsafe` only in `sv10-rt` (environment, `statvfs`, `posix_fadvise`) and `sv10-mmap`
+- **MUST**: `unsafe` only in `sv10-rt` (environment, `statvfs`, `posix_fadvise`, `flock`, `kill`) and `sv10-mmap`
   (`mmap`, `munmap`, `madvise`) — the two crates with `#![allow(unsafe_code)]`; everywhere else the
   workspace denies it. (The template's "low-level parser module" does not exist here: the parsers are
   safe Rust.)
