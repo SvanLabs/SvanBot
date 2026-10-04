@@ -18,6 +18,11 @@ name = "bench"
 path = "src/bin/bench/main.rs"
 test = false
 
+# `ab` has unit tests: its report is byte-compared with the frozen output of the script it replaced.
+[[bin]]
+name = "ab"
+path = "src/bin/ab.rs"
+
 [[bin]]
 name = "sim"
 path = "src/bin/sim.rs"

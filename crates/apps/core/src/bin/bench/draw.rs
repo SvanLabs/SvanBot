@@ -9,7 +9,7 @@
 //!
 //! `bench draw [--repeat R]` measures the draws against each other *inside one process*: each round
 //! sweeps every arm over fixed-size sub-blocks in turn, so an arm's blocks sit next to its
-//! neighbours' in time, and the round's values are paired. `scripts/bench-ab.py` compares whole
+//! neighbours' in time, and the round's values are paired. `ab` compares whole
 //! processes and its per-cell 95% interval on this shared box is ±10–17% (0335 baseline), which
 //! cannot resolve a few percent of a draw that is itself a few percent of the deal; blocks a few
 //! hundred microseconds apart see the same box, so the ratio here is tight enough to decide. The
@@ -40,7 +40,7 @@ use sv10_core::equity::ComboSampler;
 use sv10_core::range::combo_mask;
 use sv10_rng::rngs::SmallRng;
 use sv10_rng::{RngExt, SeedableRng};
-use sv10_stats::moments::mean_half_width;
+use sv10_stats::moments::{mean_half_width, t975};
 
 /// The 52 cards a draw picks from.
 const FREE52: CardMask = (1u64 << 52) - 1;
@@ -220,20 +220,6 @@ fn start_masks(k: usize, count: usize) -> Vec<CardMask> {
         .collect()
 }
 
-/// Two-sided 95% t quantile by degrees of freedom: the values and the lookup `scripts/bench-ab.py`
-/// uses (its table's keys are 1..10, 14, 19, 29), so the two instruments report the same interval.
-fn t975(df: usize) -> f64 {
-    const V: [f64; 13] = [12.71, 4.30, 3.18, 2.78, 2.57, 2.45, 2.36, 2.31, 2.26, 2.23, 2.14, 2.09, 2.05];
-    let i = match df {
-        0..=10 => df.saturating_sub(1),
-        11..=14 => 10,
-        15..=19 => 11,
-        20..=29 => 12,
-        _ => return 1.96,
-    };
-    V[i]
-}
-
 fn round4(x: f64) -> f64 {
     (x * 1e4).round() / 1e4
 }
@@ -290,7 +276,7 @@ fn cell(k: usize, rounds: usize, masks: &[CardMask]) -> Value {
     out.insert("checksums".into(), Value::Object(checks));
     for (i, name) in ARMS.iter().enumerate().skip(1) {
         // Lower is better; a ratio's interval excluding 1 is a real difference (0335's rule). The
-        // interval is the mean's, as `scripts/bench-ab.py` reports it; the median is the robust point
+        // interval is the mean's, as `ab` reports it; the median is the robust point
         // estimate, and the null pair's own band is this instrument's resolution.
         let ratios: Vec<f64> = (0..rounds).map(|r| ns[i][r] / ns[0][r]).collect();
         // One round has no spread to build an interval from, and a zero-width one would read as

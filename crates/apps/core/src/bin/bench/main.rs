@@ -15,7 +15,7 @@
 //! The workload is frozen in a fixture the learner writes from the live store
 //! (`learner bench-fixture`: the champion as searches play it, the population models, the live
 //! response net and the machine's sample budgets); without one the archetype pool and default
-//! parameters stand in. One JSON line per repeat goes to stdout, so `scripts/bench-ab.py` can
+//! parameters stand in. One JSON line per repeat goes to stdout, so `ab` can
 //! alternate two builds and compare them on paired repeats. `--allocs` counts allocations (off by
 //! default: counting costs time); `--profile` samples where the CPU time goes (build with
 //! `--profile profiling` for source lines); `--threads N` sizes the pool.

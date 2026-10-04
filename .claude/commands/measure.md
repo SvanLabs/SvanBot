@@ -1,6 +1,6 @@
 ---
 description: The measurement a performance change has to carry, on the same machine against the previous commit. Use for any speed-only or throughput change.
-allowed-tools: Bash(scripts/bench-ab.py:*), Bash(python3 scripts/bench-ab.py:*), Bash(CARGO_TARGET_DIR=target/dev cargo build:*), Bash(git rev-parse:*), Bash(git log:*), Read, Grep, Glob
+allowed-tools: Bash(target/dev/release/ab:*), Bash(CARGO_TARGET_DIR=target/dev cargo build:*), Bash(git rev-parse:*), Bash(git log:*), Read, Grep, Glob
 ---
 
 A performance change is not a change until it has a number.
@@ -20,15 +20,15 @@ a before and an after measured an hour apart differ by load rather than by code.
 Build both revisions and compare them with the paired harness:
 
 ```
-CARGO_TARGET_DIR=target/dev cargo build --profile release -p sv10-core --bin bench
-python3 scripts/bench-ab.py BASE NEW --suite learner --repeat 10
+CARGO_TARGET_DIR=target/dev cargo build --profile release -p sv10-core --bin bench --bin ab
+target/dev/release/ab BASE NEW --suite learner --repeat 10
 ```
 
 `BASE` is the previous commit's `bench` binary and `NEW` is this change's — the same machine, the
 same suite, back to back. The harness alternates them on each repeat and reports the paired ratio per
 metric with a 95% t-interval. **A gain counts only when the interval excludes 1**, and the checksums
 must match: a speed-only change computes the same thing, and a differing checksum means it does not
-(`scripts/bench-ab.py` exits 2 and says so).
+(`ab` exits 2 and says so).
 
 Suites are `learner` (table runs per wall and per CPU second), `live` (decision latency p50…p999 at
 the live sample budget) and `micro` (evaluator, sampler, equity, RNG). `docs/OPERATIONS.md` has the

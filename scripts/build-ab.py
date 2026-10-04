@@ -5,14 +5,14 @@
 
 `lto` (false/thin/fat) x `codegen-units` (256/16/1) decides two separate things and only one of them
 is a knob to turn: how long the one-file release rebuild the operator actually runs takes, and how fast
-the shipped code is. This script answers the first. `scripts/bench-ab.py` answers the second, on the
+the shipped code is. This script answers the first. `ab` (crates/apps/core/src/bin/ab.rs) answers the second, on the
 bench binaries this one leaves behind (`<root>/bins/<variant>/`).
 
 Why interleaved. This box is never quiet (0337): the fleet, the learner, the analyst and other agents'
 builds share four cores. One clean-touch build per variant measures the box's mood, not the flag, so
 the variants are built round-robin (A, B, C, A, B, C, ...) with the order rotated each round, and the
 verdict is on the *paired* per-round difference against the baseline — the same estimator
-`bench-ab.py` uses, so a load swing cancels instead of landing on whichever variant ran during it.
+`ab` uses, so a load swing cancels instead of landing on whichever variant ran during it.
 Each observation records the load average it was taken under.
 
 The job is the shipped one: `cargo build --release --workspace --bins` with `SVANBOT_COMMIT` pinned
@@ -29,7 +29,7 @@ every variant's directory at once; the script refuses to start it when the proje
 `--min-free-gb`.
 
 Adoption is not this script's call: a variant is adoptable only when its build time clears the
-two-minute rule *and* `bench-ab.py` shows a runtime gain whose 95% interval excludes 1 on identical
+two-minute rule *and* `ab` shows a runtime gain whose 95% interval excludes 1 on identical
 checksums (0335 rule 4). Verdicts here are about the build half only.
 """
 from __future__ import annotations
@@ -56,7 +56,7 @@ DEFAULT_BINS = ["bench", "sim", "sv10-bot"]
 # rlib — a different build from the shipped one, so it is not the baseline spelling.
 LTO_VALUES = ("false", "thin", "fat")
 CGU_VALUES = (256, 16, 1)
-# Student's t at 95%, two-sided, by degrees of freedom (same table as bench-ab.py).
+# Student's t at 95%, two-sided, by degrees of freedom (same table as sv10-stats `t975`).
 T975 = {1: 12.71, 2: 4.31, 3: 3.19, 4: 2.78, 5: 2.58, 6: 2.45, 7: 2.37,
         8: 2.31, 9: 2.27, 10: 2.23, 14: 2.15, 19: 2.10, 29: 2.05}
 
@@ -276,7 +276,7 @@ class Runner:
                       key=os.path.getmtime)[-1:]
 
     def keep_bins(self, variant: str):
-        """Copy the bench binaries aside so bench-ab.py can use them after the dir is pruned."""
+        """Copy the bench binaries aside so ab can use them after the dir is pruned."""
         out = os.path.join(ROOT, self.args.target_root, "bins", variant)
         os.makedirs(out, exist_ok=True)
         kept = {}
@@ -531,7 +531,7 @@ def main():
     if args.report:
         with open(args.report, "w") as fh:
             fh.write(text + "\n")
-    # The build half is not an adoption decision: the runtime half goes through bench-ab.py on the
+    # The build half is not an adoption decision: the runtime half goes through ab on the
     # kept binaries, against the frozen 0335 fixture, and a gain counts only if the interval
     # excludes 1 with matching checksums.
     bins = os.path.join(ROOT, args.target_root, "bins")
@@ -539,7 +539,7 @@ def main():
     for name, _, _, _ in variants:
         if name == base[0] or not os.path.exists(os.path.join(bins, name, "bench")):
             continue
-        print(f"next: scripts/bench-ab.py {os.path.relpath(base_bin, ROOT)} "
+        print(f"next: target/dev/release/ab {os.path.relpath(base_bin, ROOT)} "
               f"{os.path.relpath(os.path.join(bins, name, 'bench'), ROOT)} "
               f"--suite learner --repeat 10   # then --suite live", file=sys.stderr)
 
