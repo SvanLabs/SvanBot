@@ -34,6 +34,13 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
             "population": population
         });
         super::super::progress::install(store, &run.lane, &params_json, &lineage_json, &promotion)?;
+        if let Some(own) = knob.strip_prefix(transfer::PREFIX) {
+            let from = run.transfers.iter().find(|t| t.knob == own).map(|t| t.from.clone());
+            let record = json!({"ts": now(), "knob": own, "from": from, "version": version}).to_string();
+            if let Err(err) = store.put_kv(&run.lane.key(super::super::lane::LAST_TRANSFER_KEY), &record) {
+                tracing::warn!("cycle {cycle}: last transfer not recorded ({err})");
+            }
+        }
         if let Some(bot) = run.lane.0.as_deref() {
             let others =
                 Lane::rotation(std::env::var("LEARNER_LINEAGES").ok().as_deref()).into_iter().filter_map(|l| l.0).filter(|b| b != bot);

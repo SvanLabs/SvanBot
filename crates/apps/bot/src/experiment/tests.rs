@@ -138,6 +138,15 @@ fn a_policy_is_fixed_for_the_whole_hand_and_the_fallback_waits_for_the_next() {
 }
 
 #[test]
+fn the_pair_plays_the_champion_while_any_bot_has_its_own_lineage() {
+    let shared = Shared::for_test("experiment-lineages", &["A", "B", "C", "D", "E"]);
+    *shared.experiment.write() = active_live(now_secs());
+    assert_eq!(latch(&shared, 3, "h1").arm, Some(Arm::Treatment));
+    shared.update(0, |b| b.slot_params = Some(Default::default()));
+    assert_eq!(latch(&shared, 3, "h2").arm, None, "no single champion to test against");
+}
+
+#[test]
 fn a_bot_swaps_arms_after_each_block() {
     let mut live = active_live(0.0);
     let arms: Vec<Arm> =

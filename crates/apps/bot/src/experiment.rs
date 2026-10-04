@@ -108,7 +108,11 @@ pub fn latch(shared: &Shared, slot: usize, hand_id: &str) -> HandPolicy {
     }
     let name = shared.bots[slot].read().name.clone();
     let now = now_secs();
-    let mut policy = {
+    // One champion is what the pair tests against; with bots on lineages of their own there is none (ADR 0002).
+    let lineages = shared.bots.iter().any(|b| b.read().slot_params.is_some());
+    let mut policy = if lineages {
+        HandPolicy::ordinary(hand_id)
+    } else {
         let mut live = shared.experiment.write();
         decide_policy(&mut live, &name, hand_id, now, &shared.champion_version.read(), shared.season().and_then(|s| s.id))
     };
