@@ -165,6 +165,85 @@ fn fit_street(samples: &[FoldSample], street: usize, max_shift: f64) -> StreetFi
     fit
 }
 
+/// One time slice of a street, scored with the shift fitted on everything before it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DriftSlice {
+    /// Samples in the slice.
+    pub n: usize,
+    /// Mean predicted fold rate before any shift.
+    pub predicted: f64,
+    /// Realized fold rate.
+    pub actual: f64,
+    /// Shift fitted on the slices before this one.
+    pub shift: f64,
+    /// Log-loss gain of that shift on this slice, nats per sample.
+    pub gain: f64,
+    /// 95% half-width of the gain.
+    pub half_width: f64,
+    /// Gain of the shift fitted on the previous slice alone: what a recency-weighted fit would have earned.
+    pub recent_gain: f64,
+}
+
+/// A street's samples in time order, cut into `slices` equal parts; each part after the first is scored with the shift
+/// fitted on all earlier parts (#767). A street whose gain is negative in every slice is mis-shaped (a constant shift
+/// does not describe it); one that is positive in some and negative in others drifted between the halves the gate
+/// compares. Read-only, for `review fold-cal --split`; nothing here is installed.
+pub fn drift(samples: &[FoldSample], street: usize, slices: usize) -> Vec<DriftSlice> {
+    let max_shift = if street == PREFLOP { PREFLOP_MAX_SHIFT } else { MAX_SHIFT };
+    let mut v: Vec<&FoldSample> = samples.iter().filter(|s| s.street == street && s.raw.is_finite()).collect();
+    v.sort_by(|a, b| a.ts.cmp(&b.ts));
+    if v.len() > MAX_SAMPLES {
+        v.drain(..v.len() - MAX_SAMPLES);
+    }
+    let size = v.len() / slices.max(2);
+    let mut out = Vec::new();
+    for k in 1..slices.max(2) {
+        let (before, this) = (&v[..k * size], &v[k * size..((k + 1) * size).min(v.len())]);
+        if before.is_empty() || this.len() < 2 {
+            continue;
+        }
+        let shift = best_shift(before, max_shift);
+        let recent = best_shift(&before[before.len().saturating_sub(size)..], max_shift);
+        let mean_gain =
+            |sh: f64| this.iter().map(|s| loss(s.raw, 0.0, s.folded) - loss(s.raw, sh, s.folded)).sum::<f64>() / this.len() as f64;
+        let gains: Vec<f64> = this.iter().map(|s| loss(s.raw, 0.0, s.folded) - loss(s.raw, shift, s.folded)).collect();
+        let n = this.len() as f64;
+        let gain = gains.iter().sum::<f64>() / n;
+        let var = gains.iter().map(|g| (g - gain).powi(2)).sum::<f64>() / (n - 1.0);
+        out.push(DriftSlice {
+            n: this.len(),
+            predicted: this.iter().map(|s| s.raw).sum::<f64>() / n,
+            actual: this.iter().filter(|s| s.folded).count() as f64 / n,
+            shift,
+            gain,
+            half_width: 1.96 * (var / n).sqrt(),
+            recent_gain: mean_gain(recent),
+        });
+    }
+    out
+}
+
+/// The `review fold-cal --split` report: four time slices per street, each scored with the shift fitted before it.
+pub fn drift_lines(samples: &[FoldSample]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (street, name) in [(0, "flop"), (1, "turn"), (2, "river"), (PREFLOP, "preflop")] {
+        for (k, d) in drift(samples, street, 4).iter().enumerate() {
+            out.push(format!(
+                "{name:7} slice {} n {:6}  predicted {:.3}  actual {:.3}  earlier-fit shift {:+.2}  gain {:+6.1} ± {:4.1} mnats  (previous slice alone: {:+6.1})",
+                k + 2,
+                d.n,
+                d.predicted,
+                d.actual,
+                d.shift,
+                d.gain * 1000.0,
+                d.half_width * 1000.0,
+                d.recent_gain * 1000.0
+            ));
+        }
+    }
+    out
+}
+
 /// Heads-up postflop bets from the store: each recorded bet or raise into no bet with one
 /// opponent, the chosen candidate's fold estimate un-shifted by the shift recorded with the
 /// decision, and whether that opponent folded next on the same street.
@@ -332,6 +411,29 @@ mod tests {
             {"seat": 0, "street": "Flop", "kind": "Check", "to": 0}]});
         assert_eq!(everyone_folded_preflop(&called, "Hero", Some(60), false), Some(false));
         assert_eq!(everyone_folded_preflop(&called, "Hero", Some(90), false), None, "no raise to 90");
+    }
+
+    #[test]
+    fn drift_separates_a_street_that_changed_from_one_a_shift_cannot_describe() {
+        // Folds were under-predicted early and over-predicted late: each slice is scored with the earlier shift.
+        let mut early = samples(1, 2_000, 0.20, 0.35);
+        let mut late = samples(1, 2_000, 0.20, 0.08);
+        for (i, s) in early.iter_mut().enumerate() {
+            s.ts = format!("2026-09-01T00:00:{:02}.{i:06}Z", i % 60);
+        }
+        for (i, s) in late.iter_mut().enumerate() {
+            s.ts = format!("2026-10-01T00:00:{:02}.{i:06}Z", i % 60);
+        }
+        early.extend(late);
+        let slices = drift(&early, 1, 2);
+        assert_eq!(slices.len(), 1, "two slices score one: the second against the first");
+        assert!(slices[0].gain < 0.0, "a shift fitted on the early half hurts the late half: {:?}", slices[0]);
+        assert!(slices[0].shift > 0.0, "the early half wanted more folds: {:?}", slices[0]);
+        assert!((slices[0].actual - 0.08).abs() < 0.01);
+        assert!(drift(&early, 0, 4).is_empty(), "a street with no samples has no slices");
+        let steady = drift(&samples(2, 4_000, 0.30, 0.10), 2, 4);
+        assert_eq!(steady.len(), 3);
+        assert!(steady.iter().all(|d| d.gain > 0.0 && d.shift < 0.0), "a stationary miss is fixed by one shift: {steady:?}");
     }
 
     #[test]

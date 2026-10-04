@@ -9,6 +9,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `review fold-cal --split` prints each street's fold calibration in four time slices, each scored with the shift fitted on the
+  slices before it, to tell a street that drifted from one a single shift cannot describe (#767). Read-only.
 - The learner's one-knob search steps both ways on every knob that has room (three-bet in and out of position, four-bet, limper size and
   the raise-fold bonus gained their missing direction; the open-size step down is 0.5 like the step up), and the raise-guard floor scale
   (`raise_gate`) and the own-image weight (`hero_image`) join the search and the dashboard's knob catalogue. The pool grows from 41 to 46

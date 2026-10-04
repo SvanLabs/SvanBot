@@ -204,6 +204,10 @@ fn main() -> Result<()> {
                 if s.active { format!("install shift {:+.2}", s.shift) } else { "not installed".into() }
             );
         }
+        if args.iter().any(|a| a == "--split") {
+            // #767: is a street's miss one constant shift, or has it moved?
+            sv10_bot::foldcal::drift_lines(&samples).iter().for_each(|l| println!("{l}"));
+        }
         return Ok(());
     }
     if which == "opponent-adapt" {
