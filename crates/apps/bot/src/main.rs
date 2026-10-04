@@ -126,6 +126,7 @@ async fn main() -> Result<()> {
 
     // Every numeric setting and the value in force after clamping, once (0250).
     tracing::info!("settings: {}", shared.config.describe());
+    drop(sv10_bot::tasks::warm_tables());
     sv10_bot::tasks::spawn_all(&shared);
     spawn_release_watch(&shared);
 
