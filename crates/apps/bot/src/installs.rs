@@ -59,6 +59,8 @@ pub struct Installs {
     range: Watched,
     nn: Watched,
     params: Watched,
+    /// Per bot slot: the `params.slot.<bot>` value last read (`Some(None)` = absent), `None` until read.
+    slots: Vec<Option<Option<String>>>,
     /// Whether the last refresh hit a read error (the first error of a streak is logged).
     failing: bool,
 }
@@ -73,6 +75,7 @@ impl Installs {
             range: seen(crate::RANGE_PARAMS_KEY),
             nn: Watched::seen_as(NN_KEY, None),
             params: seen(PARAMS_KEY),
+            slots: Vec::new(),
             failing: false,
         }
     }
@@ -116,6 +119,9 @@ impl Installs {
         }
         if let Err(e) = self.refresh_params(shared) {
             errors.push(format!("promoted parameters: {e}"));
+        }
+        if let Err(e) = self.refresh_slots(shared) {
+            errors.push(format!("per-bot parameters: {e}"));
         }
         if !errors.is_empty() && !self.failing {
             shared.log("learner", "warn", format!("store unreadable, keeping what is installed ({})", errors.join("; ")));
@@ -205,6 +211,40 @@ impl Installs {
             shared.log("learner", "info", "promoted strategy parameters are now live");
         }
         Ok(())
+    }
+}
+
+impl Installs {
+    /// Each bot's own lineage knobs, read from `params.slot.<bot>`; a bot without the key plays the
+    /// shared champion. A failed read or malformed record keeps what that bot has (ADR 0002 stage 1).
+    fn refresh_slots(&mut self, shared: &Shared) -> anyhow::Result<()> {
+        self.slots.resize(shared.bots.len(), None);
+        let mut failed = None;
+        for slot in 0..shared.bots.len() {
+            let name = shared.bots[slot].read().name.clone();
+            let key = crate::slot_params_key(&name);
+            let outcome = shared.store.get_kv(&key).and_then(|raw| {
+                if self.slots[slot].as_ref() == Some(&raw) {
+                    return Ok(None);
+                }
+                let own = raw.as_deref().map(serde_json::from_str::<Params>).transpose()?;
+                Ok(Some((raw, own)))
+            });
+            match outcome {
+                Ok(None) => {}
+                Ok(Some((raw, own))) => {
+                    self.slots[slot] = Some(raw);
+                    let changed = own.is_some() || shared.bots[slot].read().slot_params.is_some();
+                    let msg = if own.is_some() { "own strategy parameters are now live" } else { "plays the shared champion again" };
+                    shared.bots[slot].write().slot_params = own;
+                    if changed {
+                        shared.log(&name, "info", msg);
+                    }
+                }
+                Err(e) => failed = Some(format!("{key}: {e}")),
+            }
+        }
+        failed.map_or(Ok(()), |e| Err(anyhow::anyhow!(e)))
     }
 }
 

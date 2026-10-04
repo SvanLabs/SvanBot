@@ -243,3 +243,21 @@ fn a_valid_inactive_range_record_still_retires_the_fit() {
     assert_eq!(shared.params.read().range, sv10_core::oprange::RangeParams::default());
     assert!(!installs.failing, "legitimate retirement is not a parse failure");
 }
+
+#[test]
+fn a_bot_reads_its_own_slot_key_and_falls_back_to_the_champion() {
+    let shared = Shared::for_test("installs-slot", &["A", "B"]);
+    let mut installs = Installs::after_startup(&shared.store);
+    installs.refresh(&shared);
+    assert!(shared.bots.iter().all(|b| b.read().slot_params.is_none()), "no slot key: nothing changes");
+
+    let own = serde_json::to_string(&Params { call_margin: 0.321, ..Default::default() }).unwrap();
+    shared.store.put_kv(&crate::slot_params_key("B"), &own).unwrap();
+    installs.refresh(&shared);
+    assert!(shared.bots[0].read().slot_params.is_none());
+    assert_eq!(shared.bots[1].read().slot_params.as_ref().unwrap().call_margin, 0.321);
+
+    shared.store.put_kv(&crate::slot_params_key("B"), r#"{"call_margin":"bad"}"#).unwrap();
+    installs.refresh(&shared);
+    assert_eq!(shared.bots[1].read().slot_params.as_ref().unwrap().call_margin, 0.321, "malformed record keeps the incumbent");
+}
