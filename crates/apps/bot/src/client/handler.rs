@@ -321,6 +321,9 @@ pub(super) async fn handle(
                 // `portfolio_pro_required`: Pro lapsed (the S14 turn, 2026-10-04). Stay out and retry on the join ladder.
                 "insufficient_funds" | "not_registered_for_season" | "portfolio_pro_required" => {
                     seat.pending_join = true;
+                    if code == "portfolio_pro_required" {
+                        crate::proauto::note_lapse(shared);
+                    }
                 }
                 // The spec documents `rate_limited` as a dropped message (20/s), but the server also
                 // sends it to refuse a connection ("Too many connection attempts for this play

@@ -747,7 +747,7 @@ fn ops_json(s: &Shared) -> Value {
     let keepalive_last = std::fs::read_to_string(s.config.artifacts.join("logs").join("keepalive.log"))
         .ok()
         .and_then(|log| log.lines().rev().find(|l| !l.trim().is_empty()).map(str::to_string));
-    json!({"unstored_hands": s.unstored_hands.lock().len(), "hold_until": hold_until, "keepalive_last": keepalive_last})
+    json!({"unstored_hands": s.unstored_hands.lock().len(), "hold_until": hold_until, "keepalive_last": keepalive_last, "pro_renewal": crate::proauto::view(s)})
 }
 
 pub(super) async fn state(State(s): State<Arc<Shared>>) -> Response {

@@ -29,6 +29,7 @@ pub mod pacing_study;
 pub mod playerfits;
 pub mod playerfold;
 pub mod playersize;
+pub mod proauto;
 pub mod profile;
 pub mod promotion;
 pub mod raisewar;

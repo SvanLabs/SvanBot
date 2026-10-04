@@ -605,6 +605,7 @@ With `SVANBOT_TV_PORT` set, a second listener carries only `/api/health` (answer
 | `SVANBOT_BANK_STACK_BB` | 1000 | Bank winnings: at this table stack (big blinds), leave after the hand and rejoin with a fresh buy-in (0 disables). Banking early builds the balance while it is small |
 | `SVANBOT_BANK_UNTIL_CHIPS` | 500000 | Stop banking once the bot's total chips (off-table balance plus table stack) reach this (0 = no ceiling): a bot that far ahead keeps a deep stack on the table for the big hands |
 | `SVANBOT_EXPORT_CAP` | 20000 | Deepest hand the server exports per bot for Free keys; Pro keys (`pro_tier`) are unlimited automatically, and every ended season backfills on its own — keys in `.env` are the only setup |
+| `SVANBOT_AUTO_RENEW_PRO` / `SVANBOT_AUTO_RENEW_SEASONS` | 0 / 3 | `1` renews Pro from the credit balance when the owner key (`SVANBOT_API_KEY`) reads Free on a multi-key box: widest bundle first up to 1, 3 or 6 seasons ($5 / $12 / $20; a `402` charges nothing and steps down). Off, a lapse is only a warning in the activity log. See `docs/SPEC-pro.md` |
 | `SVANBOT_WEB__HOST` / `SVANBOT_WEB_PORT` | 127.0.0.1 / 5000 | Dashboard address |
 | `SVANBOT_WEB__OPERATOR_TOKEN` | — | Dashboard password |
 | `SVANBOT_TV_HOST` / `SVANBOT_TV_PORT` | 127.0.0.1 / 0 (off) | Public TV listener — an unauthenticated table view; binding beyond loopback publishes it. Bind loopback and reverse-proxy it |
