@@ -286,6 +286,15 @@ pub const KNOBS: &[Knob] = &[
         read: |p| p.hero_image,
     },
     Knob {
+        key: "preflop_discount",
+        label: "Preflop discount · players behind",
+        min: 0.0,
+        max: 1.0,
+        decimals: 2,
+        description: "How much of the chance that a player still to act behind a preflop raise continues is taken off our equity (their call + 3-bet rate times this). 0.5 is the long-standing factor; 0 ignores players behind.",
+        read: |p| p.preflop_discount,
+    },
+    Knob {
         key: "tiered_all_in_fold_pricing",
         label: "Tiered all-in fold pricing",
         min: 0.0,
