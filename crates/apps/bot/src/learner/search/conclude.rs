@@ -3,8 +3,9 @@
 use serde_json::json;
 use sv10_core::sim::PairedResult;
 
+use super::super::lane::Lane;
 use super::super::run::{Confirm, SearchRun};
-use super::super::{funnel, now, publish_targets, push_experiment};
+use super::super::{funnel, now, publish_targets, push_experiment, transfer};
 use super::Env;
 use crate::experiment::target::{TARGETS_KEY, TargetQueue};
 use crate::promotion::{CHUNK_SCALE, CONFIRM_CHUNKS, Verdict};
@@ -33,6 +34,11 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
             "population": population
         });
         super::super::progress::install(store, &run.lane, &params_json, &lineage_json, &promotion)?;
+        if let Some(bot) = run.lane.0.as_deref() {
+            let others =
+                Lane::rotation(std::env::var("LEARNER_LINEAGES").ok().as_deref()).into_iter().filter_map(|l| l.0).filter(|b| b != bot);
+            transfer::offer(store, bot, knob, (old, new), &e.sc.champion, &c.params, others.collect());
+        }
         push_experiment(store, promotion);
         funnel::note(store, funnel::PROMOTED, Some(knob), 1);
         tracing::info!("cycle {cycle}: PROMOTED {version} ({knob} {old:.3}->{new:.3})");

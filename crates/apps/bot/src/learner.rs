@@ -11,6 +11,7 @@ pub mod refit;
 pub mod run;
 pub mod search;
 pub mod stacks;
+pub mod transfer;
 
 use serde_json::Value;
 use sv10_core::model::ModelStore;
