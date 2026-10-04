@@ -153,7 +153,11 @@ async fn main() -> Result<()> {
     }
     // A stop lands mid-hand like a swap does: keep those hands for the next process (0315).
     shared.save_open_hands();
-    Ok(())
+    // Exit here instead of returning: dropping the runtime waits for every blocking task, and the
+    // release watch below never returns, so a returned `main` left the process alive after SIGTERM
+    // until a KILL (2026-10-04: four workers sat in shutdown for 3 minutes after `restart-bot.sh`).
+    // Any exit code restarts the process under its supervisor.
+    std::process::exit(0)
 }
 
 /// Swap to a newly installed release without stopping play: once `scripts/release.sh` has put a
