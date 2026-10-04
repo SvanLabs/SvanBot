@@ -183,6 +183,7 @@ pub fn begin(ctx: &Ctx, lane: Lane, start_rowid: i64, started: f64, refit_rowid:
         cycle,
         start_rowid,
         started,
+        transfers: lane.0.as_deref().map(|bot| super::transfer::take(store, bot)).unwrap_or_default(),
         lane,
         champion_version: lineage.last().cloned().unwrap_or_default(),
         refit_rowid,
@@ -211,16 +212,14 @@ fn env<'a>(ctx: &'a Ctx<'a>, sc: &'a Scope, run: &SearchRun, lineage: Vec<String
     // within their sampling error, from the cycle's seed, so every step draws the same clones.
     let clones = live_pool(&sc.models, MIN_OPPONENT_HANDS, 16, 7_000 + run.cycle);
     let nn = neural::active_response_net(ctx.store.get_kv(NN_KEY).ok().flatten().and_then(|j| serde_json::from_str::<StoredNet>(&j).ok()));
-    let mut env = Env {
-        ctx,
-        sc,
-        clones,
-        nn,
-        eval_champion: sc.champion.clone(),
-        stacks: run.stacks.clone(),
-        proposals: super::pool::challengers(&sc.champion, run.cycle),
-        lineage,
-    };
+    let mut proposals = super::pool::challengers(&sc.champion, run.cycle);
+    // Changes other lineages promoted come first, as candidates of this lineage's own gate (ADR 0002).
+    for t in &run.transfers {
+        if let Some(p) = super::transfer::apply(&sc.champion, &t.delta) {
+            proposals.insert(0, (format!("{}{}", super::transfer::PREFIX, t.knob), t.old, t.new, p));
+        }
+    }
+    let mut env = Env { ctx, sc, clones, nn, eval_champion: sc.champion.clone(), stacks: run.stacks.clone(), proposals, lineage };
     env.eval_champion = env.eval(&sc.champion);
     env
 }

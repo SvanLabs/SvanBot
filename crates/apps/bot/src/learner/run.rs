@@ -152,6 +152,9 @@ pub struct SearchRun {
     /// The lineage this search is for (the shared champion in a store that has no lineages).
     #[serde(default)]
     pub lane: super::lane::Lane,
+    /// Changes other lineages promoted, taken from the queue when this search began.
+    #[serde(default)]
+    pub transfers: Vec<super::transfer::Transfer>,
     /// Champion version searched against.
     pub champion_version: String,
     /// Evidence epoch the search is measured under (the ledger's and the target queue's scope).
@@ -398,6 +401,7 @@ mod tests {
             start_rowid: 1,
             started: 2.0,
             lane: super::super::lane::Lane::bot("A"),
+            transfers: vec![],
             champion_version: "sv10-ev-9".into(),
             refit_rowid: 3,
             champion_digest: digest("{}"),
