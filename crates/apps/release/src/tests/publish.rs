@@ -135,3 +135,21 @@ fn a_manifest_refuses_whitespace_in_paths_and_an_empty_release() {
     std::fs::write(f.dir.join("set/web/dist/a b.js"), "x").unwrap();
     assert_eq!(manifest::write(&f.dir.join("set")), Err(ReleaseError::ManifestWhitespace("web/dist/a b.js".into())));
 }
+
+/// An install refuses a build that cannot read the stored data, as a rollback does (#879): only
+/// the rollback path asked, so releasing an older checkout installed a build that failed on every
+/// packed row.
+#[test]
+fn an_install_of_a_build_the_store_cannot_be_read_by_is_refused() {
+    let f = Fixture::new("install-format");
+    let built = f.dir.join("built");
+    f.set(&built, Some(&f.commit));
+    std::fs::create_dir_all(f.dir.join("target")).unwrap();
+    std::fs::create_dir_all(f.dir.join("web")).unwrap();
+    std::fs::create_dir_all(f.dir.join("artifacts")).unwrap();
+    std::fs::write(f.dir.join("artifacts/data-format"), "2\n").unwrap();
+    let (bin, web) = (built.join("target/release"), built.join("web/dist"));
+    let err = run(&f, &["--install", bin.to_str().unwrap(), web.to_str().unwrap(), &f.commit], &[]).unwrap_err();
+    assert_eq!(err, ReleaseError::StoreTooNew { commit: f.commit.clone(), build: 1, store: 2 });
+    assert!(!f.dir.join("target/release").exists(), "nothing was installed");
+}
