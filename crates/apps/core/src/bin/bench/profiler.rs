@@ -143,14 +143,16 @@ fn symbolize_in(binary: &Path, addrs: &[u64]) -> HashMap<u64, Vec<String>> {
         Ok(c) => c,
         Err(_) => return HashMap::new(),
     };
-    {
-        let mut stdin = child.stdin.take().expect("piped");
-        for a in addrs {
-            // addr2line wants the address of the instruction, the return address minus one.
-            let _ = writeln!(stdin, "{a:#x}");
-        }
-    }
+    // addr2line wants the address of the instruction, the return address minus one.
+    let wanted: String = addrs.iter().map(|a| format!("{a:#x}\n")).collect();
+    let mut stdin = child.stdin.take().expect("piped");
+    // Written from its own thread while this one reads: addr2line answers as it goes, so writing
+    // every address first filled both pipes on a large set and neither side moved again (#879).
+    let writer = std::thread::spawn(move || {
+        let _ = stdin.write_all(wanted.as_bytes());
+    });
     let out = child.wait_with_output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let _ = writer.join();
     let mut map: HashMap<u64, Vec<String>> = HashMap::new();
     let mut current = None;
     let mut lines = out.lines().peekable();
