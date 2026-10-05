@@ -163,3 +163,21 @@ test('the notes endpoint round-trips a note and refuses a body that is not one',
     await clear();
   }
 });
+
+// The panel mounts before the login. With a token set its first request is refused, and it used to
+// leave it at that: the box stayed empty after the login and the first edit replaced the stored note
+// (#881). Once a session exists it asks again and shows what is stored.
+test('a first request refused before the login is asked again once a session exists', async ({ page }) => {
+  const posted: DashboardNotes[] = [];
+  let signedIn = false;
+  await page.route('**/api/notes', route => {
+    if (route.request().method() !== 'GET') { posted.push(route.request().postDataJSON() as DashboardNotes); return route.fulfill({ json: route.request().postDataJSON() }); }
+    return signedIn ? route.fulfill({ json: { text: 'kept on the server' } }) : route.fulfill({ status: 401, json: { detail: 'unauthorized' } });
+  });
+  await page.goto('/');
+  await expect(box(page)).toHaveValue('');
+  signedIn = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('sv-session')));
+  await expect(box(page)).toHaveValue('kept on the server');
+  expect(posted).toEqual([]);
+});
