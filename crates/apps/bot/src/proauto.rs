@@ -287,7 +287,11 @@ fn store(shared: &Shared, state: &State) {
 pub fn note_lapse(shared: &Shared) {
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let now = now_secs() as u64;
-    if now.saturating_sub(LAST.swap(now, std::sync::atomic::Ordering::Relaxed)) >= 20 {
+    use std::sync::atomic::Ordering::Relaxed;
+    // The clock restarts only when a signal is written. Restarted on every call, a run of refusals
+    // closer than 20 s apart wrote the first and then nothing for as long as it lasted (#878).
+    let last = LAST.load(Relaxed);
+    if now.saturating_sub(last) >= 20 && LAST.compare_exchange(last, now, Relaxed, Relaxed).is_ok() {
         let _ = shared.store.put_kv(LAPSE_KEY, &now.to_string());
     }
 }
