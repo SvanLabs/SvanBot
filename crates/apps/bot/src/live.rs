@@ -242,6 +242,9 @@ pub struct Shared {
     pub champion_version: RwLock<String>,
     /// A saved bot setup waits for the fleet to restart (checked by the release watch).
     pub restart_requested: std::sync::atomic::AtomicBool,
+    /// The live database failed its structural check (#744): the release watch exits 70 for the restore at the first
+    /// moment no bot is mid-turn, instead of the backup task exiting in the middle of a hand.
+    pub restore_requested: std::sync::atomic::AtomicBool,
     /// Finished hands whose insert failed (e.g. `database is locked` while another process held a
     /// write lock: 3 hands lost on 2026-09-19/20). Already observed by the models; retried by
     /// `tasks::retry_unstored_hands` (0152), each with its failed retry count.

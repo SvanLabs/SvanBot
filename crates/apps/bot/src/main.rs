@@ -117,6 +117,7 @@ async fn main() -> Result<()> {
         current_season: RwLock::new(stored_season),
         champion_version: RwLock::new(champion_version),
         restart_requested: Default::default(),
+        restore_requested: Default::default(),
         unstored_hands: Default::default(),
         aliases: RwLock::new(aliases),
         experiment: RwLock::new(Default::default()),
@@ -178,11 +179,11 @@ fn spawn_release_watch(shared: &Arc<Shared>) {
             std::thread::sleep(Duration::from_secs(15));
             let release = watch.as_ref().is_some_and(|w| w.replacement_ready(Duration::from_secs(20), "sv10-bot"));
             let setup = shared.restart_requested.load(Ordering::Relaxed);
-            if !release && !setup {
-                continue;
-            }
-            let why = match (&watch, release) {
-                (Some(w), true) => format!("new release installed at {}", w.path().display()),
+            let restore = shared.restore_requested.load(Ordering::Relaxed);
+            let Some((code, save)) = sv10_bot::release::exit_plan(release, setup, restore) else { continue };
+            let why = match (&watch, release, restore) {
+                (_, _, true) => "the live database failed its integrity check".to_string(),
+                (Some(w), true, _) => format!("new release installed at {}", w.path().display()),
                 _ => "bot setup saved from the dashboard".to_string(),
             };
             shared.log("fleet", "info", format!("{why}; restarting at the next moment no bot is mid-turn"));
@@ -190,12 +191,14 @@ fn spawn_release_watch(shared: &Arc<Shared>) {
             while Instant::now() < deadline && shared.bots.iter().any(|b| in_turn(&b.read())) {
                 std::thread::sleep(Duration::from_millis(100));
             }
-            if !shared.config.worker {
-                sv10_bot::tasks::save_models(&shared);
+            if save {
+                if !shared.config.worker {
+                    sv10_bot::tasks::save_models(&shared);
+                }
+                shared.save_open_hands();
             }
-            shared.save_open_hands();
-            shared.log("fleet", "info", "hot swap: exiting to restart");
-            std::process::exit(sv10_bot::release::SWAP_EXIT_CODE);
+            shared.log("fleet", "info", if restore { "exiting to restore the database" } else { "hot swap: exiting to restart" });
+            std::process::exit(code);
         }
     });
 }

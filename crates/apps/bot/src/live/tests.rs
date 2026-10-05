@@ -55,6 +55,7 @@ impl Shared {
             events: broadcast::channel(64).0,
             started_at: String::new(),
             restart_requested: Default::default(),
+            restore_requested: Default::default(),
             unstored_hands: Default::default(),
             aliases: Default::default(),
             season_clock: RwLock::new(Default::default()),
