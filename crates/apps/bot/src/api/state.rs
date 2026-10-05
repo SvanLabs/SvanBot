@@ -716,7 +716,7 @@ pub(super) fn compute_profile_json(s: &Shared, logical: usize) -> Value {
     let stored = crate::profile::ComputeProfile::stored(s.store.get_kv(crate::profile::PROFILE_KEY).ok().flatten().as_deref(), logical);
     let presets = crate::profile::ComputeProfile::presets(logical);
     let active = stored.clone().unwrap_or_else(|| presets[presets.len() - 1].clone());
-    json!({"active": active, "stored": stored.is_some(), "presets": presets, "logical_cores": logical, "min_live_scale": crate::profile::MIN_LIVE_SCALE})
+    json!({"active": active, "stored": stored.is_some(), "presets": presets, "logical_cores": logical, "min_live_scale": crate::profile::MIN_LIVE_SCALE, "max_live_scale": crate::profile::MAX_LIVE_SCALE})
 }
 
 /// Rivalry cards (0180): nemeses and donors from the live head-to-head ledger, 150+ shared hands.

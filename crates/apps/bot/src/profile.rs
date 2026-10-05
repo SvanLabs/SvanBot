@@ -18,13 +18,17 @@ pub const PROFILE_KEY: &str = "compute.profile";
 
 /// Smallest share of the live Monte Carlo budget a profile may keep.
 pub const MIN_LIVE_SCALE: f64 = 0.1;
+/// Most times the hardware-sized live budget a profile may spend (#758): the turn clock allows far more than the
+/// default uses, but ten times the equity samples measured +0.27 bb/100 (95% -1.90 .. +2.44) over 480,000 paired
+/// hands, so the default stays 1 and this is the operator's lever, not a recommendation.
+pub const MAX_LIVE_SCALE: f64 = 8.0;
 
 /// Compute the fleet may spend.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ComputeProfile {
-    /// `quiet`, `balanced`, `max` or `custom`.
+    /// `quiet`, `balanced`, `max`, `deep` or `custom`.
     pub name: String,
-    /// Share of the hardware-sized live budget, [`MIN_LIVE_SCALE`]..=1.
+    /// Share of the hardware-sized live budget, [`MIN_LIVE_SCALE`]..=[`MAX_LIVE_SCALE`] (above 1 spends more than the default).
     pub live_scale: f64,
     /// Learner threads, 1..=logical cores.
     pub learner_threads: usize,
@@ -43,7 +47,7 @@ impl ComputeProfile {
             learner_threads: learner_threads.clamp(1, n),
             analyst_threads: analyst_threads.clamp(1, n),
         };
-        vec![p("quiet", 0.25, n / 4, 1), p("balanced", 0.5, n / 2, n / 4), p("max", 1.0, n, n)]
+        vec![p("quiet", 0.25, n / 4, 1), p("balanced", 0.5, n / 2, n / 4), p("max", 1.0, n, n), p("deep", 4.0, n, n)]
     }
 
     /// The stored profile, clamped to this machine; `None` when none is stored or it is unreadable.
@@ -51,7 +55,7 @@ impl ComputeProfile {
         let p: ComputeProfile = serde_json::from_str(json?).ok()?;
         let n = logical.max(1);
         p.live_scale.is_finite().then(|| ComputeProfile {
-            live_scale: p.live_scale.clamp(MIN_LIVE_SCALE, 1.0),
+            live_scale: p.live_scale.clamp(MIN_LIVE_SCALE, MAX_LIVE_SCALE),
             learner_threads: p.learner_threads.clamp(1, n),
             analyst_threads: p.analyst_threads.clamp(1, n),
             ..p
@@ -67,12 +71,12 @@ impl ComputeProfile {
             return Ok(p);
         }
         if name != "custom" {
-            return Err("name must be quiet, balanced, max or custom".into());
+            return Err("name must be quiet, balanced, max, deep or custom".into());
         }
         let live_scale = body["live_scale"]
             .as_f64()
-            .filter(|s| s.is_finite() && (MIN_LIVE_SCALE..=1.0).contains(s))
-            .ok_or(format!("live_scale must be a number from {MIN_LIVE_SCALE} to 1"))?;
+            .filter(|s| s.is_finite() && (MIN_LIVE_SCALE..=MAX_LIVE_SCALE).contains(s))
+            .ok_or(format!("live_scale must be a number from {MIN_LIVE_SCALE} to {MAX_LIVE_SCALE}"))?;
         let threads = |k: &str| {
             body[k].as_u64().map(|t| t as usize).filter(|t| (1..=n).contains(t)).ok_or(format!("{k} must be a whole number from 1 to {n}"))
         };
@@ -85,9 +89,9 @@ impl ComputeProfile {
     }
 
     /// Live Monte Carlo samples under this profile: `base` scaled, never below `floor` (the
-    /// learner's simulation budget) nor above `base`.
+    /// learner's simulation budget) nor above [`MAX_LIVE_SCALE`] times `base`.
     pub fn live_samples(&self, base: usize, floor: usize) -> usize {
-        ((base as f64 * self.live_scale).round() as usize).clamp(floor.min(base), base)
+        ((base as f64 * self.live_scale).round() as usize).clamp(floor.min(base), (base as f64 * MAX_LIVE_SCALE) as usize)
     }
 }
 
@@ -107,7 +111,7 @@ mod tests {
     fn presets_fit_the_machine() {
         let p = ComputeProfile::presets(8);
         let names: Vec<_> = p.iter().map(|p| (p.name.as_str(), p.live_scale, p.learner_threads, p.analyst_threads)).collect();
-        assert_eq!(names, [("quiet", 0.25, 2, 1), ("balanced", 0.5, 4, 2), ("max", 1.0, 8, 8)]);
+        assert_eq!(names, [("quiet", 0.25, 2, 1), ("balanced", 0.5, 4, 2), ("max", 1.0, 8, 8), ("deep", 4.0, 8, 8)]);
         // A two-thread box still gets at least one thread everywhere.
         assert!(ComputeProfile::presets(2).iter().all(|p| p.learner_threads >= 1 && p.analyst_threads >= 1));
     }
@@ -129,13 +133,24 @@ mod tests {
                 .is_err()
         );
         assert!(ComputeProfile::from_request(&json!({"name": "turbo"}), 8).is_err());
+        assert_eq!(ComputeProfile::from_request(&json!({"name": "deep"}), 8).unwrap().live_scale, 4.0);
+        assert!(
+            ComputeProfile::from_request(&json!({"name": "custom", "live_scale": 9.0, "learner_threads": 2, "analyst_threads": 1}), 8)
+                .is_err()
+        );
     }
 
     #[test]
     fn stored_profiles_are_clamped_to_this_machine() {
-        let big = r#"{"name":"custom","live_scale":3.0,"learner_threads":32,"analyst_threads":0}"#;
+        let big = r#"{"name":"custom","live_scale":30.0,"learner_threads":32,"analyst_threads":0}"#;
         let p = ComputeProfile::stored(Some(big), 8).unwrap();
-        assert_eq!((p.live_scale, p.learner_threads, p.analyst_threads), (1.0, 8, 1));
+        assert_eq!((p.live_scale, p.learner_threads, p.analyst_threads), (MAX_LIVE_SCALE, 8, 1));
+        assert_eq!(
+            ComputeProfile::stored(Some(r#"{"name":"deep","live_scale":4.0,"learner_threads":8,"analyst_threads":8}"#), 8)
+                .unwrap()
+                .live_scale,
+            4.0
+        );
         assert_eq!(ComputeProfile::stored(Some("junk"), 8), None);
         assert_eq!(ComputeProfile::stored(None, 8), None);
     }
@@ -148,6 +163,9 @@ mod tests {
         assert_eq!(ComputeProfile { live_scale: 0.1, ..quiet.clone() }.live_samples(4_000, 1_000), 1_000);
         assert_eq!(ComputeProfile::presets(8)[1].live_samples(4_000, 1_000), 2_000);
         assert_eq!(ComputeProfile::presets(8)[2].live_samples(4_000, 1_000), 4_000);
+        // `deep` spends four times the default, and nothing spends more than the ceiling.
+        assert_eq!(ComputeProfile::presets(8)[3].live_samples(4_000, 1_000), 16_000);
+        assert_eq!(ComputeProfile { live_scale: 100.0, ..quiet.clone() }.live_samples(4_000, 1_000), 32_000);
         assert_eq!(hardware_budget(Some(r#"{"tuning":{"live_samples":4000,"decision_samples":1000}}"#)), Some((4_000, 1_000)));
         assert_eq!(hardware_budget(Some("{}")), None);
     }
