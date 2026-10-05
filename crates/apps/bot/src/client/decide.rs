@@ -165,29 +165,37 @@ pub(super) async fn act(
             let policy2 = policy.clone();
             let sit2 = sit.clone();
             let seed = sv10_rng::RngExt::random::<u64>(rng);
-            let job = tokio::task::spawn_blocking(move || {
-                // Snapshot, do not borrow: a `spawn_blocking` task cannot be cancelled, so a decision
-                // that outlives `DECISION_CAP` would keep the models' read lock for the rest of its
-                // search and block the frame loop's `models.write()` (and with it every hand's
-                // insert). A clone is ~305 small structs with the heavy per-opponent maps behind
-                // `Arc`, so it costs far less than the 45 ms search it replaces (0252).
-                let models = shared2.models.read().clone();
-                let mut live = shared2.params.read().clone();
-                if let Some(own) = shared2.bots[slot].read().slot_params.clone() {
-                    live.adopt_promoted(own);
-                }
-                let params = policy2.params(&live);
-                let version = shared2.bots[slot].read().slot_version.clone().unwrap_or_else(|| shared2.champion_version.read().clone());
-                let nn = shared2.nn.read().clone();
-                let mut r = SmallRng::seed_from_u64(seed);
-                let d = decide_with(&sit2, &models, &params, nn.as_deref(), &mut r);
-                // Every decision keeps its full inputs: the analyst process re-solves it with a deep search,
-                // and big spots are also kept for bit-exact replay (`review replay`).
-                let net = nn.as_deref().and_then(crate::replay::net_digest);
-                let rec = crate::replay::record(&sit2, seed, &params, &models, net.as_ref().map(|n| n.0.clone()), &d);
-                let replay = (serde_json::to_string(&rec).unwrap_or_default(), net, crate::replay::is_big_spot(&sit2, &d));
-                (d, version, replay, (params.fold_logit_shift, params.preflop_fold_logit_shift))
-            });
+            let gate = shared.decision_gate.clone();
+            // The permit moves into the search itself: a `spawn_blocking` task cannot be cancelled, so a search
+            // that outlives `DECISION_CAP` keeps its permit until it really ends instead of freeing it for another.
+            let job = async move {
+                let permit = gate.acquire_owned().await.ok();
+                tokio::task::spawn_blocking(move || {
+                    let _permit = permit;
+                    // Snapshot, do not borrow: a `spawn_blocking` task cannot be cancelled, so a decision
+                    // that outlives `DECISION_CAP` would keep the models' read lock for the rest of its
+                    // search and block the frame loop's `models.write()` (and with it every hand's
+                    // insert). A clone is ~305 small structs with the heavy per-opponent maps behind
+                    // `Arc`, so it costs far less than the 45 ms search it replaces (0252).
+                    let models = shared2.models.read().clone();
+                    let mut live = shared2.params.read().clone();
+                    if let Some(own) = shared2.bots[slot].read().slot_params.clone() {
+                        live.adopt_promoted(own);
+                    }
+                    let params = policy2.params(&live);
+                    let version = shared2.bots[slot].read().slot_version.clone().unwrap_or_else(|| shared2.champion_version.read().clone());
+                    let nn = shared2.nn.read().clone();
+                    let mut r = SmallRng::seed_from_u64(seed);
+                    let d = decide_with(&sit2, &models, &params, nn.as_deref(), &mut r);
+                    // Every decision keeps its full inputs: the analyst process re-solves it with a deep search,
+                    // and big spots are also kept for bit-exact replay (`review replay`).
+                    let net = nn.as_deref().and_then(crate::replay::net_digest);
+                    let rec = crate::replay::record(&sit2, seed, &params, &models, net.as_ref().map(|n| n.0.clone()), &d);
+                    let replay = (serde_json::to_string(&rec).unwrap_or_default(), net, crate::replay::is_big_spot(&sit2, &d));
+                    (d, version, replay, (params.fold_logit_shift, params.preflop_fold_logit_shift))
+                })
+                .await
+            };
             match tokio::time::timeout(DECISION_CAP, job).await {
                 Ok(Ok((d, version, replay, (fold_shift, preflop_fold_shift)))) => {
                     let (n, a) = legalize(d.action, &legal);
