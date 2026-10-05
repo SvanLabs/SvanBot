@@ -303,6 +303,15 @@ pub const KNOBS: &[Knob] = &[
         description: "Uses each side pot's eligible opponents when pricing a raise that makes all players with chips behind fold.",
         read: |p| f64::from(p.tiered_all_in_fold_pricing as u8),
     },
+    Knob {
+        key: "caller_mix",
+        label: "Caller-count mixture",
+        min: 0.0,
+        max: 1.0,
+        decimals: 0,
+        description: "Prices a raise that three or more players could call against the top three callers, as a mixture over one, two and three-plus callers, instead of treating every multiway call as the top two.",
+        read: |p| f64::from(p.caller_mix as u8),
+    },
 ];
 
 #[cfg(test)]
