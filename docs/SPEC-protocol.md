@@ -39,7 +39,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 |---|---|
 | `wss://openpoker.ai/ws`, `Authorization: Bearer <api_key>` (query token legacy, public only) | Bearer header only (`client::mod`), user agent `svanbot10/<version>` |
 | `connected` with `agent_id`, `name` | Logged; resync if a table is known, else join the lobby |
-| `auth_failed` closes with 4001 | Fatal for that bot (no retry loop against a revoked key) |
+| `auth_failed` closes with 4001 | Fatal for that bot after the third in a row within 10 minutes (the first two retry on the backoff path); at once after a key rotation marker (`auth.rotation`) |
 | Session takeover by a new socket | Relied on by hot-swap releases: the new process reconnects and resyncs |
 | 120 s reconnect grace, seat held | Reconnect with exponential backoff 1 s → 60 s plus jitter; watchdog reconnects after 3 min without table traffic |
 | Free: 1 public bot; Pro: up to 5 portfolio bots; same-owner bots never share a table | 5 configured bots (Pro portfolio) |
