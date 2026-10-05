@@ -160,8 +160,11 @@ pub fn is_pro(v: &Value) -> bool {
 }
 
 /// Fetch one export page, shrinking the page size on server timeouts. Returns the hands and the
-/// limit that worked, or `None` when every size timed out.
+/// limit that worked, or `None` when every size timed out. A pass that was only rate-limited or
+/// could not connect is an error, not a timeout: counted as a ceiling, a long outage used up the
+/// retries and marked an ended season done with its hands still on the server.
 async fn fetch(http: &reqwest::Client, rest_base: &str, key: &str, season: &Season, offset: i64) -> Result<Option<(Vec<Value>, i64)>> {
+    let mut timed_out = false;
     for limit in LIMITS {
         let url = format!("{rest_base}/me/hand-history/export?format=json&season_id={}&limit={limit}&offset={offset}", season.id);
         for attempt in 0..3u64 {
@@ -182,11 +185,15 @@ async fn fetch(http: &reqwest::Client, rest_base: &str, key: &str, season: &Seas
             match status.as_u16() {
                 429 => tokio::time::sleep(Duration::from_secs(60 * (attempt + 1))).await,
                 401 | 403 => anyhow::bail!("export refused ({status}): past seasons need Pro"),
-                s if s >= 500 => break,
+                s if s >= 500 => {
+                    timed_out = true;
+                    break;
+                }
                 _ => anyhow::bail!("export failed with {status}"),
             }
         }
     }
+    anyhow::ensure!(timed_out, "export of season {} got no answer (rate limit or network); it is tried again on the next pass", season.id);
     Ok(None)
 }
 
