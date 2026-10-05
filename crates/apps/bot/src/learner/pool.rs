@@ -87,6 +87,15 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     });
     // Price multiway calls as a mixture over one, two and three-plus callers (#746 layer 1); off keeps the top-two collapse.
     step_knob("caller_mix", if p.caller_mix { -1.0 } else { 1.0 }, &|c, v| c.caller_mix = v >= 0.5);
+    // A larger postflop jam when the effective stack is within three pots (#745 layer 2): off proposes just above the
+    // everyday ratio (a step from 0 would land inside it and change nothing); on steps a pot either way, and back to off.
+    let short = p.short_jam_pot_ratio;
+    let base = if short > 0.0 { short } else { p.jam_pot_ratio };
+    add("short_jam_pot_ratio", short, base + 1.0 * step, &|c, v| c.short_jam_pot_ratio = v);
+    if short > 0.0 {
+        let down = if short - 1.0 * step <= p.jam_pot_ratio { 0.0 } else { short - 1.0 * step };
+        add("short_jam_pot_ratio", short, down, &|c, v| c.short_jam_pot_ratio = v);
+    }
     // Postflop bet sizes as pot fractions: the four the policy started with, and a seven-size set
     // (0170) the 4x live budget and exact heads-up equity can afford. The scale knob keeps whichever
     // set the champion plays.

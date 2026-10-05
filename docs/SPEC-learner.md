@@ -314,7 +314,7 @@ work runs at idle CPU priority so the fleet always goes first.
 
 
 `learner_threads` 8 (6 before 2026-09-17), `learner_tables` 12 (unchanged: still sized from logical cores − 2), `learner_hands` 1,500–3,000 (scaled by the measured
-samples/s; 1,637–2,201 observed). Cycles (neural training ~25 s, successive halving over up to 51
+samples/s; 1,637–2,201 observed). Cycles (neural training ~25 s, successive halving over up to 52
 candidates (41 before 2026-10-04: #760 and #746), confirmation) took 7–16 minutes with the fleet playing.
 
 2026-09-27: cycles took a median 441 s and up to 2,241 s in one piece (net gate 93–143 s,

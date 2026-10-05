@@ -393,7 +393,7 @@ pub(super) fn raise_targets(sit: &Situation, params: &Params, ip: bool, eq: f64)
             || (preflop_raises(sit) >= 2 && eff_bb <= 2.0 * params.preflop_jam_bb)
             || jam_size <= pot_after_call * 3.0
     } else {
-        jam_size <= pot_after_call * params.jam_pot_ratio || (eq >= 0.93 && jam_size <= pot_after_call * 5.0)
+        jam_size <= pot_after_call * params.jam_ratio(sit, pot_after_call) || (eq >= 0.93 && jam_size <= pot_after_call * 5.0)
     };
     if jam_ok {
         out.push(max_to);
