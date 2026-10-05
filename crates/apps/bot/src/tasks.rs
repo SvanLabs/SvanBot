@@ -20,7 +20,7 @@ use workers::{spawn_head_tailer, spawn_worker_loops, spawn_worker_model_refresh}
 
 pub use backup::{backup_database, free_bytes, save_models, save_models_bounded};
 pub use calibration::{update_calibration, update_calibration_with};
-pub use hands::{MAX_HAND_RETRIES, MAX_UNSTORED_HANDS, bound_unstored, retry_unstored_hands};
+pub use hands::{MAX_HAND_RETRIES, MAX_UNSTORED_HANDS, bound_unstored, flush_unstored_hands, retry_unstored_hands};
 pub use models::{fold_new_hands, recover_models, refresh_models_from_store};
 pub use scan::run_findings_scan;
 

@@ -301,6 +301,9 @@ fn spawn_update(s: &Arc<Shared>, args: &[&str], started: &str) -> Response {
     }
     let lock = s.config.artifacts.join("release.lock");
     if std::fs::write(&lock, serde_json::json!({"started": now_secs()}).to_string()).is_err() {
+        // A write that fails can leave the file created and empty, and an empty marker reads as a
+        // run in progress for two hours: the dashboard then refuses the update and the rollback.
+        let _ = std::fs::remove_file(&lock);
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"detail": "could not take the update lock"}))).into_response();
     }
     let log = s.config.artifacts.join("release.log");
