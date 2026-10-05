@@ -443,7 +443,7 @@ deletion and rotation mistakes, not against losing the disk (#725). The mirror i
 Manual restore: stop the fleet, copy a sealed backup over `artifacts/svanbot10.db`, start again.
 
 - **Archives** (second disk, nightly at 04:30 by `svanbot10-archive.timer`): `./target/release/archive run`
-  writes a weekly full copy of both databases plus a git bundle of the code, otherwise a daily
+  writes a weekly full copy of both databases (data only: the manifest records the commit, the code rebuilds from git), otherwise a daily
   differential (live database + history rows added since the week's full), and a monthly
   high-compression copy into `SVANBOT_ARCHIVE_DIR` (here `/backup-disk/svanbot10`). Every file has stored and
   decompressed SHA-256 hashes and row counts in a sealed `MANIFEST.json`; 14 daily, 8 weekly and 12

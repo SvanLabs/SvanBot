@@ -233,7 +233,7 @@ is significant, so the effect is real and the interval is contention noise. The 
 | Compressed columns | automatic: new decision details, replay/audit records and history exports are stored packed, and the fleet packs older rows in the background (then VACUUMs `history.db`). Compaction skips values another writer changed after candidate selection; the next pass reads their current value. `./target/release/review storage` shows rows still text, free pages and the last pass; `review decisions BOT HAND` and `review export HAND` print the JSON (`sqlite3` shows blobs). `./target/release/archive compact [--dir DIR] [--vacuum-main]` packs everything now (`--vacuum-main` only with the fleet stopped; it checks no hand rowid moved); `archive unpack` (fleet stopped) converts back to text before installing a build that predates the packed columns |
 | Archive (second disk) | `svanbot10-archive.timer` runs `./target/release/archive run` at 04:30 into `SVANBOT_ARCHIVE_DIR` (`.env`; here `/backup-disk/svanbot10`, default `artifacts/archive`): weekly full, else a daily differential; the month's archive; keeps 14 daily / 8 weekly / 12 monthly. Install with `scripts/archive-timer.sh`. Cleanup has a 3,600 s start timeout; keepalive has 1,200 s to cover the fleet's stop/start budgets. A stalled oneshot fails instead of blocking later timer ticks forever. |
 | Inspect archives | `./target/release/archive list`; `archive verify --deep` (all) or `archive verify weekly/2026-W38` |
-| Restore from the archive | `./target/release/archive restore daily/YYYY-MM-DD --to /tmp/restore` (never into `artifacts/`); then `scripts/stop.sh`, copy `svanbot10.db` and `history.db` over `artifacts/` (remove their `-wal`/`-shm`), `scripts/start.sh`. The code: `git clone /tmp/restore/repo.bundle` from a weekly or monthly |
+| Restore from the archive | `./target/release/archive restore daily/YYYY-MM-DD --to /tmp/restore` (never into `artifacts/`); then `scripts/stop.sh`, copy `svanbot10.db` and `history.db` over `artifacts/` (remove their `-wal`/`-shm`), `scripts/start.sh`. The code is not in the archive (#772): install the `git_commit` its `MANIFEST.json` records (`git checkout <commit>` in a clone of this repository, then `scripts/release.sh`); weeklies written before the change also hold `repo.bundle` |
 
 | Data snapshot | Runtime data is not part of this repository: `svanbot10.db`/`history.db` via sqlite `.backup` + zstd, plus `backups`, `release-snapshots`, `misc` (tables, logs, season checks) and screenshots tarballs with `SHA256SUMS`, published as `data-YYYYMMDD` releases on a repository named in `SVANBOT_DATA_REPO`; `.env` never uploaded. Restore (fleet stopped): `scripts/fetch-data.sh` (`--all` for backups and snapshots; `FORCE=1` to overwrite). The public derived set for a release (aggregates + schema, never raw opponent hands) comes from `archive export-derived --to DIR`, scrubbed and failing closed on aggregate query errors before writing output; fetch it with `scripts/fetch-data.sh --derived` (fleet may run). Cloud sessions: `scripts/cloud-setup.sh` |
 | Quarantined files | `artifacts/quarantine/` (damaged databases moved aside, never deleted automatically) |
@@ -366,7 +366,7 @@ children, rather than matching every deployment's learner/analyst by a global co
 | Panic or unexpectedly return from a background loop | the loop restarts and resumes useful work; other loops and bots continue | Every build: `tasks::supervision` fault drills, including child cancellation and bounded backoff |
 | Kill `ingest` mid-run, re-run | resumes from the batch watermark, no duplicates (`verify_corpus` 0 mismatches) | 2026-09-15 on a scratch root: killed after batch 1 (1,000 rows, watermark 1000); re-run added 9,000, 10,000 distinct rows, 0 mismatches |
 | Hot-swap release while seated | fleet exits 75 when no bot is mid-turn, supervisor restarts at once, seats resync (a hand in progress at that moment is saved and settled by the new process from its resync replay); learner swaps between steps | Run live: every bot connected again within the server's 120 s grace window |
-| Restore the monthly archive into a scratch dir | the databases rebuilt, hashes and row counts verified, `repo.bundle` clones | Run by hand into a scratch dir: `archive restore monthly/YYYY-MM` completed with every hash and row count verified and the bundle cloned; daily differentials: every build, `sv10-store` test `weekly_daily_monthly_restore_and_prune` |
+| Restore the monthly archive into a scratch dir | the databases rebuilt, hashes and row counts verified, the manifest names the commit to install | Run by hand into a scratch dir: `archive restore monthly/YYYY-MM` completed with every hash and row count verified; daily differentials: every build, `sv10-store` test `weekly_daily_monthly_restore_and_prune` |
 | Revoke a bot key | the third `auth_failed` in a row within 10 minutes stops that bot (mode `error`), no reconnect loop; the first two retry on the backoff path, so one blip does not park a seat. A key you replaced on purpose parks on the first failure if `auth.rotation` (unix time, set at rekey) is older than the failing session. Other bots continue | `client::authpark` unit tests; the live path not run (needs a real key revoked) |
 | Seated, traffic but no hands for 10 min | watchdog logs a warning, leaves, re-queues | Not run deliberately (needs a stuck live table); code in `client::mod` |
 | Live DB damaged while running | hourly check fails → bot exits 70 → supervisor restart restores | Restore half covered by the tests above; exit path in `tasks::backup` not run live |
@@ -587,6 +587,26 @@ git for-each-ref --format='%(refname)' refs/replace # empty: no graft was left b
 git status --porcelain                             # empty: the tree is the branch's tree
 scripts/update.sh --check                          # a normal count, not the whole branch's history
 ```
+
+### What a hot swap can break (audit, #774)
+
+What each hazard is, what covers it, and what has actually been exercised. "Injected" means a test or a drill
+made the fault happen; the rest is from the code and from live swaps.
+
+| Hazard | Covered by | Exercised |
+|---|---|---|
+| A bot replaced while deciding | the release watch waits up to 90 s for no bot to be mid-turn (a turn marker older than 60 s is stale), saves models (head) and open hands, then exits 75; the action deadline (45 s) is shorter than the wait, so a stuck turn has already timed out | Live swaps (a gap of 11 to 41 s per bot, no warn or error rows); not injected |
+| Data-format migration across a swap | the installer refuses to install or roll back to a build that cannot read the stored data (`--data-format`, `require_readable_store`) before anything moves | Injected: the `sv10-release` tests |
+| A swap killed between its renames | the journal written before the first rename; the next release, rollback, `--repair` or the keepalive timer restores the previous complete sets | Injected: `SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP` in the installer's tests and `scripts/tests/release-rollback.sh` |
+| The new build starts and then dies | the health gate after the install waits for `/api/health` to report the installed commit and rolls back to the previous verified snapshot when it does not | Injected: `scripts/tests/update.sh` |
+| Mixed versions while the processes swap one by one | `Params` is `#[serde(default)]` with no `deny_unknown_fields`, so an older reader drops a field it does not know; the window is about 7 s | Live swaps |
+| **Rolling back after a promotion** | nothing: a build older than the one that wrote `params.v1` plays the champion without any field it lacks, silently | Not covered; before rolling back across a promotion, compare the stored champion's keys with the older build's `Params` (`git show <commit>:crates/libs/policy/src/policy/params.rs`) |
+| Learner and analyst across a swap | the learner swaps after its current step and resumes its stored run; the analyst between audit batches; both restart under their supervisors | Live swaps; not injected |
+| A process that ignores SIGTERM | found by this audit (#803): the installed build hung after SIGTERM, fixed in #804 and #805 | Live |
+
+Not done: fault injection against a running fleet for the first, fifth and seventh rows; the rollback row would
+need a guard that compares the champion's keys with the target build, which the installer cannot do today (it does
+not read the store).
 
 ## Split fleet (off by default)
 

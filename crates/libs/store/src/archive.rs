@@ -4,7 +4,7 @@
 //! Layout under the archive root (`SVANBOT_ARCHIVE_DIR`; on the reference box `/backup-disk/svanbot10`):
 //!
 //! - `weekly/YYYY-Www/` — full `VACUUM INTO` copies of the live database and `history.db`
-//!   (zstd), plus a `git bundle --all` of the repository.
+//!   (zstd). The code is not archived: the manifest records the commit.
 //! - `daily/YYYY-MM-DD/` — a full copy of the live database (small, and its rows are replaced in
 //!   place) and a **differential** of `history.db`: every row of an `id`-keyed table above the
 //!   week's full watermark, plus full copies of the other tables. Restoring a daily needs only its
@@ -39,7 +39,7 @@ pub const MANIFEST: &str = "MANIFEST.json";
 pub enum Kind {
     /// Live database full plus history differential against the week's full.
     Daily,
-    /// Full copies of both databases and the repository bundle.
+    /// Full copies of both databases.
     Weekly,
     /// A weekly full recompressed for long retention.
     Monthly,
@@ -66,7 +66,7 @@ pub enum Role {
     HistoryFull,
     /// Rows of `history.db` added since the base weekly full.
     HistoryDelta,
-    /// `git bundle --all` of the repository (stored as is).
+    /// `git bundle --all` of the repository (stored as is). Archives written before #772 carry one; none is written now.
     RepoBundle,
 }
 
@@ -124,7 +124,7 @@ pub struct Sources {
     pub live: PathBuf,
     /// The history database (`artifacts/history.db`).
     pub history: PathBuf,
-    /// Repository to bundle weekly, if any.
+    /// Repository whose head commit is recorded in manifests, if any.
     pub repo: Option<PathBuf>,
     /// Workspace version recorded in manifests.
     pub app_version: String,
@@ -201,9 +201,8 @@ pub fn make_weekly(root: &Path, name: &str, src: &Sources, now: chrono::DateTime
         drop(conn);
         files.push(compress_entry(&copy, role, LEVEL_FAST, rows, watermarks)?);
     }
-    if let Some(repo) = &src.repo {
-        files.push(bundle_repo(repo, &tmp.join("repo.bundle"))?);
-    }
+    // Data only (#772): the code is not archived. A restore installs the recorded `git_commit` from git and
+    // lays the data on it, so the archive carries the commit id and nothing that rebuilds from it.
     let manifest = Manifest {
         format: FORMAT,
         kind: Kind::Weekly,
@@ -213,7 +212,7 @@ pub fn make_weekly(root: &Path, name: &str, src: &Sources, now: chrono::DateTime
         git_commit: src.repo.as_deref().and_then(git_head),
         base: None,
         files,
-        restore: format!("archive restore {name} --to <dir>  (writes svanbot10.db, history.db, repo.bundle)"),
+        restore: format!("archive restore {name} --to <dir>  (writes svanbot10.db and history.db; install git_commit for the code)"),
     };
     finish(root, &tmp, manifest)
 }
@@ -279,7 +278,7 @@ pub fn make_monthly(root: &Path, name: &str, weekly: &str, now: chrono::DateTime
         name: name.to_string(),
         created_at: now.to_rfc3339(),
         base: Some(weekly.to_string()),
-        restore: format!("archive restore {name} --to <dir>  (writes svanbot10.db, history.db, repo.bundle)"),
+        restore: format!("archive restore {name} --to <dir>  (writes svanbot10.db and history.db; install git_commit for the code)"),
         files,
         ..base
     };
@@ -482,34 +481,6 @@ fn compress_entry(raw: &Path, role: Role, level: u32, rows: BTreeMap<String, i64
         raw_sha256,
         rows,
         watermarks,
-    })
-}
-
-fn bundle_repo(repo: &Path, to: &Path) -> Result<Entry> {
-    let status = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["bundle", "create"])
-        .arg(to)
-        .arg("--all")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .context("running git bundle")?;
-    if !status.success() {
-        bail!("git bundle failed ({status})");
-    }
-    let sha = crate::integrity::file_sha256(to)?;
-    let bytes = std::fs::metadata(to)?.len();
-    Ok(Entry {
-        name: "repo.bundle".into(),
-        role: Role::RepoBundle,
-        bytes,
-        sha256: sha.clone(),
-        raw_bytes: bytes,
-        raw_sha256: sha,
-        rows: BTreeMap::new(),
-        watermarks: BTreeMap::new(),
     })
 }
 
