@@ -344,7 +344,14 @@ fn spawn_watchdog(shared: &Arc<Shared>) {
         tokio::time::sleep(Duration::from_secs(15 * 60)).await;
         let loops = crate::watchdog::loops(crate::pacing::Pacing::from_env().max_idle_secs);
         let mut stale: Vec<crate::watchdog::Stale> = Vec::new();
+        let mut solo_offline = 0u32;
         loop {
+            let modes: Vec<String> = watch.bots.iter().map(|b| b.read().mode.clone()).collect();
+            let (count, line) = crate::watchdog::solo_check(&modes.iter().map(String::as_str).collect::<Vec<_>>(), solo_offline);
+            solo_offline = count;
+            if let Some((level, line)) = line {
+                watch.log("fleet", level, line);
+            }
             let w = watch.clone();
             let before = std::mem::take(&mut stale);
             let checked = crate::jobs::blocking("autonomy watchdog", move || {
