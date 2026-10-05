@@ -87,6 +87,9 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     });
     // Price multiway calls as a mixture over one, two and three-plus callers (#746 layer 1); off keeps the top-two collapse.
     step_knob("caller_mix", if p.caller_mix { -1.0 } else { 1.0 }, &|c, v| c.caller_mix = v >= 0.5);
+    // Price an unmeasurable narrowed draw wide instead of refusing it (#746 layer 2); off keeps the refusal.
+    step_knob("ess_fallback", 0.25 * step, &|c, v| c.ess_fallback = v);
+    step_knob("ess_fallback", -0.25 * step, &|c, v| c.ess_fallback = v);
     // A larger postflop jam when the effective stack is within three pots (#745 layer 2): off proposes just above the
     // everyday ratio (a step from 0 would land inside it and change nothing); on steps a pot either way, and back to off.
     let short = p.short_jam_pot_ratio;

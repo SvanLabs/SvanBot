@@ -29,10 +29,20 @@ pub(super) fn measured_equity<R: Rng>(
     samples: usize,
     rng: &mut R,
 ) -> Option<f64> {
-    match deals.and_then(|d| d.equity(subset)) {
+    let measured = match deals.and_then(|d| d.equity(subset)) {
         Some(e) => Some(e),
         None => equity_vs_ranges_parallel(sit.hole, &sit.board, refs, samples, params.deal_chunks, rng),
-    }
+    };
+    // Neither the reweighted deals (effective sample size under 50) nor a fresh draw could answer: with the fallback on,
+    // price it against the wider ranges, shrunk, rather than refusing the spot (#746 layer 2).
+    measured.or_else(|| wide_fallback(deals?, subset, params))
+}
+
+/// The #746 layer 2 fallback: equity against the same opponents' full ranges, shrunk by half the fallback share, or
+/// `None` while the fallback is off.
+fn wide_fallback(deals: &SharedDeals, subset: &[(usize, Option<&Range>)], params: &Params) -> Option<f64> {
+    let wide: Vec<(usize, Option<&Range>)> = subset.iter().map(|&(i, _)| (i, None)).collect();
+    (params.ess_fallback > 0.0).then(|| deals.equity(&wide))?.map(|e| e * (1.0 - 0.5 * params.ess_fallback.min(1.0)))
 }
 
 /// The existing one-pot estimate, retained as the default and as the fallback when commitments
@@ -194,5 +204,26 @@ mod tests {
         assert_eq!(all_in_fold_branch(&sit, &responders, &all_in_idx, Some(&deals), &params, 500, legacy, &mut rng), Some(0.0));
         let corrected = Params { tiered_all_in_fold_pricing: true, ..params };
         assert_eq!(all_in_fold_branch(&sit, &responders, &all_in_idx, Some(&deals), &corrected, 500, legacy, &mut rng), Some(100.0));
+    }
+
+    #[test]
+    fn the_wide_fallback_prices_the_full_ranges_shrunk_and_only_when_on() {
+        let card = |name| Card::parse(name).unwrap();
+        let hole = [card("Ah"), card("Kd")];
+        let board = sv10_cards::cards::parse_cards(&["7s", "8s", "2c"]).unwrap();
+        let full = Range::full();
+        let mut rng = sv10_rng::rngs::SmallRng::seed_from_u64(3);
+        let deals = SharedDeals::new(hole, &board, &[&full], 600, &mut rng);
+        // A narrowed range nothing carries: the shared deals cannot answer for it (effective sample size 0).
+        let mut ours = Range::empty();
+        ours.w[combo_index(hole[0], hole[1]).unwrap()] = 1.0;
+        let subset = [(0usize, Some(&ours))];
+        assert_eq!(deals.equity(&subset), None, "the premise: the narrowed draw is unmeasurable");
+        let wide = deals.equity(&[(0, None)]).unwrap();
+        assert_eq!(wide_fallback(&deals, &subset, &Params::default()), None, "off: the refusal stands");
+        for k in [0.5, 1.0, 5.0] {
+            let priced = wide_fallback(&deals, &subset, &Params { ess_fallback: k, ..Params::default() }).unwrap();
+            assert!((priced - wide * (1.0 - 0.5 * f64::min(k, 1.0))).abs() < 1e-12, "{k}: {priced} vs {wide}");
+        }
     }
 }

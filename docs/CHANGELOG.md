@@ -9,6 +9,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A narrowed equity draw that cannot be measured can be priced against the opponents' full ranges, shrunk, instead of refusing
+  the spot (`ess_fallback`, default 0 = off, so every decision is unchanged) with a catalogue row and a search step each way.
+  The pool grows by two candidates (#746, layer 2).
+
 - A larger postflop jam when the effective stack is within three pots is a parameter (`short_jam_pot_ratio`, default 0 = off, so
   every decision is unchanged) with a catalogue row and a search step; the learner can now test it. The pool grows by one
   candidate (#745, layer 2).
