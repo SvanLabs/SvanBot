@@ -410,10 +410,10 @@ export function CalibrationPanel() {
 
 interface LatencySummary { n: number; p50: number | null; p95: number | null; p99: number | null; max: number | null }
 interface ComputeProfile { name: string; live_scale: number; learner_threads: number; analyst_threads: number }
-interface ProfileState { active: ComputeProfile; stored: boolean; presets: ComputeProfile[]; logical_cores: number; min_live_scale: number }
+interface ProfileState { active: ComputeProfile; stored: boolean; presets: ComputeProfile[]; logical_cores: number; min_live_scale: number; max_live_scale?: number }
 interface ComputeState { decisions: LatencySummary; timeouts?: number; deadline_ms: number; max_share_of_deadline: number | null; live_samples: number; deal_chunks: number; logical_cores: number | null; load_average: number[] | null; profile?: ProfileState }
 
-const PROFILE_HINT: Record<string, string> = { quiet: 'leave the PC free', balanced: 'about half the machine', max: 'every core (default)', custom: 'your own mix' };
+const PROFILE_HINT: Record<string, string> = { quiet: 'leave the PC free', balanced: 'about half the machine', max: 'every core (default)', deep: 'four times the live search budget; ten times measured about nothing', custom: 'your own mix' };
 
 /** Compute profile picker (0187): how much of this machine the fleet spends. Compute only; the
  * live budget never drops below the one the learner measured the policy at. */
@@ -444,7 +444,7 @@ function ProfilePicker({ state }: { state?: ProfileState }) {
         onClick={() => name === 'custom' ? setCustom(draft) : save({ name })}>{name}</button>)}
     </div>
     {custom && <form className="profile-custom" onSubmit={e => { e.preventDefault(); save(draft); }}>
-      <label>Live budget <input type="number" min={current.min_live_scale} max={1} step={0.05} value={draft.live_scale} onChange={e => num('live_scale', e.target.value)}/></label>
+      <label>Live budget <input type="number" min={current.min_live_scale} max={current.max_live_scale ?? 1} step={0.05} value={draft.live_scale} onChange={e => num('live_scale', e.target.value)}/></label>
       <label>Learner threads <input type="number" min={1} max={n} step={1} value={draft.learner_threads} onChange={e => num('learner_threads', e.target.value)}/></label>
       <label>Analyst threads <input type="number" min={1} max={n} step={1} value={draft.analyst_threads} onChange={e => num('analyst_threads', e.target.value)}/></label>
       <button type="submit" className="button">Apply</button>
