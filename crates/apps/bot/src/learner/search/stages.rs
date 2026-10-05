@@ -4,7 +4,7 @@ use serde_json::json;
 use std::time::Instant;
 use sv10_core::sim::{Arm, PairedResult, PairedSums, paired_sums_arms_stacked};
 
-use super::super::run::{Cand, Confirm, Halving, SearchRun, Stage, table_slice};
+use super::super::run::{Cand, Confirm, Halving, Queued, SearchRun, Stage, table_slice};
 use super::super::{funnel, now, publish_targets, push_experiment};
 use super::{Env, Flow};
 use crate::experiment::target::{self as experiment_target, Source, TARGETS_KEY, Target, TargetQueue};
@@ -69,6 +69,8 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
             next_table: 0,
             part: PairedSums::default(),
             so_far: None,
+            z: promotion::confirm_z(1),
+            next: Vec::new(),
         }));
     }
     let keys: Vec<String> = e.proposals.iter().map(|(k, o, n, _)| transition_key(k, *o, *n)).collect();
@@ -296,21 +298,39 @@ fn end_halving(e: &Env, run: &mut SearchRun) -> Flow {
     if let Err(err) = search_ledger::save(e.ctx.store, &run.lane, &ledger) {
         tracing::warn!("cycle {}: rejection ledger not saved ({err}); the next cycle re-simulates", run.cycle);
     }
-    let best = pool.into_iter().next().and_then(|c| {
-        let r = c.prior.as_ref()?.to_paired();
-        tracing::info!(
-            "cycle {}: survivor {} {:.3}->{:.3}: {:+.2} bb/100 (95% {:+.2}..{:+.2}) over {} hands",
-            run.cycle,
-            c.knob,
-            c.old,
-            c.new,
-            r.mean_bb * 100.0,
-            r.lower_95() * 100.0,
-            r.upper_95() * 100.0,
-            r.hands
-        );
-        promotion::worth_confirming(&r).then_some((c, r))
-    });
+    // The best few survivors above the bar, each confirmed in turn on fresh deals with bounds corrected for
+    // how many there are, until one promotes (#760 item 4): a rejected best no longer wastes the cycle.
+    let mut survivors: Vec<_> = pool
+        .into_iter()
+        .take(promotion::TOP_K)
+        .filter_map(|c| {
+            let r = c.prior.as_ref()?.to_paired();
+            tracing::info!(
+                "cycle {}: survivor {} {:.3}->{:.3}: {:+.2} bb/100 (95% {:+.2}..{:+.2}) over {} hands",
+                run.cycle,
+                c.knob,
+                c.old,
+                c.new,
+                r.mean_bb * 100.0,
+                r.lower_95() * 100.0,
+                r.upper_95() * 100.0,
+                r.hands
+            );
+            promotion::worth_confirming(&r).then_some((c, r))
+        })
+        .collect();
+    let bound_z = promotion::confirm_z(survivors.len());
+    let best = (!survivors.is_empty()).then(|| survivors.remove(0));
+    let queued: Vec<Queued> = survivors
+        .into_iter()
+        .map(|(c, r)| Queued {
+            params: e.proposals[c.index].3.clone(),
+            knob: c.knob,
+            old: c.old,
+            new: c.new,
+            search: LedgerEntry::from_paired(&r),
+        })
+        .collect();
     // The experiment pair's queue (0291): the survivor about to be confirmed, then every
     // transition the ledger leaves undecided.
     let confirming = best.as_ref().map(|(c, r)| {
@@ -337,6 +357,8 @@ fn end_halving(e: &Env, run: &mut SearchRun) -> Flow {
             next_table: 0,
             part: PairedSums::default(),
             so_far: None,
+            z: bound_z,
+            next: queued,
         }))),
         None => Flow::Done { promoted: false },
     }
@@ -355,7 +377,7 @@ pub(super) fn confirm(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f
             Some(prev) => prev.to_paired().combine(&part),
             None => part,
         };
-        let outcome = promotion::verdict(&so_far, c.chunk);
+        let outcome = promotion::verdict_z(&so_far, c.chunk, c.z);
         tracing::info!(
             "cycle {cycle}: confirm {}/{CONFIRM_CHUNKS} {} {:.3}->{:.3}: {:+.2} bb/100 (95% {:+.2}..{:+.2}) over {} hands -> {outcome:?}",
             c.chunk,
@@ -375,7 +397,25 @@ pub(super) fn confirm(e: &Env, run: &mut SearchRun, left: f64, did: bool, cap: f
             return Ok(Flow::Moved);
         }
         let c = (**c).clone();
-        return Ok(Flow::Done { promoted: super::conclude::conclude(e, run, &c, outcome, &so_far)? });
+        let promoted = super::conclude::conclude(e, run, &c, outcome, &so_far)?;
+        // A rejected survivor hands the cycle to the next one, held to the same corrected bounds.
+        if !promoted && let Some(next) = c.next.first().cloned() {
+            run.stage = Stage::Confirm(Box::new(Confirm {
+                knob: next.knob,
+                old: next.old,
+                new: next.new,
+                params: next.params,
+                search: next.search,
+                chunk: 1,
+                next_table: 0,
+                part: PairedSums::default(),
+                so_far: None,
+                z: c.z,
+                next: c.next[1..].to_vec(),
+            }));
+            return Ok(Flow::Moved);
+        }
+        return Ok(Flow::Done { promoted });
     }
     let t = table_slice(c.next_table, chunk_tables, 2, run.rate.slice_runs(left, cap));
     if did && run.rate.secs_for(2 * t.len()) > left {
