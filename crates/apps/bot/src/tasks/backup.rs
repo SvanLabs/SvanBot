@@ -18,16 +18,22 @@ fn backup_space_available(shared: &Shared) -> bool {
     true
 }
 
-/// Integrity of the live database, before any rotation: a failed structural check exits for
-/// restore (the supervisor's restart runs the startup check); digest mismatches are logged but
-/// never block the backup. Returns (hands digest-checked, mismatches).
-fn verify_live_database(shared: &Shared) -> (i64, i64) {
+/// Integrity of the live database, before any rotation: a failed structural check asks for a restore
+/// (`None`: the release watch exits 70 at the next moment no bot is mid-turn, and the supervisor's
+/// restart runs the startup check); digest mismatches are logged but never block the backup. Returns
+/// (hands digest-checked, mismatches).
+fn verify_live_database(shared: &Shared) -> Option<(i64, i64)> {
     // Never rotate good backups out behind a copy of a damaged database: stop instead, and let the
     // supervisor's restart run the startup check, which restores the newest verified backup.
     if let Err(problem) = shared.store.quick_check() {
-        tracing::error!("live database failed its integrity check ({problem}); exiting for restore");
-        shared.log("fleet", "error", format!("database integrity check failed: {problem}; restarting to restore"));
-        std::process::exit(70);
+        tracing::error!("live database failed its integrity check ({problem}); restore requested");
+        shared.log(
+            "fleet",
+            "error",
+            format!("database integrity check failed: {problem}; restarting to restore at the next moment no bot is mid-turn"),
+        );
+        shared.restore_requested.store(true, std::sync::atomic::Ordering::Relaxed);
+        return None;
     }
     let digests = shared.store.verify_hand_digests();
     let (digest_checked, digest_bad) = match &digests {
@@ -42,7 +48,7 @@ fn verify_live_database(shared: &Shared) -> (i64, i64) {
         Err(e) => tracing::warn!("hand digest verification failed to run: {e}"),
         _ => {}
     }
-    (digest_checked, digest_bad)
+    Some((digest_checked, digest_bad))
 }
 
 /// Drop rows the backup must not carry forward: queued audits past a day, old audit results,
@@ -340,7 +346,7 @@ pub fn backup_database(shared: &Shared) {
     if !backup_space_available(shared) {
         return;
     }
-    let (digest_checked, digest_bad) = verify_live_database(shared);
+    let Some((digest_checked, digest_bad)) = verify_live_database(shared) else { return };
     prune_backup_sources(shared);
     let Some(hourly) = write_hourly_backup(shared, &dir, &now) else {
         return;

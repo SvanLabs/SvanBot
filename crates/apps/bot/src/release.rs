@@ -9,6 +9,22 @@ use std::time::{Duration, SystemTime};
 
 /// Exit code that tells the supervisor "new release, restart now" (EX_TEMPFAIL).
 pub const SWAP_EXIT_CODE: i32 = 75;
+/// Exit code that tells the supervisor "the live database failed its check: restore from the newest verified backup".
+pub const RESTORE_EXIT_CODE: i32 = 70;
+
+/// What the release watch does on a tick, from what it has seen. A restore wins over a swap or a setup
+/// restart and saves nothing: the database it would save into is the damaged one. `Some((code, save))`
+/// when the process should exit (at the first moment no bot is mid-turn), `save` meaning models and open
+/// hands go to the store first.
+pub fn exit_plan(release: bool, setup: bool, restore: bool) -> Option<(i32, bool)> {
+    if restore {
+        Some((RESTORE_EXIT_CODE, false))
+    } else if release || setup {
+        Some((SWAP_EXIT_CODE, true))
+    } else {
+        None
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 struct Fingerprint {
@@ -156,5 +172,15 @@ mod tests {
         assert!(!watch.replacement_ready(Duration::from_secs(3600), "sv10-bot"), "not settled yet");
         assert!(watch.replacement_ready(Duration::ZERO, "sv10-bot"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_restore_wins_and_saves_nothing_into_the_damaged_store() {
+        assert_eq!(exit_plan(false, false, false), None);
+        assert_eq!(exit_plan(true, false, false), Some((SWAP_EXIT_CODE, true)));
+        assert_eq!(exit_plan(false, true, false), Some((SWAP_EXIT_CODE, true)));
+        assert_eq!(exit_plan(false, false, true), Some((RESTORE_EXIT_CODE, false)));
+        assert_eq!(exit_plan(true, true, true), Some((RESTORE_EXIT_CODE, false)), "a restore beats a swap");
+        assert_eq!((SWAP_EXIT_CODE, RESTORE_EXIT_CODE), (75, 70));
     }
 }
