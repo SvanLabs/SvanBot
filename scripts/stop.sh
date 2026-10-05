@@ -12,12 +12,18 @@ while [ $# -gt 0 ]; do
   esac
 done
 mkdir -p artifacts
+# The hold is written before anything is stopped, and a hold that cannot be written stops nothing:
+# without it keepalive restarts the fleet within five minutes, under a restore or a rollback.
+hold_until() {
+  echo "$1" > artifacts/hold-until && [ "$(cat artifacts/hold-until 2>/dev/null)" = "$1" ] ||
+    { echo "stop.sh: could not write artifacts/hold-until; nothing was stopped" >&2; exit 1; }
+}
 case "$hold" in
-  forever) echo forever > artifacts/hold-until ;;
+  forever) hold_until forever ;;
   [0-9]*m) [[ ${hold%m} =~ ^[0-9]+$ ]] || { echo "stop.sh: --hold takes Nm, Nh or forever" >&2; exit 2; }
-           echo $(( $(date +%s) + ${hold%m} * 60 )) > artifacts/hold-until ;;
+           hold_until $(( $(date +%s) + ${hold%m} * 60 )) ;;
   [0-9]*h) [[ ${hold%h} =~ ^[0-9]+$ ]] || { echo "stop.sh: --hold takes Nm, Nh or forever" >&2; exit 2; }
-           echo $(( $(date +%s) + ${hold%h} * 3600 )) > artifacts/hold-until ;;
+           hold_until $(( $(date +%s) + ${hold%h} * 3600 )) ;;
   *) echo "stop.sh: --hold takes Nm, Nh or forever" >&2; exit 2 ;;
 esac
 touch artifacts/stop.flag
