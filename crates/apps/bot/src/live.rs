@@ -323,15 +323,16 @@ impl Shared {
     /// state carries no hand, `BotLive::open_hand` is not serialised), so one process's save must not
     /// drop another's (0128).
     pub fn save_open_hands(&self) {
-        let mut open: OpenHands =
-            self.store.get_kv(OPEN_HANDS_KEY).ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
-        for b in &self.bots {
-            let b = b.read();
-            if let Some(hand) = b.open_hand.clone() {
-                open.insert(b.name.clone(), hand);
-            }
-        }
-        let saved = serde_json::to_string(&open).map_err(anyhow::Error::from).and_then(|j| self.store.put_kv(OPEN_HANDS_KEY, &j));
+        let mine: OpenHands =
+            self.bots.iter().filter_map(|b| b.read().open_hand.clone().map(|hand| (b.read().name.clone(), hand))).collect();
+        let mut open = OpenHands::default();
+        // Read and written in one transaction: the processes of a split fleet exit together on a hot
+        // swap, and two of them reading the same saved map each wrote it back with only its own hand.
+        let saved = self.store.update_kv(OPEN_HANDS_KEY, |old| {
+            open = old.and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default();
+            open.extend(mine);
+            Ok(serde_json::to_string(&open)?)
+        });
         match saved {
             Err(e) => tracing::warn!("hands in progress not saved for the next process: {e}"),
             // One line per exit, so a lost row can be traced from its save to its resync (0315).
@@ -452,9 +453,15 @@ pub fn save_state_hash_totals(store: &Store, bots: &[RwLock<BotLive>]) {
 /// first to start would otherwise swallow the rest (0128). Taking clears them: a hand is settled
 /// once, from one resync replay.
 pub fn take_open_hands(store: &Store, names: &[String]) -> OpenHands {
-    let saved: OpenHands = store.get_kv(OPEN_HANDS_KEY).ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
-    let (mine, theirs): (OpenHands, OpenHands) = saved.into_iter().partition(|(name, _)| names.iter().any(|n| n == name));
-    let left = serde_json::to_string(&theirs).map_err(anyhow::Error::from).and_then(|j| store.put_kv(OPEN_HANDS_KEY, &j));
+    let mut mine = OpenHands::default();
+    // One transaction, as in the save: a process starting beside this one must not put back what
+    // this one took, or take what this one is about to leave.
+    let left = store.update_kv(OPEN_HANDS_KEY, |old| {
+        let saved: OpenHands = old.and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default();
+        let (taken, theirs): (OpenHands, OpenHands) = saved.into_iter().partition(|(name, _)| names.iter().any(|n| n == name));
+        mine = taken;
+        Ok(serde_json::to_string(&theirs)?)
+    });
     if let Err(e) = left {
         tracing::warn!("hands in progress of other processes not left for them: {e}");
     }
