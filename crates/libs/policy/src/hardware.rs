@@ -56,7 +56,7 @@ pub struct Tuning {
     pub decision_samples: usize,
     /// Monte Carlo samples per live decision: the idle cores buy a more precise estimate at the table.
     pub live_samples: usize,
-    /// Parallel live-decision chunks, bounded by the same CPU and memory headroom.
+    /// Parallel live-decision chunks: one per logical core.
     pub live_deal_chunks: usize,
     /// Background learner workers, bounded by available CPU and memory headroom.
     pub learner_threads: usize,
@@ -121,7 +121,10 @@ pub fn detect() -> HardwareProfile {
     let learner_threads = memory::workers(logical, available);
     // 640x the simulation budget on a reference-speed machine, dealt in parallel (0161).
     let live_samples = live_budget(decision_samples, sps);
-    let live_deal_chunks = learner_threads;
+    // One chunk per logical core (#750 item 2): the live search splits its fixed sample budget across the cores the rayon
+    // pool has, and no longer follows the learner's memory-bounded worker count, which is a different resource. The
+    // deal budget, and so the memory, is the same however many chunks it is cut into.
+    let live_deal_chunks = logical;
     // Reference: ~13M heads-up samples/s on an i7-4770K (the original target box) = 1.0.
     let speed = (sps / REFERENCE_SPS).clamp(0.2, 2.0);
     // Evaluation size (and so the promotion gate's power) stays what it was when the learner left two
@@ -161,5 +164,12 @@ mod tests {
         assert!(p.samples_per_sec > 1000.0);
         assert!(p.tuning.decision_samples >= 600 && p.tuning.decision_samples <= 2500);
         assert!(p.tuning.learner_threads >= 1 && p.tuning.learner_threads <= p.logical_cores);
+    }
+
+    #[test]
+    fn live_chunks_follow_the_cores_not_the_learners_memory_bound() {
+        let hw = super::detect();
+        assert_eq!(hw.tuning.live_deal_chunks, hw.logical_cores);
+        assert!(hw.tuning.learner_threads <= hw.logical_cores);
     }
 }
