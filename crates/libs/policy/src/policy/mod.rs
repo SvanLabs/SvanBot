@@ -15,6 +15,7 @@ use sv10_model::oprange::{
 };
 use sv10_rng::{Rng, RngExt};
 
+mod callers;
 mod measure;
 mod params;
 mod responses;
@@ -224,16 +225,7 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
         let conts: Vec<f64> = cont_ranges.iter().map(|(c, _)| *c).collect();
         let costs: Vec<f64> = responders.iter().map(|r| ((to.min(r.stack_total)) - r.bet).max(0) as f64).collect();
         let active: Vec<usize> = (0..conts.len()).filter(|i| !all_in_idx.contains(i)).collect();
-        let mut p_exactly_one = 0.0;
-        for &i in &active {
-            let mut p = conts[i];
-            for &j in &active {
-                if j != i {
-                    p *= 1.0 - conts[j];
-                }
-            }
-            p_exactly_one += p;
-        }
+        let p_exactly_one = callers::exactly_one(&active, &conts);
         let p_one = (p_exactly_one / called).clamp(0.0, 1.0);
         let mut order = active.clone();
         order.sort_by(|&a, &b| conts[b].total_cmp(&conts[a]));
@@ -263,6 +255,20 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
                 let v2 = eq2 * (pot + add + costs[first] + costs[second]) * r - add;
                 called_value = p_one * v1 + (1.0 - p_one) * v2;
                 eq_c = p_one * eq1 + (1.0 - p_one) * eq2;
+                if params.caller_mix && order.len() >= 3 {
+                    let mixed = callers::mix(
+                        &active,
+                        &order,
+                        (&conts, &costs),
+                        (called, p_one),
+                        [eq1, eq2],
+                        (pot + add, r, add),
+                        &vs_continuing,
+                        rng,
+                    );
+                    let Ok(mixed) = mixed else { return measure::unmeasured(sit) };
+                    (called_value, eq_c) = mixed.unwrap_or((called_value, eq_c));
+                }
             }
         }
         // Raise-back branch: facing a raise (about 3x our bet) we keep playing only with the part
