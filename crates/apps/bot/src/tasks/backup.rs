@@ -372,17 +372,8 @@ pub fn free_bytes(path: &std::path::Path) -> Option<u64> {
 }
 
 pub fn save_models(shared: &Shared) {
-    let json = {
-        let m = shared.models.read();
-        serde_json::to_string(&*m)
-    };
-    match json {
-        Ok(j) => {
-            if let Err(e) = shared.store.put_kv(MODELS_KEY, &j) {
-                tracing::warn!("saving models failed: {e}");
-            }
-        }
-        Err(e) => tracing::warn!("serializing models failed: {e}"),
+    if let Err(e) = write_models(shared) {
+        tracing::warn!("saving models failed: {e}");
     }
     // The state-hash tallies ride the same checkpoint (0301): they are the panel's only figure that
     // must outlive the process, and this is the write that already runs every five minutes, at
@@ -390,9 +381,37 @@ pub fn save_models(shared: &Shared) {
     crate::live::save_state_hash_totals(&shared.store, &shared.bots);
 }
 
+/// [`save_models`] for the last save a process makes (shutdown, before a hot swap): a locked database
+/// gets the same bounded waits as the other writes (#744), because nothing re-saves after it and the
+/// five-minute cadence that covers the periodic save does not exist any more. At most about 12 s.
+pub fn save_models_bounded(shared: &Shared) {
+    let saved = write_models(shared).or_else(|first| {
+        tracing::warn!("saving models failed ({first}); retrying with bounded waits");
+        crate::client::retry_locked_write_blocking(|| write_models(shared))
+    });
+    if let Err(e) = saved {
+        tracing::warn!("models not saved at exit: {e}");
+    }
+    crate::live::save_state_hash_totals(&shared.store, &shared.bots);
+}
+
+fn write_models(shared: &Shared) -> Result<()> {
+    let json = serde_json::to_string(&*shared.models.read())?;
+    shared.store.put_kv(MODELS_KEY, &json)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_exit_save_writes_the_models_like_the_periodic_one() {
+        let shared = Shared::for_test("models-bounded-save", &["A"]);
+        save_models_bounded(&shared);
+        let stored = shared.store.get_kv(MODELS_KEY).unwrap().expect("saved");
+        assert_eq!(stored, serde_json::to_string(&*shared.models.read()).unwrap());
+    }
 
     #[test]
     fn an_unsealed_daily_copy_is_replaced_on_the_next_hour() {
