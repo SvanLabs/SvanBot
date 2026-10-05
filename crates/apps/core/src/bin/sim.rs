@@ -15,8 +15,7 @@ fn paired(args: &[String]) {
     let tables: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(16);
     let hands: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(1500);
     // SIM_A / SIM_B: Params JSON (missing fields default; e.g. {"range": {...}} changes only the range model).
-    let parse =
-        |k: &str| -> sv10_core::policy::Params { std::env::var(k).ok().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default() };
+    let parse = sv10_core::inputs::params;
     let (a, b) = (parse("SIM_A"), parse("SIM_B"));
     // SIM_MODELS=<ModelStore JSON>: play profile clones of the 16 most-observed live opponents, with
     // the policy using those models (the learner's population, 0099). SIM_STACK_BB sets stack depth.
@@ -52,8 +51,7 @@ fn variance(args: &[String]) {
     let tables: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(16);
     let hands: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(600);
     let salts: usize = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(4).max(2);
-    let parse =
-        |k: &str| -> sv10_core::policy::Params { std::env::var(k).ok().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default() };
+    let parse = sv10_core::inputs::params;
     let (a, b) = (parse("SIM_A"), parse("SIM_B"));
     let stack_bb: i64 = std::env::var("SIM_STACK_BB").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
     let seed: u64 = std::env::var("SIM_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(4242);

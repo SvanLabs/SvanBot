@@ -10,8 +10,6 @@
 //! plays a hand on the server.
 
 use sv10_core::bench::exploit;
-use sv10_core::model::ModelStore;
-use sv10_core::policy::Params;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -19,12 +17,8 @@ fn main() {
     let rounds: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(3);
     let stack_bb: i64 = std::env::var("SIM_STACK_BB").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
     let seed: u64 = std::env::var("SIM_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(20_260_926);
-    let champion: Params = std::env::var("SIM_A").ok().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
-    let models: ModelStore = std::env::var("SIM_MODELS")
-        .ok()
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let champion = sv10_core::inputs::params("SIM_A");
+    let models = sv10_core::inputs::models("SIM_MODELS");
     let t0 = std::time::Instant::now();
     let r = exploit(&champion, &models, hands, stack_bb, seed, rounds);
     let a = &r.exploiter;
