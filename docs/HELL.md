@@ -44,9 +44,9 @@ Common, in order of likelihood:
   There is no dashboard countdown — idleness here is normal. Wait it out; do not restart.
 - **`already_seated` / resync loop.** A new socket took over the old one; the bot resyncs from
   sequence 0 and resumes. Normal after any deploy or reconnect (`docs/SPEC-protocol.md`).
-- **`auth_failed` / close 4001.** The API key is dead or wrong. Nothing reconnects until the key
-  in `.env` is fixed — this is the one stuck state that never self-heals. Fix the key, restart
-  that bot only.
+- **`auth_failed` / close 4001.** The API key is dead or wrong. One or two in a row retry on the
+  backoff path (a blip heals itself); the third within 10 minutes parks the bot and nothing
+  reconnects until the key in `.env` is fixed. Fix the key, restart that bot only.
 - **`flood_kick`.** 20+ rejected actions in 5 seconds got the bot removed. It rejoins by itself;
   if it recurs, the policy is sending illegal actions — file an issue with the log, don't keep
   restarting into the kick.
