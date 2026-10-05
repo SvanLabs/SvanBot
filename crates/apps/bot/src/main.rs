@@ -73,6 +73,8 @@ async fn main() -> Result<()> {
     // The last season the poller saw, so the dashboard scopes correctly from the first request
     // instead of merging seasons until the first `/season/current` reply lands.
     let stored_season = store.get_kv(sv10_bot::SEASON_KEY)?.and_then(|s| serde_json::from_str::<sv10_bot::season::CurrentSeason>(&s).ok());
+    let store_clock = store.get_kv(sv10_bot::season::CLOCK_KEY)?;
+    let now_unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
     let (events, _) = tokio::sync::broadcast::channel(1024);
     let bots: Vec<RwLock<BotLive>> = config
         .bots
@@ -113,7 +115,12 @@ async fn main() -> Result<()> {
         log: Mutex::new(VecDeque::new()),
         events,
         started_at: chrono::Utc::now().to_rfc3339(),
-        season_clock: RwLock::new(Default::default()),
+        // The last reading, aged by the wall clock: a restart inside the end window keeps the freeze (#744).
+        season_clock: RwLock::new(
+            store_clock
+                .and_then(|j| sv10_bot::season::SeasonClock::from_stored(&j, std::time::Instant::now(), now_unix))
+                .unwrap_or_default(),
+        ),
         current_season: RwLock::new(stored_season),
         champion_version: RwLock::new(champion_version),
         restart_requested: Default::default(),

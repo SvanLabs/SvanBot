@@ -37,12 +37,15 @@ impl SeasonClock {
         Some(Self { winding_down, seconds_left: v["time_remaining_seconds"].as_f64(), fetched: Some(now) })
     }
 
-    /// Whether a bot may leave its table voluntarily now.
+    /// Whether a bot may leave its table voluntarily now. A reading older than [`STALE_AFTER`] is
+    /// ignored (moves allowed) unless its projection lands inside the end window: a poller that died
+    /// or a restart that lost the clock must not forget the freeze in the last minutes (#744).
     pub fn table_moves_allowed(&self, now: Instant) -> bool {
         let Some(fetched) = self.fetched else { return true };
         let age = now.saturating_duration_since(fetched);
         if age > STALE_AFTER {
-            return true;
+            let projected = self.seconds_left.map(|left| left - age.as_secs_f64());
+            return !projected.is_some_and(|p| p <= FREEZE_BEFORE_END.as_secs_f64() && p > -QUIET_AFTER_END.as_secs_f64());
         }
         if self.winding_down {
             return false;
@@ -54,7 +57,34 @@ impl SeasonClock {
     }
 }
 
+/// Kv key of the last clock reading, so a restart inside the end window still knows the freeze.
+pub const CLOCK_KEY: &str = "season.clock.v1";
+
+/// A clock reading as stored: the wall-clock time it was taken, since an `Instant` means nothing
+/// to the next process.
+#[derive(Serialize, Deserialize)]
+struct StoredClock {
+    winding_down: bool,
+    seconds_left: Option<f64>,
+    fetched_at: f64,
+}
+
 impl SeasonClock {
+    /// The reading as JSON, stamped with the wall-clock time it was taken (`now_unix` is now).
+    pub fn to_stored(&self, now: Instant, now_unix: f64) -> Option<String> {
+        let age = now.saturating_duration_since(self.fetched?).as_secs_f64();
+        let stored = StoredClock { winding_down: self.winding_down, seconds_left: self.seconds_left, fetched_at: now_unix - age };
+        serde_json::to_string(&stored).ok()
+    }
+
+    /// The stored reading, aged by the wall clock since it was taken. Whether it is still believed is
+    /// [`SeasonClock::table_moves_allowed`]'s question; this only rebuilds it.
+    pub fn from_stored(json: &str, now: Instant, now_unix: f64) -> Option<Self> {
+        let stored: StoredClock = serde_json::from_str(json).ok()?;
+        let age = Duration::try_from_secs_f64((now_unix - stored.fetched_at).max(0.0)).ok()?;
+        Some(Self { winding_down: stored.winding_down, seconds_left: stored.seconds_left, fetched: Some(now.checked_sub(age)?) })
+    }
+
     /// Whether table silence is expected now (wind-down up to shortly after the end), so the
     /// no-traffic reconnect watchdog stays quiet (0143). A stale or unknown reading never
     /// suppresses it, and neither does a clock far past the end that has not been refreshed.
@@ -165,5 +195,32 @@ mod tests {
 
         assert!(CurrentSeason::from_current(&json!({"season_number": 13})).is_none(), "no start date, no scoping");
         assert!(CurrentSeason::from_current(&json!({"start_date": "yesterday"})).is_none());
+    }
+
+    #[test]
+    fn a_stale_reading_stays_frozen_inside_the_end_window_and_is_ignored_elsewhere() {
+        let t0 = Instant::now();
+        let clock = |left: f64| SeasonClock { winding_down: false, seconds_left: Some(left), fetched: Some(t0) };
+        let later = |hours: u64| t0 + Duration::from_secs(hours * 3600);
+        // Two hours after a reading that had 3 h left: 1 h remains, not frozen yet; 2 h after one with 2.2 h left: 12 min, frozen.
+        assert!(clock(3.0 * 3600.0).table_moves_allowed(later(2)));
+        assert!(!clock(2.2 * 3600.0).table_moves_allowed(later(2)), "stale, but the projection is inside the freeze window");
+        // Long past the end (the next season's clock never arrived): moves allowed again.
+        assert!(clock(3600.0).table_moves_allowed(later(3)));
+        assert!(clock(86_400.0).table_moves_allowed(later(5)), "stale and far from the end");
+    }
+
+    #[test]
+    fn a_stored_reading_is_aged_by_the_wall_clock_across_a_restart() {
+        let t0 = Instant::now();
+        let clock = SeasonClock::from_current(&json!({"winding_down": false, "time_remaining_seconds": 1200.0}), t0).unwrap();
+        let json = clock.to_stored(t0, 1_000_000.0).unwrap();
+        // The next process starts 11 minutes later: 20 minutes at the reading, 9 left now, frozen.
+        let t1 = t0 + Duration::from_secs(1);
+        let rebuilt = SeasonClock::from_stored(&json, t1, 1_000_660.0).unwrap();
+        assert!(!rebuilt.table_moves_allowed(t1));
+        assert_eq!(rebuilt.seconds_left, Some(1200.0));
+        assert!(SeasonClock::from_stored("not json", t1, 1_000_660.0).is_none());
+        assert!(SeasonClock::default().to_stored(t0, 1.0).is_none(), "no reading, nothing to store");
     }
 }

@@ -113,6 +113,11 @@ fn spawn_season_poller(shared: &Arc<Shared>) {
                     if now && !was {
                         season.log("fleet", "info", "season winding down: no new hands; table moves frozen until the next season");
                     }
+                    if let Some(json) = clock.to_stored(std::time::Instant::now(), now_secs())
+                        && let Err(e) = season.store.put_kv(crate::season::CLOCK_KEY, &json)
+                    {
+                        tracing::warn!("season clock not stored (a restart in the end window would not know the freeze): {e}");
+                    }
                     *season.season_clock.write() = clock;
                 }
                 // The season's identity, for the panels that present this season's performance.
