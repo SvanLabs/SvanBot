@@ -105,7 +105,7 @@ pub fn import(shared: &Shared, db: &HistoryDb) -> Result<ImportReport> {
     }
     let corpus_from = shared.models.read().corpus_watermark.unwrap_or(0);
     let corpus_upto = db.max_corpus_id();
-    for (_, bot, started_at, j) in db.corpus_only_after(corpus_from)? {
+    for (_, bot, started_at, j) in db.corpus_only_after(corpus_from, corpus_upto)? {
         match serde_json::from_str::<HandSummary>(&j) {
             Ok(mut summary) => observe_corpus_hand(&mut delta, &mut summary, &bot, &fleet, &started_at, now, &mut report),
             Err(_) => report.unparseable += 1,
