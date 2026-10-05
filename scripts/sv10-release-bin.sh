@@ -8,6 +8,9 @@
 # which runs another checkout's update.sh in a tree that has no Rust sources). Otherwise the binary is
 # built into target/dev, never target/release (a release build there would overwrite what the fleet
 # hot-swaps from), and only when a source it depends on is newer than it.
+#
+# The path it prints is absolute: adopt-upstream.sh asks for it here and runs it from another checkout,
+# where a relative one names a file that is not there (#875).
 sv10_release_bin() {
   if [ -n "${SV10_RELEASE_BIN:-}" ]; then echo "$SV10_RELEASE_BIN"; return; fi
   local bin=target/dev/release/sv10-release
@@ -19,5 +22,5 @@ sv10_release_bin() {
       return 1
     }
   fi
-  echo "$bin"
+  echo "$PWD/$bin"
 }

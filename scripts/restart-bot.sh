@@ -8,6 +8,8 @@ wait_s=${RESTART_TERM_WAIT:-10}
 pids=()
 for pidfile in artifacts/bot.pid artifacts/head.pid artifacts/worker-*.pid; do
   [ -f "$pidfile" ] || continue
+  # worker-<name>-supervisor.pid matches the glob too, and a killed supervisor restarts nothing (#875).
+  case "$pidfile" in *-supervisor.pid) continue ;; esac
   pid=$(cat "$pidfile")
   if kill -0 "$pid" 2>/dev/null; then
     kill -TERM "$pid"

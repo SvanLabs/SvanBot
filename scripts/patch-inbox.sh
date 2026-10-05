@@ -192,7 +192,7 @@ cmd_land() {
   mkdir -p "$tray"
   exec 8>"$lock"
   flock -n 8 || die "another landing run holds the lock ($lock)"
-  local held; held=$(scripts/build-lock.sh target/release || true)
+  local held; held=$(scripts/build-lock.sh target/stage/release || true)
   [ -z "$held" ] || die "a release build is in flight; land later ($held)"
   git fetch -q origin main
   if [ ! -d "$landing" ]; then

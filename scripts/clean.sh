@@ -110,6 +110,8 @@ if [ "$apply" = 1 ]; then
     printf '%s\n' "$leaked" | while IFS= read -r d; do rm -rf -- "$d"; done
     say "   removed $(printf '%s\n' "$leaked" | wc -l) leaked scratch dirs"
   fi
-  for f in $shots; do rm -f -- "$f" && say "   removed $f"; done
+  if [ -n "$shots" ]; then
+    printf '%s\n' "$shots" | while IFS= read -r f; do rm -f -- "$f" && say "   removed $f"; done
+  fi
   for f in $rotated; do zstd -q --rm -f "$f" && say "   compressed $f"; done
 fi

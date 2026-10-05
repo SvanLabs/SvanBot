@@ -24,13 +24,18 @@ grep -q 'Fleet not running' <<<"$out" || fail "did not say the fleet is not runn
 # Started from a subshell so init reaps them: a zombie child of this shell would still answer kill -0.
 ( setsid sleep 300 & echo $! > "$root/artifacts/head.pid" )
 ( setsid bash -c "trap '' TERM; while :; do sleep 1; done" & echo $! > "$root/artifacts/worker-Stubborn_.pid" )
+# A worker's supervisor: its pidfile matches worker-*.pid, and it is the one process that must live,
+# because it is what brings the worker back (#875).
+( setsid sleep 300 & echo $! > "$root/artifacts/worker-Stubborn_-supervisor.pid" )
 polite=$(cat "$root/artifacts/head.pid"); stubborn=$(cat "$root/artifacts/worker-Stubborn_.pid")
+supervisor=$(cat "$root/artifacts/worker-Stubborn_-supervisor.pid")
 sleep 0.5
 start=$(date +%s)
 out=$(RESTART_TERM_WAIT=2 "$root/scripts/restart-bot.sh") || fail "failed with a stubborn process"
 [ $(( $(date +%s) - start )) -le 6 ] || fail "waited too long for a stubborn process"
 if kill -0 "$polite" 2>/dev/null; then fail "the polite process survived SIGTERM"; fi
 if kill -0 "$stubborn" 2>/dev/null; then fail "the stubborn process survived the KILL"; fi
+kill -0 "$supervisor" 2>/dev/null || fail "the worker's supervisor was signalled: $out"
 grep -q "Killed $stubborn" <<<"$out" || fail "the kill was not reported: $out"
 grep -q "Killed $polite" <<<"$out" && fail "killed a process that had already exited: $out"
 echo "restart-bot tests passed"

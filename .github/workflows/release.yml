@@ -98,9 +98,11 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
+          # `latest` follows a pushed, final tag only: a backfill of an older tag or a pre-release
+          # would otherwise move it backwards (#875).
           tags: |
             ghcr.io/svanlabs/svanbot:${{ env.TAG }}
-            ghcr.io/svanlabs/svanbot:latest
+            ${{ github.event_name == 'push' && !contains(env.TAG, '-') && 'ghcr.io/svanlabs/svanbot:latest' || '' }}
           labels: |
             org.opencontainers.image.source=https://github.com/SvanLabs/SvanBot
             org.opencontainers.image.description=Autonomous CPU-only poker-bot fleet for openpoker.ai

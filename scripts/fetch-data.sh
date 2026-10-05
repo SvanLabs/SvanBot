@@ -17,7 +17,7 @@ all=0 derived=0
 [ "${1:-}" = "--derived" ] && derived=1
 
 if [ "$derived" = 1 ]; then
-  tag=$(gh release list --repo "$repo" --limit 50 --json tagName --jq '.[].tagName' | grep '^data-' | sort | tail -1)
+  tag=$(gh release list --repo "$repo" --limit 50 --json tagName --jq '.[].tagName' | { grep '^data-' || true; } | sort | tail -1)
   [ -n "$tag" ] || { echo "no data-* release on $repo" >&2; exit 1; }
   echo "fetching derived set from $tag"
   tmp=$(mktemp -d)
@@ -44,7 +44,7 @@ if [ -f artifacts/svanbot10.db ] && [ "${FORCE:-0}" != 1 ]; then
   exit 1
 fi
 
-tag=$(gh release list --repo "$repo" --limit 50 --json tagName --jq '.[].tagName' | grep '^data-' | sort | tail -1)
+tag=$(gh release list --repo "$repo" --limit 50 --json tagName --jq '.[].tagName' | { grep '^data-' || true; } | sort | tail -1)
 [ -n "$tag" ] || { echo "no data-* release on $repo" >&2; exit 1; }
 echo "restoring $tag"
 

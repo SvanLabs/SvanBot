@@ -3,7 +3,10 @@
 # itself (keys named like KEY/TOKEN/SECRET/PASSWORD). Values are compared, never printed. Install: ln -sf ../../scripts/pre-commit-secret-scan.sh .git/hooks/pre-commit
 set -uo pipefail
 root="$(git rev-parse --show-toplevel)"
-if git diff --cached --name-only | grep -vx '.env.example' | grep -qxE '(.*/)?\.env(\..*)?'; then
+# Read whole, then searched: under pipefail a long list piped into `grep -q` ends in SIGPIPE, which
+# read as "no .env staged" (#875).
+staged="$(git diff --cached --name-only)"
+if grep -vx '.env.example' <<<"$staged" | grep -xE '(.*/)?\.env(\..*)?' >/dev/null; then
   echo "pre-commit: refusing to commit an .env file" >&2
   exit 1
 fi
