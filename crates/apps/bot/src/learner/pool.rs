@@ -85,6 +85,8 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     step_knob("tiered_all_in_fold_pricing", if p.tiered_all_in_fold_pricing { -1.0 } else { 1.0 }, &|c, v| {
         c.tiered_all_in_fold_pricing = v >= 0.5
     });
+    // Price multiway calls as a mixture over one, two and three-plus callers (#746 layer 1); off keeps the top-two collapse.
+    step_knob("caller_mix", if p.caller_mix { -1.0 } else { 1.0 }, &|c, v| c.caller_mix = v >= 0.5);
     // Postflop bet sizes as pot fractions: the four the policy started with, and a seven-size set
     // (0170) the 4x live budget and exact heads-up equity can afford. The scale knob keeps whichever
     // set the champion plays.
