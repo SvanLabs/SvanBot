@@ -109,7 +109,7 @@ fn timeline_blocking(s: &Shared) -> Result<Response, ApiError> {
     if let Ok(text) = &release_text {
         marks.extend(release_marks(text, start, end));
     }
-    let operation_text = std::fs::read_to_string("docs/operations-timeline.jsonl");
+    let operation_text = std::fs::read_to_string(s.config.root.join("docs/operations-timeline.jsonl"));
     if let Ok(text) = &operation_text {
         marks.extend(operation_marks(text, start, end).map_err(|e| server_error("operations timeline unreadable", e))?);
     }

@@ -388,9 +388,11 @@ pub(super) async fn ranges(State(s): State<Arc<Shared>>, Path(slot): Path<usize>
             "range_model": if params.range == sv10_core::oprange::RangeParams::DEFAULT { "defaults" } else { "showdown-fitted" },
         })
     })
-    .await
-    .unwrap_or(Value::Null);
-    Json(v).into_response()
+    .await;
+    match v {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => server_error("range explorer failed", e).into_response(),
+    }
 }
 
 #[cfg(test)]

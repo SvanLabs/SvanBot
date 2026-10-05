@@ -219,6 +219,10 @@ async fn auth_layer(State(s): State<Arc<Shared>>, req: Request, next: Next) -> R
     next.run(req).await
 }
 
+async fn api_not_found() -> Response {
+    (StatusCode::NOT_FOUND, Json(json!({"detail": "no such API route"}))).into_response()
+}
+
 pub async fn serve(shared: Arc<Shared>) -> Result<()> {
     let app = Router::new()
         // `public` says which listener answered: false here, true on the TV (`tv::router`). The
@@ -277,6 +281,9 @@ pub async fn serve(shared: Arc<Shared>) -> Result<()> {
         .route("/api/releases/rollback", post(trigger_rollback))
         .route("/api/setup", get(get_setup).post(save_setup))
         .route("/api/setup/verify-key", post(verify_key))
+        // An API path no route above answers is a 404 with a JSON body, as on the TV listener. It
+        // used to fall through to the page below and answer 200 with HTML to a client parsing JSON.
+        .route("/api/{*rest}", axum::routing::any(api_not_found))
         .fallback(get(assets::serve))
         .layer(middleware::from_fn(cache_layer))
         .layer(middleware::from_fn_with_state(shared.clone(), auth_layer))
