@@ -266,11 +266,14 @@ impl SharedDeals {
             return exact;
         }
         let seeds: Vec<u64> = (0..chunks).map(|_| rng.random::<u64>()).collect();
+        let abandon = crate::abandon::current();
         let parts: Vec<SharedDeals> = seeds
             .par_iter()
             .enumerate()
             .map(|(i, seed)| {
                 let share = samples / chunks + usize::from(i < samples % chunks);
+                // An abandoned chunk deals nothing: the set comes up short and reads as absent.
+                let share = if crate::abandon::abandoned(&abandon) { 0 } else { share };
                 SharedDeals::new(hero, board, opponents, share, &mut sv10_rng::rngs::SmallRng::seed_from_u64(*seed))
             })
             .collect();

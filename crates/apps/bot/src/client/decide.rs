@@ -166,12 +166,16 @@ pub(super) async fn act(
             let sit2 = sit.clone();
             let seed = sv10_rng::RngExt::random::<u64>(rng);
             let gate = shared.decision_gate.clone();
+            // Set by the timeout arm below; the search's parallel chunk loops read it and stop (#750).
+            let abandon = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let abandon_in = abandon.clone();
             // The permit moves into the search itself: a `spawn_blocking` task cannot be cancelled, so a search
             // that outlives `DECISION_CAP` keeps its permit until it really ends instead of freeing it for another.
             let job = async move {
                 let permit = gate.acquire_owned().await.ok();
                 tokio::task::spawn_blocking(move || {
                     let _permit = permit;
+                    let _abandon = sv10_core::abandon::install(abandon_in);
                     // Snapshot, do not borrow: a `spawn_blocking` task cannot be cancelled, so a decision
                     // that outlives `DECISION_CAP` would keep the models' read lock for the rest of its
                     // search and block the frame loop's `models.write()` (and with it every hand's
@@ -222,6 +226,7 @@ pub(super) async fn act(
                     (n, a, Some(view), pending_calibration, Some(replay))
                 }
                 _ => {
+                    abandon.store(true, std::sync::atomic::Ordering::Relaxed);
                     shared.log(&bot.name, "warn", "decision timed out or panicked; taking the safe action");
                     shared.update(slot, |b| b.decision_timeouts += 1);
                     let (n, a) = legalize(Action::Check, &legal);

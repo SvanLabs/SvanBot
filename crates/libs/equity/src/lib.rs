@@ -6,6 +6,7 @@
 // Numeric kernels index several parallel arrays by the same index.
 #![allow(clippy::needless_range_loop)]
 
+pub mod abandon;
 pub mod equity;
 pub mod preflop;
 mod preflop_data;

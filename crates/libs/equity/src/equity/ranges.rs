@@ -107,11 +107,15 @@ pub fn equity_vs_ranges_parallel<R: Rng>(
         return equity_vs_ranges(hero, board, opponents, samples, rng);
     }
     let seeds: Vec<u64> = (0..chunks).map(|_| rng.random::<u64>()).collect();
+    let abandon = crate::abandon::current();
     let parts: Vec<(Option<f64>, usize)> = seeds
         .par_iter()
         .enumerate()
         .map(|(i, seed)| {
             let share = samples / chunks + usize::from(i < samples % chunks);
+            if crate::abandon::abandoned(&abandon) {
+                return (None, share);
+            }
             let e = equity_vs_ranges(hero, board, opponents, share, &mut sv10_rng::rngs::SmallRng::seed_from_u64(*seed));
             (e, share)
         })

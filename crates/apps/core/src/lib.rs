@@ -6,6 +6,7 @@ pub use sv10_cards::eval;
 pub use sv10_cards::range;
 pub use sv10_engine::engine;
 pub use sv10_engine::situation;
+pub use sv10_equity::abandon;
 pub use sv10_equity::equity;
 pub use sv10_equity::preflop;
 pub use sv10_equity::tables;
