@@ -59,6 +59,20 @@ impl Mmap {
         unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
     }
 
+    /// Tell the kernel the pages are read at random (`MADV_RANDOM`): no readahead, and no early reclaim
+    /// of what a sequential scan would have touched. Call it after a pass that does read the whole file
+    /// in order (the table checksum), never before, or that pass loses its readahead. Advice only: an
+    /// empty mapping or a refusal changes nothing but the error.
+    pub fn advise_random(&self) -> io::Result<()> {
+        if self.len == 0 {
+            return Ok(());
+        }
+        // SAFETY: advising the live mapping this value owns, over exactly its range; MADV_RANDOM never
+        // changes the contents the mapping shows.
+        let rc = unsafe { libc::madvise(self.ptr as *mut libc::c_void, self.len, libc::MADV_RANDOM) };
+        if rc == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+    }
+
     /// Length in bytes.
     pub fn len(&self) -> usize {
         self.len
@@ -131,6 +145,17 @@ mod tests {
         std::fs::remove_file(&p).unwrap();
         // Unlinked while mapped: the mapping keeps the old inode.
         assert_eq!(m.bytes()[8..12], 1.5f32.to_le_bytes());
+    }
+
+    #[test]
+    fn random_access_advice_keeps_the_bytes() {
+        let p = temp("advice", &[7u8; 10_000]);
+        let m = Mmap::open(&p).unwrap();
+        m.advise_random().unwrap();
+        assert!(m.bytes().iter().all(|b| *b == 7));
+        let empty = temp("advice-empty", b"");
+        Mmap::open(&empty).unwrap().advise_random().unwrap();
+        let _ = (std::fs::remove_file(&p), std::fs::remove_file(&empty));
     }
 
     #[test]

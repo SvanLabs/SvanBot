@@ -199,6 +199,9 @@ impl Table {
         match sv10_mmap::Mmap::open(path) {
             Ok(map) => {
                 let (keys, offset, count) = Table::parse(map.bytes(), path, board_len)?;
+                // The checksum pass above read the file in order; lookups from here on are keyed random
+                // access, so stop readahead and early reclaim (#779). Advice only: a refusal changes nothing.
+                let _ = map.advise_random();
                 match map.f32s(offset, count) {
                     Some(_) => Ok(Table { keys, rows: Rows::Mapped { map, offset, count } }),
                     None => Ok(Table { keys, rows: Rows::Owned(decode_rows(&map.bytes()[offset..offset + count * 4])) }),
