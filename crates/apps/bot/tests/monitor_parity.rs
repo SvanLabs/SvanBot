@@ -188,3 +188,21 @@ fn a_failed_pass_is_reported_as_a_monitor_line() {
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert!(normalize(&lines)[0].starts_with("MONITOR db error:"), "{lines:?}");
 }
+
+/// A burst of more than twenty error events is reported in full over the next passes (#874). The
+/// mark used to jump to the newest event in the store after printing the first twenty, so the rest
+/// of the burst was never printed.
+#[test]
+fn every_error_of_a_burst_is_reported_across_passes() {
+    let (root, store, _) = fixture_store("error-burst");
+    let mut monitor = Monitor::open(&root, options(false)).unwrap();
+    for i in 0..25 {
+        store.log_event("A", "error", &format!("burst {i}"));
+    }
+    let now = unix_now();
+    let errors = |lines: Vec<String>| lines.into_iter().filter(|l| l.contains(" ERROR A: burst ")).count();
+    assert_eq!(errors(monitor.pass(now + 1.0, false)), 20);
+    assert_eq!(errors(monitor.pass(now + 2.0, false)), 5, "the rest of the burst");
+    assert_eq!(errors(monitor.pass(now + 3.0, false)), 0, "and nothing twice");
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -314,10 +314,12 @@ impl Monitor {
     }
 
     fn report_errors(&mut self, out: &mut Vec<String>) -> Result<()> {
-        for (_, bot, msg) in self.store.errors_after(self.last_event, 20)? {
+        // The mark moves to the last event printed, not to the newest in the store: past the first
+        // twenty of a burst, and for one written between the two reads, that skipped them for good.
+        for (id, bot, msg) in self.store.errors_after(self.last_event, 20)? {
             out.push(format!("{} ERROR {bot}: {}", stamp(), msg.chars().take(200).collect::<String>()));
+            self.last_event = id;
         }
-        self.last_event = self.store.max_event_id()?;
         Ok(())
     }
 
