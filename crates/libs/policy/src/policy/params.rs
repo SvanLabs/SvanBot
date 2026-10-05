@@ -132,6 +132,11 @@ pub struct Params {
     /// collapse, so every decision is unchanged until the gate promotes it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub caller_mix: bool,
+    /// Price a narrowed draw that could not be measured against the wider ranges instead of refusing the spot
+    /// (#746 layer 2): the equity against the opponents' full ranges, less this share of a half. 0 (off) keeps
+    /// the refusal; the refusal is only ever put behind the fallback, never removed.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub ess_fallback: f64,
 }
 
 impl Default for Params {
@@ -178,6 +183,7 @@ impl Default for Params {
             tiered_all_in_fold_pricing: false,
             preflop_discount: 0.5,
             caller_mix: false,
+            ess_fallback: 0.0,
         }
     }
 }

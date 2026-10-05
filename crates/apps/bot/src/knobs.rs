@@ -321,6 +321,15 @@ pub const KNOBS: &[Knob] = &[
         description: "Prices a raise that three or more players could call against the top three callers, as a mixture over one, two and three-plus callers, instead of treating every multiway call as the top two.",
         read: |p| f64::from(p.caller_mix as u8),
     },
+    Knob {
+        key: "ess_fallback",
+        label: "Wide fallback for unmeasurable draws",
+        min: 0.0,
+        max: 1.0,
+        decimals: 2,
+        description: "When a narrowed equity draw cannot be measured, price the spot against the opponents' full ranges, shrunk by this share of a half, instead of refusing it. 0 keeps the refusal.",
+        read: |p| p.ess_fallback,
+    },
 ];
 
 #[cfg(test)]
