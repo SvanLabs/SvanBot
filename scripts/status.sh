@@ -5,6 +5,7 @@ if [ -f artifacts/fleet.pids ]; then
     if kill -0 "$sup" 2>/dev/null; then echo "fleet $name supervisor running (pid $sup)"; else echo "fleet $name supervisor NOT running"; fi
   done < artifacts/fleet.pids
   for p in artifacts/head.pid artifacts/worker-*.pid; do
+    case "$p" in *-supervisor.pid) continue ;; esac
     n="$(basename "$p" .pid)"
     if [ -f "$p" ] && kill -0 "$(cat "$p")" 2>/dev/null; then echo "sv10-bot $n running (pid $(cat "$p"))"; else echo "sv10-bot $n NOT running"; fi
   done
