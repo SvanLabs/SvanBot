@@ -106,7 +106,10 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     const SEVEN: [f64; 7] = [0.33, 0.45, 0.55, 0.8, 1.0, 1.2, 1.5];
     let base: &[f64] = if p.bet_sizes.len() == SEVEN.len() { &SEVEN } else { &FOUR };
     let cur = knobs::get("bet_size_scale", p).unwrap_or(1.0);
-    let scale = move |c: &mut Params, v: f64| c.bet_sizes = base.iter().map(|b| b * v).collect();
+    // The champion's own sizes, rescaled: built from the constant set, a scale step also undid a
+    // promoted interior size (#760) while the ledger recorded it as a one-knob move (#878).
+    let sizes = if p.bet_sizes.is_empty() { base.to_vec() } else { p.bet_sizes.clone() };
+    let scale = move |c: &mut Params, v: f64| c.bet_sizes = sizes.iter().map(|b| (b * v / cur * 1e9).round() / 1e9).collect();
     add("bet_size_scale", cur, cur * (1.0 + 0.15 * step), &scale);
     add("bet_size_scale", cur, cur * (1.0 - 0.15 * step), &scale);
     let other: &[f64] = if base.len() == SEVEN.len() { &FOUR } else { &SEVEN };
@@ -241,6 +244,20 @@ mod tests {
                 |up: bool| pool.iter().any(|(key, _, new, _)| key == k.key && if up { *new > now + 1e-9 } else { *new < now - 1e-9 });
             assert!(moves(true) || now >= k.max - 1e-9, "{} has no step up from {now}", k.key);
             assert!(moves(false) || now <= k.min + 1e-9, "{} has no step down from {now}", k.key);
+        }
+    }
+
+    /// A scale step rescales the sizes the champion plays (#878). Built from the constant set, it
+    /// also undid a promoted interior size while the ledger recorded a one-knob move.
+    #[test]
+    fn a_bet_size_scale_step_keeps_a_promoted_interior_size() {
+        let champion = Params { bet_sizes: vec![0.33, 0.65, 0.8, 1.2], ..Params::default() };
+        let scaled: Vec<_> = challengers(&champion, 0).into_iter().filter(|(k, ..)| k == "bet_size_scale").collect();
+        assert_eq!(scaled.len(), 2);
+        for (_, old, new, challenger) in scaled {
+            for (was, now) in champion.bet_sizes.iter().zip(&challenger.bet_sizes) {
+                assert!((now / was - new / old).abs() < 1e-6, "{was} -> {now} is not the {old} -> {new} step");
+            }
         }
     }
 }
