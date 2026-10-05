@@ -259,6 +259,26 @@ pub struct Confirm {
     pub part: PairedSums,
     /// Completed chunks, pooled.
     pub so_far: Option<LedgerEntry>,
+    /// The z of this confirmation's bounds: [`crate::promotion::confirm_z`] of the candidates in the cycle.
+    #[serde(default = "default_z")]
+    pub z: f64,
+    /// Survivors still to confirm, best first, if this one is rejected (#760 item 4).
+    #[serde(default)]
+    pub next: Vec<Queued>,
+}
+
+/// A survivor waiting for its confirmation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Queued {
+    pub knob: String,
+    pub old: f64,
+    pub new: f64,
+    pub params: Params,
+    pub search: LedgerEntry,
+}
+
+fn default_z() -> f64 {
+    1.96
 }
 
 /// The stored run, if any; an unreadable one (an older format) is dropped with a warning.
@@ -396,6 +416,14 @@ mod tests {
     }
 
     #[test]
+    fn a_stored_confirmation_without_the_queue_is_a_single_candidate_at_the_old_bound() {
+        let json = serde_json::json!({"knob": "fold_scale", "old": 0.8, "new": 0.9, "params": Params::default(), "search": LedgerEntry::default(),
+            "chunk": 3, "next_table": 0, "part": PairedSums::default(), "so_far": null});
+        let c: Confirm = serde_json::from_value(json).unwrap();
+        assert_eq!((c.z, c.next.len(), c.chunk), (1.96, 0, 3));
+    }
+
+    #[test]
     fn a_run_survives_its_store_round_trip() {
         let run = Run::Search(Box::new(SearchRun {
             stacks: super::super::stacks::Fixture::default(),
@@ -424,6 +452,8 @@ mod tests {
                 next_table: 24,
                 part: PairedSums { hands: 10, sum: 1.0, sum_sq: 2.0, differing: 3 },
                 so_far: None,
+                z: 1.96,
+                next: vec![],
             })),
         }));
         let back: Run = serde_json::from_str(&serde_json::to_string(&run).unwrap()).unwrap();

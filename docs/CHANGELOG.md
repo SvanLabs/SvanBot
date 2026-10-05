@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The learner confirms up to three survivors per cycle, best first, until one promotes, each held to
+  bounds corrected for how many there are (z 1.96 / 2.2414 / 2.3940, Bonferroni), so the false-promotion
+  rate per cycle stays that of one 95% confirmation. A deliberate promotion-gate change authorized by the
+  operator (#760 item 4); with one survivor the gate is exactly the old one.
+
 - `sv10-release` (#742, first slice): the installer's read-only surfaces in Rust, byte-for-byte with `scripts/rollback.sh`:
   `sv10-release rollback --verify <commit>`, `--installed-commit`, `--check-space`, `--data-format <commit>` and
   `--validate-layout`, with the script's usage lines and refusals. Nothing calls it yet; the scripts are unchanged. One

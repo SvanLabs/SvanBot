@@ -84,28 +84,50 @@ pub enum Verdict {
     Continue,
 }
 
+/// Survivors confirmed per cycle, best first, each held to a bound corrected for how many are tried (#760
+/// item 4). One confirmation was the whole gate; testing several at the same 95% bound would multiply the
+/// chance of a false promotion, so each of `k` carries [`confirm_z`]`(k)` and the family-wise error stays
+/// that of a single 95% confirmation.
+pub const TOP_K: usize = 3;
+
+/// The z a confirmation's bounds use when `k` candidates are confirmed this cycle: 1.96 alone (the
+/// one-sided 2.5% of the 95% bound), and Bonferroni's 2.5%/k otherwise, so a cycle's chance of
+/// promoting a candidate that is not worth the bar stays at most 2.5% whatever `k` is.
+pub fn confirm_z(k: usize) -> f64 {
+    match k {
+        0 | 1 => 1.96,
+        2 => 2.2414,
+        _ => 2.3940,
+    }
+}
+
 /// Decide after `chunk` of [`CONFIRM_CHUNKS`] chunks (1-based) from the confirmation deals so far.
 pub fn verdict(r: &PairedResult, chunk: usize) -> Verdict {
+    verdict_z(r, chunk, 1.96)
+}
+
+/// [`verdict`] with the bounds' z given: [`confirm_z`] of the number of candidates in the cycle.
+pub fn verdict_z(r: &PairedResult, chunk: usize, bound_z: f64) -> Verdict {
     // Shifted by the bar: the interim boundary must measure evidence for a *worthwhile* edge, not
     // for any positive one. Unshifted, `z >= EARLY_Z` is implied by `lower_95() >= MIN_EDGE_BB`
     // whenever `se_bb <= MIN_EDGE_BB / (EARLY_Z - 1.96)` (0.009615 bb/hand), which is every
     // candidate at this variance, so the clause never fired and the interim rule equalled the
     // final one.
     let z = if r.se_bb > 0.0 { (r.mean_bb - MIN_EDGE_BB) / r.se_bb } else { 0.0 };
-    let clears_worthwhile_edge = r.lower_95() >= MIN_EDGE_BB;
+    let clears_worthwhile_edge = r.mean_bb - bound_z * r.se_bb >= MIN_EDGE_BB;
     if chunk >= CONFIRM_CHUNKS {
         return if clears_worthwhile_edge { Verdict::Promote } else { Verdict::Reject(Reason::LowerBelowBar) };
     }
     if r.mean_bb <= 0.0 {
         return Verdict::Reject(Reason::NotAhead);
     }
-    if r.upper_95() < MIN_EDGE_BB {
+    if r.mean_bb + bound_z * r.se_bb < MIN_EDGE_BB {
         return Verdict::Reject(Reason::UpperBelowBar);
     }
     if chunk >= FUTILITY_FROM {
         // The standard error shrinks with the square root of the hands still to come.
         let final_se = r.se_bb * (chunk as f64 / CONFIRM_CHUNKS as f64).sqrt();
-        if r.mean_bb - 1.96 * final_se < MIN_EDGE_BB {
+        if r.mean_bb - bound_z * final_se < MIN_EDGE_BB {
             return Verdict::Reject(Reason::CannotClear);
         }
     }
@@ -212,5 +234,28 @@ mod tests {
         let messages: std::collections::BTreeSet<&str> = all.iter().map(|r| r.message()).collect();
         assert_eq!(codes.len(), all.len(), "codes: {codes:?}");
         assert_eq!(messages.len(), all.len(), "messages: {messages:?}");
+    }
+
+    #[test]
+    fn a_corrected_bound_is_stricter_and_one_candidate_is_the_old_gate_exactly() {
+        for (mean, se, chunk) in [(4.0, 1.02, CONFIRM_CHUNKS), (1.5, 1.0, CONFIRM_CHUNKS), (3.5, 1.0, 2), (1.25, 0.82, 4), (-0.5, 2.0, 1)] {
+            assert_eq!(verdict_z(&res(mean, se), chunk, confirm_z(1)), verdict(&res(mean, se), chunk), "{mean} {se} {chunk}");
+        }
+        // +3.0 at SE 1.0 clears the bar at 1.96 (lower +1.04) and not at the three-way z (lower +0.64).
+        assert_eq!(verdict_z(&res(3.0, 1.0), CONFIRM_CHUNKS, confirm_z(1)), Verdict::Promote);
+        assert_eq!(verdict_z(&res(3.0, 1.0), CONFIRM_CHUNKS, confirm_z(3)), Verdict::Reject(Reason::LowerBelowBar));
+        assert_eq!(verdict_z(&res(4.0, 1.0), CONFIRM_CHUNKS, confirm_z(3)), Verdict::Promote);
+        // The constants are the one-sided normal quantiles at 2.5% / k.
+        let upper_tail = |z: f64| 0.5 * erfc_approx(z / std::f64::consts::SQRT_2);
+        for k in 1..=TOP_K {
+            assert!((upper_tail(confirm_z(k)) * k as f64 - 0.025).abs() < 2e-4, "k = {k}: {}", upper_tail(confirm_z(k)) * k as f64);
+        }
+    }
+
+    /// Abramowitz and Stegun 7.1.26, good to 1.5e-7: enough to check a table constant.
+    fn erfc_approx(x: f64) -> f64 {
+        let t = 1.0 / (1.0 + 0.3275911 * x);
+        let poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+        poly * (-x * x).exp()
     }
 }
