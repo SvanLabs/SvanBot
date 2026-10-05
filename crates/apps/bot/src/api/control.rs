@@ -33,6 +33,10 @@ pub(super) async fn bot_command(State(s): State<Arc<Shared>>, Path(slot): Path<u
 
 pub(super) async fn training_command(State(s): State<Arc<Shared>>, Json(body): Json<Value>) -> Response {
     let command = body["command"].as_str().unwrap_or("").to_string();
+    if !crate::pacing::learner_acts_on(&command) {
+        let detail = format!("the learner does not act on `{command}`; it accepts `start`");
+        return (StatusCode::BAD_REQUEST, Json(json!({"detail": detail}))).into_response();
+    }
     // The learner is a separate process that only sees the command through the store, so a failed
     // write must fail the request instead of reporting a queued command that never arrives.
     if let Err(e) = s.store.put_kv(crate::LEARNER_COMMAND_KEY, &json!({"command": command, "body": body, "ts": now_secs()}).to_string()) {

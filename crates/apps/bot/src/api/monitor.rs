@@ -9,8 +9,11 @@ pub(super) fn tail_lines(path: &std::path::Path, max: u64) -> Vec<String> {
     let Ok(mut f) = std::fs::File::open(path) else { return Vec::new() };
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
     let _ = f.seek(SeekFrom::Start(len.saturating_sub(max)));
-    let mut buf = String::new();
-    let _ = f.read_to_string(&mut buf);
+    // Bytes, not a string: the window can start inside a multi-byte character, which made
+    // `read_to_string` fail and the whole tail come back empty.
+    let mut bytes = Vec::new();
+    let _ = f.read_to_end(&mut bytes);
+    let buf = String::from_utf8_lossy(&bytes);
     let mut lines: Vec<String> = buf.lines().map(str::to_string).collect();
     if len > max && !lines.is_empty() {
         lines.remove(0); // partial first line

@@ -124,7 +124,12 @@ fn main() -> Result<()> {
                 bail!("usage: archive restore NAME --to DIR")
             };
             let to = if to.is_absolute() { to } else { std::env::current_dir()?.join(to) };
-            if to.starts_with(root.join("artifacts")) {
+            // Compared as resolved paths: `..` segments or a symlink walked past a lexical check.
+            // The target need not exist yet, so its nearest existing ancestor is what is resolved.
+            let resolve =
+                |p: &std::path::Path| p.ancestors().find_map(|a| a.canonicalize().ok().map(|c| c.join(p.strip_prefix(a).unwrap_or(p))));
+            let (target, live) = (resolve(&to).unwrap_or_else(|| to.clone()), root.join("artifacts"));
+            if target.starts_with(resolve(&live).unwrap_or(live)) {
                 bail!("refusing to restore into artifacts/: restore elsewhere, stop the fleet, then copy the files in");
             }
             for p in archive::restore(&dir, name, &to)? {

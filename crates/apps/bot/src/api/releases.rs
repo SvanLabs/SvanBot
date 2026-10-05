@@ -165,15 +165,20 @@ pub fn progress_view(progress: &Value, timings: &Value, now: f64) -> Value {
 }
 
 /// Saved builds a rollback can restore (`GET /api/releases/snapshots`, 0239).
-pub(super) async fn release_snapshots(State(s): State<Arc<Shared>>) -> Json<Value> {
-    Json(json!({"snapshots": snapshots(&s.config.artifacts), "running": update_running(&s.config.artifacts)}))
+pub(super) async fn release_snapshots(State(s): State<Arc<Shared>>) -> Result<Json<Value>, ApiError> {
+    // One `git show` per saved build: off the workers that carry the table connections.
+    off_runtime(move || Json(json!({"snapshots": snapshots(&s.config.artifacts), "running": update_running(&s.config.artifacts)}))).await
 }
 
 /// Restore a saved build (`POST /api/releases/rollback {commit}`, 0239): `scripts/update.sh --rollback`
 /// detached, with the same lock and progress as an update; the fleet hot-swaps to it.
 pub(super) async fn trigger_rollback(State(s): State<Arc<Shared>>, Json(body): Json<Value>) -> Response {
     let commit = body["commit"].as_str().unwrap_or("").to_string();
-    let saved = snapshots(&s.config.artifacts);
+    let artifacts = s.config.artifacts.clone();
+    let saved = match off_runtime(move || snapshots(&artifacts)).await {
+        Ok(saved) => saved,
+        Err(e) => return e.into_response(),
+    };
     let Some(build) = saved.iter().find(|v| v["commit"] == commit.as_str() && v["current"] != true) else {
         return (StatusCode::BAD_REQUEST, Json(json!({"detail": "no saved build with that commit to roll back to"}))).into_response();
     };

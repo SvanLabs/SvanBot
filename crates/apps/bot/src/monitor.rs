@@ -81,7 +81,8 @@ impl Options {
             };
             match arg {
                 "--once" => o.once = true,
-                "--interval" => o.interval = value("--interval")? as u64,
+                // At least a second: a fraction or zero became a zero sleep and a busy loop on the store.
+                "--interval" => o.interval = (value("--interval")? as u64).max(1),
                 "--summary-min" => o.summary_min = value("--summary-min")? as u64,
                 "--big-loss-bb" => o.big_loss_bb = value("--big-loss-bb")?,
                 "--big-win-bb" => big_win = Some(value("--big-win-bb")?),
