@@ -269,6 +269,57 @@ overwriting existing databases but never bypasses this guard; `--derived` remain
 | Unused dependencies | `RUSTFLAGS="-C target-cpu=native -W unused-crate-dependencies" CARGO_TARGET_DIR=target/udeps cargo check --release --workspace --lib` (bins and tests may still need a flagged crate: verify with `--all-targets`) |
 | One-off archives | `/backup-disk/svanbot10/one-off/<date>-<what>.tar.zst` with `.MANIFEST.txt` and `.sha256` for anything that does not belong in the nightly archive |
 
+### Total loss: rebuild from the server (#766)
+
+For a fresh box, or after every local copy of the data is gone, with **no backup** to restore. With a backup, use
+"Restore from the archive" above instead: it brings back far more. This path rebuilds what the server can give back
+and is honest about the rest. It needs the bots' API keys, and Pro keys to fetch past seasons (a Free key's export is
+capped, see below). It was written from the code and is **not drilled**: a drill needs the keys and the server, and the
+rule is that a drill never touches the live databases or credentials. Run it first on a scratch checkout and record the
+times in the table at the end.
+
+**What does not come back** (state it before you start): the promotion lineage and the champion (`params.v1`,
+`learner.lineage`, `learner.experiments`), the search ledgers, the neural response model and its candidates, the
+calibration table and range fit, the analyst's audits (`decision_audit`, `audit_queue`), the stored decisions, replays
+and events, the season clock and identity caches, the per-bot key-name aliases, `compute.profile` and the dashboard
+settings. **What does:** every hand the keys ever played, from the server.
+
+The order (each step names its check):
+
+```bash
+# 1. A checkout and the keys. Never copy keys into a script or a log.
+git clone https://github.com/SvanLabs/SvanBot.git && cd SvanBot
+cp .env.example .env && chmod 600 .env        # then edit: the keys, the bot names, SVANBOT_WEB__OPERATOR_TOKEN
+# 2. Build and install the release (a first install: no snapshot to take).
+scripts/release.sh                              # check: Installed <commit> in N s
+# 3. The board tables the decision path reads (31 s, flop 9.3 MB + turn 87.3 MB).
+./target/release/tables build && ./target/release/tables check
+# 4. Start. The head begins the history download after 60 s: newest hands, then a backfill to the deepest page the
+#    server serves, then every past season for Pro keys, oldest first, in the background.
+scripts/start.sh && scripts/status.sh           # check: every bot playing; SvanBot version = the commit
+# 5. Wait for the history to land (it is slow by design). Check the counts and what the models know.
+sqlite3 -readonly artifacts/history.db 'select count(*) from hands'
+./target/release/review autonomy                # the loops report once they have run
+```
+
+Models rebuild themselves: with no `models.v1` checkpoint the head replays the stored hand history at startup
+(`recover_models`), and again whenever a statistic is added. The range model refits with
+`./target/release/calibrate 20000` and the fold calibration refits hourly; the learner's first cycle needs at least four
+opponents with 30 observed hands and then trains the response model again. Nothing here is instant: the first
+playable state is **start**; "better than before" comes back as the history, the models and the learner's cycles do.
+
+**The champion starts clean.** There is nothing to replay the recorded promotion lineage from (`params.v1` and the
+lineage lived in the database that is gone), so the reseeded champion is the default `Params` and the learner earns its
+promotions again through the same gate. Replaying a lineage would only be possible from an archive that holds it, which
+is the restore path, not this one. With `LEARNER_LINEAGES` set, every lineage starts as a copy of that default.
+
+**Free keys:** the export is capped (`SVANBOT_EXPORT_CAP`, default 20,000 hands per bot), so a Free-key rebuild recovers only the newest hands; Pro
+keys export without limit and fetch past seasons.
+
+| Drill (scratch checkout only) | Wall time | Hands in `history.db` | First playable | Notes |
+|---|---|---|---|---|
+| not run yet | | | | |
+
 ## Linux settings
 
 | Setting | Where | Why |
