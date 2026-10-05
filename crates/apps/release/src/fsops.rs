@@ -41,11 +41,19 @@ pub fn copy_tree(from: &Path, to: &Path) -> Result<()> {
             let file = std::fs::File::options().write(true).open(&dst).map_err(|e| io("cannot open", &dst, e))?;
             let modified = meta.modified().map_err(|e| io("cannot read the time of", &src, e))?;
             file.set_times(FileTimes::new().set_modified(modified)).map_err(|e| io("cannot set the time of", &dst, e))?;
+            file.sync_all().map_err(|e| io("cannot sync", &dst, e))?;
         } else {
             return Err(ReleaseError::SpecialFile(src.display().to_string()));
         }
     }
-    Ok(())
+    sync_dir(to)
+}
+
+/// `fsync` of the directory `dir` itself. A staged set is renamed into the install and the swap
+/// journal dropped right after: files and names that were still only in the page cache would let a
+/// power cut leave short executables behind with no journal to repair them from (#879).
+fn sync_dir(dir: &Path) -> Result<()> {
+    std::fs::File::open(dir).and_then(|d| d.sync_all()).map_err(|e| io("cannot sync", dir, e))
 }
 
 /// `mktemp -d <parent>/<prefix>XXXXXX`: a new directory with six random characters after `prefix`.
@@ -92,6 +100,7 @@ pub fn copy_executables(from: &Path, to: &Path) -> Result<()> {
         let file = std::fs::File::options().write(true).open(&dst).map_err(|e| io("cannot open", &dst, e))?;
         let modified = meta.modified().map_err(|e| io("cannot read the time of", &entry.path(), e))?;
         file.set_times(FileTimes::new().set_modified(modified)).map_err(|e| io("cannot set the time of", &dst, e))?;
+        file.sync_all().map_err(|e| io("cannot sync", &dst, e))?;
     }
-    Ok(())
+    sync_dir(to)
 }

@@ -53,6 +53,8 @@ struct Release {
     ui: Ui,
     env: Vec<(String, String)>,
     own_run: bool,
+    /// Another operation holds the lock: its progress card and marker are not this run's to touch.
+    outranked: bool,
     web_stage: Option<PathBuf>,
 }
 
@@ -77,7 +79,7 @@ pub fn run() -> i32 {
         }
     };
     let own_run = get(&env, "SV10_UPDATE_RUN") != Some("1");
-    let mut release = Release { root, ui: Ui::default(), env, own_run, web_stage: None };
+    let mut release = Release { root, ui: Ui::default(), env, own_run, outranked: false, web_stage: None };
     if let Err(status) = release.resources() {
         return status;
     }
@@ -193,6 +195,14 @@ impl Release {
     /// Everything from the layout check to the success line; the exit status.
     fn go(&mut self) -> i32 {
         let _ = std::fs::create_dir_all(self.root.join("artifacts"));
+        // Asked before the progress card is touched: a run that lost the lock further down had
+        // already restarted the card of the run that holds it, and then marked that run failed and
+        // deleted its marker on the way out (#879).
+        if lock::busy(&self.root) {
+            self.outranked = true;
+            self.ui.complain("Another release, snapshot, or rollback operation is active.");
+            return 1;
+        }
         if self.own_run {
             self.progress(&["start"]);
         }
@@ -225,7 +235,7 @@ impl Release {
             self.ui.complain("Commit the listed build inputs first (or use ALLOW_DIRTY=1 only for an emergency).");
             return 1;
         }
-        let Some(commit) = crate::gitops::git(self.path(), &["rev-parse", "--short", "HEAD"]) else { return 1 };
+        let Some(commit) = crate::gitops::git(self.path(), &["rev-parse", "--short=7", "HEAD"]) else { return 1 };
         set(&mut self.env, "SVANBOT_COMMIT", &commit);
         // Free space first: the snapshot copies the installed sets, the build stages a whole release, and a
         // root that ran out half-way leaves junk or fails late (LESSONS 22). Fail closed before anything is written.
@@ -403,7 +413,7 @@ impl Release {
         if let Some(dir) = self.web_stage.take() {
             let _ = std::fs::remove_dir_all(dir);
         }
-        if self.own_run {
+        if self.own_run && !self.outranked {
             let _ = std::fs::remove_file(self.root.join("artifacts/release.lock"));
             if status != 0 {
                 // Nothing plays when start.sh was waiting on this release (#790): do not claim a fleet that is not there.

@@ -3,7 +3,7 @@
 
 use crate::layout::Root;
 use crate::ui::Ui;
-use crate::{cli, fleet, gitops, identity, journal};
+use crate::{cli, fleet, gitops, identity, journal, lock};
 use std::path::Path;
 use std::process::Command;
 
@@ -92,7 +92,7 @@ impl Update {
     }
 
     fn short(&self, rev: &str) -> String {
-        self.git(&["rev-parse", "--short", rev]).unwrap_or_default()
+        self.git(&["rev-parse", "--short=7", rev]).unwrap_or_default()
     }
 
     fn begin(&mut self) -> bool {
@@ -166,6 +166,14 @@ impl Update {
     }
 
     fn update(&mut self) -> i32 {
+        // Asked before the log is truncated and the checkout moves: a second update started by hand
+        // used to restart the first one's log and progress and fast-forward the sources under its
+        // build, and only then lose the lock (#879). The release step takes the lock for real, so a
+        // run that starts in between is still refused there.
+        if self.var("SV10_RELEASE_LOCK_FD").is_none_or(str::is_empty) && lock::busy(&self.root) {
+            eprintln!("update: another release, update or rollback is running; nothing was changed");
+            return 1;
+        }
         if !self.begin() {
             return 1;
         }

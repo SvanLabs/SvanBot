@@ -23,7 +23,7 @@ fn mkdirs(dirs: &[&Path]) -> Result<()> {
 
 fn write_marker(dir: &Path, commit: &str) -> Result<()> {
     let file = dir.join(identity::MARKER);
-    std::fs::write(&file, format!("{commit}\n")).map_err(|e| ReleaseError::Io(format!("cannot write {}: {e}", file.display())))
+    sv10_rt::write_atomic(&file, &format!("{commit}\n")).map_err(|e| ReleaseError::Io(format!("cannot write {}: {e}", file.display())))
 }
 
 /// `--snapshot <commit>`: a hash-verified copy of the installed set under
@@ -96,6 +96,9 @@ pub fn install(root: &Root, binaries: &str, web: &str, requested: &str, env: &[(
     let commit = identity::resolve_commit(root.path(), requested)?;
     root.validate_layout()?;
     let _operation = lock::acquire(root, lock_of(env))?;
+    // The same refusal a rollback makes: a build older than the stored data format would install,
+    // hot-swap and then fail on every packed row (#879).
+    crate::restore::require_readable_store(root, &commit)?;
     for source in [binaries, web] {
         let path = Path::new(source);
         if !path.is_dir() {

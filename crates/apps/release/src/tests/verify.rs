@@ -184,3 +184,16 @@ fn the_rollback_surface_prints_the_scripts_lines_and_usage() {
     rollback(&f.root, &args(&["--data-format", "HEAD"]), &[], &mut out).unwrap();
     assert_eq!(out, "1 1\n");
 }
+
+/// `lock::busy` is how a run steps aside before it has touched anything (#879): true only while
+/// another holder has the lock, and it neither takes the lock nor needs the file to exist.
+#[test]
+fn the_lock_reads_busy_only_while_it_is_held() {
+    let f = Fixture::new("lock-busy");
+    assert!(!crate::lock::busy(&f.root), "no lock file yet");
+    let held = crate::lock::acquire(&f.root, None).unwrap();
+    assert!(crate::lock::busy(&f.root));
+    drop(held);
+    assert!(!crate::lock::busy(&f.root));
+    assert!(crate::lock::acquire(&f.root, None).is_ok(), "asking did not take it");
+}

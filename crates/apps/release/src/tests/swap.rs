@@ -305,3 +305,18 @@ fn a_restore_of_a_build_the_store_cannot_be_read_by_is_refused() {
     assert!(err.to_string().starts_with(&format!("build {} reads data format 1 but the databases hold format 2", i.f.commit)));
     assert_eq!(read(i.f.dir.join("target/release/.sv10-installed-commit")).trim(), i.newer);
 }
+
+/// Once the swap has happened the rollback has succeeded (#879). A log line that cannot be written
+/// is a warning: an error here made the caller report "the installed build is unchanged".
+#[test]
+fn a_restore_that_cannot_be_logged_is_still_a_restore() {
+    let i = installed("unlogged");
+    let f = &i.f;
+    // A directory where the log goes makes the append fail, as a full disk would.
+    std::fs::create_dir_all(f.dir.join("artifacts/releases.log")).unwrap();
+    let mut out = String::new();
+    rollback(&f.root, &args(&[&f.commit]), &[], &mut out).unwrap();
+    assert_eq!(read(f.dir.join("target/release/.sv10-installed-commit")).trim(), f.commit);
+    assert!(out.contains("warning: the rollback is installed but was not logged"), "{out}");
+    assert!(out.contains(&format!("Restored {} from verified snapshot", f.commit)), "{out}");
+}

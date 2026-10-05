@@ -16,12 +16,6 @@
 //! promotion rule, which has its own fresh-deal confirmation.
 
 use sv10_core::bench::{Bench, FROZEN_POOL, six_max_paired};
-use sv10_core::model::ModelStore;
-use sv10_core::policy::Params;
-
-fn params(key: &str) -> Params {
-    std::env::var(key).ok().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default()
-}
 
 fn bb100(v: f64) -> String {
     format!("{:+.1}", v)
@@ -81,17 +75,13 @@ fn main() {
     let seed: u64 = std::env::var("SIM_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(20_260_926);
     // The frozen pool is built from the built-in styles; the policy may still *price* them with
     // live opponent models, which is what SIM_MODELS is for.
-    let models: ModelStore = std::env::var("SIM_MODELS")
-        .ok()
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let models = sv10_core::inputs::models("SIM_MODELS");
     eprintln!("frozen pool: {} ({} opponents)", FROZEN_POOL.join(", "), FROZEN_POOL.len());
     if models.players.is_empty() {
         eprintln!("no SIM_MODELS: the pool is priced from its own styles");
     }
     let t0 = std::time::Instant::now();
-    let bench = six_max_paired(&params("SIM_A"), &params("SIM_B"), &models, hands, stack_bb, seed);
+    let bench = six_max_paired(&sv10_core::inputs::params("SIM_A"), &sv10_core::inputs::params("SIM_B"), &models, hands, stack_bb, seed);
     report(&bench);
     eprintln!("== {:.1}s, seed {seed}", t0.elapsed().as_secs_f64());
 }

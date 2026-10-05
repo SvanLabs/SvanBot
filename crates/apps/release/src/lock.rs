@@ -21,6 +21,13 @@ impl Operation {
     }
 }
 
+/// Whether another process holds the lock right now. It asks and gives the lock straight back,
+/// and repairs nothing: a caller uses it to step aside before it has touched anything.
+pub fn busy(root: &Root) -> bool {
+    let lock = root.join("artifacts/release-operation.lock");
+    File::open(&lock).is_ok_and(|file| matches!(file.try_lock(), Err(std::fs::TryLockError::WouldBlock)))
+}
+
 /// Take the lock, then repair whatever an interrupted swap left behind. `inherited` is the value
 /// of `SV10_RELEASE_LOCK_FD`.
 pub fn acquire(root: &Root, inherited: Option<&str>) -> Result<Operation> {

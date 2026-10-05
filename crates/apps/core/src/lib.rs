@@ -1,6 +1,8 @@
 //! svanbot10 poker core: one path (`sv10_core::<module>`) over the layered crates
 //! `sv10-cards` → `sv10-equity` / `sv10-engine` / `sv10-nn` → `sv10-model` → `sv10-policy`.
 
+pub mod inputs;
+
 pub use sv10_cards::cards;
 pub use sv10_cards::eval;
 pub use sv10_cards::range;
