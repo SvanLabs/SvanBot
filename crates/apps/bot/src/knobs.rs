@@ -223,6 +223,15 @@ pub const KNOBS: &[Knob] = &[
         read: |p| p.jam_pot_ratio,
     },
     Knob {
+        key: "short_jam_pot_ratio",
+        label: "Max jam · pots, short stack",
+        min: 0.0,
+        max: 10.0,
+        decimals: 1,
+        description: "Largest postflop all-in considered, in pots, when the effective stack is at most three pots; the larger of this and the max jam applies. 0 turns it off.",
+        read: |p| p.short_jam_pot_ratio,
+    },
+    Knob {
         key: "raise_fold_bonus",
         label: "Raise fold bonus",
         min: -0.1,

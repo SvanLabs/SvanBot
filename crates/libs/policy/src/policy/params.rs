@@ -43,6 +43,11 @@ pub struct Params {
     pub call_margin: f64,
     /// Jam allowed when the all-in is at most this many pots (postflop).
     pub jam_pot_ratio: f64,
+    /// Larger jam allowed postflop when the effective stack is at most three pots (#745 layer 2): a
+    /// short stack against a pot has little else to do. 0 (off) keeps [`Params::jam_pot_ratio`] alone;
+    /// the larger of the two applies when on.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub short_jam_pot_ratio: f64,
     /// Weight of the raise-back branch when pricing postflop bets (0 = treat all continues as calls).
     pub raise_risk: f64,
     /// Learned EV corrections in big blinds per spot category (self-calibration).
@@ -148,6 +153,7 @@ impl Default for Params {
             realize_weight: 1.0,
             call_margin: 0.0,
             jam_pot_ratio: 2.2,
+            short_jam_pot_ratio: 0.0,
             raise_risk: 1.0,
             ev_bias: std::collections::HashMap::new(),
             ev_bias_pot_cap: std::collections::HashMap::new(),
@@ -186,6 +192,16 @@ impl Params {
         let street_raises = sit.history.iter().filter(|h| h.street == sit.street && aggressive(h)).count();
         !(sit.street != Street::Preflop && street_raises >= 2 && eq < 0.55 * self.raise_gate)
             && !(sit.street == Street::River && street_raises >= 1 && eq < 0.5 * self.raise_gate)
+    }
+
+    /// Largest postflop jam, in pots: [`Params::jam_pot_ratio`], or the larger [`Params::short_jam_pot_ratio`] when the
+    /// effective stack is at most three pots (#745 layer 2; off at 0, which leaves the plain ratio).
+    pub fn jam_ratio(&self, sit: &Situation, pot_after_call: f64) -> f64 {
+        if sit.effective_stack() as f64 <= pot_after_call * 3.0 {
+            self.jam_pot_ratio.max(self.short_jam_pot_ratio)
+        } else {
+            self.jam_pot_ratio
+        }
     }
 
     /// Adopt a learner-promoted champion: every strategy knob comes from `promoted`, while the
@@ -242,6 +258,10 @@ impl Params {
         self.overbet_call_shift = recorded.overbet_call_shift;
         self.overbet_call_slope = recorded.overbet_call_slope;
     }
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
 }
 
 #[cfg(test)]
