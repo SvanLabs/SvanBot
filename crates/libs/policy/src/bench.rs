@@ -14,6 +14,9 @@
 //! Both arms are played from one deck stream, so the per-hand difference is paired: the same cards,
 //! the same opponents, the same luck-reduced runout, only the policy differs.
 
+mod exploit;
+pub use exploit::{Exploit, exploit};
+
 use crate::agents::{Agent, Archetype, PolicyAgent};
 use crate::policy::Params;
 use crate::sim::PairedResult;
@@ -178,7 +181,7 @@ pub fn frozen_pool() -> Vec<Archetype> {
 
 /// Play one arm: `hands` hands against `pool`, returning each hand's luck-reduced net for the hero
 /// (seat 0) with the position and outcome class it was played in.
-fn arm(params: &Params, models: &ModelStore, pool: &[Archetype], hands: usize, stack_bb: i64, seed: u64) -> Vec<HandRead> {
+pub(crate) fn arm(params: &Params, models: &ModelStore, pool: &[Archetype], hands: usize, stack_bb: i64, seed: u64) -> Vec<HandRead> {
     let names: Vec<String> = std::iter::once("hero".to_string()).chain(pool.iter().map(|p| p.name.clone())).collect();
     let mut hero = PolicyAgent { label: "hero".into(), models: models.clone(), params: params.clone(), learn: false, nn: None };
     let mut seats: Vec<Box<dyn Agent>> = vec![];
