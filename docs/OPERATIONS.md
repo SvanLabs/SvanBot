@@ -317,9 +317,35 @@ is the restore path, not this one. With `LEARNER_LINEAGES` set, every lineage st
 **Free keys:** the export is capped (`SVANBOT_EXPORT_CAP`, default 20,000 hands per bot), so a Free-key rebuild recovers only the newest hands; Pro
 keys export without limit and fetch past seasons.
 
-| Drill (scratch checkout only) | Wall time | Hands in `history.db` | First playable | Notes |
-|---|---|---|---|---|
-| not run yet | | | | |
+**Drilled on 2026-10-05** in a scratch clone (`~/drill-766`, since deleted: it held a copy of the keys), with the real
+keys, ports 5100/5101, `SVANBOT_RUNTIME__DRY_RUN=1` (no bot ever connected: the log has no `connected as` line),
+`SVANBOT_AUTO_RENEW_PRO=0`, a copy of the build cache, and no learner, analyst or monitor. The live fleet kept playing.
+The drill found a bug the runbook would have hidden (below); times are from the fixed build.
+
+| Step | Wall time | Result |
+|---|---|---|
+| clone, `.env`, `scripts/release.sh` (first install; tests skipped, the same commit had just passed them) | 31 s with a copied build cache, about 3 to 10 min cold | `Installed <commit>`; an install source that is a symlink out of the checkout is refused (the cache must be a copy) |
+| `tables build` and `tables check` | 12 s | flop 9.3 MB, turn 87.3 MB, both ok |
+| start (dry-run) to first playable state | 1 s | `5 bots, 0 known opponents`, tables warmed in 140 ms, `/api/health` answers, the season is read from the server |
+| history backfill, owner key, fixed build | about 2,200 hands per minute for the first 6 minutes, then the server's deep-page timeouts begin | 12,819 of 160,221 hands after 15 minutes (`history.db` 27 MB); the page at 12,810 timed out and is retried every 10 minutes |
+| history backfill, the four other keys | | fail at offset 0 and are retried every 10 minutes (the server timed out their first page while the live fleet used the same keys); nothing downloaded in 15 minutes |
+| models from the history | | 7 import batches of about 400 hands each in the first 12 minutes: 2,000 named opponents |
+
+**What this means:** a total loss with no archive recovers the first page of the history in minutes and the rest at the
+server's pace, which can be hours or days for 160,000 hands per key; do not plan around it. The archive restore path
+below is the plan; this one is the last resort.
+
+**Bug found and fixed (#855):** on a fresh `history.db` the first page added the whole export (160,162 hands) to the
+backfill frontier as "hands that arrived during the backfill", jumped to the end and marked the history complete after
+one page: about 1,500 hands stored, "full history downloaded" in the log. Before the fix, check `offset.<bot>` in
+`history.db`'s `meta` table against what `raw` holds.
+
+**The restore half (#772), drilled the same day:** `archive run` into a scratch directory (3 min 14 s of idle CPU),
+`archive verify --deep` (15 s), `archive restore weekly/2026-W41 --to <dir>` (10 s), the two databases laid into the
+scratch box, started in dry-run: `quick_check` ok, 172,883 of the live 172,910 hands (the rest were played since), the
+champion, lineage, models, neural model and calibration keys present, `340 known opponents`, `/api/health` reporting the
+manifest's commit. Sizes: weekly 406 MB, monthly 368 MB, for a 1.17 GB live database and a 238 MB history database; the
+code bundle the weekly no longer carries was 5.4 MB, about 1.3% of it.
 
 ## Linux settings
 
@@ -596,16 +622,16 @@ made the fault happen; the rest is from the code and from live swaps.
 
 | Hazard | Covered by | Exercised |
 |---|---|---|
-| A bot replaced while deciding | the release watch waits up to 90 s for no bot to be mid-turn (a turn marker older than 60 s is stale), saves models (head) and open hands, then exits 75; the action deadline (45 s) is shorter than the wait, so a stuck turn has already timed out | Live swaps (a gap of 11 to 41 s per bot, no warn or error rows); not injected |
+| A bot replaced while deciding | the release watch waits up to 90 s for no bot to be mid-turn (a turn marker older than 60 s is stale), saves models (head) and open hands, then exits 75; the action deadline (45 s) is shorter than the wait, so a stuck turn has already timed out | Live swaps (a gap of 11 to 41 s per bot, no warn or error rows); a binary replaced under an idle scratch process exits 75 after 23 s (`new release installed ...`, `hot swap: exiting to restart`); a turn held open is not injected |
 | Data-format migration across a swap | the installer refuses to install or roll back to a build that cannot read the stored data (`--data-format`, `require_readable_store`) before anything moves | Injected: the `sv10-release` tests |
 | A swap killed between its renames | the journal written before the first rename; the next release, rollback, `--repair` or the keepalive timer restores the previous complete sets | Injected: `SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP` in the installer's tests and `scripts/tests/release-rollback.sh` |
 | The new build starts and then dies | the health gate after the install waits for `/api/health` to report the installed commit and rolls back to the previous verified snapshot when it does not | Injected: `scripts/tests/update.sh` |
 | Mixed versions while the processes swap one by one | `Params` is `#[serde(default)]` with no `deny_unknown_fields`, so an older reader drops a field it does not know; the window is about 7 s | Live swaps |
 | **Rolling back after a promotion** | nothing: a build older than the one that wrote `params.v1` plays the champion without any field it lacks, silently | Not covered; before rolling back across a promotion, compare the stored champion's keys with the older build's `Params` (`git show <commit>:crates/libs/policy/src/policy/params.rs`) |
 | Learner and analyst across a swap | the learner swaps after its current step and resumes its stored run; the analyst between audit batches; both restart under their supervisors | Live swaps; not injected |
-| A process that ignores SIGTERM | found by this audit (#803): the installed build hung after SIGTERM, fixed in #804 and #805 | Live |
+| A process that ignores SIGTERM | found by this audit (#803): the installed build hung after SIGTERM, fixed in #804 and #805 | Live; injected on the scratch box: SIGTERM to exit in 110 ms, models saved |
 
-Not done: fault injection against a running fleet for the first, fifth and seventh rows; the rollback row would
+Not done: a held-open turn (the first row) and the learner and analyst across a swap (the seventh); the rollback row would
 need a guard that compares the champion's keys with the target build, which the installer cannot do today (it does
 not read the store).
 
