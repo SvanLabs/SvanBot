@@ -28,6 +28,7 @@ pub const MAX_REJECT_RESYNCS: u32 = 3;
 
 use crate::USER_AGENT;
 
+mod authpark;
 mod decide;
 mod handler;
 mod quality;
@@ -65,6 +66,7 @@ pub async fn run_bot(shared: Arc<Shared>, slot: usize, bot: BotConfig) {
     let mut tracker = TableTracker::default();
     tracker.reset_table();
     let mut backoff = Duration::from_secs(1);
+    let mut auth_park = authpark::AuthPark::default();
     let mut rng = SmallRng::from_os();
     loop {
         let desired = shared.bots[slot].read().desired.clone();
@@ -102,6 +104,24 @@ pub async fn run_bot(shared: Arc<Shared>, slot: usize, bot: BotConfig) {
         let began = Instant::now();
         let ended = session(&shared, slot, &bot, &http, &mut tracker, &mut rng).await;
         let lasted = began.elapsed();
+        let ended = match ended {
+            // One refused login must not cost the seat: retry on the backoff path until the third in a row (#744).
+            Ok(SessionEnd::Fatal(reason)) if reason.starts_with("auth_failed") => {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+                let rotated = shared.store.get_kv(authpark::ROTATION_KEY).ok().flatten().and_then(|v| v.trim().parse::<f64>().ok());
+                match auth_park.failed(now, now - lasted.as_secs_f64(), rotated) {
+                    authpark::Verdict::Park => Ok(SessionEnd::Fatal(reason)),
+                    authpark::Verdict::Retry(n) => {
+                        shared.log(&bot.name, "warn", format!("{reason}; retrying ({n} of {} before parking)", authpark::LIMIT));
+                        Ok(SessionEnd::Throttled)
+                    }
+                }
+            }
+            other => {
+                auth_park.reset();
+                other
+            }
+        };
         match ended {
             Ok(SessionEnd::Fatal(reason)) => {
                 shared.log(&bot.name, "error", format!("stopping: {reason}"));

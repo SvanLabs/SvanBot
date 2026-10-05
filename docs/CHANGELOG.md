@@ -35,6 +35,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The flat 0.5 that discounts players still to act behind a preflop raise is a parameter (`preflop_discount`, default 0.5, so
   every decision is unchanged) with a catalogue row and a search step each way; the learner can now test it. The pool grows from 46
   to 48 candidates (#746, layer 3).
+- A raise that three or more players could call can be priced as a mixture over one, two and three-plus callers (`caller_mix`,
+  default off, so every decision is unchanged) instead of collapsing every multiway call into the top two; the learner can now test it.
+  The pool grows by one candidate (#746, layer 1).
 - The learner's one-knob search steps both ways on every knob that has room (three-bet in and out of position, four-bet, limper size and
   the raise-fold bonus gained their missing direction; the open-size step down is 0.5 like the step up), and the raise-guard floor scale
   (`raise_gate`) and the own-image weight (`hero_image`) join the search and the dashboard's knob catalogue. The pool grows from 41 to 46

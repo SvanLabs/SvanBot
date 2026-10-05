@@ -122,6 +122,11 @@ pub struct Params {
     /// `call_open + three_bet` rate (capped at 0.8) times this takes that share of hero's equity away
     /// (#746). 0.5 is the long-standing flat factor, so a station and a nit differ only by their rates.
     pub preflop_discount: f64,
+    /// Price a raise that three or more players could call as the mixture over one, two and three-plus
+    /// callers instead of collapsing three-plus into the top two (#746 layer 1). Off is the old
+    /// collapse, so every decision is unchanged until the gate promotes it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub caller_mix: bool,
 }
 
 impl Default for Params {
@@ -166,6 +171,7 @@ impl Default for Params {
             deal_chunks: 1,
             tiered_all_in_fold_pricing: false,
             preflop_discount: 0.5,
+            caller_mix: false,
         }
     }
 }
