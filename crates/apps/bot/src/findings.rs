@@ -275,7 +275,10 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
     let at = |hours: i64| (chrono::Utc::now() - chrono::Duration::hours(hours)).to_rfc3339();
     match (store.first_preflop_actions(&at(24), &at(0)), store.first_preflop_actions(&at(24 * 7), &at(24))) {
         (Ok(recent), Ok(baseline)) => findings.extend(style_drift(&recent, &baseline)),
-        _ => unanswered.push("style drift: our first preflop actions were unreadable".into()),
+        _ => {
+            unanswered.push("style drift: our first preflop actions were unreadable; last findings kept".into());
+            unreadable.push("style-drift:".to_string());
+        }
     }
 
     // Calibration: measurements, never findings on their own (0269).

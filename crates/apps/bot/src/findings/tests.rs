@@ -240,6 +240,8 @@ fn the_fleet_files_its_own_ticket_and_closes_it_when_the_finding_clears() {
     assert!(text.contains("assignee: fleet"), "assigned to whoever found it");
     assert!(text.contains("found-by-fleet"), "labelled so it is never mistaken for a session's idea");
     assert!(text.contains("decision-loss:turn:raise"), "naming the class it is about");
+    // The findings row was not saved (#880): the same scan again must not file a second ticket.
+    assert!(write_tickets(&root, &first, 1_500.0).0.is_empty(), "an open ticket for the finding is already on the board");
     // Record the ticket on the finding, as the loop does.
     let mut stored = first.clone();
     stored["findings"][0]["ticket"] = json!(name);
