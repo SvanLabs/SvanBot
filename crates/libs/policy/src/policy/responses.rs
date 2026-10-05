@@ -137,8 +137,7 @@ impl<'a> ResponsePricing<'a> {
             .nn
             .and_then(|network| sv10_model::features::ResponseFeatureSet::for_inputs(network.input_size()).map(|layout| (network, layout)))
         {
-            let preflop_aggressor =
-                self.sit.history.iter().rfind(|record| record.street == Street::Preflop && aggressive(record)).map(|record| record.seat);
+            let preflop_aggressor = sv10_model::features::aggressor_facing_raise(&self.sit.history, self.sit.street, self.sit.hero_seat);
             let context = sv10_model::features::ResponseContext {
                 street: self.sit.street,
                 to_call: cost as i64,

@@ -193,6 +193,18 @@ pub fn prior_postflop_calls(history: &[sv10_engine::engine::ActionRecord], seat:
         .count()
 }
 
+/// The seat the response samples call the preflop aggressor at the decision a raise by `raiser` on
+/// `street` puts to those who answer it. Preflop that is the raiser: the samples come from finished
+/// hands, where the raise being answered is already the last one in the history. Live pricing asks
+/// before the raise is made, and read from the history as it stood it named the raiser before —
+/// the responder themself when we re-raise their open — which the network was never trained on.
+pub fn aggressor_facing_raise(history: &[sv10_engine::engine::ActionRecord], street: Street, raiser: usize) -> Option<usize> {
+    if street == Street::Preflop {
+        return Some(raiser);
+    }
+    history.iter().rfind(|record| record.street == Street::Preflop && aggressive(record)).map(|record| record.seat)
+}
+
 /// Legal classes: fold only when facing a bet; call/check and bet/raise always.
 pub fn mask(c: &ResponseContext) -> Vec<bool> {
     vec![c.to_call > 0, true, true]
@@ -343,6 +355,18 @@ mod tests {
             think_ms: None,
             street_open: false,
         }
+    }
+
+    /// Pricing a re-raise of an open asks about the opener, and the samples for that decision say
+    /// the opener is not the aggressor, because the re-raise they face is (#873). Postflop the
+    /// raise being priced does not change who raised last preflop.
+    #[test]
+    fn the_aggressor_a_responder_faces_is_the_one_the_samples_record() {
+        let open = vec![action(1, Street::Preflop, ActionKind::Raise)];
+        assert_eq!(aggressor_facing_raise(&open, Street::Preflop, 0), Some(0), "we re-raise seat 1's open: seat 1 is not the aggressor");
+        assert_eq!(aggressor_facing_raise(&[], Street::Preflop, 0), Some(0), "our own open");
+        assert_eq!(aggressor_facing_raise(&open, Street::Flop, 0), Some(1), "our flop raise leaves the preflop raiser as it was");
+        assert_eq!(aggressor_facing_raise(&[], Street::Turn, 0), None, "a limped pot has none");
     }
 
     #[test]
