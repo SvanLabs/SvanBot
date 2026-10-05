@@ -233,7 +233,6 @@ impl Installs {
             match outcome {
                 Ok(None) => {}
                 Ok(Some((raw, own))) => {
-                    self.slots[slot] = Some(raw);
                     let changed = own.is_some() || shared.bots[slot].read().slot_params.is_some();
                     let msg = if own.is_some() { "own strategy parameters are now live" } else { "plays the shared champion again" };
                     let version = shared
@@ -245,6 +244,9 @@ impl Installs {
                     bot.slot_params = own;
                     bot.slot_version = version;
                     drop(bot);
+                    // Remembered only once it is installed: marked before the lineage read above, a
+                    // read that failed left the key looking current and the bot on the shared champion.
+                    self.slots[slot] = Some(raw);
                     if changed {
                         shared.log(&name, "info", msg);
                     }

@@ -105,12 +105,15 @@ pub struct Ledger {
 impl Ledger {
     pub fn update(&mut self, store: &Store, fleet: &[String]) {
         let Ok(rows) = store.ordinary_results_after(self.watermark) else { return };
-        for (rowid, bot, net, summary, pot, winners) in rows {
+        // The net is not asked for: the flow below is computed from the pot and the winners. A
+        // recovered hand is stored before its net is filled, and the watermark has passed it by then,
+        // so requiring one left those hands out until a restart counted them.
+        for (rowid, bot, _net, summary, pot, winners) in rows {
             self.watermark = rowid;
             if !fleet.contains(&bot) {
                 continue;
             }
-            let (Some(_), Ok(h)) = (net, serde_json::from_str::<HandSummary>(&summary)) else { continue };
+            let Ok(h) = serde_json::from_str::<HandSummary>(&summary) else { continue };
             let Some(hero) = h.players.iter().find(|p| p.1 == bot).map(|p| p.0) else { continue };
             let winners: Vec<&str> = winners.split(',').filter(|w| !w.is_empty()).collect();
             let Some(flows) = sv10_core::flow::flow_to_hero(&h, pot, &winners, hero) else {

@@ -57,6 +57,16 @@ fn recent_enough(h: &Value) -> bool {
         .unwrap_or(true)
 }
 
+/// Whether the newest-hands pass has reached what the store already holds. A page with a known
+/// hand, or with nothing new, used to be enough. It is not after an interrupted pass: when the
+/// first page was stored and the second failed, the next pass finds the first page known and
+/// stopped there, and the hands of the second page then lay between the top and the backfill
+/// frontier, where nothing looks again. So the pass also has to have walked past every hand that
+/// arrived since the total was last saved (`total` is zero before the first one is).
+fn caught_up(new: usize, known: usize, offset: i64, total: i64, server_total: i64) -> bool {
+    (known > 0 || new == 0) && (total == 0 || offset >= server_total - total)
+}
+
 pub(super) async fn store_page(db: &std::sync::Arc<HistoryDb>, bot: &str, page: &Value) -> Result<(usize, usize, i64)> {
     let got = page["hands"].as_array().map(|a| a.len()).unwrap_or(0) as i64;
     let hands: Vec<Value> = page["hands"].as_array().cloned().unwrap_or_default().into_iter().filter(recent_enough).collect();
@@ -136,7 +146,7 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
                     }
                 };
                 offset += got;
-                if got < PAGE || known > 0 || new == 0 {
+                if got < PAGE || caught_up(new, known, offset, total, server_total) {
                     // Caught up with what we already hold; move the backfill frontier by the
                     // hands that arrived since it was saved.
                     if let Some(frontier) = meta_i64("offset")
@@ -323,6 +333,18 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
 
 #[cfg(test)]
 mod tests {
+    /// 250 hands arrived; the first page of 200 was stored and the second failed, so the saved
+    /// total did not move. The next pass sees a first page it already holds: it is not done until it
+    /// has walked the 250.
+    #[test]
+    fn an_interrupted_catch_up_is_finished_before_the_pass_stops() {
+        assert!(!caught_up(0, 200, 200, 1_000, 1_250), "50 arrivals are still unfetched behind a known page");
+        assert!(caught_up(50, 150, 400, 1_000, 1_250));
+        assert!(caught_up(0, 200, 200, 1_000, 1_000), "nothing arrived: one known page is enough");
+        assert!(!caught_up(200, 0, 200, 1_000, 1_100), "a page of new hands only is never the end");
+        assert!(caught_up(0, 200, 200, 0, 5_000), "before a total is saved the page alone decides");
+    }
+
     use super::*;
 
     #[test]

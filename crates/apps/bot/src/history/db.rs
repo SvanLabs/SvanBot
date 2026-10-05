@@ -292,15 +292,18 @@ impl HistoryDb {
         Ok(rows)
     }
 
-    /// Openpoker corpus hands not in the server history, after corpus row `id`: (id, bot, started_at, summary).
-    pub(super) fn corpus_only_after(&self, id: i64) -> Result<Vec<(i64, String, String, String)>> {
+    /// Openpoker corpus hands not in the server history, after corpus row `id` and up to `upto`:
+    /// (id, bot, started_at, summary). Bounded above by the row the caller stores as its watermark:
+    /// a row committed after that was read would otherwise be counted now and again next pass.
+    pub(super) fn corpus_only_after(&self, id: i64, upto: i64) -> Result<Vec<(i64, String, String, String)>> {
         let conn = self.conn.lock();
         let mut st = conn.prepare(
             "SELECT c.id, c.bot, COALESCE(c.started_at, ''), c.summary FROM corpus c
-             WHERE c.id > ?1 AND c.source LIKE 'openpoker-%' AND NOT EXISTS (SELECT 1 FROM raw WHERE raw.hand_id = c.hand_id) ORDER BY c.id",
+             WHERE c.id > ?1 AND c.id <= ?2 AND c.source LIKE 'openpoker-%'
+               AND NOT EXISTS (SELECT 1 FROM raw WHERE raw.hand_id = c.hand_id) ORDER BY c.id",
         )?;
         let rows = st
-            .query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, self.codec.text(r.get_ref(3)?)?)))?
+            .query_map([id, upto], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, self.codec.text(r.get_ref(3)?)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }

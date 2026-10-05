@@ -80,7 +80,14 @@ pub fn write_tickets(root: &std::path::Path, current: &Value, now: f64) -> (Vec<
     // belongs to and reads on its own without the panel above it.
     let legends: BTreeMap<String, String> =
         current.get("legends").cloned().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+    // The names already on the board. The findings row is saved after the tickets are written, so
+    // a save that failed left no record of them and the next scan filed the same findings again.
+    let on_board: Vec<String> =
+        std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
     for finding in to_file(current, MAX_NEW_TICKETS_PER_SCAN) {
+        if on_board.iter().any(|name| name.ends_with(&format!("-{}.md", slug(&finding.id))) && open_ticket(&dir.join(name))) {
+            continue;
+        }
         let id = next_ticket_id(&dir);
         let path = dir.join(format!("{id}-{}.md", slug(&finding.id)));
         // Never overwrite: a ticket is a person's (or the fleet's) record.
@@ -111,6 +118,12 @@ pub fn write_tickets(root: &std::path::Path, current: &Value, now: f64) -> (Vec<
         }
     }
     (filed, closed)
+}
+
+/// Whether the ticket at `path` is still open: a resolved one does not stand in for a finding that
+/// has come back.
+fn open_ticket(path: &std::path::Path) -> bool {
+    std::fs::read_to_string(path).is_ok_and(|text| !text.contains("status: resolved"))
 }
 
 /// At most this many tickets one scan may file, so a noisy instrument cannot flood the board.
