@@ -251,8 +251,8 @@ pub fn drift_lines(samples: &[FoldSample]) -> Vec<String> {
 }
 
 /// Heads-up postflop bets from the store: each recorded bet or raise into no bet with one
-/// opponent, the chosen candidate's fold estimate un-shifted by the shift recorded with the
-/// decision, and whether that opponent folded next on the same street.
+/// opponent, the chosen candidate's fold estimate un-shifted by the street shift and that
+/// opponent's offset recorded with the decision, and whether they folded next on the same street.
 pub fn samples_from_store(store: &Store) -> anyhow::Result<Vec<FoldSample>> {
     let mut out = Vec::new();
     let mut hands: std::collections::HashMap<(String, String), Option<serde_json::Value>> = std::collections::HashMap::new();
@@ -269,13 +269,13 @@ pub fn samples_from_store(store: &Store) -> anyhow::Result<Vec<FoldSample>> {
         }) else {
             continue;
         };
-        let recorded = detail["fold_shift"].as_array().and_then(|a| a.get(street)).and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let raw = if recorded == 0.0 || fp <= 0.0 { fp } else { 1.0 / (1.0 + (-(logit(fp) - recorded)).exp()) };
         let key = (bet.bot.clone(), bet.hand_id.clone());
         let summary = hands
             .entry(key)
             .or_insert_with(|| store.hand(&bet.bot, &bet.hand_id).ok().flatten().and_then(|h| serde_json::from_str(&h.summary).ok()));
         let Some((opponent, folded)) = summary.as_ref().and_then(|s| opponent_response(s, &bet.bot, street)) else { continue };
+        let recorded = crate::playerfold::recorded_shift(&detail, street, &opponent);
+        let raw = if recorded == 0.0 || fp <= 0.0 { fp } else { 1.0 / (1.0 + (-(logit(fp) - recorded)).exp()) };
         out.push(FoldSample { ts: bet.ts, street, raw, folded, opponent: Some(opponent) });
     }
     Ok(out)
@@ -308,11 +308,11 @@ pub fn preflop_samples_from_store(store: &Store) -> anyhow::Result<Vec<FoldSampl
     Ok(out)
 }
 
-/// Whether every opponent who acted after our preflop raise to `to` folded before our next action.
-fn everyone_folded_preflop(summary: &serde_json::Value, hero: &str, to: Option<i64>, all_in: bool) -> Option<bool> {
+/// Whether every opponent who acted after our preflop raise to `to` (our last one, for an all-in) folded before our next action.
+pub(crate) fn everyone_folded_preflop(summary: &serde_json::Value, hero: &str, to: Option<i64>, all_in: bool) -> Option<bool> {
     let seat = summary["players"].as_array()?.iter().find(|p| p[1].as_str() == Some(hero))?[0].as_i64()?;
     let history = summary["history"].as_array()?;
-    let at = history.iter().position(|a| {
+    let at = history.iter().rposition(|a| {
         a["seat"].as_i64() == Some(seat)
             && a["street"].as_str() == Some("Preflop")
             && matches!(a["kind"].as_str(), Some("Raise" | "AllIn"))

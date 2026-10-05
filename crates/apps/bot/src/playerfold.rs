@@ -101,6 +101,19 @@ pub fn score(samples: &[FoldSample], priors: &[f64]) -> Vec<PlayerFoldScore> {
         .collect()
 }
 
+/// The logit shift that was in force for a heads-up bet on `street` against `opponent`, from the
+/// decision's recorded detail: the street shift plus that opponent's offset (zero for a decision
+/// from before offsets were recorded).
+///
+/// A fit has to undo it. The live estimate already includes the installed offset, so a refit on
+/// the estimate as recorded measured only what the offset had left uncorrected and installed that
+/// in its place: the value swung between the true gap and zero, and settled near half (#878).
+pub fn recorded_shift(detail: &serde_json::Value, street: usize, opponent: &str) -> f64 {
+    let street_shift = detail["fold_shift"].as_array().and_then(|a| a.get(street)).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let pairs = detail["fold_offsets"].as_array();
+    street_shift + pairs.and_then(|a| a.iter().find(|p| p[0].as_str() == Some(opponent))).and_then(|p| p[1].as_f64()).unwrap_or(0.0)
+}
+
 /// Prior of the installed offsets.
 pub const PRIOR: f64 = 20.0;
 
@@ -181,6 +194,41 @@ mod tests {
 
     fn sample(i: usize, who: &str, raw: f64, folded: bool) -> FoldSample {
         FoldSample { ts: format!("2026-09-24T{i:06}"), street: i % 3, raw, folded, opponent: Some(who.to_string()) }
+    }
+
+    #[test]
+    fn the_shift_recorded_with_a_decision_includes_that_opponents_offset() {
+        let detail = serde_json::json!({"fold_shift": [0.25, 0.0, -0.25], "fold_offsets": [["nit", 0.75], ["station", -0.5]]});
+        assert_eq!(recorded_shift(&detail, 0, "nit"), 1.0);
+        assert_eq!(recorded_shift(&detail, 2, "station"), -0.75);
+        assert_eq!(recorded_shift(&detail, 0, "stranger"), 0.25);
+        assert_eq!(recorded_shift(&serde_json::json!({}), 1, "nit"), 0.0, "a decision from before either was recorded");
+    }
+
+    /// The decision detail carries the offsets as the live client writes them: name and value pairs.
+    #[test]
+    fn the_recorded_offsets_round_trip_through_the_decision_detail() {
+        let view = crate::live::DecisionView { fold_offsets: vec![("nit".into(), 0.75)], ..Default::default() };
+        let detail = serde_json::json!({"fold_shift": view.fold_shift, "fold_offsets": view.fold_offsets});
+        assert_eq!(recorded_shift(&serde_json::from_str(&detail.to_string()).unwrap(), 0, "nit"), 0.75);
+    }
+
+    /// An all-in is our last raise of the street, not our first (#878): after an open and a jam over
+    /// a 3-bet, the first match paired the jam's estimate with the open's outcome.
+    #[test]
+    fn a_preflop_jam_is_matched_to_the_jam_and_not_to_the_open_before_it() {
+        let act = |seat: i64, kind: &str, to: i64| serde_json::json!({"seat": seat, "street": "Preflop", "kind": kind, "to": to});
+        // We open, one folds, the other 3-bets, we jam, they call: nobody folded to the jam.
+        let summary = serde_json::json!({"players": [[0, "hero"], [1, "villain"], [2, "other"]],
+            "history": [act(0, "Raise", 50), act(2, "Fold", 0), act(1, "Raise", 160), act(0, "AllIn", 2000), act(1, "Call", 2000)]});
+        assert_eq!(crate::foldcal::everyone_folded_preflop(&summary, "hero", None, true), Some(false));
+        let folded = serde_json::json!({"players": [[0, "hero"], [1, "villain"], [2, "other"]],
+            "history": [act(0, "Raise", 50), act(2, "Call", 50), act(1, "Raise", 160), act(0, "AllIn", 2000), act(2, "Fold", 0), act(1, "Fold", 0)]});
+        assert_eq!(
+            crate::foldcal::everyone_folded_preflop(&folded, "hero", None, true),
+            Some(true),
+            "the open was called; the jam was not"
+        );
     }
 
     #[test]

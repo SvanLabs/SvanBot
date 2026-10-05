@@ -196,12 +196,14 @@ pub(super) async fn act(
                     let net = nn.as_deref().and_then(crate::replay::net_digest);
                     let rec = crate::replay::record(&sit2, seed, &params, &models, net.as_ref().map(|n| n.0.clone()), &d);
                     let replay = (serde_json::to_string(&rec).unwrap_or_default(), net, crate::replay::is_big_spot(&sit2, &d));
-                    (d, version, replay, (params.fold_logit_shift, params.preflop_fold_logit_shift))
+                    let offsets: Vec<(String, f32)> =
+                        sit2.live_opponents().filter_map(|p| Some((p.name.clone(), *models.fold_offsets.get(&p.name)?))).collect();
+                    (d, version, replay, (params.fold_logit_shift, params.preflop_fold_logit_shift, offsets))
                 })
                 .await
             };
             match tokio::time::timeout(DECISION_CAP, job).await {
-                Ok(Ok((d, version, replay, (fold_shift, preflop_fold_shift)))) => {
+                Ok(Ok((d, version, replay, (fold_shift, preflop_fold_shift, fold_offsets)))) => {
                     let (n, a) = legalize(d.action, &legal);
                     let pending_calibration = calibration_candidate(&d, &n, a).and_then(|candidate| {
                         let cat = candidate.category.as_ref()?;
@@ -222,6 +224,7 @@ pub(super) async fn act(
                         DecisionView::for_decision(&hand_id, &sit, &d, n.clone(), a, started.elapsed().as_secs_f64() * 1000.0, version);
                     view.fold_shift = fold_shift;
                     view.preflop_fold_shift = preflop_fold_shift;
+                    view.fold_offsets = fold_offsets;
                     view.experiment = policy.record.clone();
                     (n, a, Some(view), pending_calibration, Some(replay))
                 }
@@ -296,7 +299,7 @@ pub(super) async fn act(
         }
     }
     if let Some(v) = view.filter(|_| sent) {
-        let detail = json!({"reason": v.reason, "candidates": v.candidates, "hole": v.hole, "board": v.board, "opponents": v.opponents, "pot_odds": v.pot_odds, "version": v.version, "fold_shift": v.fold_shift, "preflop_fold_shift": v.preflop_fold_shift, "experiment": v.experiment});
+        let detail = json!({"reason": v.reason, "candidates": v.candidates, "hole": v.hole, "board": v.board, "opponents": v.opponents, "pot_odds": v.pot_odds, "version": v.version, "fold_shift": v.fold_shift, "preflop_fold_shift": v.preflop_fold_shift, "fold_offsets": v.fold_offsets, "experiment": v.experiment});
         if let Err(e) = shared.store.insert_decision(
             &bot.name,
             &v.hand_id,

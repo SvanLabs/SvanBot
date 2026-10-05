@@ -41,6 +41,10 @@ pub struct DecisionView {
     pub fold_shift: [f64; 3],
     /// Preflop fold calibration shift in effect for this decision (recorded so refits un-shift it).
     pub preflop_fold_shift: f64,
+    /// Per-opponent fold offsets in force for the live opponents (0214), recorded for the same
+    /// reason: a refit that could not undo them measured each opponent against its own correction.
+    #[serde(skip)]
+    pub fold_offsets: Vec<(String, f32)>,
     /// Experiment provenance of the hand this decision belongs to (0291); absent in ordinary play.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub experiment: Option<serde_json::Value>,
@@ -80,6 +84,7 @@ impl DecisionView {
             version,
             fold_shift: [0.0; 3],
             preflop_fold_shift: 0.0,
+            fold_offsets: Vec::new(),
             experiment: None,
         }
     }
