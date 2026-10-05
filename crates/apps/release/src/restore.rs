@@ -46,14 +46,21 @@ pub fn restore(root: &Root, requested: &str, env: &[(String, String)], out: &mut
     require_binaries(root.path(), &release, Some(&commit), Identity::AllowMarker)?;
     swap::install(root, &release, &web, Inject::from_env(root, env)?)?;
     drop(stage);
+    // The snapshot is live from here. A log line that cannot be written (a full disk is a common
+    // reason to be rolling back) is a warning: returning an error made the caller report "the
+    // installed build is unchanged" about a build that had just been replaced (#879).
     let log = root.join("artifacts/releases.log");
-    let line = format!("{} {commit} rollback from {previous}\n", log_time()?);
-    std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log)
-        .and_then(|mut f| f.write_all(line.as_bytes()))
-        .map_err(|e| ReleaseError::Io(format!("cannot append to {}: {e}", log.display())))?;
+    let logged = log_time().and_then(|time| {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log)
+            .and_then(|mut f| f.write_all(format!("{time} {commit} rollback from {previous}\n").as_bytes()))
+            .map_err(|e| ReleaseError::Io(format!("cannot append to {}: {e}", log.display())))
+    });
+    if let Err(e) = logged {
+        out.push_str(&format!("warning: the rollback is installed but was not logged: {e}\n"));
+    }
     out.push_str(&format!("Restored {commit} from verified snapshot (previous {previous}). Watch the hot-swap log.\n"));
     Ok(())
 }
