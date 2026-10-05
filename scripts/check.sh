@@ -150,7 +150,15 @@ case "$mode" in
       fail "cargo-deny"
     fi
     step "cargo-deny advisories"
-    cargo deny check advisories 2>/dev/null || echo "   advisories failed or the RustSec database was unreachable; see: cargo deny check advisories"
+    # An advisory fails the gate; a database that cannot be fetched only warns (operator ruling, #875).
+    # The two are told apart by fetching first: once the fetch has succeeded, a failed check is an
+    # advisory and nothing else.
+    if ! cargo deny fetch db >/dev/null 2>&1; then
+      echo "   the RustSec database was unreachable; advisories not checked (see: cargo deny check advisories)"
+    elif ! deny_log=$(cargo deny --offline check advisories 2>&1); then
+      printf '%s\n' "$deny_log" | tail -40 >&2
+      fail "cargo-deny advisories"
+    fi
     step "third-party notices current"
     python3 scripts/notices.py --check || fail "run scripts/notices.py and commit docs/THIRD-PARTY-NOTICES.md"
     step "tickets lint + tool tests (tickets, codec vs zlib, test runner, release/rollback, keepalive, update, adopt-upstream, file-size, build lock, systemd units)"
