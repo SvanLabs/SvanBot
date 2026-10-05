@@ -289,11 +289,17 @@ impl PacingState {
     }
 }
 
+/// The training commands the learner acts on. Anything else is refused where it arrives: stored and
+/// answered `ok`, a `stop`, `automatic` or `rollback` read as queued and nothing ever happened.
+pub fn learner_acts_on(command: &str) -> bool {
+    matches!(command, "start" | "run")
+}
+
 /// Time of an operator start request in a `learner.command` value: the dashboard's "Start next
 /// search early" sends `start`; `run` is accepted as an alias.
 pub fn operator_start_at(command_json: &str) -> Option<f64> {
     let v: serde_json::Value = serde_json::from_str(command_json).ok()?;
-    matches!(v["command"].as_str(), Some("start" | "run")).then(|| v["ts"].as_f64()).flatten()
+    v["command"].as_str().is_some_and(learner_acts_on).then(|| v["ts"].as_f64()).flatten()
 }
 
 /// A schedulable learner job.
