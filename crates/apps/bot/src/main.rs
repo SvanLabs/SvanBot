@@ -159,7 +159,7 @@ async fn main() -> Result<()> {
     // Workers never save: the head owns the canonical models (0128); a worker overwrite would
     // drop the other processes' observations.
     if !shared.config.worker {
-        sv10_bot::tasks::save_models(&shared);
+        sv10_bot::tasks::save_models_bounded(&shared);
     }
     // A stop lands mid-hand like a swap does: keep those hands for the next process (0315).
     shared.save_open_hands();
@@ -203,7 +203,7 @@ fn spawn_release_watch(shared: &Arc<Shared>) {
             }
             if save {
                 if !shared.config.worker {
-                    sv10_bot::tasks::save_models(&shared);
+                    sv10_bot::tasks::save_models_bounded(&shared);
                 }
                 shared.save_open_hands();
             }
