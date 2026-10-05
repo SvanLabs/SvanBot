@@ -46,7 +46,16 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
         store.get_kv(TARGETS_KEY).ok().flatten().filter(|_| run.lane.is_shared()).and_then(|s| serde_json::from_str(&s).ok());
     let verdicts: crate::experiment::Verdicts =
         store.get_kv(crate::experiment::VERDICTS_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-    if let Some(t) = experiment_target::live_supported(published.as_ref(), &verdicts, &ledger) {
+    // The challenger is this cycle's proposal for the same transition, not the one stored in the
+    // queue: that was built on the champion of an earlier cycle, and the champion's range model is
+    // refitted in between, so confirming the stored copy measured the knob and an old range
+    // together and a promotion would have installed the old range (#878).
+    let rebuilt = |t: Target| {
+        let key = transition_key(&t.knob, t.old, t.new);
+        let params = e.proposals.iter().find(|(k, o, n, _)| transition_key(k, *o, *n) == key)?.3.clone();
+        Some(Target { challenger: params, ..t })
+    };
+    if let Some(t) = experiment_target::live_supported(published.as_ref(), &verdicts, &ledger).and_then(rebuilt) {
         tracing::info!("cycle {}: {} was supported live; confirming it on fresh deals instead of searching", run.cycle, t.label());
         let confirming = Target::new(
             (&run.champion_version, run.refit_rowid),
