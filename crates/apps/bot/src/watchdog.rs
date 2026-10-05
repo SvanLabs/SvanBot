@@ -136,6 +136,30 @@ pub fn transitions(before: &[Stale], now: &[Stale]) -> Vec<(&'static str, String
     out
 }
 
+/// Consecutive 10-minute checks a lone bot may stay unseated before the watchdog says so (#748 layer 3).
+pub const SOLO_OFFLINE_CHECKS: u32 = 3;
+
+/// The modes in which a bot is not at a table and not on its way to one.
+fn unseated(mode: &str) -> bool {
+    matches!(mode, "offline" | "error" | "connecting")
+}
+
+/// One check of a fleet of one: how many checks in a row it has been unseated (`before` is the last
+/// answer), and the line to log when that crosses [`SOLO_OFFLINE_CHECKS`] or ends. No second reconnect
+/// path: the reconnect ladder is the client's; this only makes a long gap visible. A fleet of several
+/// has others playing and is not this alert's business.
+pub fn solo_check(modes: &[&str], before: u32) -> (u32, Option<(&'static str, String)>) {
+    let [mode] = modes else { return (0, None) };
+    if unseated(mode) {
+        let now = before + 1;
+        let line = (now == SOLO_OFFLINE_CHECKS)
+            .then(|| ("warn", format!("the only bot has not been seated for {} min (mode {mode}); nothing else is playing", now * 10)));
+        (now, line)
+    } else {
+        (0, (before >= SOLO_OFFLINE_CHECKS).then(|| ("info", "the only bot is seated again".to_string())))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +259,20 @@ mod tests {
         assert_eq!(first, [("warn", format!("autonomy: {}", stale[0].message))]);
         assert!(transitions(&stale[..1], &stale[..1]).is_empty(), "still stale: no repeat");
         assert_eq!(transitions(&stale[..1], &[]), [("info", "autonomy: learner is reporting again".to_string())]);
+    }
+
+    #[test]
+    fn a_lone_bot_unseated_for_half_an_hour_is_named_once_and_its_return_too() {
+        let mut count = 0;
+        let mut lines = Vec::new();
+        for modes in [["playing"], ["offline"], ["connecting"], ["offline"], ["error"], ["playing"], ["playing"]] {
+            let (next, line) = solo_check(&modes, count);
+            count = next;
+            lines.extend(line);
+        }
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].1.contains("30 min") && lines[0].0 == "warn");
+        assert_eq!(lines[1], ("info", "the only bot is seated again".into()));
+        assert_eq!(solo_check(&["offline", "playing"], 5), (0, None), "several bots: not this alert's business");
     }
 }
