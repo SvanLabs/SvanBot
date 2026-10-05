@@ -125,6 +125,15 @@ enum Flow {
     Done { promoted: bool },
 }
 
+/// The hand row the stack fixture is frozen at: the evidence epoch, the same scope the ledger and
+/// the target queue already carry. Frozen at the search's own start it moved with every new hand,
+/// its digest with it, and the digest is part of the ledger's identity: each cycle began with an
+/// empty ledger, so nothing a previous cycle had rejected or measured carried over (#878). Before
+/// the first epoch there is nothing behind the boundary to sample, so the start row stands in.
+fn stack_cutoff(start_rowid: i64, epoch: i64) -> i64 {
+    if epoch > 0 { epoch.min(start_rowid) } else { start_rowid }
+}
+
 /// Start a champion search: train (or reuse) the response model and set up the first stage.
 /// `None` when fewer than four opponents have enough hands (the caller waits and retries).
 pub fn begin(ctx: &Ctx, lane: Lane, start_rowid: i64, started: f64, refit_rowid: i64) -> anyhow::Result<Option<SearchRun>> {
@@ -184,7 +193,7 @@ pub fn begin(ctx: &Ctx, lane: Lane, start_rowid: i64, started: f64, refit_rowid:
         return Ok(None);
     }
     let mut run = SearchRun {
-        stacks: super::stacks::Fixture::capture(store, start_rowid)?,
+        stacks: super::stacks::Fixture::capture(store, stack_cutoff(start_rowid, refit_rowid))?,
         cycle,
         start_rowid,
         started,

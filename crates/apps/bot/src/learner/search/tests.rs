@@ -243,3 +243,14 @@ fn legacy_or_tampered_stack_accumulators_are_retired() {
     assert_eq!(step(&ctx, &mut run, SLICE_TARGET_SECS).unwrap(), Outcome::Abandoned("the paired stack objective changed"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The stack fixture is frozen at the evidence epoch (#878): a search that starts a few hands later
+/// in the same epoch samples the same hands, so its digest, and with it the rejection ledger's
+/// identity, stays the same from one cycle to the next.
+#[test]
+fn the_stack_fixture_is_frozen_at_the_evidence_epoch_not_at_the_search_start() {
+    assert_eq!(super::stack_cutoff(1_234, 1_000), 1_000);
+    assert_eq!(super::stack_cutoff(1_499, 1_000), super::stack_cutoff(1_234, 1_000), "later in the same epoch");
+    assert_eq!(super::stack_cutoff(1_600, 1_500), 1_500, "a new epoch is a new fixture");
+    assert_eq!(super::stack_cutoff(300, 0), 300, "nothing is behind the first boundary yet");
+}
