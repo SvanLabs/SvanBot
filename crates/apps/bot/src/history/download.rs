@@ -126,6 +126,9 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
 
             // Stage 1: newest hands (only once a backfill exists; a first backfill starts at 0).
             let mut offset = 0;
+            // Whether the newest hands are all held: true once stage 1 reaches what it knows, and
+            // from the start when there is no backfill yet for it to protect.
+            let mut top_walked = meta_i64("offset").is_none();
             while meta_i64("offset").is_some() {
                 let started = std::time::Instant::now();
                 let Some(page) = fetch_page(&http, &shared, &bot.api_key, offset).await else { break };
@@ -155,6 +158,7 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
                     {
                         db.set_meta(&key("offset"), &(frontier + server_total - total).to_string());
                     }
+                    top_walked = true;
                     total = server_total;
                     db.set_meta(&key("total"), &total.to_string());
                     break;
@@ -177,7 +181,11 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
             }
             let complete = db.meta(&key("done")).is_some();
             let next_try = meta_i64("next_try").unwrap_or(0);
-            if !complete && now_secs() >= next_try {
+            // Only after a finished stage 1. Stage 2 saves the server's total and moves the frontier
+            // past every hand that arrived; run after a stage 1 that failed part-way, that told the
+            // next pass there was nothing left to walk at the top, and the hands stage 1 had not
+            // reached were never fetched (#896, the half of #880 that `caught_up` did not cover).
+            if !complete && top_walked && now_secs() >= next_try {
                 let mut frontier = meta_i64("offset").unwrap_or(0);
                 loop {
                     if total > 0 && frontier >= total {
