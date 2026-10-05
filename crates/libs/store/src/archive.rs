@@ -343,7 +343,9 @@ pub fn restore(root: &Path, name: &str, out: &Path) -> Result<Vec<PathBuf>> {
     for path in &written {
         sv10_rt::sync_file(path)?;
     }
-    sv10_rt::sync_dir(&out.join("."))?;
+    // The directory itself: `sync_dir` syncs the *parent* of its path, and `out.join(".")` has the
+    // same parent as `out`, so that call synced one level too high (#876).
+    std::fs::File::open(out)?.sync_all()?;
     Ok(written)
 }
 
@@ -433,7 +435,9 @@ fn sync_tree(dir: &Path) -> Result<usize> {
             n += 1;
         }
     }
-    sv10_rt::sync_dir(&dir.join("."))?;
+    // The directory itself: `sync_dir` syncs the *parent* of its path, and `dir.join(".")` has the
+    // same parent as `dir`, so that call synced one level too high (#876).
+    std::fs::File::open(dir)?.sync_all()?;
     Ok(n)
 }
 
@@ -548,7 +552,12 @@ fn write_delta(history: &Path, to: &Path, marks: &BTreeMap<String, i64>) -> Resu
             Some(mark) => {
                 conn.execute(&format!("CREATE TABLE main.{} AS SELECT * FROM src.{} WHERE id > {mark}", ident(&t), ident(&t)), [])?
             }
-            None => conn.execute(&format!("CREATE TABLE main.{} AS SELECT * FROM src.{}", ident(&t), ident(&t)), [])?,
+            // Copied whole, and under its own definition: a restore that meets this table for the
+            // first time (it was added after the weekly full) creates it from here, keys and all.
+            None => {
+                conn.execute(&table_sql(&conn, "src", &t)?, [])?;
+                conn.execute(&format!("INSERT INTO main.{} SELECT * FROM src.{}", ident(&t), ident(&t)), [])?
+            }
         };
     }
     conn.execute_batch("COMMIT")?;
@@ -556,7 +565,14 @@ fn write_delta(history: &Path, to: &Path, marks: &BTreeMap<String, i64>) -> Resu
     Ok(counts)
 }
 
-/// The column names of `schema`.`table`, in the order the table stores them.
+/// The `CREATE TABLE` statement `schema` holds for `table`. It names no schema, so running it
+/// creates the table in `main`.
+fn table_sql(conn: &Connection, schema: &str, table: &str) -> Result<String> {
+    Ok(conn.query_row(&format!("SELECT sql FROM {schema}.sqlite_master WHERE type = 'table' AND name = ?1"), [table], |r| r.get(0))?)
+}
+
+/// The column names of `schema`.`table`, in the order the table stores them; none when the table
+/// does not exist (`table_info` returns no rows rather than an error).
 fn columns(conn: &Connection, schema: &str, table: &str) -> Result<Vec<String>> {
     let mut st = conn.prepare(&format!("PRAGMA {schema}.table_info({})", ident(table)))?;
     let names = st.query_map([], |r| r.get::<_, String>(1))?.collect::<Result<Vec<String>, _>>()?;
@@ -579,20 +595,21 @@ fn apply_delta(full: &Path, delta: &Path, marks: &BTreeMap<String, i64>) -> Resu
         let cols = columns(&conn, "d", &t)?;
         anyhow::ensure!(!cols.is_empty(), "differential table {} has no columns", t);
         let list = cols.iter().map(|c| ident(c)).collect::<Vec<_>>().join(", ");
-        let wanted = match columns(&conn, "main", &t) {
-            Ok(target) => {
-                // The full may carry columns the differential predates; map by name and take the
-                // delta's value for the ones it has, leaving the rest as they are.
-                let known: Vec<&String> = cols.iter().filter(|c| target.contains(c)).collect();
-                anyhow::ensure!(
-                    known.len() == cols.len(),
-                    "differential {t} has columns the restored full does not: {:?}",
-                    cols.iter().filter(|c| !target.contains(c)).collect::<Vec<_>>()
-                );
-                known.iter().map(|c| ident(c)).collect::<Vec<_>>().join(", ")
-            }
-            Err(_) => list.clone(),
-        };
+        // A table added after the weekly full is not in it yet. `table_info` answers that with no
+        // rows, not an error, so it used to read as "the full has none of these columns" and every
+        // daily restore of that week was refused (#876).
+        if columns(&conn, "main", &t)?.is_empty() {
+            conn.execute(&table_sql(&conn, "d", &t)?, [])?;
+        }
+        let target = columns(&conn, "main", &t)?;
+        // The full may carry columns the differential predates; map by name and take the delta's
+        // value for the ones it has, leaving the rest as they are.
+        anyhow::ensure!(
+            cols.iter().all(|c| target.contains(c)),
+            "differential {t} has columns the restored full does not: {:?}",
+            cols.iter().filter(|c| !target.contains(c)).collect::<Vec<_>>()
+        );
+        let wanted = list;
         if marks.contains_key(&t) {
             conn.execute(&format!("INSERT OR IGNORE INTO main.{} ({wanted}) SELECT {wanted} FROM d.{}", ident(&t), ident(&t)), [])?;
         } else {

@@ -106,6 +106,37 @@ fn a_differential_merges_by_column_name_and_refuses_an_unknown_column() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A table added to `history.db` after the weekly full reaches a restore only through the daily
+/// differential (#876): the restore creates it from the differential's definition, key included,
+/// where it used to refuse the whole day.
+#[test]
+fn a_table_added_after_the_full_is_created_from_the_differential() {
+    let dir = tmp("delta-new-table");
+    let (history, full, delta) = (dir.join("history.db"), dir.join("full.db"), dir.join("delta.db"));
+    Connection::open(&full).unwrap().execute_batch("CREATE TABLE hands (id INTEGER PRIMARY KEY, net INTEGER);").unwrap();
+    Connection::open(&history)
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE hands (id INTEGER PRIMARY KEY, net INTEGER);
+             CREATE TABLE seasons (name TEXT PRIMARY KEY, hands INTEGER);
+             INSERT INTO hands VALUES (1, 100);
+             INSERT INTO seasons VALUES ('s14', 7);",
+        )
+        .unwrap();
+    let marks = BTreeMap::from([("hands".to_string(), 0i64)]);
+    write_delta(&history, &delta, &marks).unwrap();
+    apply_delta(&full, &delta, &marks).unwrap();
+    let c = Connection::open(&full).unwrap();
+    assert_eq!(c.query_row("SELECT hands FROM seasons WHERE name = 's14'", [], |r| r.get::<_, i64>(0)).unwrap(), 7);
+    assert!(c.execute("INSERT INTO seasons VALUES ('s14', 8)", []).is_err(), "the restored table kept its primary key");
+    // A second restore of the same differential replaces the table's rows; it does not double them.
+    drop(c);
+    apply_delta(&full, &delta, &marks).unwrap();
+    let c = Connection::open(&full).unwrap();
+    assert_eq!(c.query_row("SELECT COUNT(*) FROM seasons", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// 0248: table names reach these statements out of an archive — an external file — and were
 /// interpolated into `"..."` without escaping, so a name holding a quote (a legal SQLite
 /// identifier) broke the statement, and a crafted name would have closed it. Doubling the

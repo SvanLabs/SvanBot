@@ -8,6 +8,8 @@ pub use blinds::EvResultWithBlind;
 mod tools;
 pub use tools::MonitorRow;
 mod players;
+#[cfg(test)]
+mod restore_tests;
 pub use players::PlayerHandWithBlind;
 
 /// A stored hand as the API and tools read it.
@@ -76,7 +78,9 @@ pub(crate) fn store_hand(conn: &Connection, h: &HandRow) -> Result<i64> {
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
          ON CONFLICT(bot, hand_id) DO UPDATE SET
              table_id = excluded.table_id, ended_at = excluded.ended_at, hero_seat = excluded.hero_seat,
-             hole = excluded.hole, board = excluded.board, pot = excluded.pot, net = excluded.net,
+             hole = excluded.hole, board = excluded.board, pot = excluded.pot,
+             ev_net = CASE WHEN COALESCE(excluded.net, net) IS net AND excluded.summary IS summary THEN ev_net END,
+             net = COALESCE(excluded.net, net),
              winners = excluded.winners, summary = excluded.summary, showdown = excluded.showdown,
              digest = excluded.digest
          RETURNING rowid",

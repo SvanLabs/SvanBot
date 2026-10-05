@@ -254,6 +254,8 @@ impl TableTracker {
             self.table_id = Some(t.to_string());
         }
         let street = msg["street"].as_str().and_then(Street::from_name);
+        self.sb = msg["small_blind"].as_i64().unwrap_or(self.sb);
+        self.bb = msg["big_blind"].as_i64().unwrap_or(self.bb);
         if let Some(h) = msg["hand_id"].as_str()
             && street.is_some()
             && self.hand_id.as_deref() != Some(h)
@@ -265,8 +267,6 @@ impl TableTracker {
         }
         self.street = street;
         self.dealer = msg["dealer_seat"].as_u64().map(|d| d as usize).unwrap_or(self.dealer);
-        self.sb = msg["small_blind"].as_i64().unwrap_or(self.sb);
-        self.bb = msg["big_blind"].as_i64().unwrap_or(self.bb);
         if street.is_some() {
             self.board = self.recovery_board(cards(&msg["board"]), street == Some(Street::Preflop));
             self.pot = msg["pot"].as_i64().unwrap_or(self.pot);
@@ -341,15 +341,15 @@ impl TableTracker {
     /// Apply `hand_start`: new hand id, button, our seat and blinds.
     pub fn hand_start(&mut self, msg: &Value) {
         let hid = msg["hand_id"].as_str().unwrap_or("").to_string();
+        if let Some(b) = msg.get("blinds") {
+            self.sb = b["small_blind"].as_i64().unwrap_or(self.sb);
+            self.bb = b["big_blind"].as_i64().unwrap_or(self.bb);
+        }
         if self.hand_id.as_deref() != Some(hid.as_str()) {
             self.begin_hand(&hid, msg["dealer_seat"].as_u64().unwrap_or(0) as usize);
         }
         if let Some(seat) = msg["seat"].as_u64() {
             self.hero_seat = Some(seat as usize);
-        }
-        if let Some(b) = msg.get("blinds") {
-            self.sb = b["small_blind"].as_i64().unwrap_or(self.sb);
-            self.bb = b["big_blind"].as_i64().unwrap_or(self.bb);
         }
         self.street = Some(Street::Preflop);
         self.last_event = server_ms(msg).map(|t| (t, true));

@@ -10,9 +10,41 @@ use sv10_digest::Sha256;
 
 /// `PRAGMA quick_check` on a read-only connection: Ok, or the first problems SQLite reports.
 pub fn quick_check(path: &Path) -> std::result::Result<(), String> {
+    inspect(path).map_err(|e| match e {
+        Unchecked::Damaged(why) | Unchecked::Busy(why) => why,
+    })
+}
+
+/// Why a database did not pass its check.
+enum Unchecked {
+    /// SQLite looked and reported damage, or could not read the file as a database at all.
+    Damaged(String),
+    /// Another connection held the file for the whole wait: nothing was learned about its contents.
+    Busy(String),
+}
+
+/// How long a check waits for a peer holding the file (recovering the WAL, or migrating at a
+/// hot swap) before it gives up without a verdict.
+const CHECK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+fn inspect(path: &Path) -> std::result::Result<(), Unchecked> {
+    check_within(path, CHECK_WAIT)
+}
+
+fn check_within(path: &Path, wait: std::time::Duration) -> std::result::Result<(), Unchecked> {
+    use rusqlite::ErrorCode::{DatabaseBusy, DatabaseLocked};
+    let sort = |what: &str, e: rusqlite::Error| match e.sqlite_error_code() {
+        Some(DatabaseBusy | DatabaseLocked) => Unchecked::Busy(format!("{what} failed: {e}")),
+        _ => Unchecked::Damaged(format!("{what} failed: {e}")),
+    };
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
-        .map_err(|e| format!("open failed: {e}"))?;
-    check_connection(&conn)
+        .map_err(|e| sort("open", e))?;
+    conn.busy_timeout(wait).map_err(|e| sort("open", e))?;
+    let rows: Vec<String> = conn
+        .prepare("PRAGMA quick_check(5)")
+        .and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect())
+        .map_err(|e| sort("check", e))?;
+    if rows.len() == 1 && rows[0] == "ok" { Ok(()) } else { Err(Unchecked::Damaged(rows.join("; "))) }
 }
 
 /// `PRAGMA quick_check(5)` on an open connection: Ok, or the problems joined.
@@ -101,9 +133,14 @@ pub fn ensure_healthy(db: &Path, backups: &Path) -> Result<Health> {
     if !db.exists() {
         return Ok(Health::Missing);
     }
-    let Err(problem) = quick_check(db) else { return Ok(Health::Healthy) };
+    let problem = match inspect(db) {
+        Ok(()) => return Ok(Health::Healthy),
+        // A locked file is not a damaged one: moving it aside would take a healthy database out from
+        // under the peers that hold it and put an older backup in its place.
+        Err(Unchecked::Busy(why)) => anyhow::bail!("could not check {}: {why}; it is left where it is", db.display()),
+        Err(Unchecked::Damaged(why)) => why,
+    };
     tracing::error!("database {} is damaged: {problem}", db.display());
-    let quarantined = quarantine(db)?;
     let stem = db.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(backups)
         .into_iter()
@@ -114,21 +151,41 @@ pub fn ensure_healthy(db: &Path, backups: &Path) -> Result<Health> {
         .filter_map(|p| Some((std::fs::metadata(&p).ok()?.modified().ok()?, p)))
         .collect();
     candidates.sort_by_key(|c| std::cmp::Reverse(c.0));
+    // The replacement is staged before the damaged file moves. Quarantining first and copying second
+    // meant a copy that failed (a full disk is when both happen) left no database at all, and the
+    // next start read that as a first start and opened an empty one without looking at a backup.
+    let tmp = db.with_extension("db.restoring");
+    let (mut staged, mut copy_error) = (None, None);
     for (_, backup) in candidates {
         if !verify_backup(&backup) {
             tracing::warn!("skipping unverified backup {}", backup.display());
             continue;
         }
-        let tmp = db.with_extension("db.restoring");
         // Durable before it is named: a crash mid-restore must not leave a partial database in place.
-        sv10_rt::copy_durable(&backup, &tmp)?;
-        std::fs::rename(&tmp, db)?;
-        sv10_rt::sync_dir(db)?;
-        tracing::error!("restored {} from verified backup {}", db.display(), backup.display());
-        return Ok(Health::Restored { from: backup, quarantined });
+        match sv10_rt::copy_durable(&backup, &tmp) {
+            Ok(_) => {
+                staged = Some(backup);
+                break;
+            }
+            Err(e) => {
+                tracing::error!("could not copy verified backup {}: {e}", backup.display());
+                copy_error = Some(e);
+            }
+        }
     }
-    tracing::error!("no verified backup for {}; starting it empty", db.display());
-    Ok(Health::Quarantined { quarantined })
+    let Some(from) = staged else {
+        if let Some(e) = copy_error {
+            anyhow::bail!("{} is damaged and no verified backup could be copied into place ({e}); it is left where it is", db.display());
+        }
+        let quarantined = quarantine(db)?;
+        tracing::error!("no verified backup for {}; starting it empty", db.display());
+        return Ok(Health::Quarantined { quarantined });
+    };
+    let quarantined = quarantine(db)?;
+    std::fs::rename(&tmp, db)?;
+    sv10_rt::sync_dir(db)?;
+    tracing::error!("restored {} from verified backup {}", db.display(), from.display());
+    Ok(Health::Restored { from, quarantined })
 }
 
 /// Move a database and its WAL/SHM files into `quarantine/` next to it.
@@ -293,6 +350,48 @@ mod tests {
         let err = seal_backup(&path).unwrap_err().to_string();
         assert!(!path.exists() && err.contains("was removed"), "{err}");
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    /// The backup copy is staged before the damaged file moves (#876): when the copy fails, the
+    /// database is still there for the next attempt instead of being read as a first start.
+    #[test]
+    fn a_backup_that_cannot_be_copied_leaves_the_damaged_database_in_place() {
+        let d = dir("copy-fails");
+        let (db, backups) = (d.join("svanbot10.db"), d.join("backups"));
+        let store = Store::open(&db).unwrap();
+        store.insert_hand(&hand("old")).unwrap();
+        let good = backups.join("svanbot10-2026091400.db");
+        store.backup_to(&good).unwrap();
+        seal_backup(&good).unwrap();
+        drop(store);
+        smash_header(&db);
+        // A directory where the staged copy goes makes the copy fail, as a full disk would.
+        std::fs::create_dir_all(db.with_extension("db.restoring")).unwrap();
+
+        let err = ensure_healthy(&db, &backups).unwrap_err().to_string();
+        assert!(err.contains("left where it is"), "{err}");
+        assert!(db.exists(), "the damaged database was moved away with nothing to replace it");
+        assert!(!d.join("quarantine").exists());
+        // With the obstacle gone the same call restores it.
+        std::fs::remove_dir_all(db.with_extension("db.restoring")).unwrap();
+        assert!(matches!(ensure_healthy(&db, &backups).unwrap(), Health::Restored { .. }));
+        assert_eq!(hand_ids(&db), vec!["old".to_string()]);
+    }
+
+    /// A database a peer holds locked is not a damaged one (#876): the check reports that it could
+    /// not look, and the file stays where it is.
+    #[test]
+    fn a_locked_database_is_not_quarantined() {
+        let d = dir("locked");
+        let db = d.join("svanbot10.db");
+        Store::open(&db).unwrap().insert_hand(&hand("h1")).unwrap();
+        let holder = Connection::open(&db).unwrap();
+        holder.execute_batch("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; CREATE TABLE held (x);").unwrap();
+
+        assert!(matches!(check_within(&db, std::time::Duration::from_millis(50)), Err(Unchecked::Busy(_))));
+        drop(holder);
+        assert_eq!(ensure_healthy(&db, &d.join("backups")).unwrap(), Health::Healthy);
+        assert!(!d.join("quarantine").exists());
     }
 
     #[test]

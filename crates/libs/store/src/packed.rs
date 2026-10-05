@@ -370,7 +370,14 @@ pub fn mark_data_format(dir: &Path, format: u32, lower: bool) -> Result<()> {
         return Ok(());
     }
     let tmp = dir.join(format!(".{DATA_FORMAT_FILE}.{}", std::process::id()));
-    std::fs::write(&tmp, format!("{format}\n"))?;
+    // The contents before the name: a rename that outlives a power cut while the bytes do not
+    // leaves an empty marker, which reads as format 1 (#876).
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(format!("{format}\n").as_bytes())?;
+        file.sync_all()?;
+    }
     std::fs::rename(&tmp, &path)?;
     // Durable, like every other atomic write here: a lost rename could leave the marker at an older
     // format, and `scripts/rollback.sh` trusts it when it decides whether a build can read the
