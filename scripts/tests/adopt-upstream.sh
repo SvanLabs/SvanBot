@@ -11,6 +11,12 @@ fail() { echo "adopt-upstream test: $*" >&2; exit 1; }
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 unset SV10_RELEASE_LOCK_FD SV10_RELEASE_ROOT SV10_UPDATE_RUN SV10_PROGRESS_DIR SVANBOT_ADOPT_UPSTREAM SVANBOT_UPDATE_BRANCH
 
+# The installer path the helper prints is used from another checkout, so it has to be absolute (#875).
+# An executable newer than every source stands in for the built installer: nothing is compiled.
+mkdir -p "$t/bin/target/dev/release" && : > "$t/bin/target/dev/release/sv10-release" && chmod +x "$t/bin/target/dev/release/sv10-release"
+printed=$(cd "$t/bin" && unset SV10_RELEASE_BIN && source "$repo/scripts/sv10-release-bin.sh" && sv10_release_bin)
+[ "$printed" = "$t/bin/target/dev/release/sv10-release" ] || fail "the installer path is not absolute: $printed"
+
 scripts="update.sh progress.py rollback.sh adopt-upstream.sh"
 git init -q --bare --initial-branch=main "$t/public.git"
 git clone -q "$t/public.git" "$t/dev" 2>/dev/null
