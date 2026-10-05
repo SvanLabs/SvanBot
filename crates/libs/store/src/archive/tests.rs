@@ -268,3 +268,44 @@ fn a_staging_directory_that_will_not_go_stops_the_run_before_it_is_written_into(
     std::fs::set_permissions(&stale, std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::remove_dir_all(&d).unwrap();
 }
+
+/// #772: an archive is data only. A weekly written from a repository carries the two databases and the
+/// commit id, and no code bundle; one written before the rule (a `repo.bundle` entry) still restores its bundle.
+#[test]
+fn a_weekly_carries_data_and_the_commit_but_no_code_bundle() {
+    let dir = tmp("data-only");
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |args: &[&str]| {
+        let ok = Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .stdout(Stdio::null())
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    git(&["init", "-q", "-b", "main"]);
+    std::fs::write(repo.join("README"), "x").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "base"]);
+    let (live, history) = (dir.join("live.db"), dir.join("history.db"));
+    for db in [&live, &history] {
+        Connection::open(db).unwrap().execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY); INSERT INTO t VALUES (1);").unwrap();
+    }
+    let src = Sources { live, history, repo: Some(repo.clone()), app_version: "test".into() };
+    let root = dir.join("archive");
+    let now = chrono::Utc.with_ymd_and_hms(2026, 10, 5, 4, 30, 0).unwrap();
+    let manifest = make_weekly(&root, "weekly/2026-W41", &src, now).unwrap();
+    assert!(manifest.files.iter().all(|f| f.role != Role::RepoBundle), "{:?}", manifest.files);
+    assert_eq!(manifest.files.len(), 2);
+    assert_eq!(manifest.git_commit.as_deref().map(str::len), Some(40), "the commit to install is recorded");
+    assert!(!root.join("weekly/2026-W41/repo.bundle").exists());
+    assert!(verify(&root.join("weekly/2026-W41"), true).is_empty());
+    let out = dir.join("out");
+    restore(&root, "weekly/2026-W41", &out).unwrap();
+    assert!(out.join("svanbot10.db").is_file() && out.join("history.db").is_file() && !out.join("repo.bundle").exists());
+}
