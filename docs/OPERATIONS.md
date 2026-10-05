@@ -537,6 +537,26 @@ git status --porcelain                             # empty: the tree is the bran
 scripts/update.sh --check                          # a normal count, not the whole branch's history
 ```
 
+### What a hot swap can break (audit, #774)
+
+What each hazard is, what covers it, and what has actually been exercised. "Injected" means a test or a drill
+made the fault happen; the rest is from the code and from live swaps.
+
+| Hazard | Covered by | Exercised |
+|---|---|---|
+| A bot replaced while deciding | the release watch waits up to 90 s for no bot to be mid-turn (a turn marker older than 60 s is stale), saves models (head) and open hands, then exits 75; the action deadline (45 s) is shorter than the wait, so a stuck turn has already timed out | Live swaps (a gap of 11 to 41 s per bot, no warn or error rows); not injected |
+| Data-format migration across a swap | the installer refuses to install or roll back to a build that cannot read the stored data (`--data-format`, `require_readable_store`) before anything moves | Injected: the `sv10-release` tests |
+| A swap killed between its renames | the journal written before the first rename; the next release, rollback, `--repair` or the keepalive timer restores the previous complete sets | Injected: `SV10_RELEASE_TEST_KILL_AFTER_BIN_SWAP` in the installer's tests and `scripts/tests/release-rollback.sh` |
+| The new build starts and then dies | the health gate after the install waits for `/api/health` to report the installed commit and rolls back to the previous verified snapshot when it does not | Injected: `scripts/tests/update.sh` |
+| Mixed versions while the processes swap one by one | `Params` is `#[serde(default)]` with no `deny_unknown_fields`, so an older reader drops a field it does not know; the window is about 7 s | Live swaps |
+| **Rolling back after a promotion** | nothing: a build older than the one that wrote `params.v1` plays the champion without any field it lacks, silently | Not covered; before rolling back across a promotion, compare the stored champion's keys with the older build's `Params` (`git show <commit>:crates/libs/policy/src/policy/params.rs`) |
+| Learner and analyst across a swap | the learner swaps after its current step and resumes its stored run; the analyst between audit batches; both restart under their supervisors | Live swaps; not injected |
+| A process that ignores SIGTERM | found by this audit (#803): the installed build hung after SIGTERM, fixed in #804 and #805 | Live |
+
+Not done: fault injection against a running fleet for the first, fifth and seventh rows; the rollback row would
+need a guard that compares the champion's keys with the target build, which the installer cannot do today (it does
+not read the store).
+
 ## Split fleet (off by default)
 
 `SVANBOT_FLEET=split` (in `.env`, the environment wins; it has been run live and rolled back to `all`, because the dashboard sees workers only through 5 s heartbeats and gets none of their realtime events) makes `scripts/start.sh` run a head process plus one worker per bot from `.env`
