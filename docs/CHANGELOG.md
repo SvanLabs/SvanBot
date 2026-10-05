@@ -9,6 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A narrowed equity draw that cannot be measured can be priced against the opponents' full ranges, shrunk, instead of refusing
+  the spot (`ess_fallback`, default 0 = off, so every decision is unchanged) with a catalogue row and a search step each way.
+  The pool grows by two candidates (#746, layer 2).
+
+- A larger postflop jam when the effective stack is within three pots is a parameter (`short_jam_pot_ratio`, default 0 = off, so
+  every decision is unchanged) with a catalogue row and a search step; the learner can now test it. The pool grows by one
+  candidate (#745, layer 2).
+
 - The learner confirms up to three survivors per cycle, best first, until one promotes, each held to
   bounds corrected for how many there are (z 1.96 / 2.2414 / 2.3940, Bonferroni), so the false-promotion
   rate per cycle stays that of one 95% confirmation. A deliberate promotion-gate change authorized by the
