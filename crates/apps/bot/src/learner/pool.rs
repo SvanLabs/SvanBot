@@ -87,6 +87,9 @@ pub fn challengers(p: &Params, cycle: u64) -> Vec<(String, f64, f64, Params)> {
     });
     // Price multiway calls as a mixture over one, two and three-plus callers (#746 layer 1); off keeps the top-two collapse.
     step_knob("caller_mix", if p.caller_mix { -1.0 } else { 1.0 }, &|c, v| c.caller_mix = v >= 0.5);
+    // Price an unmeasurable narrowed draw wide instead of refusing it (#746 layer 2); off keeps the refusal.
+    step_knob("ess_fallback", 0.25 * step, &|c, v| c.ess_fallback = v);
+    step_knob("ess_fallback", -0.25 * step, &|c, v| c.ess_fallback = v);
     // Postflop bet sizes as pot fractions: the four the policy started with, and a seven-size set
     // (0170) the 4x live budget and exact heads-up equity can afford. The scale knob keeps whichever
     // set the champion plays.
