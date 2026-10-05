@@ -122,6 +122,7 @@ async fn main() -> Result<()> {
         experiment: RwLock::new(Default::default()),
         resumable: Mutex::new(resumable),
         tv_cache: Default::default(),
+        decision_gate: Arc::new(tokio::sync::Semaphore::new(sv10_bot::live::decision_permits(hardware.logical_cores))),
     });
 
     // Every numeric setting and the value in force after clamping, once (0250).

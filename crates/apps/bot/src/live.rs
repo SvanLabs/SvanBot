@@ -257,6 +257,16 @@ pub struct Shared {
     /// [`crate::api::tv`] 's tick. Bounded by the seat count; entries go stale, never wrong, and a
     /// slot re-projects past the tick.
     pub tv_cache: Mutex<std::collections::HashMap<usize, (std::time::Instant, String)>>,
+    /// Bounds the decision searches running at once (#780): tokio's 512-thread `spawn_blocking` cap is no
+    /// backpressure for CPU-bound work, and five unbounded searches on a few cores stretched ~130 ms to
+    /// ~0.6 s. Over-limit searches queue (inside the decision's 8 s cap), never run degraded.
+    pub decision_gate: std::sync::Arc<tokio::sync::Semaphore>,
+}
+
+/// How many decision searches may run at once on a machine with `logical_cores`: half of them, at
+/// least two. A fleet of five bots on twelve cores never queues; a small box does instead of thrashing.
+pub fn decision_permits(logical_cores: usize) -> usize {
+    (logical_cores / 2).max(2)
 }
 
 /// `configured` with every alias each of those names has played under, each once, order preserved.

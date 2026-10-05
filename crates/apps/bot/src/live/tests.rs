@@ -63,6 +63,7 @@ impl Shared {
             experiment: RwLock::new(Default::default()),
             resumable: Default::default(),
             tv_cache: Default::default(),
+            decision_gate: std::sync::Arc::new(tokio::sync::Semaphore::new(decision_permits(8))),
         })
     }
 }
@@ -196,4 +197,11 @@ fn the_fleet_expands_to_every_name_a_bot_played_under() {
     ]);
     assert_eq!(with_aliases(&["A".into(), "B".into()], &shared), ["A", "C", "B"]);
     assert_eq!(with_aliases(&["Unseen".to_string()], &shared), ["Unseen"]);
+}
+
+#[test]
+fn decision_searches_are_bounded_by_half_the_cores_but_never_below_two() {
+    assert_eq!((decision_permits(1), decision_permits(4), decision_permits(12), decision_permits(64)), (2, 2, 6, 32));
+    let shared = Shared::for_test("decision-gate", &["A"]);
+    assert_eq!(shared.decision_gate.available_permits(), 4);
 }
