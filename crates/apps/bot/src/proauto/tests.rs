@@ -96,7 +96,10 @@ async fn a_402_steps_down_the_ladder_and_each_rung_has_its_own_id_saved_before_t
     let rest = Rest { http: &http, base: &base, key: "k" };
     let mut state = State::default();
     let events = mock.events.clone();
-    let mut save = |s: &State| events.lock().push(format!("save {}", s.pending.as_ref().map_or("none", |p| p.request_id.as_str())));
+    let mut save = |s: &State| {
+        events.lock().push(format!("save {}", s.pending.as_ref().map_or("none", |p| p.request_id.as_str())));
+        true
+    };
     let got = execute(&rest, &mut state, Plan::Buy { ladder: vec![3, 1] }, 5_000.0, &mut save).await.expect("the one-season rung buys");
     assert_eq!((got.seasons_purchased, got.amount_charged_cents), (1, 500));
     let seen = mock.seen.lock().clone();
@@ -117,7 +120,7 @@ async fn no_credit_on_any_rung_buys_nothing_and_says_so() {
     let http = reqwest::Client::new();
     let rest = Rest { http: &http, base: &base, key: "k" };
     let mut state = State::default();
-    let got = execute(&rest, &mut state, Plan::Buy { ladder: vec![3, 1] }, 1.0, &mut |_| {}).await;
+    let got = execute(&rest, &mut state, Plan::Buy { ladder: vec![3, 1] }, 1.0, &mut |_| true).await;
     assert!(got.is_none() && state.receipt.is_none() && state.pending.is_none());
     assert_eq!(mock.seen.lock().len(), 2);
     assert!(state.last_error.as_deref().is_some_and(|e| e.contains("credit")), "{:?}", state.last_error);
@@ -130,12 +133,12 @@ async fn a_lost_answer_keeps_the_id_and_the_retry_reuses_it() {
     let http = reqwest::Client::new();
     let rest = Rest { http: &http, base: &base, key: "k" };
     let mut state = State::default();
-    assert!(execute(&rest, &mut state, Plan::Buy { ladder: vec![3, 1] }, 1_000.0, &mut |_| {}).await.is_none());
+    assert!(execute(&rest, &mut state, Plan::Buy { ladder: vec![3, 1] }, 1_000.0, &mut |_| true).await.is_none());
     let pending = state.pending.clone().expect("the request of unknown fate stays pending");
     assert_eq!(mock.seen.lock().len(), 1, "an error is not a reason to try the cheaper rung: the first may have been charged");
     let again = plan(ON, &state, free(), 1_000.0 + RETRY_GAP_SECS);
     assert_eq!(again, Plan::Retry { seasons: 3, request_id: pending.request_id.clone() });
-    let got = execute(&rest, &mut state, again, 1_000.0 + RETRY_GAP_SECS, &mut |_| {}).await.expect("the retry lands");
+    let got = execute(&rest, &mut state, again, 1_000.0 + RETRY_GAP_SECS, &mut |_| true).await.expect("the retry lands");
     assert_eq!((got.seasons_purchased, got.amount_charged_cents, got.request_id.as_str()), (3, 1200, pending.request_id.as_str()));
     let ids: Vec<_> = mock.seen.lock().iter().map(|b| b["request_id"].as_str().unwrap().to_string()).collect();
     assert_eq!(ids[0], ids[1], "one purchase, one id, however many tries");
@@ -183,4 +186,19 @@ fn settings_default_off_and_snap_to_a_real_bundle() {
         let got = Settings::parse(|k| (k == "SVANBOT_AUTO_RENEW_SEASONS").then(|| raw.to_string())).max_seasons;
         assert_eq!(got, want, "SVANBOT_AUTO_RENEW_SEASONS={raw}");
     }
+}
+
+/// A purchase whose request id cannot be stored is not sent (#897). Sent anyway, a lost answer left
+/// the next pass with no pending id and no receipt, and it bought again under a new id.
+#[tokio::test]
+async fn a_purchase_whose_id_cannot_be_stored_is_not_sent() {
+    let (base, mock) = serve(&[(200, receipt_body(1, 1, 500))]).await;
+    let http = reqwest::Client::new();
+    let rest = Rest { http: &http, base: &base, key: "k" };
+    let mut state = State::default();
+    let got = execute(&rest, &mut state, Plan::Buy { ladder: vec![3, 1] }, 9.0, &mut |_| false).await;
+    assert!(got.is_none() && state.receipt.is_none());
+    assert!(mock.seen.lock().is_empty(), "nothing reached the venue: {:?}", mock.seen.lock());
+    assert!(state.last_error.as_deref().is_some_and(|e| e.contains("not sent")), "{:?}", state.last_error);
+    assert!(state.quiet_until > 9.0, "and it waits before trying again");
 }
