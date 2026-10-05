@@ -19,8 +19,14 @@ fn endpoint(status: &str, body: &str) -> String {
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let mut stream = stream;
-            let mut request = [0u8; 512];
-            let _ = stream.read(&mut request);
+            // Read the whole request first: closing with bytes unread resets the connection and eats the reply.
+            let (mut request, mut chunk) = (Vec::new(), [0u8; 256]);
+            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                match stream.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => request.extend_from_slice(&chunk[..n]),
+                }
+            }
             let _ = stream.write_all(reply.as_bytes());
         }
     });
