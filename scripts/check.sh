@@ -98,10 +98,14 @@ staged_crates=1 staged_web=1
 if [ "$mode" = commit ]; then
   step "secret scan (staged)"
   scripts/pre-commit-secret-scan.sh || fail "secret scan"
-  git diff --cached --name-only | grep -qE '^(crates/|Cargo\.(toml|lock)|deny\.toml)' || staged_crates=0
+  # The list is read whole before it is searched. Piped straight into `grep -q`, a long one killed
+  # git with SIGPIPE when grep left at its first match, and under pipefail that read as "no match":
+  # a commit staging thousands of files skipped rustfmt, clippy and the golden tests (#875).
+  staged=$(git diff --cached --name-only)
+  grep -qE '^(crates/|Cargo\.(toml|lock)|deny\.toml)' <<<"$staged" || staged_crates=0
   # Anything under web/, not just web/src/: the specs and the web root's config files are type-checked
   # too, and a change confined to them must not skip the check that covers them.
-  git diff --cached --name-only | grep -q '^web/' || staged_web=0
+  grep -q '^web/' <<<"$staged" || staged_web=0
 fi
 
 # The full gate's test build starts now and overlaps everything up to the test run.
@@ -165,6 +169,7 @@ case "$mode" in
     run_suite "start-only tests (run bash scripts/tests/start-only.sh)" bash scripts/tests/start-only.sh
     run_suite "reap-worktrees tests (run bash scripts/tests/reap-worktrees.sh)" bash scripts/tests/reap-worktrees.sh
     run_suite "restart-bot tests (run bash scripts/tests/restart-bot.sh)" bash scripts/tests/restart-bot.sh
+    run_suite "secret-scan tests (run bash scripts/tests/secret-scan.sh)" bash scripts/tests/secret-scan.sh
     run_suite "update tests (run bash scripts/tests/update.sh)" bash scripts/tests/update.sh
     run_suite "adopt-upstream tests (run bash scripts/tests/adopt-upstream.sh)" bash scripts/tests/adopt-upstream.sh
     run_suite "file-size tests (run bash scripts/tests/file-size.sh)" bash scripts/tests/file-size.sh
