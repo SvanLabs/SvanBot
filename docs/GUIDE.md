@@ -504,10 +504,11 @@ follows whatever instruction set the checkout's cargo configuration sets.
 `./target/release/probe --hardware` prints the profile; the dashboard settings show it too.
 Set `LEARNER_THREADS` to override the learner's thread count.
 
-**Compute profiles**. The Live pulse's COMPUTE cell has four buttons:
+**Compute profiles**. The Live pulse's COMPUTE cell has five buttons:
 - **Quiet** leaves the PC free: live budget ×0.25, learner at a quarter of the threads, analyst on 1 thread.
 - **Balanced** uses about half the machine.
 - **Max** uses every core. It is the default.
+- **Deep** spends four times the live search budget (up to 8× with Custom). The turn clock allows it, but ten times the equity samples measured +0.27 bb/100 (95% −1.90 .. +2.44) over 480,000 paired hands (#758), so it is a lever, not a recommendation; watch the decision latency before leaving it on.
 - **Custom** sets the live budget share and both thread counts yourself.
 
 A profile changes compute only, never strategy. The live budget never drops below the learner's own simulation budget. The live bots switch at once, within 30 s. The learner restarts with its new thread count between steps (at most about two minutes) and the analyst between audit batches, about 30 s after their supervisors notice the exit. A saved profile wins over `LEARNER_THREADS` and `ANALYST_THREADS`; `POST /api/compute/profile` sets one directly.
