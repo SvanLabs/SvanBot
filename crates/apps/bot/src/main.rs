@@ -184,6 +184,9 @@ fn spawn_release_watch(shared: &Arc<Shared>) {
         use std::time::{Duration, Instant};
         loop {
             std::thread::sleep(Duration::from_secs(15));
+            // The watchdog reads this: a watch that died would stop hot swaps without a word.
+            let at = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
+            let _ = shared.store.put_kv(sv10_bot::release::WATCH_KEY, &serde_json::json!({ "at": at }).to_string());
             let release = watch.as_ref().is_some_and(|w| w.replacement_ready(Duration::from_secs(20), "sv10-bot"));
             let setup = shared.restart_requested.load(Ordering::Relaxed);
             let restore = shared.restore_requested.load(Ordering::Relaxed);

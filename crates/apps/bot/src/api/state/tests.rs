@@ -58,7 +58,7 @@ fn training_json_names_stale_loops_instead_of_hiding_them() {
     let shared = Shared::for_test("stale-loops", &["A"]);
     let training = training_json(&shared);
     let names: Vec<&str> = training["stale_loops"].as_array().unwrap().iter().map(|l| l["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["learner", "analyst", "fold calibration", "backups", "experiment poller"]);
+    assert_eq!(names, ["learner", "analyst", "fold calibration", "backups", "experiment poller", "release watch", "season poller"]);
 }
 
 #[test]

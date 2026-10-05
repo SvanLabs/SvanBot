@@ -9,6 +9,9 @@ use std::time::{Duration, SystemTime};
 
 /// Exit code that tells the supervisor "new release, restart now" (EX_TEMPFAIL).
 pub const SWAP_EXIT_CODE: i32 = 75;
+/// Kv key the release watch touches on every tick (`{"at": unix seconds}`), so the autonomy watchdog notices a
+/// watch that died: hot swaps and setup restarts would stop without a word (#744).
+pub const WATCH_KEY: &str = "release.watch";
 /// Exit code that tells the supervisor "the live database failed its check: restore from the newest verified backup".
 pub const RESTORE_EXIT_CODE: i32 = 70;
 
