@@ -359,8 +359,16 @@ fn spawn_watchdog(shared: &Arc<Shared>) {
             }
             let w = watch.clone();
             let before = std::mem::take(&mut stale);
+            // The API is probed through its own health endpoint rather than a second heartbeat key.
+            let api = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().ok();
+            let url = format!("http://127.0.0.1:{}/api/health", watch.config.web_port);
+            let answered = match api {
+                Some(c) => c.get(&url).send().await.is_ok_and(|r| r.status().is_success()),
+                None => true,
+            };
             let checked = crate::jobs::blocking("autonomy watchdog", move || {
-                let now = crate::watchdog::stale_loops(now_secs(), &loops, |k| w.store.get_kv(k));
+                let mut now = crate::watchdog::stale_loops(now_secs(), &loops, |k| w.store.get_kv(k));
+                now.extend(crate::watchdog::api_stale(answered));
                 for (level, line) in crate::watchdog::transitions(&before, &now) {
                     w.log("fleet", level, line);
                 }

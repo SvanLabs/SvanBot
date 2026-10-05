@@ -25,7 +25,7 @@ pub struct WatchedLoop {
 }
 
 /// The watched loops; the learner's limit follows its own idle bound ([`crate::pacing::Pacing`]).
-pub fn loops(learner_max_idle_secs: f64) -> [WatchedLoop; 5] {
+pub fn loops(learner_max_idle_secs: f64) -> [WatchedLoop; 7] {
     [
         WatchedLoop {
             name: "learner",
@@ -64,6 +64,22 @@ pub fn loops(learner_max_idle_secs: f64) -> [WatchedLoop; 5] {
             pointer: "/last_attempt_at",
             limit_secs: 6.0 * crate::experiment::mode::POLL_SECS as f64,
             meaning: "the leaderboard is not being read, so the experiment mode cannot advance or end",
+        },
+        WatchedLoop {
+            name: "release watch",
+            key: crate::release::WATCH_KEY,
+            pointer: "/at",
+            // Ticks every 15 s; ten minutes is forty missed ticks.
+            limit_secs: 600.0,
+            meaning: "hot swaps and dashboard setup restarts will not happen",
+        },
+        WatchedLoop {
+            name: "season poller",
+            key: crate::season::CLOCK_KEY,
+            pointer: "/fetched_at",
+            // Polls every two minutes and a little more per bot; this is about a dozen rounds.
+            limit_secs: 1800.0,
+            meaning: "the season clock is not being read, so the end-of-season table freeze would not be seen",
         },
     ]
 }
@@ -136,6 +152,15 @@ pub fn transitions(before: &[Stale], now: &[Stale]) -> Vec<(&'static str, String
     out
 }
 
+/// The dashboard API did not answer `/api/health` (`answered` false): the dashboard is gone while play
+/// continues, and nothing restarts it by itself (#744).
+pub fn api_stale(answered: bool) -> Option<Stale> {
+    (!answered).then(|| Stale {
+        name: "api server",
+        message: "the dashboard API does not answer /api/health: the dashboard is gone while play continues".to_string(),
+    })
+}
+
 /// Consecutive 10-minute checks a lone bot may stay unseated before the watchdog says so (#748 layer 3).
 pub const SOLO_OFFLINE_CHECKS: u32 = 3;
 
@@ -179,6 +204,8 @@ mod tests {
             (crate::foldcal::FOLD_CAL_KEY, format!(r#"{{"fitted_at":{}}}"#, NOW - 1800.0)),
             (crate::tasks::INTEGRITY_STATUS_KEY, format!(r#"{{"checked_at":{}}}"#, NOW - 600.0)),
             (crate::experiment::MODE_KEY, format!(r#"{{"last_attempt_at":{}}}"#, NOW - 60.0)),
+            (crate::release::WATCH_KEY, format!(r#"{{"at":{}}}"#, NOW - 10.0)),
+            (crate::season::CLOCK_KEY, format!(r#"{{"fetched_at":{}}}"#, NOW - 120.0)),
         ]
     }
 
@@ -253,7 +280,7 @@ mod tests {
     fn a_read_error_is_stale_and_transitions_log_once_each_way() {
         let failing = |_: &str| -> anyhow::Result<Option<String>> { anyhow::bail!("database is locked") };
         let stale = stale_loops(NOW, &loops(6.0 * 3600.0), failing);
-        assert_eq!(stale.len(), 5, "every loop unprovable");
+        assert_eq!(stale.len(), 7, "every loop unprovable");
         assert!(stale[0].message.contains("unreadable (database is locked)"));
         let first = transitions(&[], &stale[..1]);
         assert_eq!(first, [("warn", format!("autonomy: {}", stale[0].message))]);
@@ -274,5 +301,24 @@ mod tests {
         assert!(lines[0].1.contains("30 min") && lines[0].0 == "warn");
         assert_eq!(lines[1], ("info", "the only bot is seated again".into()));
         assert_eq!(solo_check(&["offline", "playing"], 5), (0, None), "several bots: not this alert's business");
+    }
+
+    #[test]
+    fn a_dead_release_watch_or_season_poller_is_named() {
+        let stale = check(&with(&[
+            (crate::release::WATCH_KEY, format!(r#"{{"at":{}}}"#, NOW - 3600.0)),
+            (crate::season::CLOCK_KEY, format!(r#"{{"fetched_at":{}}}"#, NOW - 7200.0)),
+        ]));
+        let names: Vec<_> = stale.iter().map(|s| s.name).collect();
+        assert_eq!(names, ["release watch", "season poller"], "{stale:?}");
+        assert!(check(&healthy()).is_empty());
+    }
+
+    #[test]
+    fn the_api_probe_names_a_dashboard_that_does_not_answer() {
+        let stale = api_stale(false).expect("a dead API is stale");
+        assert_eq!(stale.name, "api server");
+        assert!(api_stale(true).is_none());
+        assert_eq!(transitions(&[], &[stale]).len(), 1);
     }
 }
