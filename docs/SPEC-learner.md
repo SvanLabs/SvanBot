@@ -227,6 +227,13 @@ next process resumes the stored run.
      current mean's lower bound below +1 bb/100. Promote early only on z ≥ 3 with the lower bound
      at least +1 bb/100.
    - After the last chunk, promote when the 95% lower bound is at least +1 bb/100.
+   - **Top-k (#760 item 4, a deliberate gate change).** Up to three survivors above the bar are
+     confirmed in turn, best first, until one promotes, so a rejected best no longer wastes the cycle.
+     Each is held to bounds corrected for how many there are: z 1.96 for one (exactly the gate above),
+     2.2414 for two, 2.3940 for three (Bonferroni at 2.5% / k, tested in `promotion.rs`), in the lower
+     bound, the upper bound and the futility projection; the early-promotion z of 3 is unchanged. The
+     chance a cycle promotes a candidate that is not worth the bar therefore stays at most that of a
+     single 95% confirmation; the cost is that each of several needs a larger edge.
 9. **Experiment targets**: after the search, the learner publishes
    `learner.experiment-targets.v1` — the survivor it is about to confirm, then every ledger transition
    still undecided (ahead, 95% upper bound above +1 bb/100, not decided dead, never rejected by a
