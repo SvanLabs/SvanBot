@@ -6,8 +6,8 @@
 //! - `archive list` — every archive with its size and creation time.
 //! - `archive verify [NAME] [--deep]` — hashes (and decompressed content with `--deep`); all
 //!   archives when no name is given. Exit 1 on any problem.
-//! - `archive restore NAME --to DIR` — rebuild `svanbot10.db` and `history.db` (and
-//!   `repo.bundle`) in DIR, verified. Never writes into `artifacts/`: stop the fleet and copy the
+//! - `archive restore NAME --to DIR` — rebuild `svanbot10.db` and `history.db` (and `repo.bundle`,
+//!   for archives written before the data-only rule, #772) in DIR, verified. Never writes into `artifacts/`: stop the fleet and copy the
 //!   restored files in by hand (docs/OPERATIONS.md, "Restore from the archive").
 //! - `archive export-derived --to DIR` — write the public derived set (`schema.sql`,
 //!   `aggregates.json`, `SHA256SUMS`) for a dated data release: counts, summaries and the table
