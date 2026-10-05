@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import type { MonitorState } from './types';
 import { NamesIn } from './playername';
+import { usePoll } from './api';
 
 const KIND_CLASS: Record<string, string> = { BIGWIN: 'positive', BIGLOSS: 'negative', NEMESIS: 'negative', STALL: 'amber', ERROR: 'negative', MONITOR: 'amber' };
 const pct = (v: number | null) => v == null ? '—' : `${v.toFixed(1)}%`;
@@ -10,15 +10,10 @@ const HOST_CLOCK = 'The results monitor writes this wall time from the machine t
 
 /** Results monitor (the `monitor` binary) plus machine pressure, replay records and the season check. */
 export function ResultsMonitor() {
-  const [data, setData] = useState<MonitorState>();
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const load = () => fetch('/api/monitor').then(r => r.ok ? r.json() : Promise.reject(r.status)).then(v => { if (alive) { setData(v); setFailed(false); } }).catch(() => { if (alive) setFailed(true); });
-    load();
-    const id = window.setInterval(load, 30_000);
-    return () => { alive = false; window.clearInterval(id); };
-  }, []);
+  // `usePoll` asks again the moment a session exists; a bare interval left this panel on "unavailable"
+  // for up to half a minute after the login.
+  const { data, error } = usePoll<MonitorState>('/monitor', 30_000);
+  const failed = error != null;
   if (!data) return <p className="footnote">{failed ? 'Monitor data unavailable.' : 'Loading monitor…'}</p>;
   const m = data.monitor;
   const parts = (text?: string) => (text || '').split(' | ');

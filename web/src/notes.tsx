@@ -5,7 +5,7 @@
  *  is always on screen, because a save that failed must not look like one that worked. */
 import { useEffect, useRef, useState } from 'react';
 import { NotebookPen } from 'lucide-react';
-import { request } from './api';
+import { request, SESSION_EVENT } from './api';
 import { readLocal, writeLocal } from './storage';
 import { format, Panel } from './ui';
 import type { DashboardNotes } from './types';
@@ -81,25 +81,36 @@ export function NotesPanel() {
 
   useEffect(() => {
     let alive = true;
-    // With nothing unsent the server is the truth — including when it answers "nothing stored", which
-    // is what a cleared box leaves there, so a browser still holding the old copy drops it (#738
-    // review). With something unsent this browser has the newer text: never adopt the stored note
-    // over it, push it instead.
-    const unsent = readLocal(LOCAL_DIRTY) === '1';
-    request<DashboardNotes | null>('/notes').then(stored => {
-      if (!alive || touched.current) return;   // the operator typed while this was in flight
-      if (unsent) { void save(); return; }
-      const text = stored ? stored.text : '';
-      latest.current = text;
-      setText(text);
-      writeLocal(LOCAL_KEY, text);
-      setState(stored ? 'saved' : 'idle');
-    }).catch(() => {
-      // The endpoint is down: this browser's copy renders, but unsent text is not on the server, so
-      // the panel says failed and keeps trying rather than looking as if all were well.
-      if (alive && unsent) void save();
-    });
-    return () => { alive = false; };
+    let answered = false;
+    const load = () => {
+      // With nothing unsent the server is the truth — including when it answers "nothing stored", which
+      // is what a cleared box leaves there, so a browser still holding the old copy drops it (#738
+      // review). With something unsent this browser has the newer text: never adopt the stored note
+      // over it, push it instead.
+      const unsent = readLocal(LOCAL_DIRTY) === '1';
+      request<DashboardNotes | null>('/notes').then(stored => {
+        answered = true;
+        if (!alive || touched.current) return;   // the operator typed while this was in flight
+        if (unsent) { void save(); return; }
+        const text = stored ? stored.text : '';
+        latest.current = text;
+        setText(text);
+        writeLocal(LOCAL_KEY, text);
+        setState(stored ? 'saved' : 'idle');
+      }).catch(() => {
+        // The endpoint is down: this browser's copy renders, but unsent text is not on the server, so
+        // the panel says failed and keeps trying rather than looking as if all were well.
+        if (alive && unsent) void save();
+      });
+    };
+    load();
+    // Asked again once a session exists, if the first request got no answer. The panel mounts before
+    // the login, so with a token set that request is refused; left at that, the box stayed empty
+    // after the login and the first edit replaced the stored note. Unsent text is on its own retry
+    // schedule and is not asked about again.
+    const again = () => { if (!answered && readLocal(LOCAL_DIRTY) !== '1') load(); };
+    window.addEventListener(SESSION_EVENT, again);
+    return () => { alive = false; window.removeEventListener(SESSION_EVENT, again); };
   }, []);
 
   // The last keystrokes before the page goes: a plain fetch is cancelled by the navigation, and a

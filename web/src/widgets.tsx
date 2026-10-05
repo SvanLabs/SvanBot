@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, EyeOff, Grip, Plus, RotateCcw } from 'lucide-react';
 import { readLocal, writeLocal } from './storage';
+import { SESSION_EVENT } from './api';
 import { request } from './api';
 import { WidgetIdContext } from './ui';
 import type { DashboardLayout } from './types';
@@ -124,13 +125,20 @@ export function WidgetBoard({ widgets, defaults, editing, onDoneEditing, view = 
   const arranged = useRef(false);
   useEffect(() => {
     let alive = true;
-    request<DashboardLayout | null>('/layout').then(stored => {
+    let answered = false;
+    const load = () => request<DashboardLayout | null>('/layout').then(stored => {
+      answered = true;
       if (!alive || !stored || arranged.current) return;
       const next = reconcile(stored, defaults);
       setLayoutState(next);
       save(next); // remember it here too, so the next load has the arrangement even without the server
     }).catch(() => { /* no endpoint: the browser-local layout stands */ });
-    return () => { alive = false; };
+    void load();
+    // Asked again once a session exists, if the first request got no answer: before the login it is
+    // refused, and the stored arrangement was then never adopted until a reload.
+    const again = () => { if (!answered) void load(); };
+    window.addEventListener(SESSION_EVENT, again);
+    return () => { alive = false; window.removeEventListener(SESSION_EVENT, again); };
     // Mount only: the first `defaults` is the one this mount reconciles against (main.tsx passes a
     // fresh literal each render, and a later one is the same board).
   }, []);

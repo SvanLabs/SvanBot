@@ -1137,6 +1137,11 @@ test('an opponent row opens the one scout view with our record, the corrections 
   const replay = page.getByRole('dialog', {name:'Hand replay'});
   await expect(replay).toBeVisible();
   await expect(replay).toContainText('h-1aaaaa');
+  // Visible is not enough: under the scout view's backdrop the replay could not be clicked, and the
+  // click closed the scout view instead. A click inside it must reach it and leave both open.
+  await replay.click({position:{x:12,y:12}});
+  await expect(replay).toBeVisible();
+  await expect(card).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(replay).toHaveCount(0);
   await expect(card).toBeVisible();
