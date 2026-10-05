@@ -46,12 +46,15 @@ struct Tally {
     /// Our net from the replay vs the server's recorded profit for the same hand.
     net_checked: usize,
     net_mismatch: usize,
+    /// Source databases left out because they failed their integrity check.
+    skipped: usize,
 }
 
 fn import_db(db: &HistoryDb, path: &Path, dry_run: bool, tally: &mut Tally) -> Result<()> {
     let conn = open_source(path)?;
     if let Err(e) = sv10_store::integrity::check_connection(&conn) {
         eprintln!("skip {}: integrity check failed: {e}", path.display());
+        tally.skipped += 1;
         return Ok(());
     }
     let slots: Vec<i64> =
@@ -215,6 +218,8 @@ fn main() -> Result<()> {
                 let (checked, bad) = db.verify_corpus()?;
                 println!("corpus verified: {checked} rows, {} digest mismatches", bad.len());
             }
+            // Everything readable was imported; the run still did not do what was asked of it.
+            anyhow::ensure!(tally.skipped == 0, "{} source database(s) failed their integrity check and were skipped", tally.skipped);
             Ok(())
         }
         Some("phh") => {
