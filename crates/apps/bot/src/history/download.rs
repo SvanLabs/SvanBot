@@ -36,6 +36,14 @@ pub(super) fn resume_capped_backfill(done: bool, frontier: i64, total: i64, cap:
     cap == 0 && done && total > 0 && frontier < total
 }
 
+/// Where the backfill continues after a page of `got` hands at `frontier`. Hands that arrived since the last page
+/// (`server_total - total`) push everything older deeper, so they are skipped too, but only once a total is known:
+/// on a fresh store `total` is still 0, and the whole export would read as "arrived during the backfill", jumping the
+/// frontier to the end and declaring a 160,000-hand history complete after one page (found by the #766 rebuild drill).
+pub(super) fn next_frontier(frontier: i64, got: i64, total: i64, server_total: i64) -> i64 {
+    frontier + got + if total > 0 { (server_total - total).max(0) } else { 0 }
+}
+
 fn now_secs() -> i64 {
     chrono::Utc::now().timestamp()
 }
@@ -210,7 +218,7 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
                         }
                     };
                     // Hands played during the backfill shift this page; skip past them next time.
-                    frontier += got + (server_total - total).max(0);
+                    frontier = next_frontier(frontier, got, total, server_total);
                     total = server_total;
                     db.set_meta(&key("total"), &total.to_string());
                     db.set_meta(&key("offset"), &frontier.to_string());
@@ -310,5 +318,17 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
         }
         let all_done = shared.config.bots.iter().all(|b| db.meta(&format!("done.{}", b.name)).is_some());
         tokio::time::sleep(Duration::from_secs(if all_done { 3600 } else { 60 })).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fresh_store_does_not_read_the_whole_export_as_hands_that_arrived_during_the_backfill() {
+        assert_eq!(next_frontier(0, 500, 0, 160_162), 500);
+        assert_eq!(next_frontier(1_000, 500, 160_000, 160_030), 1_530);
+        assert_eq!(next_frontier(1_000, 500, 160_000, 159_990), 1_500);
     }
 }
