@@ -68,8 +68,11 @@ fn caught_up(new: usize, known: usize, offset: i64, total: i64, server_total: i6
 }
 
 pub(super) async fn store_page(db: &std::sync::Arc<HistoryDb>, bot: &str, page: &Value) -> Result<(usize, usize, i64)> {
-    let got = page["hands"].as_array().map(|a| a.len()).unwrap_or(0) as i64;
-    let hands: Vec<Value> = page["hands"].as_array().cloned().unwrap_or_default().into_iter().filter(recent_enough).collect();
+    // A 200 body with no list of hands is not a page. Read as zero hands, it would end the download
+    // as done for good (#937).
+    let listed = page["hands"].as_array().ok_or_else(|| anyhow::anyhow!("history page holds no list of hands"))?;
+    let got = listed.len() as i64;
+    let hands: Vec<Value> = listed.iter().filter(|h| recent_enough(h)).cloned().collect();
     let (db, name) = (db.clone(), bot.to_string());
     let (new, known) = tokio::task::spawn_blocking(move || db.insert_page(&name, &hands))
         .await

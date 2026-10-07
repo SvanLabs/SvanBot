@@ -226,4 +226,17 @@ mod tests {
         assert_eq!(first.hands + second.hands, 1, "the raw row must not count the hand again: {second:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[tokio::test]
+    async fn a_page_without_a_hands_list_is_not_an_empty_page() {
+        // #937: a 200 body that is not a page read as zero hands, which ends the download as done for
+        // good. An honest empty page is still an empty page.
+        let dir = std::env::temp_dir().join(format!("sv10-history-page-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = std::sync::Arc::new(HistoryDb::open(&dir.join("history.db")).unwrap());
+        assert!(download::store_page(&db, "A", &json!({"detail": "maintenance"})).await.is_err());
+        assert_eq!(download::store_page(&db, "A", &json!({"hands": []})).await.unwrap().2, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
