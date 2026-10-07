@@ -22,8 +22,8 @@ use sv10_store::store as sv10_bot_store;
 /// Days of replay records kept.
 pub const KEEP_DAYS: i64 = 14;
 /// Current replay JSON contract. Version zero is legacy serde input without an explicit field;
-/// version 3 added the per-opponent corrections (0316).
-pub const REPLAY_VERSION: u32 = 3;
+/// version 3 added per-opponent corrections; version 4 preserves the hero's table image (#909).
+pub const REPLAY_VERSION: u32 = 4;
 
 /// The per-opponent corrections live play had installed for one player (they sit on `ModelStore`,
 /// not in `PlayerStats`, so a record without them re-ran every decision against an uncorrected model:
@@ -57,6 +57,10 @@ pub struct ReplayRecord {
     pub players: BTreeMap<String, PlayerStats>,
     /// Population stats (shrinkage prior).
     pub population: PlayerStats,
+    /// Captured per-bot and aggregate table images. None means unknown legacy input; Some(empty)
+    /// means capture verified that no image was installed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hero_seen: Option<BTreeMap<String, PlayerStats>>,
     /// SHA-256 (hex, 16 chars) of the response network used, if one was active.
     pub net_digest: Option<String>,
     /// Per-opponent corrections in force for the players in the situation (version 3; absent before).
@@ -103,6 +107,12 @@ pub fn record(sit: &Situation, seed: u64, params: &Params, models: &ModelStore, 
         params: params.clone(),
         players,
         population: models.population.clone(),
+        hero_seen: Some(
+            [format!("{}{}", sv10_core::model::HERO_SEEN_ONE, sit.hero().name), sv10_core::model::HERO_SEEN_ALL.into()]
+                .into_iter()
+                .filter_map(|key| models.hero_seen.get(&key).map(|stats| (key, stats.clone())))
+                .collect(),
+        ),
         net_digest,
         corrections,
         action: (d.action_name.clone(), d.amount),
@@ -115,7 +125,7 @@ pub fn record(sit: &Situation, seed: u64, params: &Params, models: &ModelStore, 
 pub fn exact_inputs(rec: &ReplayRecord, params: &Params, nn: Option<&Mlp>) -> bool {
     let params_match = serde_json::to_vec(&rec.params).ok() == serde_json::to_vec(params).ok();
     let digest = nn.and_then(net_digest).map(|(digest, _)| digest);
-    params_match && rec.net_digest == digest
+    params_match && rec.net_digest == digest && (rec.hero_seen.is_some() || params.hero_image <= 0.0)
 }
 
 fn candidates(d: &Decision) -> Vec<(String, Option<i64>, f64)> {
@@ -130,6 +140,7 @@ pub fn rerun(rec: &ReplayRecord, params: &Params, nn: Option<&Mlp>) -> Decision 
     let models = ModelStore {
         players: rec.players.clone().into_iter().collect(),
         population: rec.population.clone(),
+        hero_seen: rec.hero_seen.clone().unwrap_or_default().into_iter().collect(),
         response_ratios: std::sync::Arc::new(
             rec.corrections.iter().filter_map(|(n, c)| c.response_ratio.map(|r| (n.clone(), r))).collect(),
         ),
@@ -378,6 +389,41 @@ mod tests {
         assert!(identical(&back, &rerun(&back, &back.params, None)), "a corrected decision must replay exactly");
         let same = audit(&back, &back.params, None, "b", "h");
         assert_eq!(same.gap_bb, 0.0, "the audit sees the same model the live decision saw");
+    }
+
+    #[test]
+    fn a_recorded_hero_image_replays_exactly_through_json() {
+        let mut rng = SmallRng::seed_from_u64(41);
+        let mut hand = Hand::new(&[2_000; 2], 0, 10, 20, &mut rng);
+        hand.apply(Action::Call).unwrap();
+        hand.apply(Action::Check).unwrap();
+        let actor = hand.actor().unwrap();
+        let names = (0..2).map(|i| if i == actor { "hero".into() } else { "villain".into() }).collect::<Vec<_>>();
+        let sit = Situation::from_hand(&hand, actor, &names);
+        let mut models = ModelStore::default();
+        let image = PlayerStats {
+            hands: 1000.0,
+            vpip: Counter { opp: 1000.0, hit: 900.0 },
+            pfr: Counter { opp: 1000.0, hit: 800.0 },
+            ..Default::default()
+        };
+        for key in [format!("{}hero", sv10_core::model::HERO_SEEN_ONE), sv10_core::model::HERO_SEEN_ALL.into()] {
+            models.hero_seen.clear();
+            models.hero_seen.insert(key, image.clone());
+            let params = Params { samples: 400, hero_image: 1.0, ..Default::default() };
+            let d = decide_with(&sit, &models, &params, None, &mut SmallRng::seed_from_u64(7));
+            let rec = record(&sit, 7, &params, &models, None, &d);
+            let back: ReplayRecord = serde_json::from_str(&serde_json::to_string(&rec).unwrap()).unwrap();
+            assert!(identical(&back, &rerun(&back, &back.params, None)), "hero image must survive replay capture");
+            assert!(exact_inputs(&back, &back.params, None));
+            let mut legacy = serde_json::to_value(&back).unwrap();
+            legacy.as_object_mut().unwrap().remove("hero_seen");
+            legacy["version"] = 3.into();
+            let mut legacy: ReplayRecord = serde_json::from_value(legacy).unwrap();
+            assert!(!exact_inputs(&legacy, &legacy.params, None), "unknown active image is not exact input");
+            legacy.params.hero_image = 0.0;
+            assert!(exact_inputs(&legacy, &legacy.params, None), "disabled image is not an input");
+        }
     }
 
     #[test]

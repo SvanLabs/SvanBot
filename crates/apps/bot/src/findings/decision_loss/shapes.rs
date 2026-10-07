@@ -67,7 +67,7 @@ mod tests {
                     live_action: live.into(),
                     deep_action: deep.into(),
                     gap_bb: gap,
-                    replay_version: Some(3),
+                    replay_version: Some(crate::replay::REPLAY_VERSION),
                     ..Default::default()
                 },
             )

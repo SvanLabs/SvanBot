@@ -239,7 +239,7 @@ mod tests {
         for want in [
             "never queued",
             "0 of 213 decisions in the preflop check class over the last 30 days",
-            "its 4 window verdicts, all graded before replay v3 and so not evidence",
+            &format!("its 4 window verdicts, all graded before replay v{LIVE_INPUTS_REPLAY_VERSION} and so not evidence"),
             "median pot of 2.0 bb (max 3.0 bb)",
         ] {
             assert!(found[0].evidence.contains(want), "no {want:?} in {}", found[0].evidence);

@@ -64,10 +64,10 @@ pub const BIG_GAP_BB: f64 = 1.0;
 pub const Z95: f64 = 1.96;
 
 /// First replay version whose records carry every input live play used (the per-opponent
-/// corrections, 0316). A verdict graded on an older record compares the live choice with a model that
+/// corrections and hero table image, #909). A verdict graded on an older record compares the live choice with a model that
 /// saw less than the live choice did — a bet the fold offsets priced reads as a loss against a model
 /// without them — so only verdicts at this version or later are decision-loss evidence.
-pub const LIVE_INPUTS_REPLAY_VERSION: u32 = 3;
+pub const LIVE_INPUTS_REPLAY_VERSION: u32 = crate::replay::REPLAY_VERSION;
 
 /// Which deep re-solve verdicts one decision-loss class is made of: a single (street, action family)
 /// spot, or the pooled all-in family.

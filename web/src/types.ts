@@ -182,7 +182,7 @@ export interface AccuracyState { days: number; fleet: DecisionReport; bots: { bo
 /** One live component's measured value (0316): the share of recorded big decisions that move with it
  * switched off, and what the moved choice gives up under the full model. */
 export interface WiringRow { component: string; changed: number; share_pct: number; cost_bb: number; max_bb: number; /** Spots that had the component to switch off (#315); absent on older rows. */ installed?: number | null }
-/** The analyst's wiring measurement (`review_wiring::WiringReport`, store row `wiring.v1`). */
+/** The analyst's wiring measurement (`review_wiring::WiringReport`, store row `wiring.v2`). */
 /** Per street, how many of every decision in the last day the self-calibration bias decided (0332). */
 export interface CalibrationFlips { street: string; decisions: number; flipped: number; share_pct: number; main: string; main_count: number }
 export interface WiringReport { at: number; sample: number; unstable: number; exact: number; exact_with_current: number; carrying_corrections: number; v3: number; v3_exact: number; chosen_not_best: number; rows: WiringRow[]; calibration?: CalibrationFlips[]; /** The sample per street, in play order (#315). */ streets?: [string, number][] }
