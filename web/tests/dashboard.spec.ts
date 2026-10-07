@@ -1470,3 +1470,44 @@ test('the docs page draws its three diagrams and keeps each text version', async
   await expect(figures.first().locator('pre')).toContainText('svanbot10.db');
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
 });
+
+// 922: the win toast read a season rollover as a pot. A bot that ended the last season at -2500
+// starts this one at 0, and that reset was announced as a +2,500 pot it never won. The test pushes
+// each snapshot down the live stream itself, so every poll is one the test chose.
+test('a season rollover is not announced as a pot the bot won', async ({page}) => {
+  await page.addInitScript(() => {
+    const listeners: Record<string, ((event: {data: string}) => void)[]> = {};
+    window.EventSource = class RecordingEventSource {
+      onopen: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      constructor() { setTimeout(() => this.onopen?.(new Event('open')), 0); }
+      addEventListener(type: string, fn: (event: {data: string}) => void) { (listeners[type] ??= []).push(fn); }
+      close() {}
+    } as unknown as typeof EventSource;
+    (window as unknown as {pushState: (snapshot: unknown) => void}).pushState = snapshot => {
+      for (const fn of listeners.state ?? []) fn({data: JSON.stringify(snapshot)});
+    };
+  });
+  const base: Snapshot = await (await page.request.get('/api/state')).json();
+  const at = (net: number, season: Snapshot['bots'][number]['metrics']['season']): Snapshot => {
+    const snapshot = structuredClone(base);
+    snapshot.bots[0].metrics.net_chips = net;
+    snapshot.bots[0].metrics.season = season;
+    return snapshot;
+  };
+  const season13 = {scoped: true, number: 13, id: 'S13', started_at: 1};
+  const season14 = {scoped: true, number: 14, id: 'S14', started_at: 2};
+  await page.goto('/');
+  // The stream listener is registered as the first snapshot renders; push only after that.
+  await expect(page.locator('.workspace-header .updated')).toContainText('Updated');
+  await page.evaluate(snapshot => (window as unknown as {pushState: (s: unknown) => void}).pushState(snapshot), at(-2500, season13));
+  await page.waitForTimeout(300);
+  await expect(page.locator('.toast')).toHaveCount(0);
+  // The rollover: the season-scoped figure starts again at 0.
+  await page.evaluate(snapshot => (window as unknown as {pushState: (s: unknown) => void}).pushState(snapshot), at(0, season14));
+  await page.waitForTimeout(300);
+  // The gain inside the new season is announced; the rollover itself never is.
+  await page.evaluate(snapshot => (window as unknown as {pushState: (s: unknown) => void}).pushState(snapshot), at(1200, season14));
+  await expect(page.locator('.toast', {hasText: /\+1,200/})).toBeVisible();
+  await expect(page.locator('.toast', {hasText: /\+2,500/})).toHaveCount(0);
+});
