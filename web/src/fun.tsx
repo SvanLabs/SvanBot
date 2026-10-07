@@ -276,18 +276,21 @@ interface Toast { id: number; bot: string; net: number }
 
 export function WinToasts({ bots }: { bots: Bot[] }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const last = useRef<Record<number, number>>({});
+  // The baseline is kept per season. A rollover resets the season-scoped chips to zero, and that
+  // reset is not a pot won (#922).
+  const last = useRef<Record<number, {season: string; net: number}>>({});
   const counter = useRef(0);
   useEffect(() => {
     for (const b of bots) {
+      const season = [b.metrics?.season?.id, b.metrics?.season?.number].join('|');
       const prev = last.current[b.slot];
       const now = b.metrics?.net_chips ?? 0;
-      if (prev != null && now - prev >= 1000) {
+      if (prev && prev.season === season && now - prev.net >= 1000) {
         const id = ++counter.current;
-        setToasts(t => [...t.slice(-3), { id, bot: b.name, net: now - prev }]);
+        setToasts(t => [...t.slice(-3), { id, bot: b.name, net: now - prev.net }]);
         setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000);
       }
-      last.current[b.slot] = now;
+      last.current[b.slot] = {season, net: now};
     }
   }, [bots]);
   return <div className="toasts" aria-live="polite">{toasts.map(t => <div key={t.id} className="toast"><Trophy size={16} /><span><b><PlayerName name={t.bot}/></b> scooped a pot</span><strong>{sgn(t.net)}</strong><button aria-label="Dismiss" onClick={() => setToasts(x => x.filter(y => y.id !== t.id))}><X size={12} /></button></div>)}</div>;
