@@ -25,7 +25,18 @@ fn backup_space_available(shared: &Shared) -> bool {
 fn verify_live_database(shared: &Shared) -> Option<(i64, i64)> {
     // Never rotate good backups out behind a copy of a damaged database: stop instead, and let the
     // supervisor's restart run the startup check, which restores the newest verified backup.
-    if let Err(problem) = shared.store.quick_check() {
+    let problem = match shared.store.quick_check() {
+        Ok(()) => None,
+        // Busy is no verdict about the file: skip this backup and check again on the next one, and
+        // never ask for a restore on it (#918).
+        Err(sv10_store::integrity::Unchecked::Busy(why)) => {
+            tracing::warn!("skipping database backup: integrity check waited on a busy database ({why})");
+            shared.log("fleet", "warn", format!("backup skipped: integrity check waited on a busy database ({why})"));
+            return None;
+        }
+        Err(sv10_store::integrity::Unchecked::Damaged(why)) => Some(why),
+    };
+    if let Some(problem) = problem {
         tracing::error!("live database failed its integrity check ({problem}); restore requested");
         shared.log(
             "fleet",
