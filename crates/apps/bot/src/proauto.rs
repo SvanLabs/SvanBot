@@ -201,9 +201,16 @@ async fn post_bundle(rest: &Rest<'_>, seasons: u8, request_id: &str, now: f64) -
     })
 }
 
-/// Carry out `plan`. `save` stores the state; it runs before every request, so a crash after the
-/// send still finds the request id on disk. Returns the receipt when something was bought.
-pub async fn execute(rest: &Rest<'_>, state: &mut State, plan: Plan, now: f64, save: &mut (dyn FnMut(&State) + Send)) -> Option<Receipt> {
+/// Carry out `plan`. `save` stores the state and says whether it did; it runs before every request,
+/// so a crash after the send still finds the request id on disk, and a request whose id could not be
+/// stored is not sent. Returns the receipt when something was bought.
+pub async fn execute(
+    rest: &Rest<'_>,
+    state: &mut State,
+    plan: Plan,
+    now: f64,
+    save: &mut (dyn FnMut(&State) -> bool + Send),
+) -> Option<Receipt> {
     if matches!(plan, Plan::Off | Plan::Nothing(_)) {
         return None;
     }
@@ -236,10 +243,16 @@ async fn settle(
     seasons: u8,
     request_id: String,
     now: f64,
-    save: &mut (dyn FnMut(&State) + Send),
+    save: &mut (dyn FnMut(&State) -> bool + Send),
 ) -> (Option<Receipt>, bool) {
     state.pending = Some(Pending { request_id: request_id.clone(), seasons, at: state.pending.as_ref().map_or(now, |p| p.at) });
-    save(state);
+    // Nothing is bought without its id on disk. Sent anyway, a purchase whose answer was lost left no
+    // trace of itself for the next pass, which then bought again under a new id: a second charge.
+    if !save(state) {
+        state.last_error = Some("the purchase was not sent: its request id could not be stored".into());
+        state.quiet_until = now + BACKOFF_SECS.min(300.0);
+        return (None, false);
+    }
     match post_bundle(rest, seasons, &request_id, now).await {
         Bought::Done(receipt) => {
             state.pending = None;
@@ -272,15 +285,13 @@ fn load(shared: &Shared) -> State {
     shared.store.get_kv(STATE_KEY).ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default()
 }
 
-fn store(shared: &Shared, state: &State) {
-    match serde_json::to_string(state) {
-        Ok(j) => {
-            if let Err(e) = shared.store.put_kv(STATE_KEY, &j) {
-                shared.log("fleet", "error", format!("Pro renewal state not stored: {e}"));
-            }
-        }
-        Err(e) => shared.log("fleet", "error", format!("Pro renewal state not serializable: {e}")),
+/// Store the renewal state; whether it is on disk.
+fn store(shared: &Shared, state: &State) -> bool {
+    let stored = serde_json::to_string(state).map_err(anyhow::Error::from).and_then(|j| shared.store.put_kv(STATE_KEY, &j));
+    if let Err(e) = &stored {
+        shared.log("fleet", "error", format!("Pro renewal state not stored: {e}"));
     }
+    stored.is_ok()
 }
 
 /// A worker saw the venue refuse a join for lack of Pro: tell the head, at most every 20 s.
