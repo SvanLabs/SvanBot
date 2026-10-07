@@ -61,10 +61,10 @@ fn a_measurement_can_be_restricted_to_one_replay_version_and_says_what_it_mixed(
     assert_eq!(select_version(rows.clone(), None).len(), 4, "no filter keeps the whole window");
     // The note fires only for a mixed, unfiltered table, and names the fix.
     let note = mixed_note(&rows, None);
-    // Two of the four rows are not the current version: the unrecorded one and the v2 one.
-    assert!(note.contains("2 of 4") && note.contains("audit-by <days> 3"), "{note}");
+    // Every row predates complete hero-image capture.
+    assert!(note.contains("4 of 4") && note.contains(&format!("audit-by <days> {}", crate::replay::REPLAY_VERSION)), "{note}");
     assert!(mixed_note(&rows, Some(3)).is_empty(), "a filtered table is not mixed");
-    assert!(mixed_note(&[graded(Some(3), 1.0)], None).is_empty(), "all current: nothing to say");
+    assert!(mixed_note(&[graded(Some(crate::replay::REPLAY_VERSION), 1.0)], None).is_empty(), "all current: nothing to say");
 }
 
 /// 0346: a disagreement is not a preference. Most of what the deep search's modal column says it

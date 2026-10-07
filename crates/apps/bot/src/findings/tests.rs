@@ -63,10 +63,10 @@ fn a_decision_loss_needs_its_lower_bound_over_the_floor() {
 #[test]
 fn the_all_in_family_is_pooled_across_streets() {
     let rows = [
-        verdict(Some(3), "river", "all_in:4000", 20.0),
-        verdict(Some(3), "turn", "all_in:900", 0.0),
-        verdict(Some(3), "flop", "all_in:120", 0.0),
-        verdict(Some(3), "preflop", "all_in:100", 0.0),
+        verdict(Some(LIVE_INPUTS_REPLAY_VERSION), "river", "all_in:4000", 20.0),
+        verdict(Some(LIVE_INPUTS_REPLAY_VERSION), "turn", "all_in:900", 0.0),
+        verdict(Some(LIVE_INPUTS_REPLAY_VERSION), "flop", "all_in:120", 0.0),
+        verdict(Some(LIVE_INPUTS_REPLAY_VERSION), "preflop", "all_in:100", 0.0),
     ];
     let (classes, _, excluded) = comparable_classes(rows.iter(), DECISION_LOSS_DAYS);
     assert_eq!(excluded, 0);
@@ -310,12 +310,13 @@ fn only_verdicts_graded_on_the_live_inputs_are_decision_loss_evidence() {
     let rows = [
         verdict(None, "river", "raise:400", 5.0),
         verdict(Some(2), "river", "raise:400", 5.0),
-        verdict(Some(3), "river", "raise:400", 0.25),
-        verdict(Some(3), "river", "raise:900", 0.75),
-        verdict(Some(4), "turn", "call", -1.0),
+        verdict(Some(3), "river", "raise:400", 9.0),
+        verdict(Some(LIVE_INPUTS_REPLAY_VERSION), "river", "raise:400", 0.25),
+        verdict(Some(LIVE_INPUTS_REPLAY_VERSION), "river", "raise:900", 0.75),
+        verdict(Some(LIVE_INPUTS_REPLAY_VERSION + 1), "turn", "call", -1.0),
     ];
     let (classes, _, excluded) = comparable_classes(rows.iter(), GAP_WINDOW_DAYS);
-    assert_eq!(excluded, 2, "the unversioned and the v2 verdict are not evidence");
+    assert_eq!(excluded, 3, "unversioned, v2 and v3 verdicts lack complete input evidence");
     let raised = classes[&ClassKey::Spot { street: "river".into(), action: "raise".into() }];
     assert_eq!((raised.n, raised.total), (2, 1.0), "sized raises are one family");
     assert_eq!((raised.big, raised.days), (0, GAP_WINDOW_DAYS), "neither was a whole decision, and the window is the one fetched");
