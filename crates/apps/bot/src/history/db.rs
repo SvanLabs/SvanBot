@@ -13,8 +13,9 @@ pub const STATUS_KEY: &str = "history.status";
 #[cfg(test)]
 mod compaction_tests;
 mod training;
-/// (raw row id, bot, raw export json, full corpus summary when a richer source holds the hand).
-pub(super) type TableHand = (i64, String, String, Option<String>);
+/// (raw row id, bot, raw export json, full corpus summary when a richer source holds the hand, and
+/// that corpus row's id).
+pub(super) type TableHand = (i64, String, String, Option<String>, Option<i64>);
 
 /// A hand from a source other than our bots' server exports.
 pub struct CorpusRow {
@@ -297,11 +298,13 @@ impl HistoryDb {
     pub(super) fn table_hands(&self, table: &str) -> Result<Vec<TableHand>> {
         let conn = self.conn.lock();
         let mut st = conn.prepare(
-            "SELECT r.id, r.bot, r.json, c.summary FROM raw r LEFT JOIN corpus c ON c.hand_id = r.hand_id
+            "SELECT r.id, r.bot, r.json, c.summary, c.id FROM raw r LEFT JOIN corpus c ON c.hand_id = r.hand_id
              WHERE COALESCE(r.table_id, '') = ?1 ORDER BY r.hand_number, r.started_at",
         )?;
         let rows = st
-            .query_map([table], |r| Ok((r.get(0)?, r.get(1)?, self.codec.text(r.get_ref(2)?)?, self.codec.opt_text(r.get_ref(3)?)?)))?
+            .query_map([table], |r| {
+                Ok((r.get(0)?, r.get(1)?, self.codec.text(r.get_ref(2)?)?, self.codec.opt_text(r.get_ref(3)?)?, r.get(4)?))
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
