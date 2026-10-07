@@ -13,6 +13,8 @@ The shared neural/residual loader now preserves live identity and completion met
 export starts and decoded completion times. Missing live starts select a cold-profile baseline;
 unknown export completion times cannot supply warm-up. The current operator snapshot selects no
 history warm-up because it cannot verify starts for every live hand. Live training continues.
+The loader logs missing boundaries, counts malformed exports separately from valid exclusions,
+and warns when a database error forces cold profiles.
 Networks under the old contract cannot warm-start or be reused as fresh training results; the
 new training contract is bounded-history-before-hand-v2.
 
@@ -45,6 +47,7 @@ and neither comparison demonstrates poker harm; production still runs its own ap
 
 The migration therefore keeps an already active, paired-approved v1 incumbent serving while a
 clean candidate earns approval, as it already does between ordinary neural refreshes. Unapproved,
+predictively failed candidates stay outside the live slot during this migration. Ineligible,
 unknown-contract or malformed old artifacts remain unexposed. A v1 incumbent and its matching
 residuals are retained as existing play, never accepted as new chronological evidence. Residual
 refitting requires the new contract; replacing the network invalidates old residuals by network

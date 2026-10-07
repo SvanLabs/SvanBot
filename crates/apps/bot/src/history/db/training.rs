@@ -21,9 +21,11 @@ impl HistoryDb {
         for (id, ended) in live {
             let start: Option<String> = starts.query_row([id], |r| r.get(0)).optional()?.flatten();
             let (Some(start), Some(end)) = (start.as_deref().and_then(timestamp), timestamp(ended)) else {
+                tracing::warn!(live_hands = live.len(), "history warm-up disabled: missing or invalid live boundary");
                 return Ok(Vec::new());
             };
             if start >= end {
+                tracing::warn!(live_hands = live.len(), "history warm-up disabled: live start does not precede completion");
                 return Ok(Vec::new());
             }
             cutoff = Some(cutoff.map_or(start, |old: DateTime<FixedOffset>| old.min(start)));
@@ -36,22 +38,39 @@ impl HistoryDb {
             Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, self.codec.text(r.get_ref(2)?)?, self.codec.text(r.get_ref(3)?)?))
         })?;
         let mut prior = Vec::new();
+        let (mut unreadable, mut invalid_time, mut outside_window, mut duplicate) = (0, 0, 0, 0);
         for row in rows {
             let (id, started, raw, summary) = row?;
             if ids.contains(id.as_str()) {
+                duplicate += 1;
                 continue;
             }
-            let Ok(export) = serde_json::from_str::<Value>(&raw) else { continue };
-            let (Some(start), Some(end)) = (started.as_deref().and_then(timestamp), export["ended_at"].as_str().and_then(timestamp)) else {
+            let Ok(export) = serde_json::from_str::<Value>(&raw) else {
+                unreadable += 1;
                 continue;
             };
-            if start > end || end >= cutoff {
+            let (Some(start), Some(end)) = (started.as_deref().and_then(timestamp), export["ended_at"].as_str().and_then(timestamp)) else {
+                invalid_time += 1;
+                continue;
+            };
+            if start > end {
+                invalid_time += 1;
+                continue;
+            }
+            if end >= cutoff {
+                outside_window += 1;
                 continue;
             }
             if let Ok(hand) = serde_json::from_str(&summary) {
                 prior.push((end, id, hand));
+            } else {
+                unreadable += 1;
             }
         }
+        if unreadable + invalid_time > 0 {
+            tracing::warn!(unreadable, invalid_time, "history warm-up rejected unreadable or invalid exports");
+        }
+        tracing::info!(accepted = prior.len(), outside_window, duplicate, "history warm-up chronology selection");
         prior.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
         Ok(prior.into_iter().map(|(_, _, hand)| hand).collect())
     }

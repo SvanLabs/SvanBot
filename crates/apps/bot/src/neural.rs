@@ -84,7 +84,14 @@ pub enum NetSlot {
 /// net: writing it to the live key left the fleet without a response model for the 60–90 s of
 /// every gate (50 gaps logged by 2026-09-22), and after a rejection until the next cycle.
 pub fn slot_for_trained(incumbent: Option<&StoredNet>, trained: &StoredNet) -> NetSlot {
-    if awaits_poker_approval(trained) && incumbent.is_some_and(response_net_is_eligible) { NetSlot::Candidate } else { NetSlot::Live }
+    let migrating = incumbent.is_some_and(|s| s.training_contract == "profiles-before-hand-v1");
+    if incumbent.is_some_and(response_net_is_eligible)
+        && (awaits_poker_approval(trained) || (migrating && !response_net_is_eligible(trained)))
+    {
+        NetSlot::Candidate
+    } else {
+        NetSlot::Live
+    }
 }
 
 /// The net the fleet plays after the live key changes: an artifact still awaiting poker
@@ -164,7 +171,10 @@ pub fn warm_history(store_dir: &std::path::Path, live: &[LiveHand]) -> Vec<HandS
                 HISTORY_TRAIN_HANDS,
             )
         })
-        .unwrap_or_default()
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "history warm-up failed; using cold profiles");
+            Vec::new()
+        })
 }
 
 /// Extract each hand using only profiles observable before that hand, then advance the profiles.
@@ -337,6 +347,8 @@ mod tests {
         clean.paired_poker_approved = false;
         assert!(active_response_net(Some(legacy.clone())).is_some());
         assert!(!warm_startable(&legacy));
+        assert_eq!(slot_for_trained(Some(&legacy), &clean), NetSlot::Candidate);
+        clean.active = false;
         assert_eq!(slot_for_trained(Some(&legacy), &clean), NetSlot::Candidate);
         legacy.paired_poker_approved = false;
         assert!(!response_net_is_eligible(&legacy), "migration cannot approve a legacy candidate");
