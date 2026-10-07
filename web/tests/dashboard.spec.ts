@@ -1294,7 +1294,7 @@ test('the wiring table shows what each component is worth, its sample and its ag
   await expect(panel.locator('tbody tr').first()).toContainText('per-player stats');
   await expect(panel.locator('tbody tr').first()).toContainText('12%');
   await expect(panel.locator('tr.wiring-idle')).toContainText('none');
-  await expect(panel.getByText(/40 of 40 records that carry the live inputs replay exactly/)).toBeVisible();
+  await expect(panel.getByText(/40 of 40 records with captured opponent corrections replay exactly with complete inputs/)).toBeVisible();
   // 0332: the calibration count over every decision, where the big-decision table cannot see it.
   await expect(panel.locator('.wiring-calibration tbody tr').first()).toContainText('56%');
   await expect(panel.locator('.wiring-calibration tbody tr').first()).toContainText('fold -> call');
