@@ -163,6 +163,7 @@ async fn main() -> Result<()> {
     }
     // A stop lands mid-hand like a swap does: keep those hands for the next process (0315).
     shared.save_open_hands();
+    sv10_bot::tasks::flush_unstored_hands(&shared);
     // Exit here instead of returning: dropping the runtime waits for every blocking task, and the
     // release watch below never returns, so a returned `main` left the process alive after SIGTERM
     // until a KILL (2026-10-04: four workers sat in shutdown for 3 minutes after `restart-bot.sh`).
@@ -206,6 +207,7 @@ fn spawn_release_watch(shared: &Arc<Shared>) {
                     sv10_bot::tasks::save_models_bounded(&shared);
                 }
                 shared.save_open_hands();
+                sv10_bot::tasks::flush_unstored_hands(&shared);
             }
             shared.log("fleet", "info", if restore { "exiting to restore the database" } else { "hot swap: exiting to restart" });
             std::process::exit(code);

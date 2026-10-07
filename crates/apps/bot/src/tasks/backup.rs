@@ -102,6 +102,9 @@ fn ensure_daily_backup(dir: &std::path::Path, hourly: &std::path::Path, now: &ch
         let copied = std::fs::copy(hourly, &daily).map_err(anyhow::Error::from).and_then(|_| sv10_store::integrity::seal_backup(&daily));
         if let Err(e) = copied {
             tracing::warn!("daily backup copy failed: {e}");
+            // A partial copy is still a `daily-*.db` to the rotation, which keeps one: left there it
+            // is the file kept, and yesterday's good copy is the one removed.
+            let _ = sv10_rt::remove_stale_file(&daily);
         }
     }
 }

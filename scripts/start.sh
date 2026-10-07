@@ -60,8 +60,14 @@ nohup bash -c '
   while [ ! -f artifacts/stop.flag ]; do
     for f in artifacts/logs/svanbot10.log artifacts/logs/learner.log artifacts/logs/analyst.log artifacts/logs/monitor.log; do
       if [ -f "$f" ] && [ "$(stat -c %s "$f")" -gt 52428800 ]; then
-        for i in 2 1; do [ -f "$f.$i" ] && mv "$f.$i" "$f.$((i+1))"; done
-        cp "$f" "$f.1" && : > "$f"
+        # Copy first, shift after: a copy that fails (a full disk) used to have pushed the older
+        # generations down already, so three failures replaced all of them with fragments.
+        if cp "$f" "$f.new"; then
+          for i in 2 1; do [ -f "$f.$i" ] && mv "$f.$i" "$f.$((i+1))"; done
+          mv "$f.new" "$f.1" && : > "$f"
+        else
+          rm -f "$f.new"
+        fi
       fi
     done
     sleep 600
