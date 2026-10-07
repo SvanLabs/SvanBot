@@ -145,6 +145,7 @@ mod tests {
         add(&db, "latest", "2026-01-02T12:00:00Z", Some("2026-01-02T12:10:00Z"), 2);
         add(&db, "prior", "2026-01-01T09:00:00Z", Some("2026-01-01T09:05:00Z"), 3);
         add(&db, "older", "2026-01-01T08:00:00Z", Some("2026-01-01T08:05:00Z"), 4);
+        add(&db, "ancient", "2026-01-01T07:00:00Z", Some("2026-01-01T07:05:00Z"), 5);
         let rows = db.prior_training_summaries(&[("live", "2026-01-02T10:10:00Z")], 2).unwrap();
         assert_eq!(rows.iter().map(|h| h.button).collect::<Vec<_>>(), [4, 3]);
     }
