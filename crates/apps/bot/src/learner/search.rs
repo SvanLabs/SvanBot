@@ -143,7 +143,6 @@ pub fn begin(ctx: &Ctx, lane: Lane, start_rowid: i64, started: f64, refit_rowid:
     // one would retire the search's memory of what it has already measured (0285).
     let refit_rowid = crate::pacing::evidence_epoch(refit_rowid);
     let cycle = store.get_kv(crate::LEARNER_CYCLE_KEY).ok().flatten().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0) + 1;
-    let _ = store.put_kv(crate::LEARNER_CYCLE_KEY, &cycle.to_string());
     // One evidence snapshot per search (0244): every step reads the same population.
     if store.get_kv(POPULATION_MODELS_KEY).ok().flatten().is_none() {
         store.put_kv(POPULATION_MODELS_KEY, &serde_json::to_string(&load_models(store))?)?;
@@ -192,6 +191,11 @@ pub fn begin(ctx: &Ctx, lane: Lane, start_rowid: i64, started: f64, refit_rowid:
         tracing::info!("cycle {cycle}: only {} opponents with enough hands; waiting", pool.len());
         return Ok(None);
     }
+    // Counted once there is a search to count, and the write is not discarded. Stored at the top, an
+    // attempt that ended in "too few opponents" still moved the counter, and with it the lineage
+    // the next attempt searched for; a write that failed left the next cycle to reuse this one's
+    // number, and its confirmation deals.
+    store.put_kv(crate::LEARNER_CYCLE_KEY, &cycle.to_string())?;
     let mut run = SearchRun {
         stacks: super::stacks::Fixture::capture(store, stack_cutoff(start_rowid, refit_rowid))?,
         cycle,

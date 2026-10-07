@@ -179,7 +179,8 @@ async fn fetch(http: &reqwest::Client, rest_base: &str, key: &str, season: &Seas
             let status = r.status();
             if status.is_success() {
                 let v: Value = r.json().await.context("export page is not JSON")?;
-                let hands = v.as_array().or_else(|| v["hands"].as_array()).cloned().unwrap_or_default();
+                // A body with no list of hands is not an empty page: read as one, it ended the season.
+                let hands = v.as_array().or_else(|| v["hands"].as_array()).cloned().context("export page holds no list of hands")?;
                 return Ok(Some((hands, limit)));
             }
             match status.as_u16() {

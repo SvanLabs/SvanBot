@@ -168,7 +168,9 @@ pub(super) fn transition_leaderboard(
 /// Public season leaderboard (cached 60s) with our bots flagged and rank movement.
 /// A player's row in the last fetched leaderboard (rank, score, hands, gaps), if listed (0217).
 pub(in crate::api) async fn leaderboard_entry(name: &str) -> Option<Value> {
-    let cache = leaderboard_cache().lock().await;
+    // A refresh holds the cache across its requests to the venue, up to half a minute when it is
+    // slow. The player card asks here first and is not worth that wait: it goes without the row.
+    let cache = tokio::time::timeout(Duration::from_millis(250), leaderboard_cache().lock()).await.ok()?;
     cache.state.value["entries"].as_array()?.iter().find(|e| e["name"].as_str() == Some(name)).cloned()
 }
 
