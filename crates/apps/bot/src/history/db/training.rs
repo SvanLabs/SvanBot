@@ -32,19 +32,29 @@ impl HistoryDb {
         }
         let cutoff = cutoff.expect("nonempty live set has valid starts");
         let ids: HashSet<&str> = live.iter().map(|(id, _)| *id).collect();
-        let mut query =
-            conn.prepare("SELECT hand_id, started_at, json, summary FROM raw WHERE summary IS NOT NULL ORDER BY started_at DESC LIMIT ?1")?;
-        let rows = query.query_map([limit as i64], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, self.codec.text(r.get_ref(2)?)?, self.codec.text(r.get_ref(3)?)?))
-        })?;
+        // Newest first. Only an export that starts before the cutoff can end before it, so the newer
+        // ones are passed over before their JSON is read: the limit counts the exports that are used,
+        // not the ones that were merely newest (#919).
+        let mut newest = conn.prepare("SELECT id, hand_id, started_at FROM raw WHERE summary IS NOT NULL ORDER BY started_at DESC")?;
+        let mut fetch = conn.prepare("SELECT json, summary FROM raw WHERE id = ?1")?;
+        let rows = newest.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)))?;
         let mut prior = Vec::new();
         let (mut unreadable, mut invalid_time, mut outside_window, mut duplicate) = (0, 0, 0, 0);
         for row in rows {
-            let (id, started, raw, summary) = row?;
+            if prior.len() >= limit {
+                break;
+            }
+            let (rowid, id, started) = row?;
             if ids.contains(id.as_str()) {
                 duplicate += 1;
                 continue;
             }
+            if started.as_deref().and_then(timestamp).is_some_and(|start| start >= cutoff) {
+                outside_window += 1;
+                continue;
+            }
+            let (raw, summary): (String, String) =
+                fetch.query_row([rowid], |r| Ok((self.codec.text(r.get_ref(0)?)?, self.codec.text(r.get_ref(1)?)?)))?;
             let Ok(export) = serde_json::from_str::<Value>(&raw) else {
                 unreadable += 1;
                 continue;
@@ -123,5 +133,20 @@ mod tests {
         assert!(db.prior_training_summaries(&missing, 100).unwrap().is_empty());
         assert!(db.prior_training_summaries(&[("live", "invalid")], 100).unwrap().is_empty());
         assert!(db.prior_training_summaries(&[], 100).unwrap().is_empty());
+    }
+
+    #[test]
+    fn history_warmup_limit_counts_only_the_exports_it_uses() {
+        // Exports that start after the live window filled the limit before the chronology filter ran,
+        // so no prior evidence came back at all (#919).
+        let db = database("limit");
+        add(&db, "live", "2026-01-02T10:00:00Z", Some("2026-01-02T10:10:00Z"), 0);
+        add(&db, "later", "2026-01-02T11:00:00Z", Some("2026-01-02T11:10:00Z"), 1);
+        add(&db, "latest", "2026-01-02T12:00:00Z", Some("2026-01-02T12:10:00Z"), 2);
+        add(&db, "prior", "2026-01-01T09:00:00Z", Some("2026-01-01T09:05:00Z"), 3);
+        add(&db, "older", "2026-01-01T08:00:00Z", Some("2026-01-01T08:05:00Z"), 4);
+        add(&db, "ancient", "2026-01-01T07:00:00Z", Some("2026-01-01T07:05:00Z"), 5);
+        let rows = db.prior_training_summaries(&[("live", "2026-01-02T10:10:00Z")], 2).unwrap();
+        assert_eq!(rows.iter().map(|h| h.button).collect::<Vec<_>>(), [4, 3]);
     }
 }
