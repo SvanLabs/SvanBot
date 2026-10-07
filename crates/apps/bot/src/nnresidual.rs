@@ -2,7 +2,7 @@
 //! predictions by each opponent's own observed/expected ratios predict held-out decisions better?
 //!
 //! Live hands are replayed in time order exactly as training builds its samples (profiles known
-//! before each hand, warmed by past-season hands). Every decision is predicted by the network, then
+//! before each hand, warmed only by provably prior, disjoint exports). Every decision is predicted by the network, then
 //! by the network corrected with a [`ResidualTable`] fed only earlier decisions, and both are scored
 //! by log-loss on the validation hands (the newest 15%, as the training gate uses).
 
@@ -196,17 +196,19 @@ type Loaded = (crate::StoredNet, Vec<Vec<(String, Sample)>>, usize);
 fn load(store: &Store, store_dir: &std::path::Path) -> anyhow::Result<Loaded> {
     let stored: crate::StoredNet =
         serde_json::from_str(&store.get_kv(crate::NN_KEY)?.ok_or_else(|| anyhow::anyhow!("no stored response network"))?)?;
+    anyhow::ensure!(crate::neural::has_current_training_contract(&stored), "response network needs chronology revalidation");
     let layout = ResponseFeatureSet::for_inputs(stored.net.input_size())
         .ok_or_else(|| anyhow::anyhow!("stored network has an unknown input layout"))?;
     let bots = store.bot_names()?;
     let hands = live_hands(store, &bots).ok_or_else(|| anyhow::anyhow!("live hands unreadable"))?;
     let mut profiles = ModelStore::default();
-    for hand in warm_history(store_dir) {
+    for hand in warm_history(store_dir, &hands) {
         let hero = hand.players.iter().find_map(|(_, n)| bots.contains(n).then_some(n.clone()));
         profiles.observe(&hand, hero.as_deref());
     }
     let mut samples = Vec::with_capacity(hands.len());
-    for (_, hand) in &hands {
+    for row in &hands {
+        let hand = &row.summary;
         samples.push(named_samples_from_hand_for(hand, &profiles, &bots, layout).into_iter().map(|(name, s, _)| (name, s)).collect());
         let hero = hand.players.iter().find_map(|(_, n)| bots.contains(n).then_some(n.clone()));
         profiles.observe(hand, hero.as_deref());

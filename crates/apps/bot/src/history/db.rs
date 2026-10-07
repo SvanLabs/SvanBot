@@ -12,6 +12,7 @@ use sv10_core::model::HandSummary;
 pub const STATUS_KEY: &str = "history.status";
 #[cfg(test)]
 mod compaction_tests;
+mod training;
 /// (raw row id, bot, raw export json, full corpus summary when a richer source holds the hand).
 pub(super) type TableHand = (i64, String, String, Option<String>);
 
