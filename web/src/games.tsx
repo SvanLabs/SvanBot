@@ -75,7 +75,7 @@ export function WiringPanel() {
         </tr>)}</tbody>
       </table>
     </>}
-    <p className="footnote">{r.v3 ? `${fmt(r.v3_exact, 0, true)} of ${fmt(r.v3, 0, true)} records that carry the live inputs replay exactly as played` : 'No record in the sample carries the live inputs yet (replay v3)'} · {fmt(r.unstable, 0, true)} gave different answers on identical inputs · {fmt(r.chosen_not_best, 0, true)} chose below the best EV (mixing).</p>
+    <p className="footnote">{r.v3 ? `${fmt(r.v3_exact, 0, true)} of ${fmt(r.v3, 0, true)} records with captured opponent corrections replay exactly with complete inputs` : 'No record in the sample has captured opponent corrections (replay v3+)'} · Exactness also requires the table image when active. {fmt(r.unstable, 0, true)} gave different answers on identical inputs · {fmt(r.chosen_not_best, 0, true)} chose below the best EV (mixing).</p>
     <p className="footnote">“Not measured”: no spot in the sample had the component to switch off (a preflop fit on big spots that are mostly postflop, say), which is not the same as moving none. “Moves”: decisions whose action or size changes with the component off. “bb / dec”: what that change gives up under the full model, same cards and samples — the component's value on these spots. The analyst re-measures daily when its audit queue is empty; <code>review wiring</code> runs it by hand.</p>
   </div>;
 }
