@@ -35,10 +35,6 @@ pub(super) fn requeue(shared: &Shared, mut keep: Vec<(store::HandRow, u32)>) -> 
     (left, dropped)
 }
 
-/// Insert queued hands; returns (stored, still queued). A stored hand was already observed by the
-/// models when it finished, so its rowid only advances the watermark: a restart then does not
-/// replay it into the models a second time. Retries are bounded (LESSONS 30): see
-/// [`MAX_HAND_RETRIES`] and [`MAX_UNSTORED_HANDS`].
 /// One last try at the hands that could not be stored, before the process exits. The queue lives in
 /// memory only: left as it was, an exit dropped them without a word although the models saved on the
 /// same exit already count them (#897). What still cannot be stored is named, so the gap is on record.
@@ -55,6 +51,10 @@ pub fn flush_unstored_hands(shared: &Shared) {
     }
 }
 
+/// Insert queued hands; returns (stored, still queued). A stored hand was already observed by the
+/// models when it finished, so its rowid only advances the watermark: a restart then does not
+/// replay it into the models a second time. Retries are bounded (LESSONS 30): see
+/// [`MAX_HAND_RETRIES`] and [`MAX_UNSTORED_HANDS`].
 pub fn retry_unstored_hands(shared: &Shared) -> (usize, usize) {
     let pending = std::mem::take(&mut *shared.unstored_hands.lock());
     let mut stored = 0;
