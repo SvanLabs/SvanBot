@@ -142,6 +142,12 @@ pub fn install(root: &Root, staged_release: &Path, staged_web: &Path, inject: In
     // The swap is complete: drop the record before the old sets, so a kill from here on leaves the
     // new build installed rather than a journal that would roll it back.
     journal::clear(root)?;
-    remove_all(&parked.old_release)?;
-    remove_all(&parked.old_web)
+    // The new build is installed. Previous sets that will not go are left for the next run's sweep
+    // (`journal::sweep_scratch`): failing here reported a failed install of a build already live.
+    for old in [&parked.old_release, &parked.old_web] {
+        if let Err(e) = remove_all(old) {
+            eprintln!("warning: the previous set was not removed: {e}");
+        }
+    }
+    Ok(())
 }

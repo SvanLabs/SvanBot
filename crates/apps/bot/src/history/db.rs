@@ -105,6 +105,19 @@ impl HistoryDb {
     pub fn vacuum(&self, path: &Path) -> Result<(u64, u64)> {
         let size = || std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         let before = size();
+        // A VACUUM writes a whole second copy, and in WAL mode about as much again to the log, on
+        // the disk the live store writes to. Started without room it fails part-way, fills the disk
+        // for everything else while it runs, and was tried again ten minutes later (#897).
+        if let Some(free) = sv10_rt::free_bytes(path) {
+            anyhow::ensure!(
+                free >= before.saturating_mul(5) / 2,
+                "not compacting {}: {} MB free, and a rewrite of its {} MB needs about {} MB",
+                path.display(),
+                free >> 20,
+                before >> 20,
+                (before.saturating_mul(5) / 2) >> 20
+            );
+        }
         let conn = self.conn.lock();
         conn.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")?;
         Ok((before, size()))

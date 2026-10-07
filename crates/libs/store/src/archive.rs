@@ -157,6 +157,28 @@ const LEVEL_MONTHLY: u32 = 19;
 /// Returns the archive names written and removed.
 pub fn run(root: &Path, src: &Sources, now: chrono::DateTime<chrono::Utc>, keep: Retention) -> Result<(Vec<String>, Vec<String>)> {
     std::fs::create_dir_all(root).with_context(|| format!("archive root {}", root.display()))?;
+    let made = make_due(root, src, now);
+    if made.is_err() {
+        // A run that failed (a full disk is the usual reason) leaves its staging copies behind,
+        // and they stayed until the next run a day later: on a disk shared with the live store
+        // that is the space the fleet needs. Pruning also still happens.
+        clear_staging(root);
+    }
+    let removed = prune(root, keep);
+    Ok((made?, removed?))
+}
+
+fn clear_staging(root: &Path) {
+    for kind in [Kind::Daily, Kind::Weekly, Kind::Monthly] {
+        let entries = std::fs::read_dir(root.join(kind.dir())).into_iter().flatten().filter_map(|e| e.ok());
+        for e in entries.filter(|e| e.file_name().to_string_lossy().starts_with(".tmp-")) {
+            let _ = sv10_rt::remove_stale_dir(&e.path());
+        }
+    }
+}
+
+/// The archives due at `now`, made; their names.
+fn make_due(root: &Path, src: &Sources, now: chrono::DateTime<chrono::Utc>) -> Result<Vec<String>> {
     let mut made = Vec::new();
     let week = format!("weekly/{}", now.format("%G-W%V"));
     let day = format!("daily/{}", now.format("%Y-%m-%d"));
@@ -177,8 +199,7 @@ pub fn run(root: &Path, src: &Sources, now: chrono::DateTime<chrono::Utc>, keep:
             made.push(make_monthly(root, &month, &w.name, now)?.name);
         }
     }
-    let removed = prune(root, keep)?;
-    Ok((made, removed))
+    Ok(made)
 }
 
 /// Bytes an archive run may need on the archive disk at peak: uncompressed staging copies of

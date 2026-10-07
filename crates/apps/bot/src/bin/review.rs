@@ -358,9 +358,17 @@ fn main() -> Result<()> {
         return sv10_bot::review_calls::sizing_tells(&store);
     }
     if which == "recent" {
-        let n: usize = args.get(3).and_then(|v| v.parse().ok()).unwrap_or(200);
+        // `recent [BOT] [N]`: a lone number is N, and a name that is not a bot is an error. `recent 50`
+        // used to print 200 hands, and a mistyped name the whole fleet.
         let fleet = store.bot_names()?;
-        let asked = args.get(2).cloned().filter(|a| fleet.contains(a));
+        let count = |v: Option<&String>| v.and_then(|v| v.parse::<usize>().ok());
+        let (asked, n) = match (args.get(2), count(args.get(2))) {
+            (Some(_), Some(n)) => (None, n),
+            (name, _) => (name.cloned(), count(args.get(3)).unwrap_or(200)),
+        };
+        if let Some(name) = &asked {
+            anyhow::ensure!(fleet.contains(name), "{name} is not one of our bots ({})", fleet.join(", "));
+        }
         let bots: Vec<String> = match asked {
             Some(b) => vec![b],
             None => fleet.clone(),
