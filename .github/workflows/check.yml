@@ -73,30 +73,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # The pull request description is not a file in the tree, so `scripts/check.sh` reads it from
-      # the file named by `SVANBOT_PR_BODY` and checks the commits alone when that names nothing.
-      # This step is the writing half of that: the body is untrusted text, so it goes into the
-      # environment and out to a file, and only the constant path reaches `GITHUB_ENV` — a
-      # description containing `$(…)` or a backtick would otherwise run here.
-      #
-      # `SVANBOT_PR_AUTHOR` is the login that opened the pull request. It is what exempts a
-      # bot-opened pull request from naming a system, the same way the author field exempts a
-      # bot-authored commit, and it is carried the same way for the same reason: a login is chosen
-      # by its owner, so it is data, not script text.
-      #
-      # On a push or a manual run there is no body, the variable is never set, and the commits-only
-      # branch is what runs. Setting the variable job-wide instead would be worse than unusable: it
-      # would name a file that no step wrote, and `scripts/check.sh` treats a named body as one that
-      # must be there, so every push to main would fail the gate.
-      - name: Pull request body
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
-          echo "SVANBOT_PR_BODY=$RUNNER_TEMP/pr-body.md" >> "$GITHUB_ENV"
-          echo "SVANBOT_PR_AUTHOR=$PR_AUTHOR" >> "$GITHUB_ENV"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -117,17 +93,28 @@ jobs:
       - name: Setup (cargo-deny, web deps, tables)
         run: bash scripts/cloud-setup.sh
       - name: scripts/check.sh full
+        # The description and author are written in this step, not an earlier one: the body file
+        # written by a separate step was missing here on every run (2026-10-07, PR #903), so the
+        # gate failed on a pull request whose description had reached it. The body is untrusted text,
+        # so it goes through the environment and out to a file, never into script text.
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+            export SVANBOT_PR_BODY="$RUNNER_TEMP/pr-body.md" SVANBOT_PR_AUTHOR="$PR_AUTHOR"
+          fi
           # A pull request always has a description, so on a pull request an unset or dangling
-          # variable means the step above did not do its job. That is not hypothetical: no step here
-          # set `SVANBOT_PR_BODY`, so the pull-request half of the provenance check never ran and a
-          # green gate said nothing about it. Say so here, at the point of use, instead of passing.
+          # variable means the write above did not happen. That is not hypothetical: an earlier attempt set
+          # `SVANBOT_PR_BODY` in another step and it did not reach here, so the pull-request half of the
+          # provenance check never ran and a green gate said nothing about it. Say so instead of passing.
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ ! -f "${SVANBOT_PR_BODY:-}" ]; then
             echo "::error::SVANBOT_PR_BODY is unset or names no file: the pull request body did not reach the gate"
             exit 1
           fi
-          # Every pull request has an author too, so an empty one means the same thing: the step above
-          # did not do its job, and the gate would report a system-less body for a bot-opened pull
+          # Every pull request has an author too, so an empty one means the same thing: the write above
+          # did not happen, and the gate would report a system-less body for a bot-opened pull
           # request that is meant to be exempt (#367).
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -z "${SVANBOT_PR_AUTHOR:-}" ]; then
             echo "::error::SVANBOT_PR_AUTHOR is unset: the author that exempts a bot-opened pull request did not reach the gate"
