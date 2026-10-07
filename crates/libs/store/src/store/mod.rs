@@ -173,9 +173,10 @@ impl Store {
         let i = self.next_reader.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % self.readers.len();
         self.readers[i].lock()
     }
-    /// Structural check of the open database (see `integrity`).
-    pub fn quick_check(&self) -> std::result::Result<(), String> {
-        crate::integrity::check_connection(&self.write_lock())
+    /// Structural check of the open database (see `integrity`). It reads on a reader connection, so
+    /// writes go on while every page is read (#918); a busy database is no verdict.
+    pub fn quick_check(&self) -> std::result::Result<(), crate::integrity::Unchecked> {
+        crate::integrity::check_reader(&self.read())
     }
     /// One-time migration: digest hands stored before the column existed.
     fn backfill_digests(&self) -> Result<()> {
