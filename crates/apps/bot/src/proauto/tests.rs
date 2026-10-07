@@ -202,3 +202,33 @@ async fn a_purchase_whose_id_cannot_be_stored_is_not_sent() {
     assert!(state.last_error.as_deref().is_some_and(|e| e.contains("not sent")), "{:?}", state.last_error);
     assert!(state.quiet_until > 9.0, "and it waits before trying again");
 }
+
+#[test]
+fn a_failed_lapse_write_does_not_silence_the_next_refusal() {
+    // #925: the clock moved when the write was claimed, so a failed write kept the signal silent for
+    // 20 s, and nothing recorded the failure.
+    let clock = std::sync::atomic::AtomicU64::new(0);
+    let mut writes = Vec::new();
+    note_lapse_with(&clock, 100, |value| {
+        writes.push(value.to_string());
+        Err("disk full")
+    });
+    note_lapse_with(&clock, 101, |value| {
+        writes.push(value.to_string());
+        Ok::<(), &str>(())
+    });
+    assert_eq!(writes, ["100", "101"]);
+}
+
+#[test]
+fn a_stored_lapse_signal_starts_the_twenty_second_clock() {
+    let clock = std::sync::atomic::AtomicU64::new(0);
+    let mut writes = Vec::new();
+    for now in [100, 110, 120] {
+        note_lapse_with(&clock, now, |value| {
+            writes.push(value.to_string());
+            Ok::<(), &str>(())
+        });
+    }
+    assert_eq!(writes, ["100", "120"]);
+}
