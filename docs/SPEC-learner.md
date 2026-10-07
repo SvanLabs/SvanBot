@@ -164,9 +164,12 @@ next process resumes the stored run.
    live hands. MLP 39-48-24-3, 10 epochs Adam, seed `11 + cycle` (a stored net warm-starts only at the exact shape and current chronology contract). Stored to `nn.response.v1` with its
    predictive `active` flag and `bounded-history-before-hand-v2` contract. Profiles are rebuilt sequentially
    and each hand is extracted before it is observed, so validation cannot contribute to its own
-   features. Older-contract networks and their associated residual corrections remain unexposed
-   until retraining and the existing predictive/poker gates pass; residuals are refitted against that
-   new network identity. A model trained less than 30 minutes ago (a follow-up cycle right after a promotion) is
+   features. The already active, paired-approved v1 incumbent and its matching residuals keep
+   playing during migration, until a clean candidate earns the existing gates. Unapproved v1 and
+   unknown-contract artifacts cannot activate. Only current-contract models can warm-start, be
+   reused as fresh training results or have residuals refitted; old residuals do not transfer to
+   the clean network identity. The [chronology study](studies/neural-history-chronology.md) records
+   why a forced no-network fallback was rejected. A model trained less than 30 minutes ago (a follow-up cycle right after a promotion) is
    reused instead of retrained. The fleet exposes only an artifact that also records paired-poker
    approval, which the learner grants in the same cycle: once the clone pool is fitted, the champion
    plays `learner_tables × 4` tables twice on identical deals, once with the incumbent exposure and

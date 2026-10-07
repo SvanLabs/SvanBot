@@ -27,7 +27,7 @@ const FRESH_EPOCHS: usize = 10;
 /// validation sets drift as hands accumulate, so the comparison gets a tolerance.
 const RATCHET_TOLERANCE: f64 = 0.005;
 
-/// Training artifacts without this exact chronology contract are never exposed to live policy.
+/// New training and poker approvals require this exact chronology contract.
 pub const RESPONSE_TRAINING_CONTRACT: &str = "bounded-history-before-hand-v2";
 
 /// Only the current chronology contract with layers matching [`SHAPE`] can warm-start.
@@ -50,14 +50,18 @@ fn fits_shape(net: &Mlp) -> bool {
     have == want && sv10_core::features::ResponseFeatureSet::for_inputs(first.inputs).is_some()
 }
 
-/// Return a response model only when predictive, layout, chronology and paired-poker gates all pass.
+/// Serve approved current models and retain the previously approved v1 incumbent during migration.
 pub fn active_response_net(stored: Option<StoredNet>) -> Option<Arc<Mlp>> {
     stored.filter(response_net_is_eligible).map(|candidate| Arc::new(candidate.net))
 }
 
 /// The single live/dashboard eligibility predicate for a stored response model.
 pub fn response_net_is_eligible(candidate: &StoredNet) -> bool {
-    candidate.active && candidate.paired_poker_approved && has_current_training_contract(candidate) && fits_shape(&candidate.net)
+    // #907: paired evidence found dropping the incumbent harmful. Only an already approved v1
+    // artifact may continue serving; training, warm starts, residual refits and new poker approvals
+    // require the current contract. The clean candidate waits in its own slot until approved.
+    let contract = has_current_training_contract(candidate) || candidate.training_contract == "profiles-before-hand-v1";
+    candidate.active && candidate.paired_poker_approved && contract && fits_shape(&candidate.net)
 }
 
 /// Whether a stored artifact is predictive and well-formed but still waiting for the fresh-deal
@@ -326,6 +330,19 @@ mod tests {
     }
 
     #[test]
+    fn approved_legacy_incumbent_stays_while_clean_candidate_earns_approval() {
+        let mut legacy = stored(Mlp::new(SHAPE, 11), true);
+        legacy.training_contract = "profiles-before-hand-v1".into();
+        let mut clean = stored(Mlp::new(SHAPE, 12), true);
+        clean.paired_poker_approved = false;
+        assert!(active_response_net(Some(legacy.clone())).is_some());
+        assert!(!warm_startable(&legacy));
+        assert_eq!(slot_for_trained(Some(&legacy), &clean), NetSlot::Candidate);
+        legacy.paired_poker_approved = false;
+        assert!(!response_net_is_eligible(&legacy), "migration cannot approve a legacy candidate");
+    }
+
+    #[test]
     fn a_first_candidate_without_an_incumbent_goes_to_the_live_key() {
         let mut fresh = stored(Mlp::new(SHAPE, 14), true);
         fresh.paired_poker_approved = false;
@@ -354,7 +371,6 @@ mod tests {
         let mut legacy = stored(Mlp::new(SHAPE, 1), true);
         legacy.training_contract = "profiles-before-hand-v1".into();
         assert!(!warm_startable(&legacy));
-        assert!(!response_net_is_eligible(&legacy));
         // The previous 37-input layout is still served, but never warm-started into the new layout.
         let old = Mlp::new(&[sv10_core::features::INCUMBENT_FEATURES, 48, 24, 3], 1);
         assert!(fits_shape(&old) && !warm_startable(&stored(old.clone(), true)));
@@ -363,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn old_chronology_also_invalidates_its_residual_corrections() {
+    fn legacy_residuals_cannot_be_refitted_or_transfer_to_the_clean_network() {
         let dir = std::env::temp_dir().join(format!("sv10-neural-old-residual-{}", std::process::id()));
         let store = Store::open(&dir.join("svanbot10.db")).unwrap();
         let mut old = stored(Mlp::new(SHAPE, 1), true);
@@ -376,8 +392,12 @@ mod tests {
             ..Default::default()
         };
         store.put_kv(crate::nnresidual::NN_RESIDUAL_KEY, &serde_json::to_string(&fit).unwrap()).unwrap();
-        assert!(crate::nnresidual::installed_from_store(&store).unwrap().is_empty());
+        assert_eq!(crate::nnresidual::installed_from_store(&store).unwrap().len(), 1);
         assert!(crate::nnresidual::fit(&store, &dir).unwrap_err().to_string().contains("chronology revalidation"));
+        let mut clean = stored(Mlp::new(SHAPE, 2), true);
+        clean.trained_at = 2.0;
+        store.put_kv(crate::NN_KEY, &serde_json::to_string(&clean).unwrap()).unwrap();
+        assert!(crate::nnresidual::installed_from_store(&store).unwrap().is_empty());
     }
 
     #[test]
