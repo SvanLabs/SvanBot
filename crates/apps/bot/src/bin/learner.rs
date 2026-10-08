@@ -379,7 +379,9 @@ fn advance(ctx: &Ctx, run: Run, pace: &mut PacingState, pacing: &Pacing, last_ca
             Outcome::Finished { promoted } => {
                 let ended = now();
                 pace.finish_search(s.start_rowid, s.started, ended, promoted);
-                let _ = store.put_kv(PACING_KEY, &serde_json::to_string(&pace)?);
+                if let Err(e) = store.put_kv(PACING_KEY, &serde_json::to_string(&pace)?) {
+                    tracing::warn!("search pacing not stored: {e}");
+                }
                 run::clear(store);
                 tracing::info!(
                     "cycle {} took {:.0}s in {} steps; next after {} new hands or {:.0} min cooldown{}",
