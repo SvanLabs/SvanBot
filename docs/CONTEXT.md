@@ -19,10 +19,21 @@ this bot unless another bot is named; in a season where another bot leads (Svana
 
 ## Fleet
 
-The five independently ranked bots—SvanBotV10, SuraGunnar, Svanism, SurSvan, and Svanar. They
-normally run the same champion policy; an active experiment mode may assign a different policy to
-the experiment pair. Fleet results aggregate evidence about policy strength, but the leaderboard
-does not combine their scores.
+The five independently ranked bots—SvanBotV10, SuraGunnar, Svanism, SurSvan, and Svanar. Each plays
+its lineage's promoted policy, and lineages can share the same parent. Fleet results aggregate
+evidence about policy strength, but the leaderboard does not combine their scores.
+
+## Top-five sweep
+
+An observed official season leaderboard on which all five fleet bots qualify and occupy places
+1 through 5. It describes one standing at one time; a sweep does not by itself establish sustained
+control across seasons.
+
+## Outsider margin
+
+The lowest fleet season chip score minus the highest score outside the fleet, measured on the
+same official leaderboard. A zero margin is a tie, whose assigned ranks still determine whether
+the fleet holds a top-five sweep.
 
 ## Lineage
 
