@@ -69,8 +69,9 @@ pub(super) fn record_owner(lock: &Path, pid: u32) {
     // Open an existing inode: never recreate a marker removed by an updater that finished quickly.
     if let Ok(mut file) = std::fs::OpenOptions::new().write(true).open(lock)
         && file.set_len(0).is_ok()
+        && let Err(e) = file.write_all(owner.to_string().as_bytes())
     {
-        let _ = file.write_all(owner.to_string().as_bytes());
+        tracing::warn!("release lock owner not written: {e}");
     }
 }
 
