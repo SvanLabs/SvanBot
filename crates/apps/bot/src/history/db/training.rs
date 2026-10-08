@@ -53,8 +53,14 @@ impl HistoryDb {
                 outside_window += 1;
                 continue;
             }
-            let (raw, summary): (String, String) =
-                fetch.query_row([rowid], |r| Ok((self.codec.text(r.get_ref(0)?)?, self.codec.text(r.get_ref(1)?)?)))?;
+            // A row the codec cannot decode is counted and skipped; it must not abort the whole warm-up (#924).
+            let (raw, summary) = match fetch.query_row([rowid], |r| Ok((self.codec.text(r.get_ref(0)?), self.codec.text(r.get_ref(1)?))))? {
+                (Ok(raw), Ok(summary)) => (raw, summary),
+                _ => {
+                    unreadable += 1;
+                    continue;
+                }
+            };
             let Ok(export) = serde_json::from_str::<Value>(&raw) else {
                 unreadable += 1;
                 continue;
@@ -148,5 +154,17 @@ mod tests {
         add(&db, "ancient", "2026-01-01T07:00:00Z", Some("2026-01-01T07:05:00Z"), 5);
         let rows = db.prior_training_summaries(&[("live", "2026-01-02T10:10:00Z")], 2).unwrap();
         assert_eq!(rows.iter().map(|h| h.button).collect::<Vec<_>>(), [4, 3]);
+    }
+
+    #[test]
+    fn history_warmup_skips_an_export_it_cannot_decode() {
+        // #924: one undecodable packed row aborted the whole warm-up query, on every cycle that read it.
+        let db = database("decode");
+        add(&db, "live", "2026-01-02T10:00:00Z", Some("2026-01-02T10:10:00Z"), 0);
+        add(&db, "broken", "2026-01-01T10:00:00Z", Some("2026-01-01T10:05:00Z"), 1);
+        add(&db, "prior", "2026-01-01T09:00:00Z", Some("2026-01-01T09:05:00Z"), 2);
+        db.conn.lock().execute("UPDATE raw SET json = X'00FF00FF' WHERE hand_id = 'broken'", []).unwrap();
+        let rows = db.prior_training_summaries(&[("live", "2026-01-02T10:10:00Z")], 100).unwrap();
+        assert_eq!(rows.iter().map(|h| h.button).collect::<Vec<_>>(), [2]);
     }
 }
