@@ -228,3 +228,9 @@ pub(super) fn resync_shape(msg: &Value) -> String {
     };
     format!("resync answered as {}: snapshot {shape}", msg["role"].as_str().unwrap_or("?"))
 }
+
+/// When a server-announced rebuy cooldown ends. A cooldown is minutes; a figure past a day is taken as
+/// a day, because `Instant + Duration` panics on overflow and that panic ended the bot's session (#945).
+pub(super) fn cooldown_deadline(seconds: Option<u64>) -> Instant {
+    Instant::now() + Duration::from_secs(seconds.unwrap_or(0).min(86_400))
+}

@@ -251,7 +251,7 @@ pub(super) async fn handle(
         }
         "auto_rebuy_scheduled" => {
             shared.log(&bot.name, "info", format!("auto-rebuy scheduled in {}s", msg["cooldown_seconds"]));
-            let due = Instant::now() + Duration::from_secs(msg["cooldown_seconds"].as_u64().unwrap_or(0));
+            let due = recover::cooldown_deadline(msg["cooldown_seconds"].as_u64());
             shared.update(slot, |b| b.auto_rebuy_at = Some(due));
         }
         "rebuy_confirmed" => {
