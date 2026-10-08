@@ -49,6 +49,7 @@ pub(super) async fn handle(
         }
         "resync_response" if recover::seat_gone(shared, bot, tracker, msg) => seat.pending_join = true,
         "resync_response" => {
+            shared.log(&bot.name, "info", recover::resync_shape(msg));
             tracker.clear_event_clock();
             if let Some(seat) = msg["snapshot"]["hero"]["seat"].as_u64() {
                 tracker.hero_seat = tracker.hero_seat.or(Some(seat as usize));
