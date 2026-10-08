@@ -105,7 +105,15 @@ impl Store {
                     bot: r.get(1)?,
                     hand_id: r.get(2)?,
                     net_digest: r.get(3)?,
-                    record: self.codec.text(r.get_ref(4)?)?,
+                    // An undecodable record is unreadable, not a failed batch: it comes back empty and the analyst
+                    // finishes it as unreadable, so the audits behind it still run.
+                    record: match self.codec.text(r.get_ref(4)?) {
+                        Ok(record) => record,
+                        Err(e) => {
+                            tracing::warn!("audit record {} is unreadable: {e}", r.get::<_, i64>(0).unwrap_or(-1));
+                            String::new()
+                        }
+                    },
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -279,6 +287,25 @@ mod tests {
         assert!(error.to_string().contains("injected queue failure"));
         assert_eq!(store.replay_net("candidate-net").unwrap(), None, "network insert rolled back with queue insert");
         assert!(store.audit_batch(10).unwrap().is_empty(), "no partial queue row");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_undecodable_audit_record_does_not_stall_the_batch() {
+        // One record the codec cannot decode failed the whole batch, so the analyst retried it every ten
+        // seconds until it aged out, and the audits behind it never ran. It now comes back as an empty
+        // record, which the analyst finishes as unreadable.
+        let dir = std::env::temp_dir().join(format!("sv10-audit-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("svanbot10.db")).unwrap();
+        store.insert_audit("us", "h1", "{}", None).unwrap();
+        store.insert_audit("us", "h2", "{}", None).unwrap();
+        store.conn.lock().execute("UPDATE audit_queue SET record = X'00FF00FF' WHERE hand_id = 'h1'", []).unwrap();
+        let jobs = store.audit_batch(16).unwrap();
+        assert_eq!(jobs.iter().map(|j| j.hand_id.as_str()).collect::<Vec<_>>(), ["h1", "h2"]);
+        assert_eq!(jobs[0].record, "");
+        assert_eq!(jobs[1].record, "{}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
