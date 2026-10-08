@@ -147,4 +147,32 @@ mod tests {
         assert_eq!(rows.iter().map(|h| h.hand.hand_id.as_str()).collect::<Vec<_>>(), ["seat"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn hands_with_player_matches_a_seat_not_a_card_code_either() {
+        // The same text match as the blinds read, in the other query: the last board card "Ah" matched a
+        // player named "Ah" (#946).
+        let dir = std::env::temp_dir().join(format!("sv10-player-hands-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("svanbot10.db")).unwrap();
+        for (id, ended, summary) in [
+            ("board", "2026-09-24T00:00:01Z", r#"{"players":[[0,"us"],[1,"villain"]],"board":["Kd","7s","Ah"]}"#),
+            ("seat", "2026-09-24T00:00:02Z", r#"{"players":[[0,"us"],[1,"Ah"]]}"#),
+        ] {
+            store
+                .insert_hand(&HandRow {
+                    bot: "us".into(),
+                    hand_id: id.into(),
+                    ended_at: ended.into(),
+                    net: Some(1),
+                    summary: summary.into(),
+                    ..Default::default()
+                })
+                .unwrap();
+        }
+        let hands = store.hands_with_player("Ah").unwrap();
+        assert_eq!(hands.iter().map(|h| h.hand_id.as_str()).collect::<Vec<_>>(), ["seat"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
