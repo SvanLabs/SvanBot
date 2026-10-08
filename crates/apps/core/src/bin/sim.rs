@@ -22,16 +22,18 @@ fn paired(args: &[String]) {
     let stack_bb: i64 = std::env::var("SIM_STACK_BB").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
     let seed: u64 = std::env::var("SIM_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(4242);
     let t0 = std::time::Instant::now();
+    // SIM_NEURAL=<nn.response.v1 JSON>: the stored response network the policy prices its responses with (#908).
+    let nn = std::env::var("SIM_NEURAL").ok().map(|path| std::sync::Arc::new(load_net(&path)));
     let r = match std::env::var("SIM_MODELS").ok() {
         Some(path) => {
             let models: ModelStore = load_models(&path);
             let opps = sv10_core::agents::live_pool(&models, 30.0, 16, seed);
             eprintln!("live pool: {} profile clones", opps.len());
-            sv10_core::sim::paired_eval(&a, &b, &opps, &models, None, tables, hands, stack_bb, seed)
+            sv10_core::sim::paired_eval(&a, &b, &opps, &models, nn.clone(), tables, hands, stack_bb, seed)
         }
         None => {
             let opps: Vec<(sv10_core::agents::Archetype, f64)> = ARCHETYPES.iter().map(|k| (archetype(k), 1.0)).collect();
-            sv10_core::sim::paired_eval(&a, &b, &opps, &ModelStore::default(), None, tables, hands, stack_bb, seed)
+            sv10_core::sim::paired_eval(&a, &b, &opps, &ModelStore::default(), nn.clone(), tables, hands, stack_bb, seed)
         }
     };
     println!(
@@ -94,6 +96,22 @@ fn variance(args: &[String]) {
 }
 
 /// `SIM_MODELS`, or a clean exit naming the file and what is wrong with it — not a panic.
+/// The response network out of a stored `nn.response.v1` value (`{"net": ..., ...}`).
+fn load_net(path: &str) -> sv10_core::nn::Mlp {
+    let text = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!("sim: SIM_NEURAL={path}: {e}");
+        std::process::exit(2)
+    });
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|e| {
+        eprintln!("sim: SIM_NEURAL={path} is not JSON: {e}");
+        std::process::exit(2)
+    });
+    serde_json::from_value(value["net"].clone()).unwrap_or_else(|e| {
+        eprintln!("sim: SIM_NEURAL={path} holds no response network: {e}");
+        std::process::exit(2)
+    })
+}
+
 fn load_models(path: &str) -> ModelStore {
     let text = std::fs::read_to_string(path).unwrap_or_else(|e| {
         eprintln!("sim: SIM_MODELS={path}: {e}");
