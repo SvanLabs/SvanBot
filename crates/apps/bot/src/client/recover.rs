@@ -216,3 +216,15 @@ pub(super) fn seat_gone(shared: &Shared, bot: &BotConfig, tracker: &mut TableTra
     tracker.reset_table();
     true
 }
+
+/// One log line for a `resync_response` that was not a spectator: its role and what the snapshot
+/// holds (#933), so a stall after a seat the server may have given up can be read from the log.
+pub(super) fn resync_shape(msg: &Value) -> String {
+    let shape = match &msg["snapshot"] {
+        Value::Null => "null",
+        s if s["hero"].is_object() => "object with a hero block",
+        s if s.is_object() => "object without a hero block",
+        _ => "other",
+    };
+    format!("resync answered as {}: snapshot {shape}", msg["role"].as_str().unwrap_or("?"))
+}
