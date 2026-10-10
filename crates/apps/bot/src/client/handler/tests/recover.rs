@@ -349,3 +349,28 @@ async fn a_replayed_result_for_an_unknown_hand_is_not_stored() {
     assert!(rig.shared.store.hand("A", "h-theirs").unwrap().is_none());
     assert_eq!(rig.shared.log.lock().iter().filter(|l| l.message.contains("cannot be settled")).count(), 1);
 }
+
+#[tokio::test]
+async fn a_player_resync_without_a_hero_block_lets_the_adopted_table_go() {
+    // #933: the join send consumes the queued rejoin (client/mod.rs:336). `already_seated` then adopts
+    // a table, so the bot counts as seated and the unseated rejoin timer stays off. A player resync whose
+    // snapshot has no hero block gives no seat back, so nothing queues a rejoin until the 10-minute watchdog.
+    let mut rig = Rig::new("resync-no-hero");
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.feed(&conn, json!({"type": "table_closed", "reason": "closed"})).await;
+    rig.seat.pending_join = false; // the join loop sends join_lobby and consumes the queued rejoin
+    rig.feed(&conn, json!({"type": "error", "code": "already_seated", "table_id": "t2"})).await;
+    rig.feed(
+        &conn,
+        json!({"type": "resync_response", "role": "player", "replayed_events": [],
+        "snapshot": {"pot": 0, "board": []}}),
+    )
+    .await;
+    assert!(
+        rig.seat.pending_join || rig.tracker.table_id.is_none(),
+        "a player resync with no hero block must let go of the table: table_id {:?}, pending_join {}",
+        rig.tracker.table_id,
+        rig.seat.pending_join
+    );
+}
