@@ -14,8 +14,8 @@ async fn missing_state_turns_resync_once_per_hand_without_double_acting() {
     rig.feed(&conn, sequenced_turn("h1", "t1", 41)).await;
     let drain = |rx: &mut mpsc::UnboundedReceiver<Value>| std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
     let out = drain(&mut rx);
-    assert_eq!(out[0]["action"], "check", "the safe legal action goes first: {out:?}");
-    assert_eq!((out[0]["hand_id"].as_str(), out[0]["turn_token"].as_str()), (Some("h1"), Some("t1")));
+    assert_eq!(out.len(), 1, "resync goes first while authority waits: {out:?}");
+    assert_eq!(out[0]["type"], "resync_request");
     assert!(
         out.iter().any(|v| v["type"] == "resync_request" && v["table_id"] == "t1" && v["last_table_seq"] == 41),
         "missing state must recover: {out:?}"
@@ -59,7 +59,7 @@ async fn a_resync_restores_missing_cards_for_later_turns() {
         }}),
     )
     .await;
-    assert!(rx.try_recv().is_err(), "already sent token stays answered after the snapshot");
+    assert_eq!(actions(&mut rx).len(), 1, "the recovered waiting token is answered");
     assert!(rig.tracker.hole.is_some());
     let mut next = turn("t2");
     next["valid_actions"] = json!([{"action": "check"}]);
@@ -67,7 +67,7 @@ async fn a_resync_restores_missing_cards_for_later_turns() {
     let out = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
     assert_eq!(out.len(), 1, "healthy state needs no new recovery request: {out:?}");
     assert_eq!(out[0]["type"], "action");
-    assert_eq!(rig.shared.bots[0].read().decisions, 1, "later turn ran the real policy instead of missing-state fallback");
+    assert_eq!(rig.shared.bots[0].read().decisions, 2, "both the recovered and later turn ran the real policy");
 }
 
 #[tokio::test]
