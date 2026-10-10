@@ -31,6 +31,11 @@ fn equity_vs_ranges_counted<R: Rng>(
     samples: usize,
     rng: &mut R,
 ) -> (Option<f64>, usize) {
+    // A hold'em board has at most five cards. Longer is malformed, and has no equity: the deal count below
+    // is 5 - board.len(), which wraps in release and never returns (#944).
+    if board.len() > 5 {
+        return (None, 0);
+    }
     let hero_mask = hero[0].bit() | hero[1].bit();
     let board_mask = board.iter().fold(0u64, |m, c| m | c.bit());
     let dead = hero_mask | board_mask;
@@ -223,5 +228,20 @@ mod tests {
         let (equity, scored) = equity_vs_ranges_counted(hero, board, &refs, samples, &mut sv10_rng::rngs::SmallRng::seed_from_u64(7));
         assert!(scored < samples, "this harness has to stay short of the budget to test the refusal; it scored {scored}");
         assert_eq!(equity, None, "a short draw answered {equity:?} from {scored} of {samples} deals");
+    }
+
+    #[test]
+    fn a_six_card_board_is_refused_instead_of_wrapping_the_deal_count() {
+        // A board of six cards is malformed. Its deal count wrapped in release, and the sampler then
+        // dealt forever once the deck was spent, holding a decision permit (#944).
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let hero = [Card(0), Card(1)];
+            let board: Vec<Card> = (4..10).map(Card).collect();
+            let mut rng = sv10_rng::rngs::SmallRng::seed_from_u64(7);
+            let _ = tx.send(equity_vs_ranges(hero, &board, &[&Range::full()], 200, &mut rng));
+        });
+        let out = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("a six-card board hung the sampler");
+        assert_eq!(out, None);
     }
 }

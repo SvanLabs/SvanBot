@@ -193,3 +193,14 @@ pub(super) fn router(shared: Arc<Shared>) -> Router {
 
 #[cfg(test)]
 mod tests;
+
+/// The first eight bytes of a table id, for a status line. Ids come from the server; a cut inside a
+/// multi-byte character panicked the public TV, so the cut backs up to a character boundary (#948).
+pub(super) fn short_table(table: Option<&str>) -> &str {
+    let Some(table) = table else { return "?" };
+    let mut end = table.len().min(8);
+    while !table.is_char_boundary(end) {
+        end -= 1;
+    }
+    &table[..end]
+}

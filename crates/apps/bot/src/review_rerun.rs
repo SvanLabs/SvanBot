@@ -136,7 +136,7 @@ pub fn report(store: &Store, args: &[String], json: bool) -> Result<Report> {
         let d = rerun(&rec, &params, nn.as_ref());
         let inputs_exact = exact_inputs(&rec, &params, nn.as_ref());
         total += 1;
-        let exact = identical(&rec, &d);
+        let exact = inputs_exact && identical(&rec, &d);
         if exact {
             same += 1;
         }
@@ -362,6 +362,17 @@ mod tests {
         assert_eq!(rows[0]["status"], "identical");
         assert_eq!(rows[0]["identical"], true);
         assert!(!json.to_string().contains("unreadable"), "the note is not part of the object: {json}");
+        // Equal outputs cannot prove identity when an active input was never captured.
+        let mut legacy = small_replay();
+        legacy.params.hero_image = 0.25;
+        legacy.hero_seen = None;
+        legacy.version = 3;
+        store.insert_replay("A", "legacy", &serde_json::to_string(&legacy).unwrap(), None).unwrap();
+        let report = report(&store, &["1".into()], true).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&report.out).unwrap();
+        assert_eq!((report.total, report.same), (1, 0));
+        assert_eq!(json["rows"][0]["inputs_exact"], false);
+        assert_eq!(json["rows"][0]["status"], "what-if inputs");
     }
 
     /// One replay record of a real decision, built the way the live client records one: `report`

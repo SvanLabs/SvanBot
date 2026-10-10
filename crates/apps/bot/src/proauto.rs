@@ -297,13 +297,21 @@ fn store(shared: &Shared, state: &State) -> bool {
 /// A worker saw the venue refuse a join for lack of Pro: tell the head, at most every 20 s.
 pub fn note_lapse(shared: &Shared) {
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let now = now_secs() as u64;
+    note_lapse_with(&LAST, now_secs() as u64, |value| shared.store.put_kv(LAPSE_KEY, value));
+}
+
+/// The 20 s lapse clock and the write it guards. The clock restarts only when a signal is written
+/// (#878); a write that fails gives the slot back, so the next refusal writes it (#925).
+fn note_lapse_with<E: std::fmt::Display>(clock: &std::sync::atomic::AtomicU64, now: u64, write: impl FnOnce(&str) -> Result<(), E>) {
     use std::sync::atomic::Ordering::Relaxed;
-    // The clock restarts only when a signal is written. Restarted on every call, a run of refusals
-    // closer than 20 s apart wrote the first and then nothing for as long as it lasted (#878).
-    let last = LAST.load(Relaxed);
-    if now.saturating_sub(last) >= 20 && LAST.compare_exchange(last, now, Relaxed, Relaxed).is_ok() {
-        let _ = shared.store.put_kv(LAPSE_KEY, &now.to_string());
+    let last = clock.load(Relaxed);
+    if now.saturating_sub(last) < 20 || clock.compare_exchange(last, now, Relaxed, Relaxed).is_err() {
+        return;
+    }
+    if let Err(e) = write(&now.to_string()) {
+        // Give the slot back unless a later refusal already took it, so the next refusal writes.
+        let _ = clock.compare_exchange(now, last, Relaxed, Relaxed);
+        tracing::warn!("Pro lapse signal not stored ({e}); the next refusal writes it");
     }
 }
 

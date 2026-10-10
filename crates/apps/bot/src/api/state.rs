@@ -332,7 +332,7 @@ pub(super) fn table_json(s: &Shared, b: &BotLive) -> Value {
         })
     });
     let status = match b.mode.as_str() {
-        "playing" => format!("playing at table {}", b.table_id.as_deref().map(|t| &t[..8.min(t.len())]).unwrap_or("?")),
+        "playing" => format!("playing at table {}", tv::short_table(b.table_id.as_deref())),
         "lobby" => "waiting in the lobby".into(),
         other => other.to_string(),
     };

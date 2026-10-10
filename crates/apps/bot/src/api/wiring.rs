@@ -1,5 +1,5 @@
 //! The wiring table (0316): what each live component is worth on the analyst's newest recorded big
-//! decisions, served from the stored measurement (`wiring.v1`).
+//! decisions, served from the stored measurement (`wiring.v2`).
 
 use super::*;
 

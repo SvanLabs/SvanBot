@@ -2,9 +2,7 @@
 //! table selection, errors.
 
 use super::*;
-
-// The handler is one dispatch over the whole session's state; bundling it into a struct would only
-// rename the same borrows.
+// The dispatch shares the session state; a wrapper would only rename these borrows.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn handle(
     shared: &Arc<Shared>,
@@ -24,6 +22,7 @@ pub(super) async fn handle(
     if !tracker.accept_seq(msg) && t != "your_turn" {
         return None;
     }
+    turns::observe(&mut seat.turn, tracker, msg);
     match t {
         "connected" => {
             shared.log(&bot.name, "info", format!("connected as {}", msg["name"].as_str().unwrap_or("?")));
@@ -49,6 +48,7 @@ pub(super) async fn handle(
         }
         "resync_response" if recover::seat_gone(shared, bot, tracker, msg) => seat.pending_join = true,
         "resync_response" => {
+            shared.log(&bot.name, "info", recover::resync_shape(msg));
             tracker.clear_event_clock();
             if let Some(seat) = msg["snapshot"]["hero"]["seat"].as_u64() {
                 tracker.hero_seat = tracker.hero_seat.or(Some(seat as usize));
@@ -74,7 +74,8 @@ pub(super) async fn handle(
                         "seat": hero["seat"].clone(),
                     });
                     turn["hand_id"] = msg["snapshot"]["hand_id"].clone();
-                    act(shared, slot, bot, tracker, conn, &turn, rng).await;
+                    turn["table_seq"] = msg["snapshot"]["table_seq"].as_i64().or(msg["to_table_seq"].as_i64()).into();
+                    turns::receive(shared, slot, bot, tracker, conn, &turn, rng, &mut seat.turn).await;
                 }
             } else if tracker.table_id.is_some() && msg["snapshot"].is_null() {
                 // Table gone: go back to the lobby.
@@ -116,7 +117,7 @@ pub(super) async fn handle(
         }
         "your_turn" => {
             shared.update(slot, |b| b.turn_started = Some(chrono::Utc::now().timestamp_millis() as f64 / 1000.0));
-            act(shared, slot, bot, tracker, conn, msg, rng).await;
+            turns::receive(shared, slot, bot, tracker, conn, msg, rng, &mut seat.turn).await;
         }
         "action_ack" => {}
         "action_rejected" => {
@@ -250,7 +251,7 @@ pub(super) async fn handle(
         }
         "auto_rebuy_scheduled" => {
             shared.log(&bot.name, "info", format!("auto-rebuy scheduled in {}s", msg["cooldown_seconds"]));
-            let due = Instant::now() + Duration::from_secs(msg["cooldown_seconds"].as_u64().unwrap_or(0));
+            let due = recover::cooldown_deadline(msg["cooldown_seconds"].as_u64());
             shared.update(slot, |b| b.auto_rebuy_at = Some(due));
         }
         "rebuy_confirmed" => {
@@ -343,6 +344,7 @@ pub(super) async fn handle(
         }
         _ => {}
     }
+    turns::finish(shared, slot, bot, tracker, conn, rng, &mut seat.turn, Instant::now()).await;
     None
 }
 

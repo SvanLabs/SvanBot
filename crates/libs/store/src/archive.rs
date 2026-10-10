@@ -364,9 +364,11 @@ pub fn restore(root: &Path, name: &str, out: &Path) -> Result<Vec<PathBuf>> {
     for path in &written {
         sv10_rt::sync_file(path)?;
     }
-    // The directory itself: `sync_dir` syncs the *parent* of its path, and `out.join(".")` has the
-    // same parent as `out`, so that call synced one level too high (#876).
+    // The directory's own entries, and then its entry in its parent: restore creates `out` when it is
+    // missing, and only the parent's sync makes that new entry durable (#921). `sync_dir` syncs the
+    // parent of its path.
     std::fs::File::open(out)?.sync_all()?;
+    sv10_rt::sync_dir(out)?;
     Ok(written)
 }
 

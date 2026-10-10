@@ -188,4 +188,55 @@ mod tests {
         assert!(alarm.format_alarm());
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn a_corpus_hand_is_counted_once_when_its_raw_row_arrives_later() {
+        // #923: the corpus pass counted a hand whose raw row had not arrived; the raw pass counted the
+        // same hand again when that row arrived. The bad row only makes the first pass run.
+        let shared = Shared::for_test("corpus-once", &["A"]);
+        let dir = std::env::temp_dir().join(format!("sv10-corpus-once-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = HistoryDb::open(&dir.join("history.db")).unwrap();
+        let summary = serde_json::to_string(&HandSummary {
+            players: vec![(0, "A".into())],
+            button: 0,
+            bb: 20,
+            history: vec![],
+            board: vec![],
+            shown: vec![],
+            stacks: vec![(0, 2000)],
+        })
+        .unwrap();
+        let corpus = CorpusRow {
+            hand_id: "h1".into(),
+            bot: "A".into(),
+            table_id: String::new(),
+            started_at: "2026-09-10T00:00:00Z".into(),
+            summary,
+        };
+        db.insert_corpus("openpoker-archive-frames", &[corpus], ("wm", "1")).unwrap();
+        db.insert_page("A", &[json!({"hand_id": "h9", "table_id": "t", "hand_number": 9, "started_at": "2026-09-10T00:00:00Z"})]).unwrap();
+        let first = import(&shared, &db).unwrap();
+        assert_eq!(first.hands, 1, "the corpus pass counts the hand once: {first:?}");
+        let good = json!({"hand_id": "h1", "table_id": "t", "hand_number": 1, "seat": 0, "dealer_seat": 0, "started_at": "2026-09-10T00:00:00Z",
+                          "all_actions": [], "board": []});
+        db.insert_page("A", &[good]).unwrap();
+        let second = import(&shared, &db).unwrap();
+        assert_eq!(first.hands + second.hands, 1, "the raw row must not count the hand again: {second:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_page_without_a_hands_list_is_not_an_empty_page() {
+        // #937: a 200 body that is not a page read as zero hands, which ends the download as done for
+        // good. An honest empty page is still an empty page.
+        let dir = std::env::temp_dir().join(format!("sv10-history-page-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = std::sync::Arc::new(HistoryDb::open(&dir.join("history.db")).unwrap());
+        assert!(download::store_page(&db, "A", &json!({"detail": "maintenance"})).await.is_err());
+        assert_eq!(download::store_page(&db, "A", &json!({"hands": []})).await.unwrap().2, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

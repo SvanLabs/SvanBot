@@ -4,18 +4,19 @@
 
 use super::*;
 
-/// Recover impossible local decision state after the legal fallback has been queued. Keep the
-/// token answered, and request at most once per table/hand: resync can restore private state for
-/// later turns, but an incomplete snapshot must not feed a request loop.
-pub(super) fn resync_missing_state(shared: &Shared, slot: usize, tracker: &TableTracker, conn: &Conn, hand: &str) {
-    let Some(table) = &tracker.table_id else { return };
+/// Queue recovery at most once per table/hand, returning whether it was sent. The turn wait
+/// uses this before falling back; a failed writer does not consume the recovery budget.
+pub(super) fn resync_missing_state(shared: &Shared, slot: usize, tracker: &TableTracker, conn: &Conn, hand: &str) -> bool {
+    let Some(table) = &tracker.table_id else { return false };
     let key = (table.clone(), hand.to_string());
     let mut bot = shared.bots[slot].write();
     if bot.missing_state_resync.as_ref() != Some(&key)
         && conn.send(json!({"type": "resync_request", "table_id": table, "last_table_seq": tracker.last_table_seq.max(0)}))
     {
         bot.missing_state_resync = Some(key);
+        return true;
     }
+    false
 }
 
 /// Store a finished hand and feed it to the opponent models and the fleet's image of our own play
@@ -215,4 +216,22 @@ pub(super) fn seat_gone(shared: &Shared, bot: &BotConfig, tracker: &mut TableTra
     shared.log(&bot.name, "warn", format!("resync of table {table} answered as a spectator: our seat there is gone; rejoining the lobby"));
     tracker.reset_table();
     true
+}
+
+/// One log line for a `resync_response` that was not a spectator: its role and what the snapshot
+/// holds (#933), so a stall after a seat the server may have given up can be read from the log.
+pub(super) fn resync_shape(msg: &Value) -> String {
+    let shape = match &msg["snapshot"] {
+        Value::Null => "null",
+        s if s["hero"].is_object() => "object with a hero block",
+        s if s.is_object() => "object without a hero block",
+        _ => "other",
+    };
+    format!("resync answered as {}: snapshot {shape}", msg["role"].as_str().unwrap_or("?"))
+}
+
+/// When a server-announced rebuy cooldown ends. A cooldown is minutes; a figure past a day is taken as
+/// a day, because `Instant + Duration` panics on overflow and that panic ended the bot's session (#945).
+pub(super) fn cooldown_deadline(seconds: Option<u64>) -> Instant {
+    Instant::now() + Duration::from_secs(seconds.unwrap_or(0).min(86_400))
 }

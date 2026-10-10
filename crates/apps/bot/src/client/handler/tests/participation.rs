@@ -61,3 +61,13 @@ async fn private_cards_preserve_a_played_hand_when_its_snapshot_players_are_miss
     assert_eq!(row.hole, "AsKd");
     assert_eq!(rig.shared.bots[0].read().session_hands, 1);
 }
+
+#[tokio::test]
+async fn an_absurd_rebuy_cooldown_does_not_end_the_session() {
+    // #945: Instant + Duration panics on overflow, so a cooldown the server never sends ended this bot's
+    // session, and its pending turn with it.
+    let mut rig = Rig::new("rebuy-overflow");
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.feed(&conn, json!({"type": "auto_rebuy_scheduled", "cooldown_seconds": u64::MAX})).await;
+}

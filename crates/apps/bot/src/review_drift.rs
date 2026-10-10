@@ -25,7 +25,7 @@ use crate::replay::{REPLAY_VERSION, ReplayRecord, audit, rerun};
 /// bin; 0120 reads that row against a standing threshold). Changing what the run varies — the knob set
 /// it grades, the price basis it grades them from, or the budget it solves at — means a new version
 /// here, never a silent re-reading of the old number.
-pub const DRIFT_BASIS: &str = "champion-knobs@recorded-prices+analyst-budget/v1";
+pub const DRIFT_BASIS: &str = "champion-knobs@recorded-prices+analyst-budget+hero-image/v2";
 
 /// Big-spot replays re-run per drift check (each also gets one deep audit).
 const DRIFT_REPLAYS: usize = 48;
@@ -211,6 +211,10 @@ pub fn drift_check(
         judged += 1;
         let Ok(rec) = serde_json::from_str::<ReplayRecord>(&row.record) else { continue };
         let nn = rec.net_digest.as_ref().and_then(|d| cached_net(store, nets, d));
+        if !crate::replay::exact_inputs(&rec, &rec.params, nn.as_deref()) {
+            tracing::warn!("drift record {} has incomplete live inputs, skipped", row.id);
+            continue;
+        }
         let deep = drift_basis(&r.current, &rec, samples, threads);
         let now_d = rerun(&rec, &deep, nn.as_deref());
         r.n += 1;

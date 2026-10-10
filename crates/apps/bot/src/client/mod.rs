@@ -35,6 +35,7 @@ mod quality;
 mod recover;
 mod rest;
 mod seat;
+mod turns;
 
 // The calibration round (a blocking-pool caller) shares the 0322 locked-write retry (#744).
 pub(crate) use decide::retry_locked_write_blocking;
@@ -253,7 +254,11 @@ async fn session(
     let mut hands_seen = shared.bots[slot].read().session_hands;
     let mut hands_changed = Instant::now();
     let result = loop {
+        let recovery_deadline = seat.turn.as_ref().map(|turn| turn.deadline);
         tokio::select! {
+            _ = turns::wait(recovery_deadline) => {
+                turns::finish(shared, slot, bot, tracker, &conn, rng, &mut seat.turn, Instant::now()).await;
+            }
             // A dead writer silently swallows every later action: end the session at once so the
             // reconnect resyncs and re-answers any pending turn (0090).
             _ = &mut writer => {

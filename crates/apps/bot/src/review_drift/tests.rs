@@ -104,7 +104,7 @@ fn drift_reports_once_per_champion() {
     assert_eq!(v["basis"], DRIFT_BASIS);
     assert_eq!(v["samples"], 64);
     assert_eq!(v["population"]["version"], REPLAY_VERSION);
-    assert!(v["population"]["versions"].as_str().unwrap().starts_with("v3 "), "{v}");
+    assert!(v["population"]["versions"].as_str().unwrap().starts_with(&format!("v{REPLAY_VERSION} ")), "{v}");
     assert!(v["fits"].as_str().unwrap().contains("rec.params"), "{v}");
     // Same champion again: digest matches, the summary is untouched.
     drift_to_the_end(&store, &mut nets);
@@ -181,7 +181,7 @@ fn the_sample_is_pinned_to_the_current_replay_version() {
     assert_eq!(v["population"]["scanned"], 4);
     assert_eq!(v["population"]["other_version"], 2, "the two pre-v3 rows the filter dropped");
     let mix = v["population"]["versions"].as_str().unwrap();
-    assert!(mix.contains("v3 2") && mix.contains("v2 1") && mix.contains("v0 1"), "{mix}");
+    assert!(mix.contains(&format!("v{REPLAY_VERSION} 2")) && mix.contains("v2 1") && mix.contains("v0 1"), "{mix}");
 
     // A store holding no current-version record stores nothing, so the check stays due and the
     // number is not silently measured on records that cannot be compared.
