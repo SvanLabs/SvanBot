@@ -19,6 +19,8 @@ pub(super) enum Leave {
 /// One session's seat state.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct Seat {
+    /// Authority waiting briefly for its missing decision state.
+    pub(super) turn: Option<super::turns::PendingTurn>,
     leave: Option<Leave>,
     /// A lobby join is wanted; the session loop sends it with backoff and clears this.
     pub(super) pending_join: bool,
@@ -331,7 +333,7 @@ mod tests {
         assert!(s.leave(Leave::Rejoin));
         assert!(!s.leave(Leave::Pause), "one leave at a time");
         assert!(!s.left(), "not paused");
-        assert_eq!(s, Seat { leave: None, pending_join: true });
+        assert_eq!(s, Seat { leave: None, pending_join: true, ..Seat::default() });
         let mut s = Seat::default();
         s.leave(Leave::Pause);
         assert!(s.left());
@@ -340,7 +342,7 @@ mod tests {
         assert!(!s.leaving());
         s.leave(Leave::Pause);
         s.season_ended();
-        assert_eq!(s, Seat { leave: None, pending_join: true }, "a new season seats us fresh");
+        assert_eq!(s, Seat { leave: None, pending_join: true, ..Seat::default() }, "a new season seats us fresh");
         let mut s = Seat::default();
         assert!(!s.left(), "an unplanned loss of the table rejoins");
         assert!(s.pending_join);

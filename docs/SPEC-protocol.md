@@ -73,7 +73,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 | `table_joined` | `table_id`, `seat`, `players` | Tracker reset on a table change; seats and stacks |
 | `hand_start` | `hand_id`, `seat`, `dealer_seat`, `blinds` | New hand in the tracker |
 | `hole_cards` | `cards` | Tracker |
-| `your_turn` | `valid_actions`, `pot`, `community_cards`, `players`, `min_raise`, `max_raise`, `turn_token` | Decision on a blocking thread with an 8 s timeout (the check-or-fold fallback is legalized) |
+| `your_turn` | `valid_actions`, `pot`, `community_cards`, `players`, `min_raise`, `max_raise`, `turn_token` | Missing state gets up to 2 s to resync while frames keep flowing; then decision on a blocking thread with an 8 s timeout (legal check/fold fallback) |
 | `action_ack` | `client_action_id`, `status` | Ignored — no ack correlation and no same-ID safe retry: every `action` sends a fresh `client_action_id` (`crates/apps/bot/src/client/decide.rs`) and the ack pair is discarded (`crates/apps/bot/src/client/handler.rs`). Post-boundary code gap |
 | `action_rejected` | `code`, `reason`, `details.code` | Logged and counted per bot (dashboard `rej`) |
 | `player_action` | `seat`, `name`, `action`, `amount` (null for check/fold), `street`, `stack`, `pot`; optional `to_call_before`, `pot_before/after`, `stack_before/after`, `contribution_delta`, `action_id` | History record (null amounts read as 0) |
