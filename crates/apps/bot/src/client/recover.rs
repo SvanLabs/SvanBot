@@ -205,15 +205,20 @@ pub(super) fn replay_window(msg: &Value) -> Vec<&Value> {
     out
 }
 
-/// A resync answered as a spectator: the seat we were recovering is gone (an outage past the 120 s seat
-/// window). The spec's recovery loop guard ends recovery only on a *player* resync, so the table is let go
-/// and the bot rejoins the lobby instead of watching a table it no longer plays at.
+/// A resync that says our seat is gone: a spectator answer (the seat we were recovering is gone, an outage
+/// past the 120 s seat window), or a player answer whose snapshot has no hero block (#933: the adopted table
+/// gives no seat back, and nothing else rejoins until the watchdog). The table is let go and the bot rejoins
+/// the lobby instead of watching or holding a table it no longer plays at. The spec's recovery loop guard
+/// ends recovery only on a *player* resync with a hero block.
 pub(super) fn seat_gone(shared: &Shared, bot: &BotConfig, tracker: &mut TableTracker, msg: &Value) -> bool {
-    if msg["role"].as_str() != Some("spectator") {
+    let spectator = msg["role"].as_str() == Some("spectator");
+    let heroless = msg["role"].as_str() == Some("player") && msg["snapshot"].is_object() && !msg["snapshot"]["hero"].is_object();
+    if !spectator && !heroless {
         return false;
     }
     let table = tracker.table_id.clone().unwrap_or_else(|| "?".into());
-    shared.log(&bot.name, "warn", format!("resync of table {table} answered as a spectator: our seat there is gone; rejoining the lobby"));
+    let why = if spectator { "answered as a spectator: our seat there is gone" } else { "answered with no hero block: no seat back" };
+    shared.log(&bot.name, "warn", format!("resync of table {table} {why}; rejoining the lobby"));
     tracker.reset_table();
     true
 }
