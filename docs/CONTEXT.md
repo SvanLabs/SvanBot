@@ -130,3 +130,15 @@ not pass its evidence gate.
 Automatic restoration of a failed fleet capability to useful progress while retaining valid
 installed learning and recoverable evidence. Recovery succeeds when the capability resumes work,
 not merely when a process exists again.
+
+## Sampled sweep occupancy
+
+The share of scheduled leaderboard observations in which all five fleet bots hold the official
+qualified ranks 1 through 5. Missing or stale observations stay in the denominator and never count
+as success; this is sampled evidence rather than proof of continuous ownership between observations.
+
+## Sustained top-five ownership
+
+Repeated all-five control of the official qualified leaderboard across complete seasons, assessed
+by sampled sweep occupancy and each season's final standings under the operator's agreed criteria.
+An isolated sweep or a single bot's rank does not establish sustained top-five ownership.
