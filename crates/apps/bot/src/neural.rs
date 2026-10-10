@@ -11,7 +11,7 @@ fn now() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64()
 }
 
-/// Past-season hands added to neural training (most recent first).
+/// Maximum recent exports inspected for provably prior training evidence.
 const HISTORY_TRAIN_HANDS: usize = 60_000;
 
 /// Layer widths of the production response model; a stored net of any other shape cannot warm-start.
@@ -27,14 +27,15 @@ const FRESH_EPOCHS: usize = 10;
 /// validation sets drift as hands accumulate, so the comparison gets a tolerance.
 const RATCHET_TOLERANCE: f64 = 0.005;
 
-/// Training artifacts without this exact chronology contract are never exposed to live policy.
-pub const RESPONSE_TRAINING_CONTRACT: &str = "profiles-before-hand-v1";
+/// New training and poker approvals require this exact chronology contract.
+pub const RESPONSE_TRAINING_CONTRACT: &str = "bounded-history-before-hand-v2";
 
-/// A stored net is reusable as a warm start when its layers match [`SHAPE`] exactly.
-fn warm_startable(net: &Mlp) -> bool {
+/// Only the current chronology contract with layers matching [`SHAPE`] can warm-start.
+fn warm_startable(stored: &StoredNet) -> bool {
+    let net = &stored.net;
     let want: Vec<(usize, usize)> = SHAPE.windows(2).map(|w| (w[0], w[1])).collect();
     let have: Vec<(usize, usize)> = net.layers.iter().map(|l| (l.inputs, l.outputs)).collect();
-    have == want
+    has_current_training_contract(stored) && have == want
 }
 
 /// A stored net can be served when its hidden layers match [`SHAPE`] and its input width is a
@@ -49,14 +50,18 @@ fn fits_shape(net: &Mlp) -> bool {
     have == want && sv10_core::features::ResponseFeatureSet::for_inputs(first.inputs).is_some()
 }
 
-/// Return a response model only when predictive, layout, chronology and paired-poker gates all pass.
+/// Serve approved current models and retain the previously approved v1 incumbent during migration.
 pub fn active_response_net(stored: Option<StoredNet>) -> Option<Arc<Mlp>> {
     stored.filter(response_net_is_eligible).map(|candidate| Arc::new(candidate.net))
 }
 
 /// The single live/dashboard eligibility predicate for a stored response model.
 pub fn response_net_is_eligible(candidate: &StoredNet) -> bool {
-    candidate.active && candidate.paired_poker_approved && has_current_training_contract(candidate) && fits_shape(&candidate.net)
+    // #907: paired evidence found dropping the incumbent harmful. Only an already approved v1
+    // artifact may continue serving; training, warm starts, residual refits and new poker approvals
+    // require the current contract. The clean candidate waits in its own slot until approved.
+    let contract = has_current_training_contract(candidate) || candidate.training_contract == "profiles-before-hand-v1";
+    candidate.active && candidate.paired_poker_approved && contract && fits_shape(&candidate.net)
 }
 
 /// Whether a stored artifact is predictive and well-formed but still waiting for the fresh-deal
@@ -79,7 +84,14 @@ pub enum NetSlot {
 /// net: writing it to the live key left the fleet without a response model for the 60–90 s of
 /// every gate (50 gaps logged by 2026-09-22), and after a rejection until the next cycle.
 pub fn slot_for_trained(incumbent: Option<&StoredNet>, trained: &StoredNet) -> NetSlot {
-    if awaits_poker_approval(trained) && incumbent.is_some_and(response_net_is_eligible) { NetSlot::Candidate } else { NetSlot::Live }
+    let migrating = incumbent.is_some_and(|s| s.training_contract == "profiles-before-hand-v1");
+    if incumbent.is_some_and(response_net_is_eligible)
+        && (awaits_poker_approval(trained) || (migrating && !response_net_is_eligible(trained)))
+    {
+        NetSlot::Candidate
+    } else {
+        NetSlot::Live
+    }
 }
 
 /// The net the fleet plays after the live key changes: an artifact still awaiting poker
@@ -126,30 +138,43 @@ pub fn has_current_training_contract(stored: &StoredNet) -> bool {
 /// Share of live hands (oldest first) the response model trains on; the rest validate it.
 pub const VALIDATION_SPLIT_PERCENT: usize = 85;
 
+/// Identity and completion time retained across live/history evidence selection.
+pub struct LiveHand {
+    pub hand_id: String,
+    pub ended_at: String,
+    pub summary: HandSummary,
+}
+
 /// Every stored live hand of `bots` with its seat stacks, oldest first, with its end time.
-pub fn live_hands(store: &Store, bots: &[String]) -> Option<Vec<(String, HandSummary)>> {
-    let mut hands: Vec<(String, HandSummary)> = Vec::new();
+pub fn live_hands(store: &Store, bots: &[String]) -> Option<Vec<LiveHand>> {
+    let mut hands = Vec::new();
     for b in bots {
         for row in store.recent_fit_hands(b, 200_000).ok()? {
             if let Ok(h) = serde_json::from_str::<HandSummary>(&row.summary)
                 && !h.stacks.is_empty()
             {
-                hands.push((row.ended_at.clone(), h));
+                hands.push(LiveHand { hand_id: row.hand_id, ended_at: row.ended_at, summary: h });
             }
         }
     }
-    hands.sort_by(|a, b| a.0.cmp(&b.0));
+    hands.sort_by(|a, b| (&a.ended_at, &a.hand_id).cmp(&(&b.ended_at, &b.hand_id)));
     Some(hands)
 }
 
-/// Past-season hands (oldest first) that warm the opponent profiles before live hands, as training does.
-pub fn warm_history(store_dir: &std::path::Path) -> Vec<HandSummary> {
+/// Exports proven complete before every live hand started, with live identities excluded.
+/// Missing start evidence keeps the cold-profile baseline; a live end is not a start bound.
+pub fn warm_history(store_dir: &std::path::Path, live: &[LiveHand]) -> Vec<HandSummary> {
     crate::history::HistoryDb::open(&store_dir.join("history.db"))
-        .and_then(|db| db.recent_summaries(HISTORY_TRAIN_HANDS, false))
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(_, hand)| hand)
-        .collect()
+        .and_then(|db| {
+            db.prior_training_summaries(
+                &live.iter().map(|h| (h.hand_id.as_str(), h.ended_at.as_str())).collect::<Vec<_>>(),
+                HISTORY_TRAIN_HANDS,
+            )
+        })
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "history warm-up failed; using cold profiles");
+            Vec::new()
+        })
 }
 
 /// Extract each hand using only profiles observable before that hand, then advance the profiles.
@@ -185,9 +210,9 @@ pub fn train_response_model(
     let split = hands.len() * VALIDATION_SPLIT_PERCENT / 100;
     let mut train_set: Vec<Sample> = Vec::new();
     let mut val: Vec<(Sample, Vec<f32>)> = Vec::new();
-    // Past-season hands from the server export add training data only; validation stays on
+    // Only provably prior, disjoint server exports add training data; validation stays on
     // the most recent live hands, so the activation gate still measures current opponents.
-    let history = warm_history(store_dir);
+    let history = warm_history(store_dir, &hands);
     let history_hands = history.len();
     let mut live_profiles = ModelStore::default();
     train_set.extend(chronological_samples(history.iter(), &mut live_profiles, &exclude).into_iter().flatten().map(|(sample, _)| sample));
@@ -200,9 +225,9 @@ pub fn train_response_model(
         tracing::info!("neural model: {} other-source hands add {} training samples", extra.len(), train_set.len() - before_extra);
     }
     if history_hands > 0 {
-        tracing::info!("neural model: {} past-season hands add {} training samples", history_hands, before_extra);
+        tracing::info!("neural model: {} verified prior exports add {} training samples", history_hands, before_extra);
     }
-    let live_samples = chronological_samples(hands.iter().map(|(_, hand)| hand), &mut live_profiles, &exclude);
+    let live_samples = chronological_samples(hands.iter().map(|h| &h.summary), &mut live_profiles, &exclude);
     for (i, s) in live_samples.into_iter().enumerate() {
         if i < split {
             train_set.extend(s.into_iter().map(|(sample, _)| sample));
@@ -216,10 +241,10 @@ pub fn train_response_model(
     }
     let mut net;
     let stored: Option<StoredNet> = store.get_kv(crate::NN_KEY).ok().flatten().and_then(|j| serde_json::from_str(&j).ok());
-    // Warm-start from the stored net when its shape still matches: the same optimum refined with
+    // Warm-start only from the same chronology contract and shape: the same optimum refined with
     // new hands beats a fresh seed lottery, and fine-tuning costs less than half the epochs.
     // Standardization is recomputed from the new data inside `train`, so no staleness carries over.
-    match stored.as_ref().filter(|s| warm_startable(&s.net)) {
+    match stored.as_ref().filter(|s| warm_startable(s)) {
         Some(s) => {
             net = s.net.clone();
             train(&mut net, &train_set, &TrainConfig { epochs: WARM_EPOCHS, lr: 1e-3, seed: 10_000 + cycle, ..Default::default() });
@@ -315,6 +340,21 @@ mod tests {
     }
 
     #[test]
+    fn approved_legacy_incumbent_stays_while_clean_candidate_earns_approval() {
+        let mut legacy = stored(Mlp::new(SHAPE, 11), true);
+        legacy.training_contract = "profiles-before-hand-v1".into();
+        let mut clean = stored(Mlp::new(SHAPE, 12), true);
+        clean.paired_poker_approved = false;
+        assert!(active_response_net(Some(legacy.clone())).is_some());
+        assert!(!warm_startable(&legacy));
+        assert_eq!(slot_for_trained(Some(&legacy), &clean), NetSlot::Candidate);
+        clean.active = false;
+        assert_eq!(slot_for_trained(Some(&legacy), &clean), NetSlot::Candidate);
+        legacy.paired_poker_approved = false;
+        assert!(!response_net_is_eligible(&legacy), "migration cannot approve a legacy candidate");
+    }
+
+    #[test]
     fn a_first_candidate_without_an_incumbent_goes_to_the_live_key() {
         let mut fresh = stored(Mlp::new(SHAPE, 14), true);
         fresh.paired_poker_approved = false;
@@ -339,12 +379,37 @@ mod tests {
     #[test]
     fn only_matching_shapes_warm_start() {
         assert!(fits_shape(&Mlp::new(SHAPE, 1)));
-        assert!(warm_startable(&Mlp::new(SHAPE, 1)));
+        assert!(warm_startable(&stored(Mlp::new(SHAPE, 1), true)));
+        let mut legacy = stored(Mlp::new(SHAPE, 1), true);
+        legacy.training_contract = "profiles-before-hand-v1".into();
+        assert!(!warm_startable(&legacy));
         // The previous 37-input layout is still served, but never warm-started into the new layout.
         let old = Mlp::new(&[sv10_core::features::INCUMBENT_FEATURES, 48, 24, 3], 1);
-        assert!(fits_shape(&old) && !warm_startable(&old));
+        assert!(fits_shape(&old) && !warm_startable(&stored(old.clone(), true)));
         assert!(!fits_shape(&Mlp::new(&[sv10_core::features::N_FEATURES, 16, 3], 1)));
         assert!(!fits_shape(&Mlp::new(&[20, 48, 24, 3], 1)));
+    }
+
+    #[test]
+    fn legacy_residuals_cannot_be_refitted_or_transfer_to_the_clean_network() {
+        let dir = std::env::temp_dir().join(format!("sv10-neural-old-residual-{}", std::process::id()));
+        let store = Store::open(&dir.join("svanbot10.db")).unwrap();
+        let mut old = stored(Mlp::new(SHAPE, 1), true);
+        old.training_contract = "profiles-before-hand-v1".into();
+        store.put_kv(crate::NN_KEY, &serde_json::to_string(&old).unwrap()).unwrap();
+        let fit = crate::nnresidual::ResidualFit {
+            net_trained_at: old.trained_at,
+            active: true,
+            ratios: [("Villain".into(), [2.0, 0.5, 1.0])].into_iter().collect(),
+            ..Default::default()
+        };
+        store.put_kv(crate::nnresidual::NN_RESIDUAL_KEY, &serde_json::to_string(&fit).unwrap()).unwrap();
+        assert_eq!(crate::nnresidual::installed_from_store(&store).unwrap().len(), 1);
+        assert!(crate::nnresidual::fit(&store, &dir).unwrap_err().to_string().contains("chronology revalidation"));
+        let mut clean = stored(Mlp::new(SHAPE, 2), true);
+        clean.trained_at = 2.0;
+        store.put_kv(crate::NN_KEY, &serde_json::to_string(&clean).unwrap()).unwrap();
+        assert!(crate::nnresidual::installed_from_store(&store).unwrap().is_empty());
     }
 
     #[test]
@@ -394,5 +459,23 @@ mod tests {
         assert_eq!(samples.len(), 2);
         assert_eq!(samples[0][0].0.x[24], 0.0, "first hand must use the unseen-player prior");
         assert!(samples[1][0].0.x[24] > 0.0, "second hand may use only the first hand's profile update");
+    }
+
+    #[test]
+    fn an_export_without_a_live_observation_boundary_cannot_warm_profiles() {
+        let dir = std::env::temp_dir().join(format!("sv10-neural-history-boundary-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("history.db");
+        drop(crate::history::HistoryDb::open(&path).unwrap());
+        let conn = rusqlite::Connection::open(path).unwrap();
+        conn.execute(
+            "INSERT INTO raw(hand_id, bot, started_at, json, summary) VALUES ('future', 'Hero', '2099-01-01T00:00:00Z', '{}', ?1)",
+            [serde_json::to_string(&response_hand(ActionKind::Fold)).unwrap()],
+        )
+        .unwrap();
+        let mut profiles = ModelStore::default();
+        chronological_samples(&warm_history(&dir, &[]), &mut profiles, &["Hero".into()]);
+        let samples = chronological_samples(&[response_hand(ActionKind::Call)], &mut profiles, &["Hero".into()]);
+        assert_eq!(samples[0][0].0.x[24], 0.0, "unbounded export leaked into the first live opponent profile");
     }
 }

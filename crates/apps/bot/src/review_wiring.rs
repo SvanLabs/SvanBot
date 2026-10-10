@@ -13,7 +13,7 @@ use sv10_core::nn::Mlp;
 use sv10_core::policy::{Decision, Params};
 use sv10_store::store::Store;
 
-use crate::replay::{Corrections, ReplayRecord, identical, rerun};
+use crate::replay::{Corrections, ReplayRecord, exact_inputs, identical, rerun};
 
 mod calibration;
 use calibration::calibration_from;
@@ -133,7 +133,7 @@ fn full_twice(cases: &[(ReplayRecord, Option<Mlp>)]) -> usize {
 }
 
 /// The store row the dashboard reads ([`WIRING_KEY`]).
-pub const WIRING_KEY: &str = "wiring.v1";
+pub const WIRING_KEY: &str = "wiring.v2";
 
 /// One component's measured value on the sample (0316).
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -212,10 +212,15 @@ pub fn measure(cases: Vec<(ReplayRecord, Option<Mlp>)>, fits: &crate::playerfits
     let exact: Vec<(bool, bool, bool, u32)> = cases
         .par_iter()
         .map(|(rec, nn)| {
-            let as_recorded = identical(rec, &rerun(rec, &rec.params, nn.as_ref()));
+            let as_recorded = exact_inputs(rec, &rec.params, nn.as_ref()) && identical(rec, &rerun(rec, &rec.params, nn.as_ref()));
             let had = !rec.corrections.is_empty();
             let fixed = with_current(rec.clone(), fits);
-            (as_recorded, had, identical(&fixed, &rerun(&fixed, &fixed.params, nn.as_ref())), rec.version)
+            (
+                as_recorded,
+                had,
+                exact_inputs(&fixed, &fixed.params, nn.as_ref()) && identical(&fixed, &rerun(&fixed, &fixed.params, nn.as_ref())),
+                rec.version,
+            )
         })
         .collect();
     let unstable = full_twice(&cases);
@@ -320,7 +325,7 @@ pub fn wiring(store: &Store, args: &[String]) -> Result<()> {
     if !json && args.iter().any(|a| a == "--diag") {
         for (rec, nn) in &cases {
             let d = rerun(rec, &rec.params, nn.as_ref());
-            if identical(rec, &d) {
+            if exact_inputs(rec, &rec.params, nn.as_ref()) && identical(rec, &d) {
                 let live = rec.situation.live_opponents().count();
                 println!(
                     "exact: {} live opponents {} to_call {} action {:?}",
@@ -407,12 +412,17 @@ pub fn report_text(r: &WiringReport) -> String {
         out,
         "{}",
         match r.v3 {
-            0 => "no replay-v3 records in this sample yet: exactness on the records that carry the live inputs is not measurable here"
-                .to_string(),
+            0 => "no replay-v3+ records in this sample yet: exactness on records carrying corrections is not measurable here".to_string(),
             _ if r.v3_exact == r.v3 => {
-                format!("all {} replay-v3 records (the ones that carry the live inputs) replay exactly as recorded", r.v3)
+                format!(
+                    "all {} replay-v3+ records (carrying corrections; exactness also requires the table image) replay exactly as recorded",
+                    r.v3
+                )
             }
-            _ => format!("{} of {} replay-v3 records (the ones that carry the live inputs) replay exactly as recorded", r.v3_exact, r.v3),
+            _ => format!(
+                "{} of {} replay-v3+ records (carrying corrections; exactness also requires the table image) replay exactly as recorded",
+                r.v3_exact, r.v3
+            ),
         }
     );
     let _ = writeln!(

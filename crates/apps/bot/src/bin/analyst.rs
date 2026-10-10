@@ -154,6 +154,15 @@ fn main() -> Result<()> {
                 }
                 Ok(rec) => {
                     let nn = job.net_digest.as_ref().and_then(|digest| cached_net(&store, &mut nets, digest));
+                    if !sv10_bot::replay::exact_inputs(&rec, &rec.params, nn.as_deref()) {
+                        tracing::warn!("audit record {} has incomplete live inputs, skipped", job.id);
+                        skipped += 1;
+                        if let Err(error) = store.finish_audit(job.id, None) {
+                            tracing::warn!("storing skipped audit {} failed: {error}", job.id);
+                            break;
+                        }
+                        continue;
+                    }
                     // The audit grades the record's own knobs and prices at the analyst's depth: the
                     // recorded decision re-solved on a bigger budget, nothing else varied.
                     let deep = sv10_core::policy::Params { samples, deal_chunks: threads, ..rec.params.clone() };

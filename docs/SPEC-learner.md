@@ -133,7 +133,7 @@ next process resumes the stored run.
    study, `review sizing-fit` reruns the fit.
    **Per-opponent response correction** (`sv10_bot::nnresidual`, key `nn_residual.v1`): at learner start,
    hourly while waiting and after every response-network approval, live hands are replayed as training
-   builds them (profiles known before each hand, warmed by past-season hands) and each opponent's
+   builds them (profiles known before each hand, warmed only by provably prior, disjoint exports) and each opponent's
    observed/expected ratio per response class (fold, call, raise) facing a bet is kept against the live
    network, shrunk with 30 pseudo-observations (`residual::ResidualTable`). The ratios are installed only
    while the correction lowers held-out log-loss on the newest 15% of hands facing a bet at 95% (1,000+
@@ -155,11 +155,21 @@ next process resumes the stored run.
    from river call equity against an all-in; the recorded estimate stays raw.
 3. **Neural response model** (`sv10_bot::neural::train_response_model`): every opponent decision in
    our live hands is a sample (39 features, 3 classes: fold, call/check, bet/raise). Server-export
-   hands from `history.db` (newest 60,000) add training samples only. Validation is the newest 15% of
-   live hands. MLP 38-48-24-3, 10 epochs Adam, seed `11 + cycle` (a stored net warm-starts only at the exact shape). Stored to `nn.response.v1` with its
-   predictive `active` flag and `profiles-before-hand-v1` contract. Profiles are rebuilt sequentially
+   hands from `history.db` (newest 60,000 inspected) add training samples only when their
+   decoded completion timestamps precede the earliest verified start of every selected live hand.
+   Live hand identities are excluded. Missing or invalid start evidence for any live hand selects
+   a cold-profile baseline; completion or first hero decision timestamps cannot substitute for starts.
+   Missing, malformed or overlapping export completion times are excluded. Neural training and
+   per-opponent residual fitting share this history selection. Validation is the newest 15% of
+   live hands. MLP 39-48-24-3, 10 epochs Adam, seed `11 + cycle` (a stored net warm-starts only at the exact shape and current chronology contract). Stored to `nn.response.v1` with its
+   predictive `active` flag and `bounded-history-before-hand-v2` contract. Profiles are rebuilt sequentially
    and each hand is extracted before it is observed, so validation cannot contribute to its own
-   features. A model trained less than 30 minutes ago (a follow-up cycle right after a promotion) is
+   features. The already active, paired-approved v1 incumbent and its matching residuals keep
+   playing during migration, until a clean candidate earns the existing gates. Unapproved v1 and
+   unknown-contract artifacts cannot activate. Only current-contract models can warm-start, be
+   reused as fresh training results or have residuals refitted; old residuals do not transfer to
+   the clean network identity. The [chronology study](studies/neural-history-chronology.md) records
+   why a forced no-network fallback was rejected. A model trained less than 30 minutes ago (a follow-up cycle right after a promotion) is
    reused instead of retrained. The fleet exposes only an artifact that also records paired-poker
    approval, which the learner grants in the same cycle: once the clone pool is fitted, the champion
    plays `learner_tables × 4` tables twice on identical deals, once with the incumbent exposure and

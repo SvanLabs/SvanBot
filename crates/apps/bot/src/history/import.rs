@@ -22,6 +22,8 @@ pub struct ImportReport {
     pub anon_seats: usize,
     /// Hands already recorded live (not double-counted).
     pub skipped_live: usize,
+    /// Hands the corpus pass had already counted when their raw row arrived (#923).
+    pub skipped_corpus: usize,
     /// Parsed hands that could not be turned into a summary.
     pub failed: usize,
     /// Rows in range whose stored JSON no longer parses (an export format change shows up here).
@@ -40,8 +42,13 @@ impl ImportReport {
 
 /// Replay every downloaded hand above the model's history watermark into a delta model, then
 /// merge it into the live models under a short lock.
+/// A table's raw export row: (raw row id, bot, parsed export, corpus summary if one holds the hand,
+/// and that corpus row's id).
+type ParsedHand = (i64, String, RawHand, Option<String>, Option<i64>);
+
 pub fn import(shared: &Shared, db: &HistoryDb) -> Result<ImportReport> {
     let from = shared.models.read().history_watermark.unwrap_or(0);
+    let corpus_from = shared.models.read().corpus_watermark.unwrap_or(0);
     let upto = db.max_id();
     let mut report = ImportReport::default();
     if upto <= from {
@@ -52,10 +59,10 @@ pub fn import(shared: &Shared, db: &HistoryDb) -> Result<ImportReport> {
     let mut delta = ModelStore::default();
     for table in db.tables_after(from, upto)? {
         let rows = db.table_hands(&table)?;
-        let mut parsed: Vec<(i64, String, RawHand, Option<String>)> = Vec::with_capacity(rows.len());
-        for (id, bot, j, full) in rows {
+        let mut parsed: Vec<ParsedHand> = Vec::with_capacity(rows.len());
+        for (id, bot, j, full, corpus_id) in rows {
             match serde_json::from_str::<RawHand>(&j) {
-                Ok(r) => parsed.push((id, bot, r, full)),
+                Ok(r) => parsed.push((id, bot, r, full, corpus_id)),
                 // Older rows of the table were counted by an earlier pass.
                 Err(_) if id > from && id <= upto => report.unparseable += 1,
                 Err(_) => {}
@@ -64,8 +71,14 @@ pub fn import(shared: &Shared, db: &HistoryDb) -> Result<ImportReport> {
         let refs: Vec<&RawHand> = parsed.iter().map(|p| &p.2).collect();
         let names = attribute_names(&refs, 40);
         let mut summaries = Vec::new();
-        for ((id, bot, raw, full), seat_names) in parsed.iter().zip(names) {
+        for ((id, bot, raw, full, corpus_id), seat_names) in parsed.iter().zip(names) {
             if *id <= from || *id > upto {
+                continue;
+            }
+            // A corpus row at or below the corpus watermark was counted by an earlier corpus pass. The
+            // hand's raw row arriving now must not count it again (#923).
+            if matches!(corpus_id, Some(c) if *c <= corpus_from) {
+                report.skipped_corpus += 1;
                 continue;
             }
             if shared.store.hand(bot, &raw.hand_id).ok().flatten().is_some() {
@@ -103,7 +116,6 @@ pub fn import(shared: &Shared, db: &HistoryDb) -> Result<ImportReport> {
         }
         db.set_summaries(&summaries)?;
     }
-    let corpus_from = shared.models.read().corpus_watermark.unwrap_or(0);
     let corpus_upto = db.max_corpus_id();
     for (_, bot, started_at, j) in db.corpus_only_after(corpus_from, corpus_upto)? {
         match serde_json::from_str::<HandSummary>(&j) {

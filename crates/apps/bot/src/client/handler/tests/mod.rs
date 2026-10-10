@@ -83,9 +83,12 @@ async fn a_stale_or_invalid_rejection_resyncs_to_recover_the_turn_but_never_loop
     // Private your_turn messages are not replayed and a rejection does not restart the 45 s
     // timer: the only way to act again is the resync snapshot's token (spec, Reconnection).
     let mut rig = Rig::new("reject-resync");
+    rig.shared.params.write().samples = 64;
     let (tx, mut rx) = mpsc::unbounded_channel();
     let conn = Conn { out: tx };
-    rig.tracker.table_id = Some("t1".into());
+    let mut snapshot = turn_recovery::restored_turn("unused");
+    snapshot["snapshot"]["hero"].as_object_mut().unwrap().remove("turn_token");
+    rig.feed(&conn, snapshot).await;
     rig.feed(&conn, turn("t1")).await;
     let sent = |rx: &mut mpsc::UnboundedReceiver<Value>| std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
     assert_eq!(sent(&mut rx).iter().filter(|v| v["type"] == "action").count(), 1);
@@ -480,3 +483,5 @@ async fn a_resync_answered_as_a_spectator_sends_the_bot_back_to_the_lobby() {
     assert_eq!(rig.tracker.table_id.as_deref(), Some("t2"));
     assert!(!rig.seat.pending_join);
 }
+
+mod turn_recovery;

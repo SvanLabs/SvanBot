@@ -57,6 +57,22 @@ fn already_answered(
     (!token.is_empty() && last_token == Some(token)) || matches!((seq, last_seq), (Some(current), Some(last)) if current < last)
 }
 
+/// The sent-action authority gate, also used before delaying a missing-state turn.
+pub(super) fn turn_answered(shared: &Shared, slot: usize, tracker: &TableTracker, msg: &Value) -> bool {
+    let hand_id = msg["hand_id"].as_str().or(tracker.hand_id.as_deref()).unwrap_or("");
+    let token = msg["turn_token"].as_str().unwrap_or("");
+    let seq = msg["table_seq"].as_i64();
+    let prior = shared.bots[slot].read();
+    already_answered(
+        prior.last_acted_hand_id.as_deref(),
+        prior.last_acted_turn_token.as_deref(),
+        prior.last_acted_turn_seq,
+        hand_id,
+        token,
+        seq,
+    )
+}
+
 fn calibration_candidate<'a>(
     decision: &'a sv10_core::policy::Decision,
     action: &str,
@@ -138,17 +154,7 @@ pub(super) async fn act(
     let seq = msg["table_seq"].as_i64();
     // A (hand, token) is answered at most once, and a late older authority in the same hand cannot
     // act after a newer sequenced turn. Resync snapshots without a sequence still deduplicate by pair.
-    let answered = {
-        let prior = shared.bots[slot].read();
-        already_answered(
-            prior.last_acted_hand_id.as_deref(),
-            prior.last_acted_turn_token.as_deref(),
-            prior.last_acted_turn_seq,
-            &hand_id,
-            &token,
-            seq,
-        )
-    };
+    let answered = turn_answered(shared, slot, tracker, msg);
     if answered {
         shared.log(&bot.name, "info", format!("turn token {token} re-delivered; skipping duplicate action"));
         return;
@@ -243,6 +249,10 @@ pub(super) async fn act(
             (n, a, None, None, None)
         }
     };
+    if !msg["valid_actions"].as_array().is_some_and(|offer| offer.iter().any(|entry| entry["action"].as_str() == Some(name.as_str()))) {
+        shared.log(&bot.name, "warn", format!("action {name} is absent from valid_actions; awaiting fresh authority"));
+        return;
+    }
     let mut out = json!({
         "type": "action",
         "action": name,

@@ -225,3 +225,13 @@ async fn the_stream_shares_one_projection_per_slot_and_tick() {
     assert_ne!(first, third, "the projection did not refresh past the tick");
     assert!(third.contains("999999"), "the refreshed projection missed the moved table: {third}");
 }
+
+#[test]
+fn a_table_id_is_cut_at_a_character_boundary() {
+    // #948: byte eight falls inside the é in the first case (seven a, then é over bytes 7 and 8). The cut must back up to the boundary, where
+    // the old slice panicked and took the public TV down for every table.
+    assert_eq!(short_table(Some("aaaaaaaé")), "aaaaaaa");
+    assert_eq!(short_table(Some("ééééé")), "éééé");
+    assert_eq!(short_table(Some("tbl")), "tbl");
+    assert_eq!(short_table(None), "?");
+}

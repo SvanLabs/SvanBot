@@ -16,7 +16,8 @@ pub fn quick_check(path: &Path) -> std::result::Result<(), String> {
 }
 
 /// Why a database did not pass its check.
-enum Unchecked {
+#[derive(Debug)]
+pub enum Unchecked {
     /// SQLite looked and reported damage, or could not read the file as a database at all.
     Damaged(String),
     /// Another connection held the file for the whole wait: nothing was learned about its contents.
@@ -54,6 +55,20 @@ pub fn check_connection(conn: &Connection) -> std::result::Result<(), String> {
         .and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect())
         .map_err(|e| format!("check failed: {e}"))?;
     if rows.len() == 1 && rows[0] == "ok" { Ok(()) } else { Err(rows.join("; ")) }
+}
+
+/// `PRAGMA quick_check(5)` on an open connection, with a busy or locked result kept apart from
+/// damage: a check that waited out its busy timeout has learned nothing about the file (#918).
+pub fn check_reader(conn: &Connection) -> std::result::Result<(), Unchecked> {
+    use rusqlite::ErrorCode::{DatabaseBusy, DatabaseLocked};
+    let rows: Vec<String> = conn
+        .prepare("PRAGMA quick_check(5)")
+        .and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect())
+        .map_err(|e| match e.sqlite_error_code() {
+        Some(DatabaseBusy | DatabaseLocked) => Unchecked::Busy(format!("check failed: {e}")),
+        _ => Unchecked::Damaged(format!("check failed: {e}")),
+    })?;
+    if rows.len() == 1 && rows[0] == "ok" { Ok(()) } else { Err(Unchecked::Damaged(rows.join("; "))) }
 }
 
 /// Hex SHA-256 of a file, streamed in 1 MB chunks.
@@ -403,5 +418,21 @@ mod tests {
         assert_eq!(store.verify_hand_digests().unwrap(), (2, vec![]));
         store.corrupt_summary_for_test("h2");
         assert_eq!(store.verify_hand_digests().unwrap(), (2, vec![("A".to_string(), "h2".to_string())]));
+    }
+
+    #[test]
+    fn live_check_finishes_while_the_writer_is_held() {
+        // The check of every page ran on the writer, so the store's write lock was held for its whole
+        // length and every other write waited (#918). A reader must do the check instead.
+        let d = dir("reader-check");
+        let store = std::sync::Arc::new(Store::open(&d.join("svanbot10.db")).unwrap());
+        let held = store.write_lock();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let checker = std::sync::Arc::clone(&store);
+        std::thread::spawn(move || tx.send(checker.quick_check()).unwrap());
+        let verdict = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("quick_check waited for the writer");
+        assert!(verdict.is_ok(), "{verdict:?}");
+        drop(held);
+        std::fs::remove_dir_all(&d).unwrap();
     }
 }

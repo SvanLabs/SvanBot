@@ -139,15 +139,16 @@ impl Store {
     }
     /// Every hand of any of our bots that `player` was dealt into, oldest first, without summaries.
     pub fn hands_with_player(&self, player: &str) -> Result<Vec<PlayerHand>> {
-        // The summary lists players as `[seat,"name"]`, so `"name"]` matches that seat and no prefix of another name.
-        let needle = format!("{}]", serde_json::Value::String(player.to_string()));
+        // A cheap prefilter on the JSON-escaped name, then the exact test: the name is a seat in the players
+        // list. The prefilter alone matched a card code, the last card of a board (#946).
+        let needle = serde_json::Value::String(player.to_string()).to_string();
         let conn = self.read();
         let mut stmt = conn.prepare(
             "SELECT bot, hand_id, ended_at, net, ev_net, COALESCE(pot, 0), COALESCE(winners, '') FROM hands
-             WHERE instr(summary, ?1) > 0 ORDER BY ended_at",
+             WHERE instr(summary, ?1) > 0 AND CASE WHEN json_valid(summary) THEN EXISTS (SELECT 1 FROM json_each(summary, '$.players') AS seat WHERE json_extract(seat.value, '$[1]') = ?2) ELSE 1 END ORDER BY ended_at",
         )?;
         let rows = stmt
-            .query_map(params![needle], |r| {
+            .query_map(params![needle, player], |r| {
                 Ok(PlayerHand {
                     bot: r.get(0)?,
                     hand_id: r.get(1)?,

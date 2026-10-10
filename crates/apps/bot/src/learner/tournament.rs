@@ -56,7 +56,14 @@ pub struct Replacement {
 }
 
 fn state(store: &Store) -> serde_json::Value {
-    store.get_kv(TOURNAMENT_KEY).ok().flatten().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| json!({}))
+    // Only an object can hold the fields below; anything else is restarted (a panic on the index otherwise).
+    store
+        .get_kv(TOURNAMENT_KEY)
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .filter(|v: &serde_json::Value| v.is_object())
+        .unwrap_or_else(|| json!({}))
 }
 
 fn mark(store: &Store, last: f64, extra: serde_json::Value) {
@@ -299,6 +306,21 @@ mod tests {
         assert_eq!(report["pairs"].as_array().unwrap().len(), 3);
         assert!(report["pairs"][0]["hands"].as_u64().unwrap() > 0);
         assert!(begin_if_due(&ctx, &lanes, 1e9 + 2.0).unwrap().is_none(), "not again for days");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_stored_tournament_state_that_is_not_an_object_is_replaced_not_a_panic() {
+        // A value the learner did not write (a JSON array, say) made `v["last"] = ..` panic in mark(), and
+        // the learner stopped at that step (found by the store-reader audit). The state is an object or it is restarted.
+        let dir = std::env::temp_dir().join(format!("sv10-tournament-state-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(&dir.join("svanbot10.db")).unwrap();
+        store.put_kv(TOURNAMENT_KEY, "[]").unwrap();
+        mark(&store, 7.0, json!({}));
+        let stored: serde_json::Value = serde_json::from_str(&store.get_kv(TOURNAMENT_KEY).unwrap().unwrap()).unwrap();
+        assert_eq!(stored["last"], json!(7.0));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
