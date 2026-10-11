@@ -47,9 +47,10 @@ impl Seat {
         true
     }
 
-    /// Seated at a table: any leave is over.
+    /// Seated at a table: any leave is over, and so is any join we had queued (#967).
     pub(super) fn joined(&mut self) {
         self.leave = None;
+        self.pending_join = false;
     }
 
     /// Off the table (it closed, we left, or the server says we are not seated). Queues a rejoin
@@ -346,5 +347,15 @@ mod tests {
         let mut s = Seat::default();
         assert!(!s.left(), "an unplanned loss of the table rejoins");
         assert!(s.pending_join);
+    }
+
+    #[test]
+    fn a_seat_the_server_gives_us_makes_a_queued_join_moot() {
+        // #967: the server re-seats us at once after a table closes; the join that close queued must not go out.
+        let mut s = Seat::default();
+        assert!(!s.left(), "a table closing queues a rejoin");
+        assert!(s.pending_join);
+        s.joined();
+        assert!(!s.pending_join, "seated: nothing is left to join");
     }
 }
