@@ -310,8 +310,7 @@ pub(super) async fn handle(
                         tid = a["table_id"].as_str().map(String::from);
                     }
                     if let Some(tid) = tid {
-                        tracker.table_id = Some(tid.clone());
-                        conn.send(json!({"type": "resync_request", "table_id": tid, "last_table_seq": 0}));
+                        recover::adopt_table(tracker, conn, tid);
                     }
                 }
                 "already_in_lobby" | "leave_pending" => {}

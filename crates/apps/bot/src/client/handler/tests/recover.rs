@@ -351,6 +351,26 @@ async fn a_replayed_result_for_an_unknown_hand_is_not_stored() {
 }
 
 #[tokio::test]
+async fn an_already_seated_for_the_table_we_hold_asks_from_the_watermark() {
+    // #967: the server seats us after a table closes, the join that close queued still goes out, and the
+    // `already_seated` names the table the tracker already holds. From sequence 0 the reply replays the
+    // table's whole history over live state; from the watermark it holds only what we missed, as a
+    // reconnect does. A table the tracker does not hold still asks for everything.
+    let resync_from = |rx: &mut mpsc::UnboundedReceiver<Value>| {
+        std::iter::from_fn(|| rx.try_recv().ok()).find(|v| v["type"] == "resync_request").map(|v| v["last_table_seq"].clone())
+    };
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    let mut rig = Rig::new("already-seated-held");
+    rig.feed(&conn, json!({"type": "table_joined", "table_id": "t2", "seat": 3, "players": []})).await;
+    rig.tracker.last_table_seq = 40;
+    rig.feed(&conn, json!({"type": "error", "code": "already_seated", "table_id": "t2"})).await;
+    assert_eq!(resync_from(&mut rx), Some(json!(40)), "the held table asks from its watermark");
+    rig.feed(&conn, json!({"type": "error", "code": "already_seated", "table_id": "t9"})).await;
+    assert_eq!(resync_from(&mut rx), Some(json!(0)), "a table we do not hold asks for everything");
+}
+
+#[tokio::test]
 async fn a_player_resync_without_a_hero_block_lets_the_adopted_table_go() {
     // #933: the join send consumes the queued rejoin (client/mod.rs:336). `already_seated` then adopts
     // a table, so the bot counts as seated and the unseated rejoin timer stays off. A player resync whose

@@ -50,7 +50,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 |---|---|
 | Warm: `resync_request {table_id, last_table_seq}` with the highest applied seq | On `connected` with a retained table: `last_table_seq = tracker.last_table_seq` |
 | Cold: `GET /api/me/active-game` first; if playing, resync with `last_table_seq: 0`; else `join_lobby` once | Before each session the client calls `/me/active-game`; a returned table is resynced from 0 |
-| `already_seated` race: use its `table_id`/`seat`, stop joining, resync | Uses `table_id` (or `details.table_id`, or `/me/active-game`) and resyncs from 0 |
+| `already_seated` race: use its `table_id`/`seat`, stop joining, resync | Uses `table_id` (or `details.table_id`, or `/me/active-game`) and resyncs from 0, or from the watermark when the tracker already holds that table (`recover::adopt_table`). A seat from `table_joined` cancels any queued join (`Seat::joined`) |
 | `resync_response`: apply `replayed_events` in order, then install `snapshot`; an acting player's snapshot carries `hero.turn_token` | `apply_event` for replayed events, then the snapshot; a token in the snapshot re-enables acting before the original deadline |
 | Recovery loop guard: only a *player* `resync_response` ends recovery; `role: "spectator"` means the seat is gone (past the 120 s window) | A spectator resync lets the table go and rejoins the lobby (`recover::seat_gone`); before, the bot installed the snapshot and waited for turns that never came |
 
