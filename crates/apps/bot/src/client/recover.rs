@@ -115,6 +115,11 @@ pub(super) fn report_unsettled(shared: &Shared, bot: &BotConfig, msg: &Value) {
     }
     resumable.remove(&bot.name);
     drop(resumable);
+    // A row the store already holds is not lost: the swapped-out process stored it, or the live path did after
+    // the restart. A store that cannot answer says nothing, so only `Ok(Some)` clears the warning (#968).
+    if matches!(shared.store.hand(&bot.name, &saved), Ok(Some(_))) {
+        return;
+    }
     let replayed = msg["replayed_events"].as_array().map_or(&[][..], Vec::as_slice);
     let results: Vec<&str> = replayed.iter().filter(|e| e["type"] == "hand_result").filter_map(|e| e["hand_id"].as_str()).collect();
     shared.log(

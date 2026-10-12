@@ -191,6 +191,31 @@ async fn a_saved_hand_the_replay_cannot_settle_is_reported_lost_once() {
     assert_eq!(lost(&rig), 1, "once");
 }
 
+/// A saved hand whose row the store already holds is not lost: the process that was swapped out stored it, or
+/// the live path did after the restart. Reporting it hides the real losses (#968).
+#[tokio::test]
+async fn a_saved_hand_the_store_already_holds_is_not_reported_lost() {
+    let mut rig = Rig::new("recover-stored");
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    open_a_hand(&mut rig, &conn).await;
+    rig.shared.save_open_hands();
+    rig.tracker = TableTracker::default();
+    rig.tracker.reset_table();
+    rig.shared.resumable.lock().extend(crate::live::take_open_hands(&rig.shared.store, &["A".to_string()]));
+    let stored = HandRow { bot: "A".into(), hand_id: "h9".into(), ended_at: chrono::Utc::now().to_rfc3339(), ..Default::default() };
+    rig.shared.store.insert_hand_tagged(&stored, None).unwrap();
+    rig.feed(
+        &conn,
+        json!({"type": "resync_response", "from_table_seq": 1, "to_table_seq": 3,
+        "replayed_events": [{"type": "hand_start", "hand_id": "h10", "table_seq": 3, "dealer_seat": 2}],
+        "snapshot": {"hand_id": "h10", "pot": 30, "board": [], "seats": [], "hero": {"seat": 2}}}),
+    )
+    .await;
+    assert!(!rig.shared.log.lock().iter().any(|l| l.message.contains("lost")), "the row is stored: nothing is lost");
+    assert!(rig.shared.resumable.lock().is_empty(), "and the saved start is dropped");
+}
+
 /// A saved hand that is still the table's hand is not lost: its result arrives live (0323).
 #[tokio::test]
 async fn a_saved_hand_still_in_play_is_kept_for_its_live_result() {
