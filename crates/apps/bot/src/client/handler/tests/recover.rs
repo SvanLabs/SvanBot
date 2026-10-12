@@ -371,6 +371,18 @@ async fn an_already_seated_for_the_table_we_hold_asks_from_the_watermark() {
 }
 
 #[tokio::test]
+async fn a_table_joined_after_a_table_closed_leaves_no_join_queued() {
+    // #967: the server re-seats us at once after a close; the join that close queued must not go out.
+    let mut rig = Rig::new("closed-then-seated");
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.feed(&conn, json!({"type": "table_closed", "reason": "Not enough players"})).await;
+    assert!(rig.seat.pending_join, "a close queues a rejoin");
+    rig.feed(&conn, json!({"type": "table_joined", "table_id": "t2", "seat": 3, "players": []})).await;
+    assert!(!rig.seat.pending_join, "the server seated us: no join goes out");
+}
+
+#[tokio::test]
 async fn a_player_resync_without_a_hero_block_lets_the_adopted_table_go() {
     // #933: the join send consumes the queued rejoin (client/mod.rs:336). `already_seated` then adopts
     // a table, so the bot counts as seated and the unseated rejoin timer stays off. A player resync whose

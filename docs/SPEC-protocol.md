@@ -58,7 +58,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 
 | Message | Fields sent | When |
 |---|---|---|
-| `join_lobby` | `buy_in` (1,000–5,000) | Start, after `table_closed`, `season_ended`, bust, top-up or table-seeking leave. Buy-in = `min(balance, SVANBOT_BUY_IN=5000)` after a REST rebuy when the balance is under 1,000 |
+| `join_lobby` | `buy_in` (1,000–5,000) | Start, after `table_closed` (unless `table_joined` arrives first), `season_ended`, bust, top-up or table-seeking leave. Buy-in = `min(balance, SVANBOT_BUY_IN=5000)` after a REST rebuy when the balance is under 1,000 |
 | `action` | `hand_id`, `action`, `amount` (raise only), `client_action_id`, `turn_token` | On `your_turn` (or an acting resync snapshot) |
 | `leave_table` | — | Table seeking (no established top-30 bot seated), short-stack top-up (stack < 35% of max buy-in, fresh balance can double it, at most every 10 min), stop commands |
 | `resync_request` | `table_id`, `last_table_seq` | Reconnect, `already_seated`, `state_hash` mismatch (after at least one verified snapshot, at most once a minute) |
@@ -86,7 +86,7 @@ action. Version-zero records remain readable; missing `current_bet_to` uses the 
 | `auto_rebuy_set` | `enabled` | Unhandled — no arm in the handler, falls into the catch-all `_` (`crates/apps/bot/src/client/handler.rs`). `auto_rebuy_scheduled` is the signal the client acts on |
 | `chips_skimmed` | `excess`, `new_stack`, `new_balance` | Logged (cap disabled in production) |
 | `player_joined` / `player_left` | `seat`, `name`, `stack` / `reason` | `player_joined` ignored (the next `table_state` carries the seat); our own `player_left` resets the tracker and ends a leave or top-up |
-| `table_closed` | `reason` | Rejoin the lobby |
+| `table_closed` | `reason` | Rejoin the lobby, unless `table_joined` arrives first |
 | `season_ended` | `season_number`, `next_season_number` | Rejoin the lobby (auto-registers) and run the season-rollover checks |
 | `error` | `code`, `message` | `auth_failed` fatal; `already_seated` resync; `already_in_lobby` ignored; `not_at_table` clean exit after an intended leave; `insufficient_funds`, `not_registered_for_season`, `rate_limited`, `flood_warning`, `flood_kick` logged; `rate_limited` with "Too many connection attempts for this play pool" (undocumented; seen 2026-09-22) ends the session and reconnects with a 5 s → 60 s doubling backoff |
 
