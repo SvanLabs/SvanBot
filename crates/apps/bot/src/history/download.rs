@@ -6,19 +6,39 @@ use super::{PAGE, REQUEST_GAP};
 use crate::live::Shared;
 use anyhow::Result;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::time::Duration;
 
-async fn fetch_page(http: &reqwest::Client, shared: &Shared, key: &str, offset: i64) -> Option<Value> {
+/// One page of a bot's export, or why there is none: the reason is what a caller can say in the log (#971).
+async fn fetch_page(http: &reqwest::Client, shared: &Shared, key: &str, offset: i64) -> Result<Value, String> {
     let url = format!("{}/me/hand-history?limit={PAGE}&offset={offset}", shared.config.rest_base);
+    let mut why = String::from("no request was made");
     for attempt in 0..4u64 {
-        match http.get(&url).bearer_auth(key).send().await {
-            Ok(r) if r.status().is_success() => return r.json().await.ok(),
-            Ok(r) if r.status().as_u16() == 429 => tokio::time::sleep(Duration::from_secs(60 * (attempt + 1))).await,
-            Ok(r) if r.status().is_server_error() => return None,
-            _ => tokio::time::sleep(Duration::from_secs(10)).await,
-        }
+        let pause = match http.get(&url).bearer_auth(key).send().await {
+            Ok(r) if r.status().is_success() => return r.json().await.map_err(|e| format!("a 200 body that is not JSON ({e})")),
+            Ok(r) if r.status().is_server_error() => return Err(format!("HTTP {}", r.status().as_u16())),
+            Ok(r) => {
+                why = format!("HTTP {}", r.status().as_u16());
+                if r.status().as_u16() == 429 { 60 * (attempt + 1) } else { 10 }
+            }
+            Err(e) => {
+                why = e.to_string();
+                10
+            }
+        };
+        tokio::time::sleep(Duration::from_secs(pause)).await;
     }
-    None
+    Err(why)
+}
+
+/// The newest page could not be fetched: say so, at most once an hour per bot. Without a line the download
+/// looks idle while the venue answers 500 and the history stops growing (#971).
+fn note_newest_failure(shared: &Shared, warned: &mut HashMap<String, i64>, bot: &str, why: &str, now: i64) {
+    if warned.get(bot).is_some_and(|&at| now - at < 3600) {
+        return;
+    }
+    warned.insert(bot.to_string(), now);
+    shared.log("history", "warn", format!("{bot}: the newest history page failed ({why}); this bot's history is not advancing"));
 }
 
 /// Minimum spacing between attempts at a page that has been failing (deep pages time out on
@@ -106,6 +126,7 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
     let Ok(http) = reqwest::Client::builder().user_agent(crate::USER_AGENT).timeout(Duration::from_secs(90)).build() else { return };
     let mut seasons: Vec<crate::seasons::Season> = Vec::new();
     let mut seasons_fetched_at = 0i64;
+    let mut warned: HashMap<String, i64> = HashMap::new();
     loop {
         if now_secs() - seasons_fetched_at >= 3600 {
             match crate::seasons::fetch_seasons(&http, &shared.config.rest_base).await {
@@ -134,7 +155,16 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
             let mut top_walked = meta_i64("offset").is_none();
             while meta_i64("offset").is_some() {
                 let started = std::time::Instant::now();
-                let Some(page) = fetch_page(&http, &shared, &bot.api_key, offset).await else { break };
+                let page = match fetch_page(&http, &shared, &bot.api_key, offset).await {
+                    Ok(page) => {
+                        warned.remove(&bot.name);
+                        page
+                    }
+                    Err(why) => {
+                        note_newest_failure(&shared, &mut warned, &bot.name, &why, now_secs());
+                        break;
+                    }
+                };
                 let server_total = page["total_hands"].as_i64().unwrap_or(total);
                 let page_hands = page["hands"].as_array().map(|a| a.len()).unwrap_or(0);
                 let (new, known, got) = match store_page(&db, &bot.name, &page).await {
@@ -206,7 +236,7 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
                         break;
                     }
                     let started = std::time::Instant::now();
-                    let Some(page) = fetch_page(&http, &shared, &bot.api_key, frontier).await else {
+                    let Ok(page) = fetch_page(&http, &shared, &bot.api_key, frontier).await else {
                         let fails = meta_i64(&format!("fails_at_{frontier}")).unwrap_or(0) + 1;
                         db.set_meta(&key(&format!("fails_at_{frontier}")), &fails.to_string());
                         db.set_meta(&key("next_try"), &(now_secs() + DEEP_RETRY.as_secs() as i64).to_string());
@@ -363,5 +393,40 @@ mod tests {
         assert_eq!(next_frontier(0, 500, 0, 160_162), 500);
         assert_eq!(next_frontier(1_000, 500, 160_000, 160_030), 1_530);
         assert_eq!(next_frontier(1_000, 500, 160_000, 159_990), 1_500);
+    }
+
+    /// A venue that answers 500 gives `fetch_page` a reason to report, not a bare `None` (#971).
+    #[tokio::test]
+    async fn a_server_error_page_comes_back_with_its_status() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 2048];
+            let _ = socket.read(&mut request).await;
+            socket.write_all(b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").await.unwrap();
+        });
+        let mut shared = Shared::for_test("history-500", &["A"]);
+        std::sync::Arc::get_mut(&mut shared).expect("not shared yet").config.rest_base = format!("http://{addr}");
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        assert_eq!(fetch_page(&http, &shared, "key", 0).await.unwrap_err(), "HTTP 500");
+    }
+
+    #[test]
+    fn a_failed_newest_page_is_reported_once_an_hour_per_bot() {
+        let shared = Shared::for_test("history-newest", &["A", "B"]);
+        let mut warned = HashMap::new();
+        let said = |shared: &Shared| -> Vec<String> {
+            shared.log.lock().iter().filter(|l| l.message.contains("newest history page failed")).map(|l| l.message.clone()).collect()
+        };
+        note_newest_failure(&shared, &mut warned, "A", "HTTP 500", 1_000);
+        note_newest_failure(&shared, &mut warned, "A", "HTTP 500", 1_060);
+        assert_eq!(said(&shared).len(), 1, "a second failure inside the hour stays quiet");
+        assert!(said(&shared)[0].starts_with("A:") && said(&shared)[0].contains("HTTP 500"), "{:?}", said(&shared));
+        note_newest_failure(&shared, &mut warned, "B", "HTTP 500", 1_100);
+        assert_eq!(said(&shared).len(), 2, "each bot has its own hour");
+        note_newest_failure(&shared, &mut warned, "A", "HTTP 500", 1_000 + 3_600);
+        assert_eq!(said(&shared).len(), 3, "an hour later it says so again");
     }
 }
