@@ -19,6 +19,15 @@ pub(super) fn resync_missing_state(shared: &Shared, slot: usize, tracker: &Table
     false
 }
 
+/// Adopt the table an `already_seated` names and ask what we are missing. A table the tracker already
+/// holds asks from its watermark: from 0 the reply replays the table's whole history over live state, and
+/// every hand played before our seat reads as a hand our seat played (#967).
+pub(super) fn adopt_table(tracker: &mut TableTracker, conn: &Conn, table: String) {
+    let since = if tracker.table_id.as_deref() == Some(table.as_str()) { tracker.last_table_seq.max(0) } else { 0 };
+    tracker.table_id = Some(table.clone());
+    conn.send(json!({"type": "resync_request", "table_id": table, "last_table_seq": since}));
+}
+
 /// Store a finished hand and feed it to the opponent models and the fleet's image of our own play
 /// (0321); a treatment-arm experiment hand is stored with its provenance and kept out of both and out
 /// of the self-calibration table (0291). Returns the stored row.
