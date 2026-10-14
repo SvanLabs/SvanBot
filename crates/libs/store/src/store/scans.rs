@@ -80,7 +80,9 @@ impl Store {
         let digest = snapshot_digest(payload);
         let now = chrono::Utc::now().to_rfc3339();
         let conn = self.write_lock();
-        let tx = conn.unchecked_transaction()?;
+        // Immediate: this reads before it writes, and SQLite does not wait on a read transaction's
+        // upgrade — a deferred one failed at once whenever another process held the write lock.
+        let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)?;
         let newest: Option<(i64, String)> = tx
             .query_row("SELECT id, digest FROM scan_snapshots ORDER BY id DESC LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))
             .optional()?;
