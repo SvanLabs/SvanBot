@@ -368,4 +368,33 @@ mod tests {
         set_busy_ms(BUSY_MS);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// A transaction that reads before it writes waits for the lock like any other write. Opened
+    /// deferred, its first write is an upgrade from a read transaction, and SQLite does not call the
+    /// busy handler for an upgrade: the findings scan's snapshot failed at once with `database is
+    /// locked` whenever another process was writing — 11 times in 16 days of play, none beside a wait
+    /// anywhere near the 10 s budget.
+    #[test]
+    fn a_read_then_write_waits_for_the_lock_instead_of_failing_at_once() {
+        let dir = std::env::temp_dir().join(format!("sv10-slow-{}-upgrade", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("svanbot10.db");
+        let waiter = Store::open(&path).unwrap();
+        let (taken, lock_taken) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let holder = Store::open(&path).unwrap();
+            let held = holder.write_lock();
+            let tx = held.unchecked_transaction().unwrap();
+            tx.execute("INSERT INTO kv (key, value, updated) VALUES ('held', '1', 't')", []).unwrap();
+            taken.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+            tx.commit().unwrap();
+        });
+        lock_taken.recv().unwrap();
+        let recorded = waiter.record_scan_snapshot("{\"a\":1}");
+        holder.join().unwrap();
+        assert!(recorded.unwrap(), "the snapshot waits out a 200 ms writer and is recorded");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
