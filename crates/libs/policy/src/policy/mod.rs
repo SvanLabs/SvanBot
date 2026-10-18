@@ -15,10 +15,12 @@ use sv10_model::oprange::{
 };
 use sv10_rng::{Rng, RngExt};
 
+mod calibration;
 mod callers;
 mod measure;
 mod params;
 mod responses;
+pub use calibration::{DEEP_SUFFIX, DEPTH_SPLIT_CATEGORIES, calibration_key};
 pub use params::Params;
 use responses::*;
 
@@ -292,10 +294,9 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
     let cur_bet = sit.current_bet();
     for (_, c) in cands.iter_mut() {
         c.category = spot_category(sit.street, &c.action, c.amount, sit.pot, cur_bet, hero.bet);
-        if let Some(b) = c.category.as_ref().and_then(|k| params.ev_bias.get(k)) {
-            let cap = c.category.as_ref().and_then(|k| params.ev_bias_pot_cap.get(k)).copied();
-            c.bias = applied_bias(*b, sit.bb, sit.pot + sit.call_amount.max(0), cap);
-            c.ev += c.bias;
+        if let Some(b) = c.category.as_deref().and_then(|k| calibration::calibration_term(k, sit, params)) {
+            c.bias = b;
+            c.ev += b;
         }
     }
     let best = cands.iter().map(|(_, c)| c.ev).fold(f64::MIN, f64::max);
@@ -430,18 +431,6 @@ pub fn call_equity(eq: f64, street: Street, facing_all_in: bool, pot_bb: f64, be
     (eq - river.max(deep).max(overbet)).max(0.0)
 }
 
-/// The live calibration's per-category correction in chips. Residuals scale with the pot (river
-/// calls: -0.7 bb in pots up to 50 bb, -326 bb past 1,000 bb, 2026-09-24), so a penalty fitted in
-/// big blinds never exceeds `pot_cap` (the category's supported per-pot residual) of `scale`
-/// (pot + call, the calibration's unit); upward corrections are capped by the calibration step.
-fn applied_bias(bias_bb: f64, bb: i64, scale: i64, pot_cap: Option<f64>) -> f64 {
-    let chips = bias_bb * bb as f64;
-    match pot_cap {
-        Some(cap) if chips < 0.0 => chips.max(-cap * scale as f64),
-        _ => chips,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,20 +440,6 @@ mod tests {
     /// must agree on when a correction moves their pricing but not their protocol legality.
     fn options(d: &Decision) -> Vec<(String, Option<i64>)> {
         d.candidates.iter().map(|c| (c.action.clone(), c.amount)).collect()
-    }
-
-    #[test]
-    fn a_penalty_is_capped_by_its_own_per_pot_evidence() {
-        // Live 2026-09-24: river:call carried -8.8 bb from big-pot residuals while calls in pots up to
-        // 100 bb realized their prediction; its per-pot residual bounds the penalty in a small pot.
-        assert_eq!(applied_bias(-8.8, 20, 280, Some(0.1)), -0.1 * 280.0);
-        assert_eq!(applied_bias(-8.8, 20, 100_000, Some(0.1)), -8.8 * 20.0);
-        // preflop:raise:over missed by more than the pot: its own cap leaves the bb penalty whole.
-        assert_eq!(applied_bias(-1.91, 20, 60, Some(1.3)), -1.91 * 20.0);
-        // No per-pot evidence (records before 0207): the bb correction as fitted.
-        assert_eq!(applied_bias(-8.8, 20, 280, None), -8.8 * 20.0);
-        // Upward corrections keep their own small cap in the calibration step.
-        assert_eq!(applied_bias(3.0, 20, 30, Some(0.1)), 60.0);
     }
 
     #[test]
