@@ -91,6 +91,13 @@ pub const NN_CANDIDATE_KEY: &str = "nn.response.candidate.v1";
 pub const RANGE_PARAMS_KEY: &str = "range_params.v1";
 /// Self-calibration table (per-spot predicted-vs-realized corrections).
 pub const CALIBRATION_KEY: &str = "calibration.v1";
+/// The pot-depth grouping every self-calibration read uses (2026-10-18): the policy's rule
+/// (`sv10_core::policy::calibration_key`) as the store applies it.
+pub const CALIBRATION_DEPTH_SPLIT: sv10_store::store::DepthSplit = sv10_store::store::DepthSplit {
+    categories: &sv10_core::policy::DEPTH_SPLIT_CATEGORIES,
+    min_scale_bb: sv10_core::policy::DEEP_CALL_MIN_POT_BB,
+    suffix: sv10_core::policy::DEEP_SUFFIX,
+};
 /// Machine profile recorded at startup (CPU, memory, disks).
 pub const HARDWARE_PROFILE_KEY: &str = "hardware.profile";
 /// Operator command for the learner (dashboard `control`, pacing gate).

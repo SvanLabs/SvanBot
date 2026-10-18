@@ -155,7 +155,8 @@ counts the share over the fleet's own decisions).
    aggressive action's think time against the actor's typical time — the server stamps every frame —
    tilts their range by the fitted `RangeParams::think_exp`, 0 until `calibrate` finds a held-out gain),
    then applies self-calibration
-   (a penalty is capped at its category's supported per-pot residual, `policy::applied_bias`; an
+   (flop and turn calls read the class for their pot depth, `policy::calibration_key`, 500 bb pot + call;
+   a penalty is capped at its category's supported per-pot residual, `applied_bias`; an
    upward correction is bounded by the residual supported at the decision margin, predicted −1..+1 bb,
    `margins::MARGIN`, because the category mean is set by big-EV spots whose action it cannot change).
    `ResponsePricing` is the single in-process pricing module for one proposed raise-to: it derives

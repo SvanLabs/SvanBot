@@ -1,7 +1,7 @@
 //! Self-calibration application from stored residuals (0256).
 
 use crate::live::Shared;
-use sv10_store::store;
+use sv10_store::store::{self, DepthSplit, Store};
 
 /// Pure step of self-calibration: correct only the part of each category's mean residual that
 /// survives a 95% haircut, shrink that by sample size, and cap it asymmetrically (small upward,
@@ -82,6 +82,35 @@ pub(super) fn calibration_update(
     (bias, caps, table)
 }
 
+/// What self-calibration installs from `store`'s rows with categories grouped by `split`: the bb
+/// corrections, each penalty's per-pot ceiling and the dashboard table. An unreadable summary is an
+/// error; unreadable pot or margin reads degrade as they always have (penalties keep their bb size,
+/// no upward correction this round). The live task and `examples/calibration_fit.rs` share it.
+#[allow(clippy::type_complexity)]
+pub fn fit_from_store(
+    store: &Store,
+    split: &DepthSplit,
+) -> anyhow::Result<(
+    std::collections::HashMap<String, f64>,
+    std::collections::HashMap<String, f64>,
+    serde_json::Map<String, serde_json::Value>,
+)> {
+    let rows = store.calibration_summary(split)?;
+    // Pot-relative residuals (0079): reported next to the bb correction, not applied, until a
+    // controlled fleet split shows they improve results.
+    let pot_rows = store.calibration_pot_summary(split).unwrap_or_else(|e| {
+        tracing::warn!("per-pot calibration unavailable, penalties keep their bb size: {e}");
+        Vec::new()
+    });
+    // Without margin evidence no upward correction is applied (the conservative side).
+    let (lo, hi) = sv10_stats::margins::MARGIN;
+    let margin_rows = store.calibration_margin_summary(split, lo, hi).unwrap_or_else(|e| {
+        tracing::warn!("margin calibration unavailable, no upward corrections this round: {e}");
+        Vec::new()
+    });
+    Ok(calibration_update(rows, pot_rows, margin_rows))
+}
+
 /// Apply the 95%-supported part of each category's mean residual, shrunk by sample size and
 /// capped asymmetrically, so a correction only appears once the evidence is consistent.
 pub fn update_calibration(shared: &Shared) {
@@ -91,26 +120,13 @@ pub fn update_calibration(shared: &Shared) {
 /// [`update_calibration`], storing the table only when `persist` (the head; workers apply the
 /// correction locally and leave the table to the head).
 pub fn update_calibration_with(shared: &Shared, persist: bool) {
-    let rows = match shared.store.calibration_summary(&store::DepthSplit::NONE) {
-        Ok(rows) => rows,
+    let (bias, caps, table) = match fit_from_store(&shared.store, &crate::CALIBRATION_DEPTH_SPLIT) {
+        Ok(fit) => fit,
         Err(e) => {
             shared.log("calibration", "warn", format!("calibration summary unavailable: {e}"));
             return;
         }
     };
-    // Pot-relative residuals (0079): reported next to the bb correction, not applied, until a
-    // controlled fleet split shows they improve results.
-    let pot_rows = shared.store.calibration_pot_summary(&store::DepthSplit::NONE).unwrap_or_else(|e| {
-        tracing::warn!("per-pot calibration unavailable, penalties keep their bb size: {e}");
-        Vec::new()
-    });
-    // Without margin evidence no upward correction is applied (the conservative side).
-    let (lo, hi) = sv10_stats::margins::MARGIN;
-    let margin_rows = shared.store.calibration_margin_summary(&store::DepthSplit::NONE, lo, hi).unwrap_or_else(|e| {
-        tracing::warn!("margin calibration unavailable, no upward corrections this round: {e}");
-        Vec::new()
-    });
-    let (bias, caps, table) = calibration_update(rows, pot_rows, margin_rows);
     if persist {
         let json = serde_json::Value::Object(table).to_string();
         if let Err(e) = shared.store.put_kv(crate::CALIBRATION_KEY, &json) {
@@ -126,4 +142,71 @@ pub fn update_calibration_with(shared: &Shared, persist: bool) {
     let mut params = shared.params.write();
     params.ev_bias = bias;
     params.ev_bias_pot_cap = caps;
+    // The corrections were fitted per pot depth (2026-10-18); pricing reads the same classes.
+    params.calibration_depth_split = true;
+}
+
+#[cfg(test)]
+mod tests {
+    use sv10_core::policy::calibration_key;
+
+    /// The store's SQL class and the policy's key are one rule executed twice (2026-10-18 design);
+    /// this holds them together at and around the threshold, so pricing always finds the class the
+    /// fit wrote.
+    #[test]
+    fn the_store_groups_rows_into_the_class_pricing_reads() {
+        let shared = crate::live::Shared::for_test("cal-split-key", &["A"]);
+        let rows = [
+            ("flop:call", 499.99),
+            ("flop:call", 500.0),
+            ("turn:call", 2_000.0),
+            ("turn:call", 100.0),
+            ("river:call", 2_000.0),
+            ("flop:raise:big", 2_000.0),
+        ];
+        for (i, (cat, scale)) in rows.iter().enumerate() {
+            shared.store.insert_calibration("A", &format!("h{i}"), cat, 1.0, 0.0, *scale).unwrap();
+        }
+        let stored: Vec<String> = shared
+            .store
+            .calibration_samples_since("1970-01-01T00:00:00Z", &crate::CALIBRATION_DEPTH_SPLIT)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.0)
+            .collect();
+        let priced: Vec<String> = rows.iter().map(|(cat, scale)| calibration_key(cat, *scale).into_owned()).collect();
+        assert_eq!(stored, priced);
+    }
+
+    /// Small turn pots realize more than predicted and deep ones far less (2026-10-18). Split, the
+    /// small pots lose the penalty the deep rows used to pull onto them, and every process — a
+    /// worker too — installs the split flag with the corrections, so pricing reads the classes the
+    /// fit wrote.
+    #[test]
+    fn a_deep_turn_penalty_no_longer_taxes_small_turn_pots() {
+        let shared = crate::live::Shared::for_test("cal-split-fit", &["A"]);
+        for i in 0..400 {
+            // Small pots: +1 bb on a 60 bb call. Deep pots: -300 bb in 2,000 bb pots.
+            shared.store.insert_calibration("A", &format!("s{i}"), "turn:call", 10.0, if i % 2 == 0 { 9.0 } else { 13.0 }, 60.0).unwrap();
+            shared
+                .store
+                .insert_calibration("A", &format!("d{i}"), "turn:call", 400.0, if i % 2 == 0 { 0.0 } else { 200.0 }, 2_000.0)
+                .unwrap();
+        }
+        super::update_calibration_with(&shared, false);
+        let params = shared.params.read();
+        assert!(params.calibration_depth_split, "the worker installs the flag with the corrections");
+        assert!(params.ev_bias.get("turn:call:deep").is_some_and(|b| *b < 0.0), "{:?}", params.ev_bias);
+        assert!(params.ev_bias.get("turn:call").is_none_or(|b| *b >= 0.0), "small turn pots carry no penalty: {:?}", params.ev_bias);
+    }
+
+    /// A replay record written before the split carries no flag: it reads as false and keeps pricing
+    /// the pooled classes, and a parameter set without the split serializes exactly as before.
+    #[test]
+    fn a_record_from_before_the_split_prices_pooled() {
+        let old: sv10_core::policy::Params = serde_json::from_str(r#"{"ev_bias":{"turn:call":-1.0}}"#).unwrap();
+        assert!(!old.calibration_depth_split);
+        let json = serde_json::to_string(&sv10_core::policy::Params::default()).unwrap();
+        assert!(!json.contains("calibration_depth_split"), "a default set must serialize as before the split: {json}");
+    }
 }

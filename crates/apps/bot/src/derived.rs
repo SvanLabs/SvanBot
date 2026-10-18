@@ -76,7 +76,7 @@ pub fn build_aggregates(store: &Store) -> Result<serde_json::Value> {
         .collect();
     let audit = store.audit_summary(epoch)?;
     let calibration: Vec<serde_json::Value> = store
-        .calibration_summary(&sv10_store::store::DepthSplit::NONE)?
+        .calibration_summary(&crate::CALIBRATION_DEPTH_SPLIT)?
         .into_iter()
         .map(|(category, n, predicted, realized, _)| {
             serde_json::json!({"category": category, "n": n, "predicted_bb": predicted, "realized_bb": realized})

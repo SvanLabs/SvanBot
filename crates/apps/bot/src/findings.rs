@@ -164,7 +164,7 @@ pub fn mispriced(calibration_off: &[(String, i64, f64)]) -> Vec<Finding> {
             &format!("calibration:{category}"),
             "P2",
             &format!("{category} realizes {residual:+.1} bb over its uncorrected price"),
-            format!("{n} settled decisions at every pot size"),
+            format!("{n} settled decisions at every pot size its class covers"),
             *residual,
             0.0,
         ));
@@ -282,7 +282,7 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
     }
 
     // Calibration: measurements, never findings on their own (0269).
-    match store.calibration_summary(&sv10_store::store::DepthSplit::NONE) {
+    match store.calibration_summary(&crate::CALIBRATION_DEPTH_SPLIT) {
         Ok(rows) => {
             let off: Vec<(String, i64, f64)> = rows
                 .iter()
