@@ -20,8 +20,9 @@ use serde_json::json;
 use sv10_store::store::{CalibrationRow, Store};
 
 /// Bumped when this payload's shape changes, so a stored row names the record era it belongs to
-/// rather than being compared with one it is not shaped like.
-pub const SNAPSHOT_VERSION: u32 = 1;
+/// rather than being compared with one it is not shaped like. 2: the constants record the
+/// calibration depth split (2026-10-18), the grouping the calibration summary was read under.
+pub const SNAPSHOT_VERSION: u32 = 2;
 
 /// One pass of the scan's inputs and outputs, ready to be persisted as one row.
 pub struct ScanSnapshot<'a> {
@@ -86,6 +87,11 @@ impl ScanSnapshot<'_> {
                 "z95": Z95,
                 "drift_points": DRIFT_POINTS,
                 "drift_z": DRIFT_Z,
+                "calibration_depth_split": {
+                    "categories": crate::CALIBRATION_DEPTH_SPLIT.categories,
+                    "min_scale_bb": crate::CALIBRATION_DEPTH_SPLIT.min_scale_bb,
+                    "suffix": crate::CALIBRATION_DEPTH_SPLIT.suffix,
+                },
             },
         })
         .to_string()
@@ -190,6 +196,10 @@ mod tests {
         assert_eq!(constants["gap_window_days"], GAP_WINDOW_DAYS);
         assert_eq!(constants["decision_loss_days"], DECISION_LOSS_DAYS);
         assert_eq!(constants["gap_bb_per_decision"], GAP_BB_PER_DECISION);
+        let split = &constants["calibration_depth_split"];
+        assert_eq!(split["categories"], json!(crate::CALIBRATION_DEPTH_SPLIT.categories), "the grouping the summary was read under");
+        assert_eq!(split["min_scale_bb"], crate::CALIBRATION_DEPTH_SPLIT.min_scale_bb);
+        assert_eq!(split["suffix"], crate::CALIBRATION_DEPTH_SPLIT.suffix);
     }
 
     /// 0356's load-bearing property, end to end: the payload has no clock in it, so two passes over

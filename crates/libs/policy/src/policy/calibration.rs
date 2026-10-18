@@ -15,9 +15,10 @@ pub const DEPTH_SPLIT_CATEGORIES: [&str; 2] = ["flop:call", "turn:call"];
 pub const DEEP_SUFFIX: &str = ":deep";
 
 /// The calibration class of a decision in `category` sized against `scale_bb` (pot + call, big
-/// blinds): a split category's deep class from [`DEEP_CALL_MIN_POT_BB`], so "deep" names the same
-/// pot as the deep-call fit's; the category itself otherwise. The store groups stored rows by the
-/// same rule (`DepthSplit`, handed these constants by the bot) and a test there holds the two together.
+/// blinds): a split category's deep class from [`DEEP_CALL_MIN_POT_BB`], the same threshold the
+/// deep-call fit tests (there against the pot before the call, here against pot + call); the
+/// category itself otherwise. The store groups stored rows by the same rule (`DepthSplit`, handed
+/// these constants by the bot) and a test there holds the two together.
 pub fn calibration_key(category: &str, scale_bb: f64) -> Cow<'_, str> {
     if scale_bb >= DEEP_CALL_MIN_POT_BB && DEPTH_SPLIT_CATEGORIES.contains(&category) {
         Cow::Owned(format!("{category}{DEEP_SUFFIX}"))

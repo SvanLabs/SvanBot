@@ -56,8 +56,9 @@ is re-derived rather than quoted: the calibration summary as read, the installed
 the one input that is genuinely destroyed — the comparable classes with the window each was tested
 on, every finding and measurement row with its value, and the constants that define the arithmetic
 (`live_inputs_replay_version`, the `gap_*` values, `decision_loss_days`, `big_gap_bb`, `z95`, the
-drift pair). `snapshot_version` names the record era, so a row written under an older shape is
-identifiable.
+drift pair, and `calibration_depth_split`, the pot-depth grouping the calibration summary was read
+under). `snapshot_version` names the record era (2 from the depth split), so a row written under an
+older shape is identifiable.
 
 The payload holds no wall clock, and the row is written only when its digest changes
 (`Store::record_scan_snapshot`): an unchanged pass stamps `seen` on the newest row instead, so a year
