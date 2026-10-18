@@ -110,6 +110,8 @@ pub fn decide_with<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params
 }
 
 fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, nn: Option<&sv10_nn::nn::Mlp>, rng: &mut R) -> Decision {
+    // The calibration class is keyed on the pot as received, the scale its row stores (#976).
+    let received_scale = sit.pot + sit.call_amount.max(0);
     // Price every option against the pot hero can actually win (live 2026-09-14: calls with 6%
     // equity against a 900k-chip shove were scored at +53k).
     let sit = &sit.without_uncallable();
@@ -294,7 +296,7 @@ fn decide_inner<R: Rng>(sit: &Situation, models: &ModelStore, params: &Params, n
     let cur_bet = sit.current_bet();
     for (_, c) in cands.iter_mut() {
         c.category = spot_category(sit.street, &c.action, c.amount, sit.pot, cur_bet, hero.bet);
-        if let Some(b) = c.category.as_deref().and_then(|k| calibration::calibration_term(k, sit, params)) {
+        if let Some(b) = c.category.as_deref().and_then(|k| calibration::calibration_term(k, sit, received_scale, params)) {
             c.bias = b;
             c.ev += b;
         }

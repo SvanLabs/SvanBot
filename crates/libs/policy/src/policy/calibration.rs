@@ -29,10 +29,13 @@ pub fn calibration_key(category: &str, scale_bb: f64) -> Cow<'_, str> {
 /// The installed correction for a candidate in `category`, in chips, or `None` when its class has
 /// none. Classes are read per pot depth only when `params.calibration_depth_split` says the
 /// installed corrections were fitted that way, so a record made before the split prices as it did.
-pub(super) fn calibration_term(category: &str, sit: &Situation, params: &Params) -> Option<f64> {
+/// The class is keyed on `received_scale`, pot + call as the decision received it — the scale the
+/// calibration row stores (`client/decide.rs`) — not on the pot left once uncallable chips go back
+/// (`sit`), so a short stack facing an overshove reads the class its row is fitted in.
+pub(super) fn calibration_term(category: &str, sit: &Situation, received_scale: i64, params: &Params) -> Option<f64> {
     let scale = sit.pot + sit.call_amount.max(0);
     let key = match params.calibration_depth_split {
-        true => calibration_key(category, scale as f64 / sit.bb.max(1) as f64),
+        true => calibration_key(category, received_scale as f64 / sit.bb.max(1) as f64),
         false => Cow::Borrowed(category),
     };
     let bias = params.ev_bias.get(key.as_ref())?;
@@ -99,11 +102,11 @@ mod tests {
         };
         let deep = turn_call(9_000, 1_000); // 500 bb pot + call
         let small = turn_call(1_000, 200); // 60 bb
-        assert_eq!(calibration_term("turn:call", &deep, &split), Some(-15.0 * 20.0));
-        assert_eq!(calibration_term("turn:call", &small, &split), Some(-20.0));
+        assert_eq!(calibration_term("turn:call", &deep, 10_000, &split), Some(-15.0 * 20.0));
+        assert_eq!(calibration_term("turn:call", &small, 1_200, &split), Some(-20.0));
         let pooled = Params { calibration_depth_split: false, ..split.clone() };
-        assert_eq!(calibration_term("turn:call", &deep, &pooled), Some(-20.0), "a record without the flag prices pooled");
-        assert_eq!(calibration_term("river:call", &deep, &split), None, "no class, no correction");
+        assert_eq!(calibration_term("turn:call", &deep, 10_000, &pooled), Some(-20.0), "a record without the flag prices pooled");
+        assert_eq!(calibration_term("river:call", &deep, 10_000, &split), None, "no class, no correction");
     }
 
     #[test]
@@ -115,7 +118,7 @@ mod tests {
             calibration_depth_split: true,
             ..Params::default()
         };
-        assert!(calibration_term("turn:call", &sit, &p).is_some_and(f64::is_finite));
+        assert!(calibration_term("turn:call", &sit, 10_000, &p).is_some_and(f64::is_finite));
     }
 
     #[test]
@@ -138,5 +141,27 @@ mod tests {
         };
         assert_eq!(call_bias(true), -15.0 * 10.0, "the deep class");
         assert_eq!(call_bias(false), -10.0, "a record without the split prices as before");
+    }
+
+    /// The live overshove (bb 20): the calibration row stores pot + call as the decision received it,
+    /// 45,607 bb, so it is fitted as `turn:call:deep`; pricing sees 461 bb once the uncallable chips go
+    /// back. The class priced must be the class fitted, so the key reads the received pot.
+    #[test]
+    fn an_overshove_call_reads_the_class_its_row_is_stored_under() {
+        let mut turn = sv10_engine::situation::fixtures::uncallable_overshove();
+        turn.street = Street::Turn;
+        let stored_bb = (turn.pot + turn.call_amount) as f64 / turn.bb as f64;
+        let adj = turn.without_uncallable();
+        assert!(stored_bb >= DEEP_CALL_MIN_POT_BB, "stored as deep: {stored_bb}");
+        assert!(((adj.pot + adj.call_amount) as f64 / adj.bb as f64) < DEEP_CALL_MIN_POT_BB, "priced pot is shallow");
+        let params = Params {
+            ev_bias: [("turn:call".to_string(), -1.0), ("turn:call:deep".to_string(), -15.0)].into_iter().collect(),
+            calibration_depth_split: true,
+            ..Params::default()
+        };
+        let mut rng = sv10_rng::rngs::SmallRng::seed_from_u64(7);
+        let d = crate::policy::decide_with(&turn, &ModelStore::default(), &params, None, &mut rng);
+        let call = d.candidates.iter().find(|c| c.action == "call").expect("a call is offered");
+        assert_eq!(call.bias, -15.0 * 20.0, "the class its calibration row is stored under");
     }
 }
