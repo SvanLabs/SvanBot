@@ -282,7 +282,7 @@ pub fn scan(store: &Store, h2h: &std::collections::HashMap<String, HeadToHead>, 
     }
 
     // Calibration: measurements, never findings on their own (0269).
-    match store.calibration_summary() {
+    match store.calibration_summary(&sv10_store::store::DepthSplit::NONE) {
         Ok(rows) => {
             let off: Vec<(String, i64, f64)> = rows
                 .iter()

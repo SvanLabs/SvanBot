@@ -15,7 +15,7 @@ pub fn report(store: &Store, args: &[String], json: bool) -> Result<String> {
     let days: i64 = positional.first().and_then(|d| d.parse().ok()).unwrap_or(8);
     let since = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
     let cats: Vec<&str> = positional.iter().skip(1).map(|s| s.as_str()).collect();
-    let samples = store.calibration_samples_since(&since)?;
+    let samples = store.calibration_samples_since(&since, &sv10_store::store::DepthSplit::NONE)?;
     let table = store.get_kv(crate::CALIBRATION_KEY)?;
     let (bias, bound) = (sv10_stats::margins::installed_bias(table.as_deref()), sv10_stats::margins::bound_by(table.as_deref()));
     let bins = sv10_stats::margins::margins(&samples, &cats, &bias);

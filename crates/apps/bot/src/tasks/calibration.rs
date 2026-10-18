@@ -91,7 +91,7 @@ pub fn update_calibration(shared: &Shared) {
 /// [`update_calibration`], storing the table only when `persist` (the head; workers apply the
 /// correction locally and leave the table to the head).
 pub fn update_calibration_with(shared: &Shared, persist: bool) {
-    let rows = match shared.store.calibration_summary() {
+    let rows = match shared.store.calibration_summary(&store::DepthSplit::NONE) {
         Ok(rows) => rows,
         Err(e) => {
             shared.log("calibration", "warn", format!("calibration summary unavailable: {e}"));
@@ -100,13 +100,13 @@ pub fn update_calibration_with(shared: &Shared, persist: bool) {
     };
     // Pot-relative residuals (0079): reported next to the bb correction, not applied, until a
     // controlled fleet split shows they improve results.
-    let pot_rows = shared.store.calibration_pot_summary().unwrap_or_else(|e| {
+    let pot_rows = shared.store.calibration_pot_summary(&store::DepthSplit::NONE).unwrap_or_else(|e| {
         tracing::warn!("per-pot calibration unavailable, penalties keep their bb size: {e}");
         Vec::new()
     });
     // Without margin evidence no upward correction is applied (the conservative side).
     let (lo, hi) = sv10_stats::margins::MARGIN;
-    let margin_rows = shared.store.calibration_margin_summary(lo, hi).unwrap_or_else(|e| {
+    let margin_rows = shared.store.calibration_margin_summary(&store::DepthSplit::NONE, lo, hi).unwrap_or_else(|e| {
         tracing::warn!("margin calibration unavailable, no upward corrections this round: {e}");
         Vec::new()
     });
