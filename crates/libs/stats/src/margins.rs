@@ -7,15 +7,17 @@
 //!
 //! This is the *pricing* instrument (0346), and the numbers say exactly what they are:
 //! - population: every settled decision the bot priced and got a stack result for, at every pot size
-//!   (the `calibration` table). The deep audit's rows are the analyst's big spots only — a different
-//!   population, never the same rows.
+//!   (the `calibration` table). Flop and turn calls are grouped per pot depth, a `:deep` class from
+//!   500 bb pot + call (`sv10_bot::CALIBRATION_DEPTH_SPLIT`), so each class covers its depth only.
+//!   The deep audit's rows are the analyst's big spots only — a different population, never the
+//!   same rows.
 //! - basis: `residual` is realized minus the **uncorrected** predicted EV. Live play records each
 //!   sample with the bias taken back out (`client/decide.rs`: `candidate.ev - candidate.bias`), so
 //!   the bias is what self-calibration is *fitted from*, not part of the price this residual is
 //!   measured against.
 //! - `after_correction` subtracts the installed correction at its largest size. In play a penalty is
-//!   capped at its supported per-pot residual (`policy::applied_bias`, 0207), so for a capped
-//!   category this is the most, not the exact amount, play corrects a decision by.
+//!   capped at its supported per-pot residual (`applied_bias` in `policy/calibration.rs`, 0207), so
+//!   for a capped category this is the most, not the exact amount, play corrects a decision by.
 
 use std::collections::HashMap;
 
@@ -100,7 +102,8 @@ pub fn margins(samples: &[(String, f64, f64)], categories: &[&str], bias: &HashM
 
 /// Each category's installed EV correction in big blinds, from the stored self-calibration
 /// (`sv10_bot::CALIBRATION_KEY`); empty when absent or unreadable. A penalty is also bounded per pot
-/// in play (`policy::applied_bias`), so for a negative correction this is its largest size.
+/// in play (`applied_bias` in `policy/calibration.rs`), so for a negative correction this is its
+/// largest size.
 pub fn installed_bias(stored: Option<&str>) -> HashMap<String, f64> {
     let Some(v) = stored.and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok()) else { return HashMap::new() };
     v.as_object().map(|m| m.iter().filter_map(|(k, e)| Some((k.clone(), e["bias_bb"].as_f64()?))).collect()).unwrap_or_default()

@@ -149,8 +149,9 @@ pub fn nemesis(h2h: &std::collections::HashMap<String, HeadToHead>) -> Vec<Findi
         .collect()
 }
 
-/// The calibration findings: a category's realized result against its *uncorrected* price, over
-/// every settled decision at every pot size (the pricing population, 0346). The fitted quantity:
+/// The calibration findings: a class's realized result against its *uncorrected* price, over every
+/// settled decision at the pot sizes its class covers (the pricing population, 0346; flop and turn
+/// calls split per depth, [`crate::CALIBRATION_DEPTH_SPLIT`]). The fitted quantity:
 /// live play records each sample as `candidate.ev - candidate.bias`, so the residual is what
 /// self-calibration is fitted from — not the price live play corrects against, and not the audit's
 /// big spots. `review margins` reads the corrected residual at the decision margin and
