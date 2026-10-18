@@ -74,7 +74,10 @@ impl Source {
 /// the part it does not, named (0359). Removing the adoption, or adding a source under it, moves
 /// these words with the parameters instead of leaving the footer claiming an input nobody installed.
 fn price_basis(recorded: &Params, params: &Params) -> &'static str {
-    let prices = params.ev_bias == recorded.ev_bias && params.ev_bias_pot_cap == recorded.ev_bias_pot_cap && params.range == recorded.range;
+    let prices = params.ev_bias == recorded.ev_bias
+        && params.ev_bias_pot_cap == recorded.ev_bias_pot_cap
+        && params.calibration_depth_split == recorded.calibration_depth_split
+        && params.range == recorded.range;
     let fits = LiveFits::of(params) == LiveFits::of(recorded);
     match (prices, fits) {
         (true, true) => "at the record's prices: its self-calibration, range and live fits",
@@ -211,6 +214,7 @@ mod tests {
             deal_chunks: 8,
             ev_bias: [("river:call".to_string(), 1.5)].into_iter().collect(),
             ev_bias_pot_cap: [("river:call".to_string(), 0.2)].into_iter().collect(),
+            calibration_depth_split: true,
             range: sv10_core::oprange::RangeParams { bluff_min: 0.11, ..Default::default() },
             fold_logit_shift: [0.2, 0.0, -0.7],
             preflop_fold_logit_shift: -1.4,
@@ -253,6 +257,7 @@ mod tests {
         assert_eq!(
             differing(&current, &champ),
             [
+                "calibration_depth_split",
                 "deal_chunks",
                 "deep_call_shift",
                 "ev_bias",

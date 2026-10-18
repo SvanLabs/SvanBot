@@ -29,7 +29,7 @@ mod stack_samples;
 mod timeline;
 
 pub use audits::{AUDIT_RESULT_DAYS, AuditJob, AuditResult, AuditSummary};
-pub use calibration::CalibrationRow;
+pub use calibration::{CalibrationRow, DepthSplit};
 pub use decisions::{PostflopBet, PostflopDecision, PreflopRaise, QuizSpot};
 pub use events::{EVENTS_ALERT_DAYS, EVENTS_INFO_DAYS};
 pub use hands::{EvResultWithBlind, HandRow, MonitorRow, PlayerHand, PlayerHandWithBlind, ResultRow};

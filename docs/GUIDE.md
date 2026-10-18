@@ -225,6 +225,12 @@ over-optimism is what spends chips. The bot therefore corrects spots where its o
 systematically over- or under-optimistic, with no human input. The Self-calibration panel lists
 every category and the correction in use.
 
+Flop and turn calls are fitted per pot depth: a call in a pot of 500 bb or more (pot plus the call)
+has its own class, `flop:call:deep` or `turn:call:deep`. Those calls realize far less than predicted
+while small-pot calls realize slightly more, and one pooled correction used to tax the small pots with
+a penalty fitted on the deep ones. River calls miss by a near-constant share of the pot at every depth
+and stay one class.
+
 ---
 
 ## 4. Opponent modeling

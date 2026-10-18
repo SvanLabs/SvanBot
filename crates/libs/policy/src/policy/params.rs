@@ -55,6 +55,12 @@ pub struct Params {
     /// Largest penalty per category as a fraction of pot + call: the per-pot residual the
     /// evidence supports (self-calibration, 0207). A category without one is not capped.
     pub ev_bias_pot_cap: std::collections::HashMap<String, f64>,
+    /// Whether `ev_bias` was fitted with flop and turn calls split by pot depth (2026-10-18), so
+    /// pricing reads a call's class (`calibration_key`) rather than its pooled category. Live-fitted
+    /// state set together with `ev_bias`; false in the learner, the golden snapshot and every record
+    /// made before the split, which therefore price as they were decided.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub calibration_depth_split: bool,
     /// Range-reconstruction shape constants (fitted to showdowns by `calibrate`).
     pub range: sv10_model::oprange::RangeParams,
     /// Price every candidate on one shared, importance-reweighted set of Monte Carlo deals
@@ -162,6 +168,7 @@ impl Default for Params {
             raise_risk: 1.0,
             ev_bias: std::collections::HashMap::new(),
             ev_bias_pot_cap: std::collections::HashMap::new(),
+            calibration_depth_split: false,
             range: sv10_model::oprange::RangeParams::DEFAULT,
             reuse_deals: true,
             exact_strengths: true,
@@ -211,7 +218,7 @@ impl Params {
     }
 
     /// Adopt a learner-promoted champion: every strategy knob comes from `promoted`, while the
-    /// Monte Carlo budget (`samples`, `deal_chunks`) and the live-fitted state (`ev_bias`, `ev_bias_pot_cap`,
+    /// Monte Carlo budget (`samples`, `deal_chunks`) and the live-fitted state (`ev_bias`, `ev_bias_pot_cap`, `calibration_depth_split`,
     /// `range`, `fold_logit_shift`, `river_jam_call_shift`, `deep_call_shift`, `preflop_fold_logit_shift`, `overbet_call_shift`, `overbet_call_slope`) stay local to this process. The promotion contract lives here, next to the
     /// fields it governs, instead of at the call site that applies it.
     pub fn adopt_promoted(&mut self, promoted: Params) {
@@ -219,6 +226,7 @@ impl Params {
         let deal_chunks = self.deal_chunks;
         let ev_bias = std::mem::take(&mut self.ev_bias);
         let ev_bias_pot_cap = std::mem::take(&mut self.ev_bias_pot_cap);
+        let calibration_depth_split = self.calibration_depth_split;
         let range = self.range;
         let fold_logit_shift = self.fold_logit_shift;
         let river_jam_call_shift = self.river_jam_call_shift;
@@ -231,6 +239,7 @@ impl Params {
         self.deal_chunks = deal_chunks;
         self.ev_bias = ev_bias;
         self.ev_bias_pot_cap = ev_bias_pot_cap;
+        self.calibration_depth_split = calibration_depth_split;
         self.range = range;
         self.fold_logit_shift = fold_logit_shift;
         self.river_jam_call_shift = river_jam_call_shift;
@@ -241,7 +250,7 @@ impl Params {
     }
 
     /// Adopt a recorded decision's own state: its Monte Carlo budget (`samples`, `deal_chunks`) and
-    /// its live-fitted set (`ev_bias`, `ev_bias_pot_cap`, `range`, `fold_logit_shift`,
+    /// its live-fitted set (`ev_bias`, `ev_bias_pot_cap`, `calibration_depth_split`, `range`, `fold_logit_shift`,
     /// `river_jam_call_shift`, `deep_call_shift`, `preflop_fold_logit_shift`, `overbet_call_shift`,
     /// `overbet_call_slope`) — exactly the fields `adopt_promoted` keeps local — leaving every
     /// strategy knob as it is.
@@ -256,6 +265,7 @@ impl Params {
         self.deal_chunks = recorded.deal_chunks;
         self.ev_bias = recorded.ev_bias.clone();
         self.ev_bias_pot_cap = recorded.ev_bias_pot_cap.clone();
+        self.calibration_depth_split = recorded.calibration_depth_split;
         self.range = recorded.range;
         self.fold_logit_shift = recorded.fold_logit_shift;
         self.river_jam_call_shift = recorded.river_jam_call_shift;
@@ -320,6 +330,7 @@ mod tests {
             samples: 9999,
             deal_chunks: 8,
             ev_bias: [("river:call".to_string(), 1.5)].into_iter().collect(),
+            calibration_depth_split: true,
             fold_logit_shift: [0.2, -0.5, -0.7],
             river_jam_call_shift: 0.05,
             deep_call_shift: 0.15,
@@ -338,6 +349,7 @@ mod tests {
         assert_eq!(live.call_margin, 0.05);
         assert_eq!((live.samples, live.deal_chunks), (9999, 8));
         assert_eq!(live.ev_bias["river:call"], 1.5);
+        assert!(live.calibration_depth_split, "the split flag is local: a promoted set never clears it");
         assert_eq!(live.range, sv10_model::oprange::RangeParams::DEFAULT);
         assert_eq!(live.fold_logit_shift, [0.2, -0.5, -0.7], "the live fold fit is never promoted over");
         assert_eq!(live.river_jam_call_shift, 0.05, "the live river-jam fit is never promoted over");
@@ -353,6 +365,7 @@ mod tests {
             deal_chunks: 8,
             ev_bias: [("river:call".to_string(), 1.5)].into_iter().collect(),
             ev_bias_pot_cap: [("river:call".to_string(), 0.2)].into_iter().collect(),
+            calibration_depth_split: true,
             range: sv10_model::oprange::RangeParams { soft_width: 0.31, ..Default::default() },
             fold_logit_shift: [0.2, 0.0, -0.7],
             preflop_fold_logit_shift: -1.4,
@@ -369,6 +382,7 @@ mod tests {
         assert_eq!((knobs.samples, knobs.deal_chunks), (9_000, 8));
         assert_eq!(knobs.ev_bias, recorded.ev_bias);
         assert_eq!(knobs.ev_bias_pot_cap, recorded.ev_bias_pot_cap);
+        assert!(knobs.calibration_depth_split, "a re-solve prices the record's classes");
         assert_eq!(knobs.range, recorded.range);
         assert_eq!(knobs.fold_logit_shift, [0.2, 0.0, -0.7]);
         assert_eq!(knobs.preflop_fold_logit_shift, -1.4);

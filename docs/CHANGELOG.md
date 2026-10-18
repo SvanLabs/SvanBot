@@ -58,6 +58,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `scripts/reap-worktrees.sh` reports which registered git worktrees are merged, stale, prunable, dirty or live, with sizes
   and the remove command; it never deletes anything (#763).
 
+### Changed
+
+- **Self-calibration fits flop and turn calls per pot depth** (#976). A call in a pot of 500 bb or
+  more has its own class (`flop:call:deep`, `turn:call:deep`), derived from the stored scale, so every
+  past row splits at once. Small turn pots lose the −1.37 bb penalty deep pots had pulled onto them;
+  river calls stay pooled. Replay records made before the change price exactly as decided.
+
 ### Fixed
 
 - The flop and turn strength tables load on a background thread at process start. A split-mode worker (no dashboard poll to
