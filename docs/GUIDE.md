@@ -224,8 +224,9 @@ correction is added to that spot's EVs, capped asymmetrically — **+3 bb** upwa
 residual is measured only where we already took the action, and **−15 bb** downward, because
 over-optimism is what spends chips. The bot therefore corrects spots where its own model is
 systematically over- or under-optimistic, with no human input. The Self-calibration panel lists
-the 14 categories with the most decisions and the correction in use; smaller classes, the deep call
-classes among them, are only in the full table at `GET /api/calibration`.
+the 14 categories with the most decisions and the correction in use, plus every smaller category
+that has a correction or is a deep call class; the rest, all at zero, are only in the full table at
+`GET /api/calibration`.
 
 Flop and turn calls are fitted per pot depth: a call in a pot of 500 bb or more (pot plus the call)
 has its own class, `flop:call:deep` or `turn:call:deep`. Those calls realize far less than predicted
