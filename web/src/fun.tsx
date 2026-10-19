@@ -397,12 +397,14 @@ const AT_ZERO: Record<string, string> = {
 export function CalibrationPanel() {
   const dataPoll = usePoll<CalData>('/calibration', 60000);
   const data = dataPoll.data;
-  const rows = data?.rows || [];
+  // The 14 busiest classes, plus any smaller one with a correction in use or a pot-depth split, so the
+  // panel never hides a correction the bot is applying (#986).
+  const rows = (data?.rows || []).filter((r, i) => i < 14 || r.bias_bb || r.category.endsWith(':deep'));
   const pretty = (c: string) => c.replace(/:/g, ' · ').replace('allin', 'all-in');
   return <div className="calib">
     <StaleNote poll={dataPoll} />
     <p className="footnote">Every decision's predicted value is checked against what it actually won. Spots where the model is consistently off get a small, capped correction once there is enough evidence. {data ? `${data.active_corrections} active correction${data.active_corrections === 1 ? '' : 's'}.` : ''} The last column is the correction in use in chips of EV, two decimals on every row: <b>0.00 bb</b> means none, and that row's tooltip gives the reason — too few decisions yet, or evidence that says zero.</p>
-    <div className="calib-list">{rows.slice(0, 14).map(r => <div key={r.category} className="calib-row">
+    <div className="calib-list">{rows.map(r => <div key={r.category} className="calib-row">
       <span className="calib-cat">{pretty(r.category)}<small>{fmt(r.n)} decisions</small></span>
       <span className="calib-vals"><span>model {sgn(r.predicted_bb, 2)}</span><span className={r.realized_bb < r.predicted_bb ? 'negative' : 'positive'}>real {sgn(r.realized_bb, 2)}</span></span>
       <span className={`calib-bias ${r.bias_bb ? 'on' : ''}`} title={`${r.bias_bb ? `applied, size set by ${r.bound_by || 'the evidence'}` : `no correction: ${AT_ZERO[r.bound_by || ''] || 'no evidence yet'}`} · residual ${sgn(r.residual_bb, 2)} ± ${fmt(r.se_bb, 2)} bb${r.residual_pot != null ? ` · per pot ${sgn(r.residual_pot * 100, 1)}% ± ${fmt((r.se_pot || 0) * 100, 1)}% (candidate ${sgn((r.pot_bias_candidate || 0) * 100, 1)}%, not applied)` : ''}`}>{sgn(r.bias_bb || 0, 2, true)} bb</span>
