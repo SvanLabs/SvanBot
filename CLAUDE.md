@@ -25,10 +25,11 @@ where it matters is the one where you forgot something was running.
 
 **2. `scripts/check.sh full` is the gate.** It is the same command CI runs
 (`.github/workflows/check.yml`), so a red run at your desk and a red run on the pull request are the
-same failure with the same fix — AI provenance, placeholder markers, the secret scan, rustfmt, the
-500-line file check, clippy `-D warnings`, cargo-deny, the third-party notices check, docs drift,
-the workspace tests and the dashboard's `tsc`. `scripts/check.sh commit` is the fast subset the
-pre-commit hook runs while you iterate. Run the full one before you push, not after.
+same failure with the same fix — AI provenance, placeholder markers, rustfmt, the 500-line file
+check, clippy `-D warnings`, cargo-deny, the third-party notices check, docs drift, the workspace
+tests and the dashboard's `tsc`. `scripts/check.sh commit` is the fast subset the pre-commit hook
+runs while you iterate, and the one place the secret scan of staged changes runs. Run the full one
+before you push, not after.
 
 **3. Every artifact names the system that produced it.** Commits carry a trailer in the footer;
 issues and pull request bodies carry the same line in the body.
@@ -66,9 +67,11 @@ true, and a green check is not a claim about who wrote the code.
 `.claude/agents/` has two subagents worth delegating to: a reviewer that knows the two hard
 invariants and the crate layering, and a boundary checker for the layering rule on its own.
 
-`.claude/skills/` holds the procedures that are not one command: `verify-install` (which commit is
-the fleet actually playing, and does it match the checkout?) and `restore-store` (put runtime data
-back from an archive, without ever writing over a live `artifacts/`).
+`.claude/skills/` holds the procedures that are not one command: `ship-patch` (every change as a
+patch, never a freehand edit to the checkout a fleet runs from), `verify-install` (which commit is
+the fleet actually playing, and does it match the checkout?), `restore-store` (put runtime data back
+from an archive, without ever writing over a live `artifacts/`) and `public-tv` (host the table for
+an audience).
 
 ## Agent skills
 

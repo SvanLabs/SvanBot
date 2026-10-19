@@ -53,7 +53,8 @@ the hardware profile the bot will tune itself to.
 **Without a Rust toolchain** (any x86-64 Linux with glibc at least the bundle's `MANIFEST`): unpack
 a bundle built by `scripts/portable.sh` and run `scripts/install.sh`. The bundle includes the
 analyst process enabled by default fleet startup. It installs the x86-64-v3
-build on CPUs with AVX2/BMI2/FMA (within ~1% of a native build) and x86-64-v2 otherwise, and creates
+build on CPUs with AVX2/BMI2/FMA (within ~1% of a native build), x86-64-v2 where the CPU supports it, and
+baseline x86-64-v1 otherwise, and creates
 `.env`. **Offline source builds**: `scripts/vendor.sh` once while online, then
 `cargo build --release --offline --config .cargo/vendor.toml`.
 
@@ -70,7 +71,7 @@ Then open `.env` and fill in:
 
 | Command | Effect |
 |---------|--------|
-| `scripts/start.sh` | Start the fleet and the learner under a restart-on-crash supervisor |
+| `scripts/start.sh` | Start the fleet, the learner, the analyst and the results monitor under restart-on-crash supervisors |
 | `scripts/stop.sh` | Stop everything gracefully (models are saved) |
 | `scripts/status.sh` | Show each bot's mode, session hands, net, rank and database totals |
 | `scripts/release.sh` | Build, test and install a new release; the running fleet and learner hot-swap to it without stopping play |
@@ -156,7 +157,7 @@ cached per board and shared by every thread.
 
 **Showdown-fitted range model.** The shapes of these likelihoods (how soft the "top x% of hands"
 cut-offs are, how much a big bet polarizes, how strongly a call removes raising hands, how much a
-check caps a range, how wide flat calls and limps are, and so on — 23 constants in
+check caps a range, how wide flat calls and limps are, and so on — 28 constants in
 `oprange::RangeParams`) were originally hand-set. `calibrate` fits them by **maximum likelihood**
 to real showdowns: for every hand an opponent showed, it replays that opponent's full action line
 with their learned profile and scores the probability the range model gave to the exact combo they
@@ -321,6 +322,7 @@ input.
                               │ not settled
                               ▼
       experiment mode: bots #4 and #5 play an unresolved challenger live
+      (only while no bot has a lineage of its own)
 ```
 
 Each cycle:
@@ -328,10 +330,9 @@ Each cycle:
 1. **Population clones** — for the most frequently seen opponents, fit a simulated player whose
    behaviour matches their real statistics (cached; refit when their sample grows 25%).
 2. **Neural model** — retrain and re-validate (section 5).
-3. **Challengers** — every small one-knob variation of the current champion parameters
-   (fold-probability scale, preflop fold scale, passive-line fold bonus, initiative, open and 3-bet
-   sizes, 3-bet call margin, raise fold bonus, realization weight, call margin, jam ratio, raise
-   risk, 4-bet, limper sizing, bet-size scale).
+3. **Challengers** — every small one-knob variation of the current champion parameters, one per
+   knob in `crates/apps/bot/src/knobs.rs` (29 today), plus whole bet-size-set and single
+   interior-size proposals.
 4. **Paired evaluation** — challenger and champion play simulated hands against the clones on
    **identical cards and identical opponent random choices** (each seat has its own random
    stream per hand), so luck cancels. When everyone is all-in before the river, the hand is scored
@@ -497,7 +498,7 @@ and runs a short equity benchmark. From that it sets:
 | Setting | Rule |
 |---------|------|
 | Simulation Monte Carlo samples (learner) | enough for ~2 ms of one core (600–2,500) |
-| Live decision samples | 640× the simulation budget on a reference-speed CPU, scaled down on slower ones (1.6M on the i7-4770K, about 190 ms p50), dealt in parallel, one chunk per logical core. Heads-up spots from the flop on are exact instead whenever every opponent hand × board completion fits (river 990 cases, turn about 45k, flop about 1M), which is faster and has no sampling noise |
+| Live decision samples | 640× the simulation budget on a reference-speed CPU, scaled down on slower ones (1.6M on the i7-4770K; about 68 ms p50 and 190 ms p95 in `bench live`), dealt in parallel, one chunk per logical core. Heads-up spots from the flop on are exact instead whenever every opponent hand × board completion fits (river 990 cases, turn about 45k, flop about 1M), which is faster and has no sampling noise |
 | Analyst deep re-solve | 10× the live budget on every core, for expensive spots only: pot ≥ 50 bb, a call of a quarter-pot or more, or an all-in (`ANALYST_MIN_POT_BB`, 0 = every decision; auditing small pots costs most of its CPU for almost no measured gap). Also `ANALYST_SAMPLES`, `ANALYST_THREADS` |
 | Opponent memory | each opponent's decision tallies weight recent hands more (half-life 1,000 of their own hands); hand counts and the population average never decay |
 | Action deadline | the server auto-folds 45 s after it sends a turn and never extends that clock; a stuck decision takes the safe action at 8 s, and a rejected action is recovered by resync |
@@ -505,8 +506,9 @@ and runs a short equity benchmark. From that it sets:
 | Learner tables / hands | scaled to core count and measured speed |
 
 The build's instruction set is chosen for the machine that runs it: `scripts/portable.sh` builds the
-x86-64-v2 and x86-64-v3 bundles explicitly (`-C target-cpu=x86-64-v2|v3`), and `scripts/install.sh`
-picks the level the target CPU's flags support, preferring v3 (AVX2/BMI2/FMA). A build from source
+x86-64-v1, v2 and v3 bundles explicitly (`-C target-cpu=x86-64|x86-64-v2|x86-64-v3`), and
+`scripts/install.sh` picks the level the target CPU's flags support, preferring v3 (AVX2/BMI2/FMA)
+and falling back to baseline v1. A build from source
 follows whatever instruction set the checkout's cargo configuration sets.
 `./target/release/probe --hardware` prints the profile; the dashboard settings show it too.
 Set `LEARNER_THREADS` to override the learner's thread count.
@@ -572,7 +574,7 @@ operator token is configured.
 |--------|------|---------|
 | POST | `/api/session` | Sets the session cookie when `{"token": ...}` matches |
 | GET | `/api/state` | Full snapshot: bots, training, logs, config |
-| GET | `/api/events` | Server-sent events: `action`, `board`, `decision`, `result` instantly; `state` snapshots after changes (max 1/s) or every 5 s |
+| GET | `/api/events` | Server-sent events: `action`, `board`, `decision`, `result`, `hand` as they happen; each bot's `table` at most every 150 ms; the full `state` snapshot every 5 s |
 | GET | `/api/bots/{slot}/hands` | Recent hands of a bot |
 | GET | `/api/bots/{slot}/hands/{hand_id}` | Replay events for one hand |
 | GET | `/api/bots/{slot}/opponents` | Opponent profiles (current table first) |
@@ -591,7 +593,7 @@ operator token is configured.
 | GET | `/api/bots/{slot}/ranges` | Range explorer for the bot's last decision |
 | GET | `/api/hand-classes` | The 169 hand-class names in engine order |
 | GET | `/api/raw` | Internal live state (debugging) |
-| GET | `/api/health` | `{"ok": true, "public": false, "version": "10.0.0", "commit": "…"}` — `public` says which listener answered |
+| GET | `/api/health` | `{"ok": true, "public": false, "version": "10.0.1", "commit": "…"}` — `public` says which listener answered |
 
 With `SVANBOT_TV_PORT` set, a second listener carries only `/api/health` (answering `"public": true`),
 `/api/tv`, `/api/tv/events` and the built page; every other `/api/` path answers **404** there, not
@@ -605,7 +607,7 @@ With `SVANBOT_TV_PORT` set, a second listener carries only `/api/health` (answer
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `SVANBOT_API_KEY`, `SVANBOT_MAIN_NAME` | — | Main bot |
-| `OPENPOKER_API_KEY_n`, `BOT_n_NAME` | — | Extra bots (n = 2..10) |
+| `OPENPOKER_API_KEY_n`, `BOT_n_NAME` | — | Extra bots (n = 2..5; a key beyond the five-bot fair-play cap is refused with an error) |
 | `SVANBOT_SERVER_URL` | `wss://openpoker.ai/ws` | WebSocket endpoint |
 | `SVANBOT_REST_BASE` | `https://api.openpoker.ai/api` | REST endpoint |
 | `SVANBOT_BUY_IN` | 5000 | Maximum buy-in (1,000–5,000) |
@@ -646,7 +648,7 @@ With `SVANBOT_TV_PORT` set, a second listener carries only `/api/health` (answer
 | Pressure / slowness | `scripts/status.sh` prints CPU/I-O/memory pressure; the learner yields automatically |
 | Disk tidiness | `scripts/clean.sh` (report) — it also runs after every nightly archive |
 
-Logs: `artifacts/logs/svanbot10.log` (fleet), `artifacts/logs/learner.log` (learner), `artifacts/logs/monitor.log` (results alerts: big losses, nemesis opponents, stalls).
+Logs: `artifacts/logs/svanbot10.log` (fleet), `artifacts/logs/learner.log` (learner), `artifacts/logs/analyst.log` (analyst), `artifacts/logs/monitor.log` (results alerts: big losses, nemesis opponents, stalls).
 
 ---
 
@@ -667,7 +669,7 @@ Logs: `artifacts/logs/svanbot10.log` (fleet), `artifacts/logs/learner.log` (lear
 | `./target/release/ingest phh <dir> <source> [--dry-run]` | Import a PHH hand-history tree into the corpus as `<source>` |
 | `SVANBOT10_ROOT=<copy> ./target/release/ingest neural-ab <source> [seeds]` | Neural held-out log-loss with and without a corpus source (run on a copy of `artifacts/`) |
 | `./target/release/calibrate [samples]` | Refit the range model to showdowns |
-| `scripts/portable.sh` / `scripts/install.sh` | Portable x86-64-v2/v3 bundle and its CPU-matched install |
+| `scripts/portable.sh` / `scripts/install.sh` | Portable x86-64-v1/v2/v3 bundles and the CPU-matched install |
 | `scripts/vendor.sh` | Vendor dependencies for offline builds |
 | `./target/release/tables preflop-data` | Regenerate the compiled-in preflop tables after an equity-sampling change (a test fails until you do) |
 | `cd web && npm run build` | Rebuild the dashboard |

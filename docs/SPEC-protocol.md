@@ -26,7 +26,7 @@ before protocol work and update this file when either side changes.
 
 ## Decision replay
 
-Replay JSON version 2 captures the authoritative situation (including `current_bet_to`), RNG seed,
+Replay JSON (`REPLAY_VERSION`, now 4; v4 adds the hero-image statistics) captures the authoritative situation (including `current_bet_to`), RNG seed,
 all strategy/range/calibration parameters, table-player and population statistics, response-network
 digest, chosen action, and every candidate EV. Exact replay requires byte-equivalent serialized
 parameters and the network bytes matching that digest. A changed parameter set, missing/different
@@ -124,7 +124,8 @@ snapshot still accepts an empty board. This guards recovery frames without inven
 | `GET /season/me` | Balance before buy-in and top-up (spec: season chips, rank, hands) |
 | `POST /season/rebuy` | 1,500 chips when the balance is below the 1,000 minimum; honours `Retry-After` |
 | `GET /season/current` | Season clock: `winding_down`, `time_remaining_seconds` (no table moves while winding down), plus `season_number`, `season_id`, `start_date` (the boundary for season-scoped dashboard panels) |
-| `GET /season/leaderboard`, `/season/list`, `/season/{id}/leaderboard` | Ranks, reputation book, table seeking (30/min and 60/min per-IP limits respected). Rank keys on `score = chip_balance + chips_at_table`, with the official display qualified at `min_hands=10` — table seeking passes it explicitly (`crates/apps/bot/src/experiment.rs`), while the reputation fetch reads the unqualified board (`crates/apps/bot/src/reputation.rs`). Canonical scoring reference: [`docs/SPEC-scoring.md`](SPEC-scoring.md) |
+| `GET /season/leaderboard`, `/season/list`, `/season/{id}/leaderboard` | Ranks, reputation book, table seeking (30/min and 60/min per-IP limits respected). Rank keys on `score = chip_balance + chips_at_table`, with the official display qualified at `min_hands=10` — the experiment-mode poller and the dashboard leaderboard pass it explicitly (`crates/apps/bot/src/experiment.rs`, `crates/apps/bot/src/api/insights.rs`), while the reputation fetch, which table seeking ranks from, reads the unqualified board (`crates/apps/bot/src/reputation.rs`). Canonical scoring reference: [`docs/SPEC-scoring.md`](SPEC-scoring.md) |
+| `POST /season/pro-bundle` | Opt-in Pro renewal (`crates/apps/bot/src/proauto.rs`; see [`docs/SPEC-pro.md`](SPEC-pro.md)) |
 | `GET /me/hand-history` | Past-hand download (30/min, spaced 2.6 s; stops at the 20,000-hand export cap, `SVANBOT_EXPORT_CAP`, which Pro keys ignore — `pro_tier` from `/season/me` lifts it automatically) |
 | `GET /me/hand-history/export?format=json&season_id=` | Per-season backfill, all ended seasons, 2 pages/bot/pass (undocumented analytics endpoint, verified live 2026-09-15; needs Pro — only Pro keys reach past seasons, Free keys get empty pages; spaced 6 s, the endpoint 429s at the plain 2.6 s pace) |
 
@@ -132,7 +133,8 @@ snapshot still accepts an empty board. This guards recovery frames without inven
 
 Action 45 s in public play (auto-fold, or auto-check when fold is illegal; a disconnect does not pause
 it); reconnect 120 s; 3 consecutive missed hands removes the player. Our decisions are fast,
-with an 8 s hard cap (over stored decisions: median 1.4 ms, mean 2.9 ms).
+with an 8 s hard cap (live: 95 ms at the median and 325 ms at the 95th percentile with the CPU shared,
+`docs/ARCHITECTURE.md`).
 
 Observed pacing, not stated in the spec (from `ts` on live frames):
 - an action that follows another action is broadcast about 3.0 s after it;

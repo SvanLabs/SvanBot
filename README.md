@@ -94,7 +94,7 @@ luck-reduced simulations, and promotes a change only when it wins on fresh deals
 Monte Carlo EV over every candidate action against reconstructed opponent ranges, using exact
 board-strength tables and exact heads-up enumeration where they fit: **67.6 ms at the median and
 190 ms at the 95th** on the reference i7-4770K, against a 45 s turn clock — the `live` suite of
-`bench` with the fleet paused, ten paired repeats
+`bench` with the fleet playing and the learner paused, ten paired repeats
 ([`docs/OPERATIONS.md`](docs/OPERATIONS.md)). The live sample budget is scaled to the machine's
 measured throughput (`crates/libs/policy/src/hardware.rs`).
 
@@ -166,7 +166,7 @@ Every number below is a measured engineering result with a reproducible command 
 | 🃏 Hand evaluator | ~24 ns per 7-card hand, verified on all 133,784,560 hands |
 | 💾 Databases | 1.8 GB → 0.7 GB with the own DEFLATE codec (zlib-equal ratio), identical reads |
 | 🧮 Memory | Strength tables mapped read-only: 92 MB of private heap per process → one shared page-cache copy |
-| 🧪 Tests | 562 Rust tests across 26 binaries, plus 12 Playwright specs; an edit re-tests in seconds |
+| 🧪 Tests | About 910 Rust tests across 35 binaries, plus 24 Playwright spec files; an edit re-tests in seconds |
 | 🎮 GPUs needed | 0 |
 
 ---
@@ -249,6 +249,7 @@ flowchart LR
   subgraph apps["crates/apps: programs"]
     core["sv10-core<br/>facade · sim · probe · bench"]
     bot["sv10-bot<br/>fleet · learner · analyst · tools"]
+    release["sv10-release<br/>installer · update · rollback"]
   end
   deps --> libs
   policy --> core
@@ -266,8 +267,9 @@ flowchart LR
 |---|---|---|
 | `crates/deps/` | Our own zero-dependency foundations: RNG, SHA-256/HMAC, runtime helpers, file maps, DEFLATE | replace a third-party crate |
 | `crates/libs/` | The poker and data libraries: cards, equity, rules engine, opponent models, policy, statistics, protocol tracker, store | change how the bot thinks or what it stores |
-| `crates/apps/core` | Re-exports the libraries as `sv10_core::*`; the `sim`, `probe`, `bench` and `tables` tools | run a simulation or a benchmark |
+| `crates/apps/core` | Re-exports the libraries as `sv10_core::*`; the `sim`, `ab`, `probe`, `bench` and `tables` tools | run a simulation or a benchmark |
 | `crates/apps/bot` | The fleet binary (WebSocket clients, dashboard API, background jobs), learner, analyst and review tools | change anything that touches the network, the database or the clock |
+| `crates/apps/release` | `sv10-release`, the installer behind `scripts/release.sh`, `scripts/update.sh` and `scripts/rollback.sh` | change how a build is installed, verified or rolled back |
 | `web/` | The control room (Vite + React + TypeScript), served by the fleet binary | change the dashboard; its API contract is `web/src/types.ts` |
 | `scripts/` | Setup, the check gate, release with hot swap, update, start and stop, backups, monitoring | change how it is built, checked or run |
 | `docs/` | Architecture, runbook, specs and lessons — see the [documentation map](docs/README.md) | find out why something is the way it is |
@@ -289,7 +291,7 @@ rename.
 ## 🚀 Quick start
 
 **You need:** Linux with a supported Rust target (prebuilt bundles: x86-64, including baseline v1) · Rust 1.98.1 (pinned in
-[`rust-toolchain.toml`](rust-toolchain.toml)) · Node 26 for the dashboard · `zstd` and `cargo-deny`
+[`rust-toolchain.toml`](rust-toolchain.toml)) · Node 24 or newer for the dashboard (CI and the Dockerfile use 24) · `zstd` and `cargo-deny`
 · an Open Poker API key · **no GPU**.
 
 1. **Set up.** Checks the toolchain, creates `.env` (mode 600) from `.env.example`, and builds.

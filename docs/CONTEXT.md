@@ -20,7 +20,8 @@ this bot unless another bot is named; in a season where another bot leads (Svana
 ## Fleet
 
 The five independently ranked bots—SvanBotV10, SuraGunnar, Svanism, SurSvan, and Svanar. Each plays
-its lineage's promoted policy, and lineages can share the same parent. Fleet results aggregate
+the shared champion, or its own lineage's promoted policy when lineages are on, and lineages can
+share the same parent. Fleet results aggregate
 evidence about policy strength, but the leaderboard does not combine their scores.
 
 ## Top-five sweep
@@ -37,7 +38,8 @@ the fleet holds a top-five sweep.
 
 ## Lineage
 
-One bot's own parameter set and promotion history. Every fleet bot has one; all start as copies of
+One bot's own parameter set and promotion history (`params.slot.<bot>`), for each bot named in
+`LEARNER_LINEAGES`; when it is unset, every bot plays the one shared champion. All start as copies of
 the champion and diverge only through promotions earned against their own parent.
 
 ## Gene transfer
@@ -53,7 +55,7 @@ replaced by a copy of the winner.
 ## Protected trio
 
 The three fleet bots holding the active public season's first three places when experiment mode
-begins. They continue to play the champion policy for that activation.
+begins. Experiment mode runs only while no bot plays its own lineage (ADR 0002, `experiment::latch`). They continue to play the champion policy for that activation.
 
 ## Experiment pair
 
@@ -102,7 +104,8 @@ is installed.
 ## Autonomy watchdog
 
 The fleet head's check that the loops keeping it learning still report: learner cycles, analyst
-re-solves, hourly fold calibration and hourly backups (`watchdog`). It logs once when a loop
+re-solves, hourly fold calibration, hourly backups, the experiment poller, the release watch and the
+season poller (`watchdog`). It logs once when a loop
 goes stale and once when it recovers; `review autonomy` prints the same view.
 
 ## Packed column

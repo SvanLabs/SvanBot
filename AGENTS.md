@@ -72,7 +72,7 @@ opponent it meets, and reports live in a web control room. Rust workspace plus a
 ## 2. Build, test, gate
 
 ```
-cargo build --profile release          # the fleet binary
+CARGO_TARGET_DIR=target/dev cargo build --profile release   # a test build; only scripts/release.sh writes target/release
 python3 scripts/test.py                # the test suite; add a filter to run one thing
 scripts/check.sh commit                # pre-commit: fmt, clippy, golden, tsc
 scripts/check.sh full                  # the gate. everything below assumes this is green
@@ -141,8 +141,8 @@ fresh-deal confirmation. Do not loosen that to make an experiment fit.
 
 ## 5. Style that is enforced, not suggested
 
-- **`scripts/check.sh` runs `cargo fmt --check` and `clippy --workspace --all-targets --all-features
-  -D warnings`.** Both must be clean.
+- **`scripts/check.sh` runs `cargo fmt --all --check` and `cargo clippy --release --workspace
+  --all-targets -- -D warnings`.** Both must be clean.
 - **500 lines per Rust file**, enforced by `scripts/check-file-size.sh` against a baseline that may
   only shrink — a file that comes back under the limit leaves the list, and the check fails until
   its line does. A file crossing it gets split, not exempted.

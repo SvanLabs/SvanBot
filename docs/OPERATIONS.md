@@ -46,7 +46,7 @@ All commands run from the repository root. Binaries live in `target/release/`.
 | State-hash mismatches | `./target/release/review state-hash [N]` (diagnosed mismatches, newest first: STALE replay vs DIVERGED with the field census; the full snapshot is kept in the incident table) |
 | Autonomy watchdog | `./target/release/review autonomy` (learner, analyst, fold calibration, backups, the experiment poller, the release watch and the season poller: `ok` or `STALE` with age and limit; exit 1 if any is stale). The fleet head runs the same check every 10 minutes and logs `autonomy: …` once when a loop stops and once when it recovers; it also probes the dashboard API at `/api/health` and names it (`api server`) when it does not answer |
 | Every review command | `./target/release/review help`. The forensic commands — `audit-by`, `margins`, `wiring`, `drift`, `replay`, `rival`, `experiment` — also take `--json` (#723): one JSON object on stdout, the same structs the text is rendered from, text still the default |
-| Logs | `artifacts/logs/svanbot10.log`, `artifacts/logs/learner.log`, `artifacts/logs/monitor.log` |
+| Logs | `artifacts/logs/svanbot10.log`, `artifacts/logs/learner.log`, `artifacts/logs/analyst.log`, `artifacts/logs/monitor.log` |
 | Results monitor | started and stopped with the fleet by `scripts/start.sh`/`stop.sh`; the supervisor runs `./target/release/monitor --interval 300 --summary-min 30 --big-loss-bb 250` (by hand the same, plus `--min-hands`, `--stall-min`, `--active-hours`, `--big-win-bb`; `--once` prints one pass). `scripts/monitor.py` is a one-release shim: a supervisor started before the port relaunches it every 30 s and it execs the binary, so delete it once every fleet has restarted supervision. Read-only: 30-minute SUMMARY (per bot, the opponents at our worst and best tables, toughest all-time by the same chip flow) and OPPONENTS (new names, most-played opponents with style, VPIP/PFR and our net with them at the table — a table result shared by everyone dealt in, not a head-to-head attribution), BIGWIN/BIGLOSS (≥ 250 bb), NEMESIS (an opponent beating us in chips moved between us and them in champion hands — the experiment arms' treatment hands are out, as in the bot's own ledger — at 95% family-wise across every opponent tested), STALL, ERROR; stdout is the event stream the dashboard reads back by kind |
 | Hands the server exported that we never recorded | `./target/release/review unrecorded [HOURS]` (default 2 h, plus the season): per bot, how many exported hands the store has no row for and their chips, and the ones a hot swap or restart explains, which are not flagged; exit 1 when the recent window has any (0151: another client acting for our bots) |
 | The retired fleet check | Its checks, one at a time: a bot gone quiet → the monitor's STALL lines (`./target/release/monitor --once`) or `scripts/status.sh`; a losing window → `./target/release/review recent [BOT] [N]` and `./target/release/review all`; hands 250 bb down → the monitor's BIGLOSS lines (the supervisor runs it at `--big-loss-bb 250`); the log's WARN/ERROR lines → the monitor's ERROR lines; exported hands we never recorded → `review unrecorded` |
@@ -64,7 +64,7 @@ All commands run from the repository root. Binaries live in `target/release/`.
 | Is each component worth anything? | `./target/release/review wiring [N]` re-runs the newest N recorded big decisions with each live component switched off in turn and reports, per component, the share of decisions that move and the EV they give up per decision under the full model — plus how many records replay exactly as recorded. It stores the report the dashboard's **Wiring table** panel reads (`wiring.v2`); the analyst refreshes it daily, and only while the audit queue is empty, so live audits always win. Below it, **self-calibration's reach over every decision of the last 24 h**: per street, the share whose best action changes when each candidate's recorded bias is removed. The big decisions above barely see it, yet it decides the majority of preflop choices, mostly fold to call |
 | Six-max benchmark | `./target/release/bench6 4000` plays the champion against itself or `SIM_B='{...}' bench6 4000` against a challenger over **identical deals at a six-max table**, against a frozen archetype pool (station, maniac, nit, tag, lag) — no store, no live population, so the same command measures the same thing on any machine in any season. Reports bb/100 per arm, the paired difference with its 95% interval, and the breakdown **by position** and by how each hand ended, which is the only measurement that can see a seat and a hands-up number cannot. Runs in seconds. The level printed is that pool with default parameters, not the live fleet: read the difference, not the level |
 | Learner pacing | Two independent jobs. Evidence refreshes wait only for a new hand (#314), so the fits live play reads are never much more than a refresh old; they run at idle CPU priority and `learner_threads` (compute profile) is their share of the box. Champion search keeps its schedule: after each cooldown during season days 1–3, then at the dashboard Autonomy panel's new-hands limit. A due search yields to a refresh only when the fits are 500 hands (one evidence epoch) behind, which is also the scope the rejection ledger and the experiment queue are measured under. Missing season state uses the late-season rule. The panel shows the next job, hands left, season day and reason, and names a running refresh. Settings live in `learner.settings` and override `.env`; defaults are `LEARNER_MIN_NEW_HANDS=500` (champion search only), 60-minute cooldown, no backoff and 6 h maximum search idle. `LEARNER_THREADS` is overridden by the dashboard compute profile. Start champion search now with "Start next search early" (`POST /api/training/command {"command":"start"}`, picked up within 10 s). The +1 bb/100 fresh-deal promotion gate is unchanged |
-| Experiment mode | Dashboard → Learning → Experiment mode; `./target/release/review experiment` (stored mode, targets with live hands and their verdicts) and `review experiment TARGET` (estimate, gate, every hand with arm, decision ids and replay ids) |
+| Experiment mode | Runs only while no bot plays a lineage of its own (ADR 0002). Dashboard → Learning → Experiment mode; `./target/release/review experiment` (stored mode, targets with live hands and their verdicts) and `review experiment TARGET` (estimate, gate, every hand with arm, decision ids and replay ids) |
 | Learner rejection ledger | `./target/release/review ledger` (which search transitions are barred as decided-dead and which are still accumulating evidence, for the live champion and evidence watermark) |
 
 ## Build and test
@@ -123,7 +123,7 @@ and the last finite-sample bound retained for larger samples.
 
 Portable and offline builds:
 
-Both CPU-level bundles and the installer include the analyst binary used by default fleet startup.
+Every CPU-level bundle (v1, v2, v3) and the installer include the analyst binary used by default fleet startup.
 
 ```
 scripts/portable.sh        # x86-64-v1 + v2 + v3 binaries, scripts, dashboard, docs -> target/dist/*.tar.gz (32 MB, needs glibc >= MANIFEST)
@@ -141,7 +141,7 @@ headers fails on the removed `*64` symbols and must not be forced).
 Before committing: the pre-commit hook (`scripts/pre-commit.sh`, install with
 `ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit`) runs `scripts/check.sh commit`: the secret
 scan (refuses `.env` files and staged lines containing any `.env` value), and when `crates/` is staged
-rustfmt, clippy `-D warnings`, the golden snapshot and the property tests; tsc when `web/src` is staged.
+rustfmt, clippy `-D warnings`, the golden snapshot and the property tests; tsc when anything under `web/` is staged.
 `release.sh` runs `check.sh lint` (rustfmt, clippy, cargo-deny) alongside its builds.
 
 Property and fuzz tests print a seed on failure; `SV10_PROP_CASES` scales them:
@@ -275,9 +275,8 @@ overwriting existing databases but never bypasses this guard; `--derived` remain
 For a fresh box, or after every local copy of the data is gone, with **no backup** to restore. With a backup, use
 "Restore from the archive" above instead: it brings back far more. This path rebuilds what the server can give back
 and is honest about the rest. It needs the bots' API keys, and Pro keys to fetch past seasons (a Free key's export is
-capped, see below). It was written from the code and is **not drilled**: a drill needs the keys and the server, and the
-rule is that a drill never touches the live databases or credentials. Run it first on a scratch checkout and record the
-times in the table at the end.
+capped, see below). It was drilled once, on 2026-10-05, in a scratch clone with the real keys and dry-run bots (results below). Repeat it on
+a scratch checkout, never on the live databases or credentials, and record the times in the table at the end.
 
 **What does not come back** (state it before you start): the promotion lineage and the champion (`params.v1`,
 `learner.lineage`, `learner.experiments`), the search ledgers, the neural response model and its candidates, the

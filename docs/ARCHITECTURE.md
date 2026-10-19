@@ -45,11 +45,11 @@ docs page from `diagram:` fences in `docs/GUIDE.md`; keep the two in step.
 | Ingest | `ingest` | Imports other data sources into the corpus (archive frames, PHH files; read-only sources, resumable batches) and A/B-measures a source on the neural model |
 | Archive | `archive` (nightly timer) | Weekly full / daily differential / monthly archives with sealed manifests on a second disk; verify and restore |
 | Monitor | `monitor` | Read-only results alerts (big losses, nemesis opponents, stalls, fleet errors); its stdout is the event stream the dashboard reads back by kind |
-| Tools | `review`, `calibrate`, `probe`, `sim`, `bench`, `tables` | Live review, leak finder and decision replay, range fit, benchmarks and canonical spots, samples/sec suites, simulations |
+| Tools | `review`, `calibrate`, `probe`, `sim`, `ab`, `bench`, `tables` | Live review, leak finder and decision replay, range fit, benchmarks and canonical spots, samples/sec suites, simulations |
 
 Supervision: `scripts/start.sh` runs the fleet under a crash-loop backoff supervisor (5 s doubling to
-5 min), the learner at `nice 15` with low I/O priority and the OOM killer's first choice, the results
-monitor, and log rotation; `scripts/svanbot10.service`, rendered for the checkout by
+5 min), the learner at `nice 15` with low I/O priority and the OOM killer's first choice, the analyst
+at `nice 10`, the results monitor, and log rotation; `scripts/svanbot10.service`, rendered for the checkout by
 `scripts/units.sh`, starts it at boot.
 
 ## Crates
@@ -74,7 +74,7 @@ third-party code they use is `libc` for system calls), `libs/` the poker and dat
 <!-- docs-check: on -->
 
 Layered, each with its own tests; `sv10-core` re-exports every module as `sv10_core::<module>` and
-holds the tool binaries (`sim`, `probe`, `bench`, `tables`) and integration tests.
+holds the tool binaries (`sim`, `ab`, `probe`, `bench`, `tables`) and integration tests.
 
 ```
 sv10-rng (no dependencies) ──── used by every logic crate and sv10-rt
@@ -98,13 +98,13 @@ sv10-cards ─┬─ sv10-equity ─┐
 | `sv10-venue` (protocol logic, no network) | `tracker` (openpoker frames → situations/hands, `replay`), `statehash` (server `state_hash` verification) |
 | `sv10-store` (persistence) | `store` (SQLite: hands, decisions, replay records, calibration, kv, events; digests), `packed` (compressed cold JSON columns: codec, dictionaries, compaction batches, data format), `integrity` (checks, sealed backups, quarantine/restore), `archive` (daily/weekly/monthly archives, manifests, verified restore) |
 | `sv10-rt` (runtime helpers, no third-party runtime) | `.env` loader, v4 ids, `statvfs` free space, `flock`/`kill` for the installer |
-| `sv10-bot` (I/O, drivers; uses `sv10-rt`, `sv10-store`, `sv10-venue` at their own paths, no re-export fan) | `client` (openpoker connection; `client::seat` owns the seat lifecycle and the between-hands table moves), `setup` (dashboard bot setup → `.env`), `replay` (big-decision records and bit-exact re-runs), `history` (server exports, corpus, model import), `compaction` (packs stored cold JSON in the background, VACUUMs `history.db`), `neural`, `livefits` (the one module every live fit goes through: refit, load, install, report), `foldcal` + `raisewar` (the fits), `pacing` (learner cycle gate), `installs` (everything live play installs from the store — promoted params, neural and range models, compute profile, live fits, per-opponent corrections — with one rule: a failed read keeps what is installed, including either key of the network-specific response correction; dependent read failures leave profile changes pending for retry), `jobs` (background job runner that logs a panicking job by name, and any job over the two-minute budget), `learner` (the learner's refresh and search as stored steps), `watchdog` (autonomy watchdog: learner, analyst, fold calibration, backup and the experiment poller's heartbeats against their limits, logged on each change), `margins` (calibration at the decision margin), `playersize` (per-opponent river sizing tells, store side); the statistics they share are in `sv10-stats`; `tasks` (periodic jobs), `api/*` (dashboard), `analysis`, `headtohead`, `reputation`, `guide`, `config`, `live` |
+| `sv10-bot` (I/O, drivers; uses `sv10-rt`, `sv10-store`, `sv10-venue` at their own paths, no re-export fan) | `client` (openpoker connection; `client::seat` owns the seat lifecycle and the between-hands table moves), `setup` (dashboard bot setup → `.env`), `replay` (big-decision records and bit-exact re-runs), `history` (server exports, corpus, model import), `compaction` (packs stored cold JSON in the background, VACUUMs `history.db`), `neural`, `livefits` (the one module every live fit goes through: refit, load, install, report), `foldcal` + `raisewar` (the fits), `pacing` (learner cycle gate), `installs` (everything live play installs from the store — promoted params, neural and range models, compute profile, live fits, per-opponent corrections — with one rule: a failed read keeps what is installed, including either key of the network-specific response correction; dependent read failures leave profile changes pending for retry), `jobs` (background job runner that logs a panicking job by name, and any job over the two-minute budget), `learner` (the learner's refresh and search as stored steps), `watchdog` (autonomy watchdog: learner, analyst, fold calibration, backup, experiment poller, release watch and season poller heartbeats against their limits, plus a probe of the dashboard API, logged on each change), `margins` (calibration at the decision margin), `playersize` (per-opponent river sizing tells, store side); the statistics they share are in `sv10-stats`; `tasks` (periodic jobs), `api/*` (dashboard), `analysis`, `headtohead`, `reputation`, `guide`, `config`, `live` |
 
 Clean `cargo build --release --workspace --bins` (no LTO, 256 codegen units, incremental): about
 3 min on this box at 8 idle-priority threads; a one-file change rebuilds in ~16 s.
 Toolchain pinned in `rust-toolchain.toml` (1.98.1, `rust-version` 1.98). Workspace `[workspace.lints]`:
-`unsafe_code` denied everywhere except `sv10-rt` (env setup, `statvfs`, `flock`, `kill`) and `sv10-mmap` (mmap, munmap, madvise), `unused_qualifications`,
-clippy `all`. CI-equivalent gate: `cargo clippy --workspace --all-targets` with zero warnings, `cargo fmt --check`.
+`unsafe_code` denied everywhere except `sv10-rt` (env setup, `statvfs`, `flock`, `kill`), `sv10-mmap` (mmap, munmap, madvise) and the `bench` measuring binary (`crates/apps/core/src/bin/bench`: counting allocator, SIGPROF sampler, `getrusage`), `unused_qualifications`,
+clippy `all`. CI-equivalent gate: `cargo clippy --release --workspace --all-targets` with zero warnings, `cargo fmt --all --check`.
 
 ## Decision path (live)
 
@@ -128,7 +128,8 @@ counts the share over the fleet's own decisions).
 
 1. `client` receives frames; `tracker` maintains seats, bets (from `table_state`), history and pot.
    At `hand_start` (or the first turn of a hand joined by resync) `experiment::latch` fixes the bot's
-   policy for the whole hand: the champion, or — only for the experiment pair while the fleet holds
+   policy for the whole hand: the champion, or — only while no bot plays a lineage of its own
+   (`params.slot.<bot>`, ADR 0002), and only for the experiment pair while the fleet holds
    #1–#4 and the last leaderboard reading is under 8 minutes old — one arm of the running target
    (treatment = the live champion with the learner challenger's knobs, local fits kept; control =
    the champion). The two pair bots swap arms every 120 hands.
@@ -141,7 +142,7 @@ counts the share over the fleet's own decisions).
    an offer without a legal fallback waits for fresh authority rather than inventing an action.
 3. `decide_with` first returns uncallable chips to their owner (`Situation::without_uncallable`),
    reconstructs each opponent's range (`oprange`), samples shared deals (live: `tuning.live_samples`,
-   640x the learner's budget on a reference-speed machine, scaled down on slower ones (up to 1.6M samples, about 190 ms p50; previously 160x), dealt in one seeded chunk per logical core by `SharedDeals::new_parallel` (heads-up with a flop or later, when every opponent combo × board completion fits the budget, the deals are the exact enumeration instead, each weighted by its combo's range weight: the river always, the turn and flop live; zero sampling noise and faster) and
+   640x the learner's budget on a reference-speed machine, scaled down on slower ones (up to 1.6M samples; about 68 ms p50 and 190 ms p95 in `bench live`, 95 ms p50 live with the CPU shared; previously 160x), dealt in one seeded chunk per logical core by `SharedDeals::new_parallel` (heads-up with a flop or later, when every opponent combo × board completion fits the budget, the deals are the exact enumeration instead, each weighted by its combo's range weight: the river always, the turn and flop live; zero sampling noise and faster) and
    `equity_vs_ranges_parallel`; about 6 ms on the i7-4770K). A draw that cannot score the deals it was
    asked for reports no measurement rather than a mean of what it managed — the deal budget is the
    caller's own bar — and the decision then refuses the spot: the safe action (check where the rules
@@ -265,7 +266,8 @@ with no positive recorded blind never enters a rate.
 - Blinds exist only as `table_state` bets; `player_action.street` is the post-action street.
 - A hand is persisted before it updates any model; checkpoints carry a watermark and startup replays.
 - The learner promotes only on a positive 95% lower bound from sequential fresh-deal confirmation (`sv10_bot::promotion`).
-- Experiment mode never changes a policy mid-hand, never touches the protected trio, fails
+- Experiment mode is suspended while any bot plays its own lineage (`experiment::latch`); while it
+  runs it never changes a policy mid-hand, never touches the protected trio, fails
   closed on a failed, stale or unstored reading, and keeps treatment hands out of every production
   fit; its live evidence can retire a target or prioritize its confirmation, never promote it.
 - Fitted models (neural response, per-opponent response correction, range fit) and any extra data source are used only while they beat

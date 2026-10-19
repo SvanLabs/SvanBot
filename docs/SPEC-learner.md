@@ -187,10 +187,9 @@ next process resumes the stored run.
    of that player's counts, with random open (2.25–3.5 bb) and bet (40–95% pot) sizes. The policy
    still models the clone by the real player's profile, so it is never an oracle. The archetype
    fit (4 rates only) was retired from the learner and removed; `sim` keeps archetypes by default.
-6. **Challengers** (`challengers`): one-knob perturbations of the champion (fold scale, initiative,
-   open size, 3-bet sizes, raise-fold bonus, realization weight, call margin, jam ratio, raise risk,
-   4-bet size, limper size, preflop fold scale, passive fold bonus, 3-bet call margin, preflop re-raise
-   weight, profile response weight, check lookahead, bet-size scale, tiered all-in fold pricing).
+6. **Challengers** (`challengers`): one-knob perturbations of the champion, one per knob in
+   `crates/apps/bot/src/knobs.rs` (29 today), plus the 4/7 bet-size-set toggle and a single
+   interior-size step (#760).
    Profile response weight and check lookahead ship at 0: live-pool A/Bs measured no gain at the
    defaults tried. Tiered all-in fold pricing also ships at 0 because its initial paired results
    did not establish a gain; the learner can test either boolean value on fresh deals.
@@ -218,7 +217,8 @@ next process resumes the stored run.
       its stored combined measurement, decided-dead transitions (a full screening budget of hands
       with 95% upper bound below +1 bb/100) are not proposed, and every measured transition is
       folded back at the end of the search phase. The ledger is scoped to the champion version and
-      the evidence-refresh watermark, so a promotion or a refresh retires it; `review ledger`
+      the evidence epoch (`pacing::evidence_epoch`, 500 hands of rowid), per lineage (`learner::lane`),
+      so a promotion or an epoch advance retires it; `review ledger`
       prints the barred and accumulating transitions. Confirmation runs on fresh deals and stays
       out of the ledger.
    - After each round a candidate is dropped when no simulated outcome changed (`differing == 0`) or
@@ -228,7 +228,7 @@ next process resumes the stored run.
      of 16 × that is spent.
 8. **Promotion gate** (`sv10_bot::promotion`): the survivor is confirmed when its search mean
    is at least +1 bb/100 and some outcome changed. Its search interval is selection-biased (best of
-   ~26), so it only selects. **Confirmation** on fresh deals decides alone. It runs up to 12 chunks of
+   up to ~54), so it only selects. **Confirmation** on fresh deals decides alone. It runs up to 12 chunks of
    `4 × learner_tables × learner_hands` (72k hands each on this box, ~70 s; up to 864k hands, ~14 min;
    seed `55000000 + cycle·16 + chunk`, stride above the chunk count so cycles never share deals),
    accumulated with `PairedResult::combine`, in a Haybittle–Peto design:
@@ -249,7 +249,7 @@ next process resumes the stored run.
    still undecided (ahead, 95% upper bound above +1 bb/100, not decided dead, never rejected by a
    completed confirmation), ranked by z of the mean above the bar. A completed confirmation rejection
    is recorded in the ledger's `confirm_rejected` and never offered again. When the fleet's
-   experiment pair has returned `live-supported` for a target in the current scope, the next cycle
+   experiment pair (which plays only while no bot has a lineage of its own) has returned `live-supported` for a target in the current scope, the next cycle
    skips the search and confirms that target on fresh deals: live evidence only prioritizes, the
    gate above alone promotes, and live results never combine with simulated ones.
    Futility stops never raise the false-promotion rate. An early promotion needs everything the final
@@ -257,7 +257,8 @@ next process resumes the stored run.
    overall one-sided error is that of a sequential design with the `CONFIRM_CHUNKS` looks, and it is
    not the single-look figure.
    Promotion writes `params.v1`, appends `sv10-ev-<n>` to `learner.lineage` and records the
-   experiment. The fleet hot-reloads the parameters and stamps the version on each decision. A
+   experiment; a lineage lane (`LEARNER_LINEAGES`) writes `params.slot.<bot>`, `<bot>-ev-<n>` and
+   `learner.lineage.slot.<bot>` instead. The fleet hot-reloads the parameters and stamps the version on each decision. A
    failed confirmation is recorded as a rejected experiment.
 
    Why: the old gate needed a positive lower bound on the search *and* on a single 24k-hand

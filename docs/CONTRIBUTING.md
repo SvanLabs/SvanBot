@@ -106,7 +106,7 @@ depart from one when you can say why, in the change.
 The project in one line: a Rust 2024 workspace (MSRV 1.98, toolchain pinned to 1.98.1 in
 `rust-toolchain.toml`) of foundation crates (`crates/deps/`), poker and data libraries (`crates/libs/`)
 and programs (`crates/apps/`: `sv10-core` with the simulation tools, `sv10-bot` with the fleet, learner,
-analyst and CLI tools), plus a React dashboard (`web/`). Nothing is published (`publish = false`).
+analyst and CLI tools, `sv10-release` with the installer), plus a React dashboard (`web/`). Nothing is published (`publish = false`).
 Read `AGENTS.md` and `docs/LESSONS.md` before a first change.
 
 ## 0. AI provenance (MUST)
@@ -162,7 +162,8 @@ cargo metadata --locked --format-version 1       # Cargo.lock matches the manife
 scripts/check-file-size.sh
 ```
 
-In practice run `scripts/check.sh full` (all of the above plus cargo-deny, the golden snapshot, the
+In practice run `scripts/check.sh full` (the fmt, clippy `-D warnings` (without `--all-features`), lockfile,
+file-size and test steps above, not `cargo doc`, plus cargo-deny, the golden snapshot, the
 docs-drift check, tool tests and `tsc`; ~20 s after a one-file edit). The pre-commit hook runs
 `scripts/check.sh commit`. Build with `CARGO_TARGET_DIR=target/dev` (the default of every script) —
 never into `target/release`, which the live fleet runs from (LESSONS 9). No crate defines features,
@@ -185,7 +186,7 @@ Current workspace configuration (`Cargo.toml`, every crate opts in with `[lints]
 
 ```toml
 [workspace.lints.rust]
-unsafe_code = "deny"            # allowed per crate only in sv10-rt and sv10-mmap (see §6)
+unsafe_code = "deny"            # allowed only in sv10-rt, sv10-mmap and the bench binary (see §6)
 unused_qualifications = "warn"
 
 [workspace.lints.clippy]
@@ -198,7 +199,7 @@ unimplemented = "deny"
 Library crates add `#![warn(missing_docs)]` in `lib.rs`. Warnings are errors in the gate (`-D warnings`).
 
 - **MUST**: every `#[allow(...)]` / `#![allow(...)]` carries a comment on the same or the previous line
-  saying why it is safe (today 19 of 20 do).
+  saying why it is safe.
 - **MUST**: no crate-wide or workspace-wide `allow` without that comment and a ticket reference.
 - *Recommended additions*, in order, each landing with its violations fixed in the same change (they
   would fail the gate today):
@@ -265,12 +266,13 @@ Because agents and reviewers read this code in pieces:
 
 ## 6. Safety
 
-- **MUST**: `unsafe` only in `sv10-rt` (environment, `statvfs`, `posix_fadvise`, `flock`, `kill`) and `sv10-mmap`
-  (`mmap`, `munmap`, `madvise`) — the two crates with `#![allow(unsafe_code)]`; everywhere else the
+- **MUST**: `unsafe` only in `sv10-rt` (environment, `statvfs`, `posix_fadvise`, `flock`, `kill`), `sv10-mmap`
+  (`mmap`, `munmap`, `madvise`) and the `bench` measuring binary (`crates/apps/core/src/bin/bench`:
+  counting allocator, SIGPROF sampler, `getrusage`) — the three places with `#![allow(unsafe_code)]`; everywhere else the
   workspace denies it. (The template's "low-level parser module" does not exist here: the parsers are
   safe Rust.)
 - **MUST**: every `unsafe` block has a `// SAFETY:` comment directly above it naming the invariant it
-  relies on (all 11 do today).
+  relies on (all 22 do today).
 - **MUST**: unsafe code stays behind a small safe API in its crate; no `unsafe` for convenience or
   unmeasured speed.
 

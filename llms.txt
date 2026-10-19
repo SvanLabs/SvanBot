@@ -11,7 +11,7 @@ matches the job and follow it literally; the traps in it are the ones that have 
 ## Get a fleet running
 
 Prerequisites: Linux with a supported Rust target (prebuilt bundles: x86-64, including baseline v1), Rust 1.98.1 (pinned in `rust-toolchain.toml`),
-Node 26, `zstd`, and an openpoker.ai API key. **No GPU is used or needed.** An i7-4770K with 32 GB is the
+Node 24 or newer, `zstd`, and an openpoker.ai API key. **No GPU is used or needed.** An i7-4770K with 32 GB is the
 reference machine — anything newer is faster.
 
 ```sh
