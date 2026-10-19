@@ -20,7 +20,7 @@ each section; update this file with any schema or format change.
 | `artifacts/quarantine/` | `sv10-store::integrity` | Damaged databases moved aside with a timestamp prefix | Never deleted automatically |
 | `artifacts/tables/strengths-{flop,turn}.sv10tbl` | `sv10-equity::tables` | Exact per-combo board strengths for every suit-canonical flop/turn | Magic, shape and FNV-1a checksum verified on load; rebuilt by `tables build` (~31 s) |
 | `crates/libs/equity/src/preflop_data.rs` | `sv10-equity::preflop` | Preflop class strengths and top-range equity ladder (exact f32 bits) | Compiled in; a test recomputes it |
-| `artifacts/logs/` | `scripts/start.sh` | `svanbot10.log`, `learner.log` | Copy-truncate rotation at 50 MB, 3 generations |
+| `artifacts/logs/` | `scripts/start.sh` | `svanbot10.log`, `learner.log`, `analyst.log`, `monitor.log` | Copy-truncate rotation at 50 MB, 3 generations |
 | `artifacts/releases.log` | `scripts/release.sh` | One line per installed release | — |
 | `.env` | operator | API keys, bot names, dashboard token, paths | Mode 600, gitignored, pre-commit secret scan |
 
@@ -79,6 +79,7 @@ it with `Store::scan_snapshots`, never `json_extract`.
 |---|---|---|
 | `models.v1` | fleet, every 5 min and on shutdown | `ModelStore` JSON: per-player `PlayerStats`, population, `watermark` (last `hands` rowid folded in), `history_watermark`, `corpus_watermark`, `schema` (3) |
 | `params.v1` | learner on promotion | Champion `Params` JSON with lineage version; the fleet hot-reloads it |
+| `params.slot.<bot>` | learner, on a lineage promotion | That bot's own champion `Params`; live play reads it before `params.v1` |
 | `nn.response.v1` | learner | `StoredNet`: MLP weights, predictive `active` flag, chronology contract, paired-poker approval, validation and baseline log-loss, sample counts |
 | `nn.response.candidate.v1` | learner | `StoredNet` awaiting the paired poker gate while an approved net is live; diagnostic only, never read by the fleet |
 | `fold_calibration.v1` | learner (every cycle) | `FoldCalibration`: installed per-street fold logit shifts (flop, turn, river) and per-street evidence (n, predicted/actual fold rate, held-out gain and lower bound); read by the fleet into `Params::fold_logit_shift` |

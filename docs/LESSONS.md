@@ -30,7 +30,7 @@
 5. **More data is not better data.** 10,000 Pluribus hands made the neural model worse;
    legacy SvanBot hands helped only a cold start; reputation priors gave no held-out gain
   . *Rule*: a data source earns a consumer only by beating its baseline on held-out data.
-6. **Optimise the thing that binds.** Decisions take 1 ms p50 against a 41 s hand pace; the learner was the CPU user and ~80% of it was recomputing board strengths.
+6. **Optimise the thing that binds.** Decisions took 1 ms p50 then, against a 41 s hand pace; the learner was the CPU user and ~80% of it was recomputing board strengths.
    *Rule*: profile first; decision-path speed has no chip value, learner throughput does.
 
 33. **Measure the loop you actually run, with the variant that could win.** One experiment tested thin LTO with

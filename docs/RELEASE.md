@@ -18,7 +18,7 @@ To cut a version, tag the commit on `main` that the gate passed.
 
 ## What ships
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`: it attaches the portable x86-64-v2/v3
+Pushing a `v*` tag runs `.github/workflows/release.yml`: it attaches the portable x86-64-v1/v2/v3
 bundle (`scripts/portable.sh`) with its SHA-256 and a build attestation, and pushes a container image
 to `ghcr.io/svanlabs/svanbot`. Running the workflow by hand with an existing tag backfills one.
 
@@ -67,8 +67,9 @@ Two things the gate cannot check for you:
 ## Verifying a release
 
 Nobody should run code from this project on trust — the warning in `README.md` applies to a release
-as much as to `main`. There are no binaries to verify yet, so verification is of the source: check
-that the CI run on the tagged commit is green, then build it yourself.
+as much as to `main`. Each release carries the portable bundle, its `.sha256` and a build
+attestation: verify with `gh attestation verify <file> --repo SvanLabs/SvanBot` and the checksum,
+and check that the CI run on the tagged commit is green, or build it yourself.
 
 ```
 gh run list --repo SvanLabs/SvanBot --commit "$(git rev-list -n1 vX.Y.Z)"

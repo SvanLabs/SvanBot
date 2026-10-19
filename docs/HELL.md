@@ -35,7 +35,7 @@ scripts/status.sh 2>&1 | head -30
 ## 2. One bot is stuck, not the fleet
 
 ```sh
-grep -i "error\|rejected\|cooldown\|throttled\|fatal" artifacts/release.log | tail -20
+grep -i "error\|rejected\|cooldown\|throttled\|fatal" artifacts/logs/svanbot10.log | tail -20
 ```
 
 Common, in order of likelihood:
@@ -120,7 +120,7 @@ rule, and what a good answer contains.
 ```text
 Diagnose, read-only, no restarts, no config changes: bot <NAME> has been in
 <lobby/connecting> for <N> minutes. Use scripts/status.sh, the supervisor logs
-and the last 50 lines of artifacts/release.log. Tell me: seated or not, last
+and the last 50 lines of artifacts/logs/svanbot10.log. Tell me: seated or not, last
 error class (auth/cooldown/flood/ban/missed-hands), whether it self-heals and
 by when, and the single command that confirms recovery. Evidence before theory.
 ```
