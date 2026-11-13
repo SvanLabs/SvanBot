@@ -77,7 +77,7 @@ async fn a_failed_writer_does_not_consume_missing_state_recovery() {
     let (tx, rx) = mpsc::unbounded_channel();
     drop(rx);
     rig.feed(&Conn { out: tx }, turn("t1")).await;
-    assert!(rig.shared.bots[0].read().missing_state_resync.is_none());
+    assert!(rig.authority.missing_state().is_none());
     let (tx, mut rx) = mpsc::unbounded_channel();
     let conn = Conn { out: tx };
     rig.feed(&conn, turn("t1")).await;

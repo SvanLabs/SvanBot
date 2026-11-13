@@ -46,10 +46,20 @@ async fn missing_state_without_a_snapshot_falls_back_once_at_the_original_deadli
     rig.feed(&conn, offer).await;
     assert_eq!(rig.seat.turn.as_ref().unwrap().deadline, deadline, "redelivery never extends the turn clock");
     // Advance the controlled clock at the timer callback seam without another server frame.
-    turns::finish(&rig.shared, 0, &rig.bot, &mut rig.tracker, &conn, &mut rig.rng, &mut rig.seat.turn, deadline - Duration::from_millis(1))
-        .await;
+    turns::finish(
+        &rig.shared,
+        0,
+        &rig.bot,
+        &mut rig.tracker,
+        &conn,
+        &mut rig.rng,
+        &mut rig.seat.turn,
+        &mut rig.authority,
+        deadline - Duration::from_millis(1),
+    )
+    .await;
     assert!(actions(&mut rx).is_empty(), "the timer cannot finish before its deadline");
-    turns::finish(&rig.shared, 0, &rig.bot, &mut rig.tracker, &conn, &mut rig.rng, &mut rig.seat.turn, deadline).await;
+    turns::finish(&rig.shared, 0, &rig.bot, &mut rig.tracker, &conn, &mut rig.rng, &mut rig.seat.turn, &mut rig.authority, deadline).await;
     let sent = actions(&mut rx);
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0]["action"], "fold");
@@ -112,7 +122,18 @@ async fn older_offers_cannot_cancel_the_current_pending_authority() {
             }
             rig.feed(&conn, stale).await;
             assert_eq!(rig.seat.turn.as_ref().map(|turn| turn.deadline), Some(deadline), "obsolete offers cannot cancel current authority");
-            turns::finish(&rig.shared, 0, &rig.bot, &mut rig.tracker, &conn, &mut rig.rng, &mut rig.seat.turn, deadline).await;
+            turns::finish(
+                &rig.shared,
+                0,
+                &rig.bot,
+                &mut rig.tracker,
+                &conn,
+                &mut rig.rng,
+                &mut rig.seat.turn,
+                &mut rig.authority,
+                deadline,
+            )
+            .await;
             let sent = actions(&mut rx);
             assert_eq!(sent.len(), 1);
             assert_eq!(sent[0]["turn_token"], "new-token");
@@ -149,6 +170,7 @@ async fn missing_state_authority_is_cancelled_when_the_hand_or_seat_is_gone() {
             &conn,
             &mut rig.rng,
             &mut rig.seat.turn,
+            &mut rig.authority,
             Instant::now() + Duration::from_secs(3),
         )
         .await;
@@ -175,6 +197,7 @@ async fn a_missing_state_fallback_never_folds_when_the_offer_only_allows_calling
         &conn,
         &mut rig.rng,
         &mut rig.seat.turn,
+        &mut rig.authority,
         Instant::now() + Duration::from_secs(3),
     )
     .await;

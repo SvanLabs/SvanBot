@@ -25,6 +25,7 @@ struct Rig {
     tracker: TableTracker,
     rng: SmallRng,
     seat: Seat,
+    authority: TurnAuthority,
 }
 
 impl Rig {
@@ -33,7 +34,15 @@ impl Rig {
         let bot = shared.config.bots[0].clone();
         let mut tracker = TableTracker::default();
         tracker.reset_table();
-        Rig { shared, bot, http: reqwest::Client::new(), tracker, rng: SmallRng::seed_from_u64(1), seat: Seat::default() }
+        Rig {
+            shared,
+            bot,
+            http: reqwest::Client::new(),
+            tracker,
+            rng: SmallRng::seed_from_u64(1),
+            seat: Seat::default(),
+            authority: TurnAuthority::default(),
+        }
     }
 
     async fn feed(&mut self, conn: &Conn, msg: Value) {
@@ -41,7 +50,8 @@ impl Rig {
     }
 
     async fn feed_end(&mut self, conn: &Conn, msg: Value) -> Option<SessionEnd> {
-        handle(&self.shared, 0, &self.bot, &self.http, &mut self.tracker, conn, &msg, &mut self.rng, &mut self.seat).await
+        handle(&self.shared, 0, &self.bot, &self.http, &mut self.tracker, conn, &msg, &mut self.rng, &mut self.seat, &mut self.authority)
+            .await
     }
 }
 
@@ -333,7 +343,7 @@ async fn an_action_lost_to_a_dead_writer_is_not_marked_answered() {
     drop(rx);
     let conn = Conn { out: tx };
     rig.feed(&conn, turn("t9")).await;
-    assert_eq!(rig.shared.bots[0].read().last_acted_turn_token, None);
+    assert_eq!(rig.authority.last_token(), None);
     assert!(rig.shared.store.decisions_for_hand("A", "h1").unwrap().is_empty());
     assert!(rig.shared.store.audit_batch(10).unwrap().is_empty());
     assert!(rig.tracker.pending_calibration.is_empty());

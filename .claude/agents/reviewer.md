@@ -23,8 +23,8 @@ Find every path in the diff that constructs or sends an action, and confirm each
 - is bounded by the `valid_actions` the server offered this turn (`LegalActions::parse`, and
   `crates/apps/bot/src/client/decide.rs` is where the live path enforces it);
 - echoes back both `hand_id` and `turn_token`;
-- does not answer the same `turn_token` twice — a repeated frame must not produce a second action
-  (`last_acted_turn_token`, `crates/apps/bot/src/live.rs`), and a rejected action resets it.
+-   does not answer the same `turn_token` twice — a repeated frame must not produce a second action
+  (`TurnAuthority`, `crates/apps/bot/src/client/turn_authority.rs`), and a rejected action resets it.
 
 A change that adds a new way to reach a send, or a new fallback, is where this breaks. Check the
 fallback and error paths, not only the happy one.

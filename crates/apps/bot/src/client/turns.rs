@@ -44,8 +44,9 @@ pub(super) async fn receive(
     msg: &Value,
     rng: &mut SmallRng,
     pending: &mut Option<PendingTurn>,
+    authority: &mut TurnAuthority,
 ) {
-    if decide::turn_answered(shared, slot, tracker, msg) {
+    if authority.turn_answered(tracker, msg) {
         return;
     }
     let previous = pending.as_ref().filter(|old| tracker.table_id.as_deref() == Some(&old.table));
@@ -81,7 +82,7 @@ pub(super) async fn receive(
     if tracker.situation(msg, &legal).is_none()
         && !hand(msg, tracker).is_empty()
         && msg["turn_token"].as_str().is_some_and(|s| !s.is_empty())
-        && recover::resync_missing_state(shared, slot, tracker, conn, hand(msg, tracker))
+        && recover::resync_missing_state(authority, tracker, conn, hand(msg, tracker))
     {
         let mut frame = msg.clone();
         frame["hand_id"] = json!(hand(msg, tracker));
@@ -92,7 +93,7 @@ pub(super) async fn receive(
         });
         shared.log(&bot.name, "warn", "missing decision state; waiting up to 2 seconds for resync before fallback");
     } else {
-        act(shared, slot, bot, tracker, conn, msg, rng).await;
+        act(shared, slot, bot, tracker, conn, msg, rng, authority).await;
     }
 }
 
@@ -107,6 +108,7 @@ pub(super) async fn finish(
     conn: &Conn,
     rng: &mut SmallRng,
     pending: &mut Option<PendingTurn>,
+    authority: &mut TurnAuthority,
     now: Instant,
 ) {
     let Some(turn) = pending.as_ref() else { return };
@@ -117,7 +119,7 @@ pub(super) async fn finish(
     let legal = LegalActions::parse(&turn.frame["valid_actions"]);
     if now >= turn.deadline || tracker.situation(&turn.frame, &legal).is_some() {
         let turn = pending.take().expect("pending turn was checked");
-        act(shared, slot, bot, tracker, conn, &turn.frame, rng).await;
+        act(shared, slot, bot, tracker, conn, &turn.frame, rng, authority).await;
     }
 }
 

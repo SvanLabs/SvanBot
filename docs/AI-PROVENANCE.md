@@ -32,7 +32,7 @@ is a red gate until someone regenerates the file.
 | codex/gpt-6 | 167 | 2026-09-29 | 2026-10-10 |
 | opencode/muse-spark-1.3-contributor-free | 9 | 2026-10-03 | 2026-10-04 |
 | claude-code/claude-haiku-5-5 | 26 | 2026-10-07 | 2026-10-10 |
-| opencode/deepseek-v4.1-flash-free | 1 | 2026-11-13 | 2026-11-13 |
+| opencode/deepseek-v4.1-flash-free | 2 | 2026-11-13 | 2026-11-13 |
 
 ## Regenerating
 
