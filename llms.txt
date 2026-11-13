@@ -109,6 +109,7 @@ against, and where your pull request goes.
 - [docs/OPERATIONS.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/OPERATIONS.md): the runbook — updates, backups, restore, fault drills, moving a checkout onto this repository.
 - [docs/ARCHITECTURE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/ARCHITECTURE.md): processes, crates, and the path a decision takes.
 - [docs/GUIDE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/GUIDE.md): the control room, panel by panel.
+- [docs/GLOSSARY.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/GLOSSARY.md): the terms whose meaning here is narrower than in poker in general.
 - [docs/LESSONS.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/LESSONS.md): why the rules exist, as escaped defects.
 - [docs/RELEASE.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/RELEASE.md): how a version is cut and published.
 - [docs/CONTRIBUTING.md](https://github.com/SvanLabs/SvanBot/blob/main/docs/CONTRIBUTING.md): the standard a change is held to, every MUST marked.

@@ -170,7 +170,7 @@ Recorded because each cut is a decision someone will otherwise re-propose.
 ## 8. Documentation
 
 `docs/GUIDE.md` §3.5 (depth classes for flop and turn calls), the decision-path paragraph in
-`docs/ARCHITECTURE.md` where it names self-calibration, and `docs/CONTEXT.md` if *depth class*
+`docs/ARCHITECTURE.md` where it names self-calibration, and `docs/GLOSSARY.md` if *depth class*
 needs a glossary line. `docs/CHANGELOG.md` gets one entry.
 
 ## 9. Risks
