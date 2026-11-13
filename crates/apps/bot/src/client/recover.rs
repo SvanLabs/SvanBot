@@ -6,14 +6,13 @@ use super::*;
 
 /// Queue recovery at most once per table/hand, returning whether it was sent. The turn wait
 /// uses this before falling back; a failed writer does not consume the recovery budget.
-pub(super) fn resync_missing_state(shared: &Shared, slot: usize, tracker: &TableTracker, conn: &Conn, hand: &str) -> bool {
+pub(super) fn resync_missing_state(authority: &mut TurnAuthority, tracker: &TableTracker, conn: &Conn, hand: &str) -> bool {
     let Some(table) = &tracker.table_id else { return false };
     let key = (table.clone(), hand.to_string());
-    let mut bot = shared.bots[slot].write();
-    if bot.missing_state_resync.as_ref() != Some(&key)
+    if authority.missing_state() != Some(&key)
         && conn.send(json!({"type": "resync_request", "table_id": table, "last_table_seq": tracker.last_table_seq.max(0)}))
     {
-        bot.missing_state_resync = Some(key);
+        authority.claim_missing_state(key);
         return true;
     }
     false

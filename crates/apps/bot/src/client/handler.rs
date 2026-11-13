@@ -14,6 +14,7 @@ pub(super) async fn handle(
     msg: &Value,
     rng: &mut SmallRng,
     seat: &mut Seat,
+    authority: &mut TurnAuthority,
 ) -> Option<SessionEnd> {
     let t = msg["type"].as_str().unwrap_or("");
     // The watermark before this frame: `accept_seq` advances it, and a state-hash verdict needs the
@@ -75,7 +76,7 @@ pub(super) async fn handle(
                     });
                     turn["hand_id"] = msg["snapshot"]["hand_id"].clone();
                     turn["table_seq"] = msg["snapshot"]["table_seq"].as_i64().or(msg["to_table_seq"].as_i64()).into();
-                    turns::receive(shared, slot, bot, tracker, conn, &turn, rng, &mut seat.turn).await;
+                    turns::receive(shared, slot, bot, tracker, conn, &turn, rng, &mut seat.turn, authority).await;
                 }
             } else if tracker.table_id.is_some() && msg["snapshot"].is_null() {
                 // Table gone: go back to the lobby.
@@ -117,7 +118,7 @@ pub(super) async fn handle(
         }
         "your_turn" => {
             shared.update(slot, |b| b.turn_started = Some(chrono::Utc::now().timestamp_millis() as f64 / 1000.0));
-            turns::receive(shared, slot, bot, tracker, conn, msg, rng, &mut seat.turn).await;
+            turns::receive(shared, slot, bot, tracker, conn, msg, rng, &mut seat.turn, authority).await;
         }
         "action_ack" => {}
         "action_rejected" => {
@@ -127,25 +128,15 @@ pub(super) async fn handle(
             let protocol = matches!(code, "missing_action_id" | "action_id_conflict" | "legacy_action_protocol");
             shared.log(&bot.name, if protocol { "error" } else { "warn" }, format!("action rejected: {code} {reason}"));
             // A rejected action did not consume the turn: let the turn be answered again.
-            shared.update(slot, |b| {
-                b.rejections += 1;
-                b.last_acted_turn_token = None;
-                b.last_acted_hand_id = None;
-            });
+            shared.update(slot, |b| b.rejections += 1);
+            authority.rejected();
             // Private your_turn messages are never replayed and the 45 s deadline keeps running, so the
             // only way back to the turn is a resync: its snapshot restores the pending token.
             let recoverable =
                 matches!(code, "stale_turn_token" | "stale_hand_action" | "invalid_action" | "not_your_turn" | "no_hand_in_progress");
             if recoverable && let Some(table) = tracker.table_id.clone() {
                 let hand = tracker.hand_id.clone();
-                let allowed = {
-                    let mut b = shared.bots[slot].write();
-                    if b.reject_resyncs.0 != hand {
-                        b.reject_resyncs = (hand, 0);
-                    }
-                    b.reject_resyncs.1 += 1;
-                    b.reject_resyncs.1 <= MAX_REJECT_RESYNCS
-                };
+                let allowed = authority.permit_reject_resync(hand.as_deref());
                 if allowed {
                     conn.send(json!({"type": "resync_request", "table_id": table, "last_table_seq": tracker.last_table_seq.max(0)}));
                 }
@@ -343,7 +334,7 @@ pub(super) async fn handle(
         }
         _ => {}
     }
-    turns::finish(shared, slot, bot, tracker, conn, rng, &mut seat.turn, Instant::now()).await;
+    turns::finish(shared, slot, bot, tracker, conn, rng, &mut seat.turn, authority, Instant::now()).await;
     None
 }
 

@@ -124,7 +124,7 @@ pub struct StateHashMismatch {
 /// What one bot is doing, as the dashboard reads it.
 ///
 /// The `#[serde(skip)]` fields below are runtime state and must not travel with this value: `Instant`
-/// timers that mean nothing in another process, per-connection turn tokens, the situation behind
+/// timers that mean nothing in another process, the situation behind
 /// `last_decision` (behind `s.models`, not here), and the hand in progress. The two pieces that must
 /// outlive a process persist on their own keys — `open_hand` through [`OPEN_HANDS_KEY`] and
 /// `state_hash_lifetime` with the model checkpoint — so a reload takes them from the store, never
@@ -171,24 +171,8 @@ pub struct BotLive {
     pub state_hash_lifetime: StateHashTotals,
     #[serde(skip)]
     pub last_hash_resync: Option<std::time::Instant>,
-    /// Resyncs asked for after an action rejection in the current hand (hand id, count): at most
-    /// [`crate::client::MAX_REJECT_RESYNCS`] per hand, so a persistent rejection cannot loop.
-    #[serde(skip)]
-    pub reject_resyncs: (Option<String>, u32),
-    /// Last table/hand whose missing decision state requested recovery: at most one snapshot
-    /// per hand, so an incomplete resync cannot loop while the safe action still meets the deadline.
-    #[serde(skip)]
-    pub missing_state_resync: Option<(String, String)>,
     /// Unix seconds when our current turn began (None when not our turn).
     pub turn_started: Option<f64>,
-    /// Hand and token of the last action accepted by the connection writer.
-    #[serde(skip)]
-    pub last_acted_turn_token: Option<String>,
-    #[serde(skip)]
-    pub last_acted_hand_id: Option<String>,
-    /// Sequence of that turn when the authority supplied one; older turns in the same hand are stale.
-    #[serde(skip)]
-    pub last_acted_turn_seq: Option<i64>,
     /// Latest action label per seat this hand, for seat bubbles.
     pub last_actions: std::collections::HashMap<usize, String>,
     #[serde(skip)]

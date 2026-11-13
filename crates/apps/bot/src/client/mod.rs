@@ -35,6 +35,7 @@ mod quality;
 mod recover;
 mod rest;
 mod seat;
+mod turn_authority;
 mod turns;
 
 // The calibration round (a blocking-pool caller) shares the 0322 locked-write retry (#744).
@@ -49,6 +50,7 @@ use rest::balance_from;
 use rest::prepare_buy_in;
 pub use rest::rest_get;
 use seat::{HandEnd, Leave, Move, Seat, between_hands, stablemate_at_table, top_up_funded};
+use turn_authority::TurnAuthority;
 
 pub(super) struct Conn {
     out: mpsc::UnboundedSender<Value>,
@@ -69,6 +71,9 @@ pub async fn run_bot(shared: Arc<Shared>, slot: usize, bot: BotConfig) {
     let mut backoff = Duration::from_secs(1);
     let mut auth_park = authpark::AuthPark::default();
     let mut rng = SmallRng::from_os();
+    // The answered-turn record and its recovery budgets outlive a connection: a reconnect must not
+    // re-answer a turn the writer already accepted or re-open a per-hand budget (0163).
+    let mut authority = TurnAuthority::default();
     loop {
         let desired = shared.bots[slot].read().desired.clone();
         if desired == "stop" {
@@ -103,7 +108,7 @@ pub async fn run_bot(shared: Arc<Shared>, slot: usize, bot: BotConfig) {
             );
         }
         let began = Instant::now();
-        let ended = session(&shared, slot, &bot, &http, &mut tracker, &mut rng).await;
+        let ended = session(&shared, slot, &bot, &http, &mut tracker, &mut rng, &mut authority).await;
         let lasted = began.elapsed();
         let ended = match ended {
             // One refused login must not cost the seat: retry on the backoff path until the third in a row (#744).
@@ -216,6 +221,7 @@ async fn session(
     http: &reqwest::Client,
     tracker: &mut TableTracker,
     rng: &mut SmallRng,
+    authority: &mut TurnAuthority,
 ) -> anyhow::Result<SessionEnd> {
     let mut req = shared.config.ws_url.as_str().into_client_request()?;
     req.headers_mut().insert("Authorization", format!("Bearer {}", bot.api_key).parse()?);
@@ -257,7 +263,7 @@ async fn session(
         let recovery_deadline = seat.turn.as_ref().map(|turn| turn.deadline);
         tokio::select! {
             _ = turns::wait(recovery_deadline) => {
-                turns::finish(shared, slot, bot, tracker, &conn, rng, &mut seat.turn, Instant::now()).await;
+                turns::finish(shared, slot, bot, tracker, &conn, rng, &mut seat.turn, authority, Instant::now()).await;
             }
             // A dead writer silently swallows every later action: end the session at once so the
             // reconnect resyncs and re-answers any pending turn (0090).
@@ -284,7 +290,7 @@ async fn session(
                 };
                 last_frame = Instant::now();
                 let Ok(msg) = serde_json::from_str::<Value>(&text) else { continue };
-                if let Some(end) = handle(shared, slot, bot, http, tracker, &conn, &msg, rng, &mut seat).await { break Ok(end) }
+                if let Some(end) = handle(shared, slot, bot, http, tracker, &conn, &msg, rng, &mut seat, authority).await { break Ok(end) }
             }
             _ = tick.tick() => {
                 let desired = shared.bots[slot].read().desired.clone();

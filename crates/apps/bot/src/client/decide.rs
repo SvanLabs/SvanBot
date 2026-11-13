@@ -42,37 +42,6 @@ pub fn legalize(action: Action, legal: &LegalActions) -> (String, Option<i64>) {
     }
 }
 
-/// Whether this authority is a duplicate or older than the newest turn already sent for the hand.
-fn already_answered(
-    last_hand: Option<&str>,
-    last_token: Option<&str>,
-    last_seq: Option<i64>,
-    hand_id: &str,
-    token: &str,
-    seq: Option<i64>,
-) -> bool {
-    if last_hand != Some(hand_id) {
-        return false;
-    }
-    (!token.is_empty() && last_token == Some(token)) || matches!((seq, last_seq), (Some(current), Some(last)) if current < last)
-}
-
-/// The sent-action authority gate, also used before delaying a missing-state turn.
-pub(super) fn turn_answered(shared: &Shared, slot: usize, tracker: &TableTracker, msg: &Value) -> bool {
-    let hand_id = msg["hand_id"].as_str().or(tracker.hand_id.as_deref()).unwrap_or("");
-    let token = msg["turn_token"].as_str().unwrap_or("");
-    let seq = msg["table_seq"].as_i64();
-    let prior = shared.bots[slot].read();
-    already_answered(
-        prior.last_acted_hand_id.as_deref(),
-        prior.last_acted_turn_token.as_deref(),
-        prior.last_acted_turn_seq,
-        hand_id,
-        token,
-        seq,
-    )
-}
-
 fn calibration_candidate<'a>(
     decision: &'a sv10_core::policy::Decision,
     action: &str,
@@ -139,6 +108,8 @@ pub(crate) fn spawn_locked_write_retry(
     });
 }
 
+// These are the session's existing borrows; bundling them would only rename the same state.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn act(
     shared: &Arc<Shared>,
     slot: usize,
@@ -147,6 +118,7 @@ pub(super) async fn act(
     conn: &Conn,
     msg: &Value,
     rng: &mut SmallRng,
+    authority: &mut TurnAuthority,
 ) {
     let legal = LegalActions::parse(&msg["valid_actions"]);
     let token = msg["turn_token"].as_str().unwrap_or("").to_string();
@@ -154,7 +126,7 @@ pub(super) async fn act(
     let seq = msg["table_seq"].as_i64();
     // A (hand, token) is answered at most once, and a late older authority in the same hand cannot
     // act after a newer sequenced turn. Resync snapshots without a sequence still deduplicate by pair.
-    let answered = turn_answered(shared, slot, tracker, msg);
+    let answered = authority.turn_answered(tracker, msg);
     if answered {
         shared.log(&bot.name, "info", format!("turn token {token} re-delivered; skipping duplicate action"));
         return;
@@ -269,20 +241,14 @@ pub(super) async fn act(
             tracker.pending_calibration.push(pending);
         }
         if !token.is_empty() {
-            shared.update(slot, |b| {
-                b.last_acted_hand_id = Some(hand_id.clone());
-                b.last_acted_turn_token = Some(token);
-                if let Some(seq) = seq {
-                    b.last_acted_turn_seq = Some(seq);
-                }
-            });
+            authority.answered(&hand_id, &token, seq);
         }
     } else {
         // Not recorded as answered: after the reconnect the resynced turn is answered again.
         shared.log(&bot.name, "warn", format!("action {name} for hand {hand_id} not sent: writer closed"));
     }
     if sent && missing_state {
-        recover::resync_missing_state(shared, slot, tracker, conn, &hand_id);
+        recover::resync_missing_state(authority, tracker, conn, &hand_id);
     }
     if sent
         && let Some((record, net, big)) = replay
@@ -471,14 +437,5 @@ mod tests {
             };
             assert!(ok, "case {case}: {intended:?} on {l:?} became {name} {amount:?}");
         }
-    }
-
-    #[test]
-    fn only_a_nonempty_matching_token_counts_as_answered() {
-        assert!(already_answered(Some("h1"), Some("t1"), Some(10), "h1", "t1", Some(10)));
-        assert!(already_answered(Some("h1"), Some("t2"), Some(12), "h1", "old", Some(11)));
-        assert!(!already_answered(Some("h1"), Some("t1"), Some(10), "h1", "t2", Some(11)));
-        assert!(!already_answered(Some("h1"), Some("t1"), Some(10), "h2", "t1", Some(9)));
-        assert!(!already_answered(None, None, None, "h1", "t1", None));
     }
 }

@@ -61,7 +61,7 @@ impl Store {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let conn = Connection::open(path)?;
+        let mut conn = Connection::open(path)?;
         // Before the schema: a peer migrating at the same hot swap holds the write lock. The wait is
         // `slow::busy_handler` (0322) — the same 10 s `busy_timeout` gave, and it records how long
         // SQLite made this hold wait for another process's lock, which is what names the holder.
