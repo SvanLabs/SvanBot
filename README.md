@@ -449,7 +449,7 @@ Ground rules, each learned the hard way ([`docs/LESSONS.md`](docs/LESSONS.md) ha
 | Use the control room and understand what it shows | 📖 [`docs/GUIDE.md`](docs/GUIDE.md) — also the dashboard's `/docs` page |
 | Understand the processes, the crates and the decision path | 🏛️ [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Know why a rule exists before you change it | 📝 [`docs/LESSONS.md`](docs/LESSONS.md) |
-| Look up a term — flagship bot, fleet, season record | 📘 [`docs/CONTEXT.md`](docs/CONTEXT.md) |
+| Look up a term — flagship bot, fleet, season record | 📘 [`docs/GLOSSARY.md`](docs/GLOSSARY.md) |
 | Work on the protocol, the store, the learner or the dashboard API | 🔌 [`SPEC-protocol`](docs/SPEC-protocol.md) · 💾 [`SPEC-data`](docs/SPEC-data.md) · 🧠 [`SPEC-learner`](docs/SPEC-learner.md) · 🖥️ [`SPEC-dashboard`](docs/SPEC-dashboard.md) |
 | Cut a release | 📦 [`docs/RELEASE.md`](docs/RELEASE.md) |
 | Ask a question or report a vulnerability | 💬 [`docs/SUPPORT.md`](docs/SUPPORT.md) · 🔒 [`docs/SECURITY.md`](docs/SECURITY.md) |

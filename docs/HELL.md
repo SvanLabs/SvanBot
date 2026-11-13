@@ -30,7 +30,7 @@ scripts/status.sh 2>&1 | head -30
 - Score falling while hands rise is a strategy problem, not an outage — don't restart it, read it:
   `review recent` answers "are we losing *now*" and `review allin-luck` separates luck from edge
   (`docs/GUIDE.md`). Restarting a losing-but-healthy bot just pays rejoin costs for nothing.
-- Rank sliding while chips are flat means rivals moved, not you (`docs/CONTEXT.md`, *rank slide*).
+- Rank sliding while chips are flat means rivals moved, not you (`docs/GLOSSARY.md`, *rank slide*).
 
 ## 2. One bot is stuck, not the fleet
 
