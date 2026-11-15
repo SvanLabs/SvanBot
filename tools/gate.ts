@@ -57,7 +57,7 @@ function stepFor(name: string): Step {
       return {
         name,
         argv: cargo(
-          ["nextest", "run", "--workspace", "--no-tests=warn"],
+          ["nextest", "run", "--workspace", "--no-tests=fail"],
           ["--build-jobs", "4", "--test-threads", "4"],
         ),
         env: TARGET,
