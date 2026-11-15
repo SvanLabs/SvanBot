@@ -73,6 +73,11 @@ _Avoid_: sitting, visit
 One full turn of the button around the table, so every seat posts each blind once.
 _Avoid_: round, lap
 
+**Strength**:
+How a player's best five cards rank at showdown. The higher strength wins, and equal strengths
+split the pot.
+_Avoid_: hand value, hand rank (a rank is a card's)
+
 **Spot**:
 A point where a bot must act. It is fixed by the street, the board, the positions, the stacks, the
 pot and the action so far.
