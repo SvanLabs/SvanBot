@@ -28,6 +28,10 @@ fn paired(args: &[String]) {
         Some(path) => {
             let models: ModelStore = load_models(&path);
             let opps = sv10_core::agents::live_pool(&models, 30.0, 16, seed);
+            if opps.is_empty() {
+                eprintln!("sim: no live opponents in SIM_MODELS={path} (none with enough observed hands); nothing to play against");
+                std::process::exit(2)
+            }
             eprintln!("live pool: {} profile clones", opps.len());
             sv10_core::sim::paired_eval(&a, &b, &opps, &models, nn.clone(), tables, hands, stack_bb, seed)
         }
@@ -70,6 +74,10 @@ fn variance(args: &[String]) {
         Some(path) => {
             let models: ModelStore = load_models(&path);
             let opps = sv10_core::agents::live_pool(&models, 30.0, 16, seed);
+            if opps.is_empty() {
+                eprintln!("sim: no live opponents in SIM_MODELS={path} (none with enough observed hands); nothing to play against");
+                std::process::exit(2)
+            }
             eprintln!("live pool: {} profile clones", opps.len());
             sv10_core::sim::paired_variance_split(&a, &b, &opps, &models, tables, hands, stack_bb, seed, salts, seats, learn)
         }

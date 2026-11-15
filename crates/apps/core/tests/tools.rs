@@ -18,3 +18,22 @@ fn positive_benchmark_repeats_report_the_absence_of_a_one_round_interval() {
     assert!(report["k1"]["reject_again_over_reject"]["ci95"].is_null());
     assert_eq!(report["k1"]["reject_again_over_reject"]["verdict"], "one round: no interval");
 }
+
+fn empty_models_file(name: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!("sv10-tools-{}-{name}.json", std::process::id()));
+    std::fs::write(&path, serde_json::to_string(&sv10_core::model::ModelStore::default()).unwrap()).unwrap();
+    path
+}
+
+#[test]
+fn an_empty_live_pool_stops_sim_with_a_message_instead_of_a_panic() {
+    let models = empty_models_file("pool");
+    for sub in ["paired", "variance"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_sim")).args([sub, "1", "1"]).env("SIM_MODELS", &models).output().unwrap();
+        let err = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(2), "{sub}: {err}");
+        assert!(err.contains("no live opponents"), "{sub}: {err}");
+        assert!(!err.contains("panicked"), "{sub}: {err}");
+    }
+    std::fs::remove_file(models).ok();
+}
