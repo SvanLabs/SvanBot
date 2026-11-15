@@ -52,3 +52,8 @@ V11-00.
   opponent's range (uniform until the action model arrives), raises for value well above its fair
   share, calls when the equity covers the price, and never folds a free check. Its work is a sample
   budget and a seed passed in, never the clock. `core::spot::Spot` is what it decides on.
+- Session: `svanbot-runtime` turns venue frames into messages without a socket. It tracks the
+  table and the hand, builds the spot, asks the decision it is handed, and plays the nearest
+  offered action, never one the venue left out. Every seat list passes one seam, the fair-play
+  guard: a stablemate at the table makes the bot leave and raise an incident, and a hand dealt
+  with one is folded outright as a shared hand.
