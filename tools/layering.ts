@@ -3,7 +3,7 @@
 //   bun tools/layering.ts [root]   checks the workspace at root (default: this one), lists each
 //                                  violation and exits 1 if there is any
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 
 /** The layers, lowest first. A crate's layer is the directory under `crates/` that holds it. */
 const LAYERS = ["core", "sim", "strategy", "learn", "runtime", "apps"] as const;
@@ -26,7 +26,7 @@ export type Violation = {
   detail: string;
 };
 
-type Dependency = { name: string; kind: "dev" | "build" | null; path?: string; source: string | null };
+type Dependency = { name: string; kind: "dev" | "build" | null; path?: string };
 type Package = { name: string; manifest_path: string; dependencies: Dependency[] };
 type Metadata = {
   packages: Package[];
@@ -37,25 +37,25 @@ type Metadata = {
 export function checkWorkspace(root: string): Violation[] {
   const metadata = cargoMetadata(root);
   const layerOf = (manifestDir: string): Layer | undefined => {
-    const [top, name] = relative(metadata.workspace_root, manifestDir).split("/");
+    const [top, name] = relative(metadata.workspace_root, manifestDir).split(sep);
     return top === "crates" ? LAYERS.find((layer) => layer === name) : undefined;
   };
   const allowed = metadata.metadata?.layering?.["pure-third-party"] ?? {};
-  const byDir = new Map(metadata.packages.map((p) => [dirOf(p.manifest_path), p]));
+  const byDir = new Map(metadata.packages.map((p) => [dirname(p.manifest_path), p]));
   const violations: Violation[] = [];
-  const packages = [...metadata.packages].sort((a, b) => a.name.localeCompare(b.name));
+  // Sorted by code unit, not locale, so the report reads the same on every machine.
+  const packages = [...metadata.packages].sort((a, b) => (a.name < b.name ? -1 : 1));
   for (const pkg of packages) {
-    const dir = dirOf(pkg.manifest_path);
+    const report = (rule: Violation["rule"], detail: string) =>
+      violations.push({ crate: pkg.name, rule, detail });
+    const dir = dirname(pkg.manifest_path);
     const layer = layerOf(dir);
     if (layer === undefined) {
-      const where = relative(metadata.workspace_root, dir);
-      violations.push({ crate: pkg.name, rule: "unplaced", detail: `${where} is not under crates/<layer>/` });
+      report("unplaced", `${relative(metadata.workspace_root, dir)} is not under crates/<layer>/`);
       continue;
     }
     if (PURE.includes(layer)) {
-      for (const [file, lint] of ioOptOuts(dir)) {
-        violations.push({ crate: pkg.name, rule: "io-opt-out", detail: `${file} turns off ${lint}` });
-      }
+      for (const [file, lint] of ioOptOuts(dir)) report("io-opt-out", `${file} turns off ${lint}`);
     }
     for (const dep of pkg.dependencies) {
       // Anything that is not a workspace member is third-party, a path outside the workspace too.
@@ -63,24 +63,16 @@ export function checkWorkspace(root: string): Violation[] {
       if (target === undefined) {
         if (PURE.includes(layer) && dep.kind !== "dev" && !Object.hasOwn(allowed, dep.name)) {
           const kind = dep.kind === "build" ? " (build)" : "";
-          violations.push({
-            crate: pkg.name,
-            rule: "third-party",
-            detail: `${dep.name}${kind} in a pure layer (${layer})`,
-          });
+          report("third-party", `${dep.name}${kind} in a pure layer (${layer})`);
         }
         continue;
       }
-      const targetLayer = layerOf(dirOf(target.manifest_path));
+      const targetLayer = layerOf(dirname(target.manifest_path));
       if (targetLayer === undefined) continue; // reported as unplaced on its own
       if (LAYERS.indexOf(targetLayer) > LAYERS.indexOf(layer)) {
-        violations.push({
-          crate: pkg.name,
-          rule: "upward",
-          detail: `${target.name} (${targetLayer}) is above ${layer}`,
-        });
+        report("upward", `${target.name} (${targetLayer}) is above ${layer}`);
       } else if (layer === "apps" && targetLayer === "apps") {
-        violations.push({ crate: pkg.name, rule: "upward", detail: `${target.name} (apps) is another app` });
+        report("upward", `${target.name} (apps) is another app`);
       }
     }
   }
@@ -99,15 +91,11 @@ function ioOptOuts(crateDir: string): [string, string][] {
     const text = readFileSync(join(src, file), "utf8");
     for (const attribute of text.matchAll(/#!?\[[^\]]*?\b(?:allow|expect)\s*\(([^)]*)\)/g)) {
       for (const lint of (attribute[1] ?? "").split(",").map((item) => item.trim())) {
-        if (IO_BANS.includes(lint)) found.push([`src/${file}`, lint]);
+        if (IO_BANS.includes(lint)) found.push([join("src", file), lint]);
       }
     }
   }
   return found;
-}
-
-function dirOf(manifestPath: string): string {
-  return manifestPath.replace(/\/Cargo\.toml$/, "");
 }
 
 function cargoMetadata(root: string): Metadata {

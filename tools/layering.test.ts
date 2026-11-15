@@ -42,11 +42,12 @@ function write(root: string, path: string, text: string) {
   writeFileSync(full, text);
 }
 
-const path = (to: string) => `{ path = "../${to}" }`;
+/** A path dependency on a sibling crate, as manifest text. */
+const pathDep = (to: string) => `{ path = "../${to}" }`;
 
 test("a dependency on a higher layer is an upward edge", () => {
   const root = workspace([
-    { dir: "crates/core", manifest: `[dependencies]\nw-runtime = ${path("runtime")}\n` },
+    { dir: "crates/core", manifest: `[dependencies]\nw-runtime = ${pathDep("runtime")}\n` },
     { dir: "crates/runtime" },
   ]);
   expect(checkWorkspace(root)).toEqual([
@@ -57,12 +58,12 @@ test("a dependency on a higher layer is an upward edge", () => {
 test("edges go down to any lower layer, and no app depends on another app", () => {
   const root = workspace([
     { dir: "crates/core" },
-    { dir: "crates/learn", manifest: `[dependencies]\nw-core = ${path("core")}\n` },
+    { dir: "crates/learn", manifest: `[dependencies]\nw-core = ${pathDep("core")}\n` },
     {
       dir: "crates/apps/bot",
-      manifest: `[dependencies]\nw-learn = ${path("../learn")}\nw-release = ${path("release")}\n`,
+      manifest: `[dependencies]\nw-learn = ${pathDep("../learn")}\nw-release = ${pathDep("release")}\n`,
     },
-    { dir: "crates/apps/release", manifest: `[dependencies]\nw-core = ${path("../core")}\n` },
+    { dir: "crates/apps/release", manifest: `[dependencies]\nw-core = ${pathDep("../core")}\n` },
   ]);
   expect(checkWorkspace(root)).toEqual([
     { crate: "w-bot", rule: "upward", detail: "w-release (apps) is another app" },
@@ -142,7 +143,7 @@ test("this workspace keeps the rule", () => {
 
 test("the command lists each violation and fails", () => {
   const root = workspace([
-    { dir: "crates/core", manifest: `[dependencies]\nw-runtime = ${path("runtime")}\n` },
+    { dir: "crates/core", manifest: `[dependencies]\nw-runtime = ${pathDep("runtime")}\n` },
     { dir: "crates/runtime" },
   ]);
   const run = Bun.spawnSync(["bun", join(import.meta.dir, "layering.ts"), root]);
