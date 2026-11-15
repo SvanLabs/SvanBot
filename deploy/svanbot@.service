@@ -1,0 +1,29 @@
+# One bot at the venue: `systemctl --user enable --now svanbot@<name>`, one instance per bot.
+# deploy/README.md is the runbook. While the v10 fleet plays, never start an instance with a fleet
+# bot's key: a new connection takes over that bot's live session.
+[Unit]
+Description=SvanBot %i at the venue
+After=network-online.target
+Wants=network-online.target
+# Five starts in five minutes at most, then it stays down: a crash loop must not spend the venue's
+# ten connections a minute per IP, which every bot on this box shares.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=exec
+# The key, the name and the roster, mode 600, outside the repo (deploy/README.md).
+EnvironmentFile=%h/.config/svanbot/%i.env
+Environment=SVANBOT_STORE=%h/.local/share/svanbot/%i.db
+# The slot the updater points `current` at (V11-10).
+ExecStart=%h/.local/lib/svanbot/current/svanbot
+Restart=on-failure
+RestartSec=10
+# 1: the venue refused the key. 2: the setup is missing. A restart cannot fix either.
+RestartPreventExitStatus=1 2
+# The bot is small. A cap keeps a leak from reaching the box's other bots.
+MemoryMax=1G
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
