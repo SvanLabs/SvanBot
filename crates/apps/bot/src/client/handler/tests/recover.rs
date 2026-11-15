@@ -464,7 +464,7 @@ async fn a_session_that_ends_forgets_what_it_queued_so_the_resync_is_answered_ag
     rig.authority.session_ended();
     assert_eq!(rig.authority.last_token(), None);
     assert!(rig.authority.missing_state().is_none());
-    // The new connection's resync restores the same token: answered again, and recovery asked again.
+    // The new connection's resync restores the same token: answered again.
     let (tx, mut rx) = mpsc::unbounded_channel();
     rig.feed(&Conn { out: tx }, turn("t1")).await;
     let out = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
