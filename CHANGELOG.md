@@ -57,3 +57,7 @@ V11-00.
   offered action, never one the venue left out. Every seat list passes one seam, the fair-play
   guard: a stablemate at the table makes the bot leave and raise an incident, and a hand dealt
   with one is folded outright as a shared hand.
+- The bot: `svanbot` connects to `wss://openpoker.ai/ws` with its key as a bearer token (rustls
+  with ring), plays every turn by the pricer, reports fair-play incidents, and reconnects with a
+  backoff. It reads its key, name and roster from the environment, never prints the key, and will
+  not start without the roster.

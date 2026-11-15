@@ -1,14 +1,14 @@
 [workspace]
 resolver = "3"
 # The layers, lowest first (docs/adr/0003-crate-graph.md). A crate depends only on its own layer or
-# lower ones, and only runtime and apps touch the network, the store or the clock. The apps glob
-# joins this list with the first binary: cargo rejects a glob that matches nothing.
+# lower ones, and only runtime and apps touch the network, the store or the clock.
 members = [
     "crates/core",
     "crates/sim",
     "crates/strategy",
     "crates/learn",
     "crates/runtime",
+    "crates/apps/*",
 ]
 
 [workspace.package]
@@ -24,7 +24,11 @@ publish = false
 [workspace.dependencies]
 svanbot-core = { path = "crates/core" }
 svanbot-sim = { path = "crates/sim" }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 serde_json = "1.0.154"
+svanbot-runtime = { path = "crates/runtime" }
+svanbot-strategy = { path = "crates/strategy" }
+tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
