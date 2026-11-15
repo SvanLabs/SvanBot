@@ -186,6 +186,18 @@ impl<F> Pager<'_, F>
 where
     F: Fn(&Value) -> Option<Vec<Value>>,
 {
+    /// Starts at `offset` instead of 0: where an earlier read stopped.
+    #[must_use]
+    pub fn from(mut self, offset: u64) -> Self {
+        self.offset = offset;
+        self
+    }
+
+    /// The offset of the next page.
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+
     /// The next page, or `None` at the end. A page shorter than the limit is the last one. An
     /// empty page is tried again, backing off, up to [`EMPTY_PAGE_TRIES`] times in all, and then
     /// taken as the end.

@@ -54,6 +54,23 @@ store, in its append-only `incidents` table. To list every incident on the box:
 journalctl --user -p crit -u 'svanbot@*'
 ```
 
+## The season download
+
+`svanbot download` fills a bot's store with its season hand history, then exits. It uses the
+bot's own key, 200 hands a page, at most 30 requests a minute, and honours `Retry-After`. A lock
+beside the stores lets only one bot download at a time. Stopped part-way, it resumes from the
+offset the store recorded. A hand the store already holds keeps its first copy, so it can run
+while the bot plays.
+
+```sh
+for name in <name> <name> ...; do
+  ( set -a; . ~/.config/svanbot/"$name".env; set +a; ~/.local/lib/svanbot/current/svanbot download )
+done
+```
+
+v11 starts from a fresh store. The v10 stores are archived in `~/archive/svanbot-v10/` and are
+never migrated.
+
 ## The clean timer
 
 ```sh

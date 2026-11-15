@@ -11,12 +11,17 @@
 //! - `SVANBOT_STORE`: the bot's store, `~/.local/share/svanbot/<name>.db` unless set. Every hand
 //!   and every fair-play incident is kept there, so the bot will not start without it.
 //!
+//! `svanbot download` instead downloads the bot's season hand history into its store, and exits
+//! ([`download`]).
+//!
 //! An app does I/O, so it turns off the `clippy.toml` bans here, once (ADR 0003).
 #![allow(
     clippy::disallowed_methods,
     clippy::disallowed_types,
     clippy::disallowed_macros
 )]
+
+mod download;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -33,6 +38,9 @@ const SAMPLES: u64 = 20_000;
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
 
 fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("download") {
+        return download::run();
+    }
     let config = match config_from_env() {
         Ok(config) => config,
         Err(why) => {
@@ -97,7 +105,7 @@ fn keep(store: &Store, event: Event<'_>) {
     }
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| {
@@ -105,14 +113,19 @@ fn now_ms() -> i64 {
         })
 }
 
-fn open_store(me: &str) -> Result<Store, String> {
-    let path = match std::env::var_os("SVANBOT_STORE") {
-        Some(path) => PathBuf::from(path),
+/// The bot's store: `SVANBOT_STORE`, or `~/.local/share/svanbot/<name>.db`.
+pub(crate) fn store_path(me: &str) -> Result<PathBuf, String> {
+    match std::env::var_os("SVANBOT_STORE") {
+        Some(path) => Ok(PathBuf::from(path)),
         None => {
             let home = std::env::var_os("HOME").ok_or("set SVANBOT_STORE or HOME for the store")?;
-            PathBuf::from(home).join(format!(".local/share/svanbot/{me}.db"))
+            Ok(PathBuf::from(home).join(format!(".local/share/svanbot/{me}.db")))
         }
-    };
+    }
+}
+
+pub(crate) fn open_store(me: &str) -> Result<Store, String> {
+    let path = store_path(me)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
             .map_err(|e| format!("store: cannot make {}: {e}", dir.display()))?;
