@@ -4,6 +4,7 @@
 use rayon::prelude::*;
 use std::collections::HashMap;
 use sv10_core::agents::{ARCHETYPES, Agent, ArchetypeAgent, PolicyAgent, archetype};
+use sv10_core::inputs;
 use sv10_core::model::ModelStore;
 use sv10_core::model::PlayerStats;
 use sv10_core::sim::{Tally, run_table_observed};
@@ -12,10 +13,10 @@ use sv10_rng::rngs::SmallRng;
 use sv10_rng::seq::SliceRandom;
 
 fn paired(args: &[String]) {
-    let tables: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(16);
-    let hands: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(1500);
+    let tables = inputs::count("tables", args.get(2), 16);
+    let hands = inputs::count("hands", args.get(3), 1500);
     // SIM_A / SIM_B: Params JSON (missing fields default; e.g. {"range": {...}} changes only the range model).
-    let parse = sv10_core::inputs::params;
+    let parse = inputs::params;
     let (a, b) = (parse("SIM_A"), parse("SIM_B"));
     // SIM_MODELS=<ModelStore JSON>: play profile clones of the 16 most-observed live opponents, with
     // the policy using those models (the learner's population, 0099). SIM_STACK_BB sets stack depth.
@@ -54,10 +55,10 @@ fn paired(args: &[String]) {
 /// cards and `salts` decision streams, and report how much of its variance is decision randomness
 /// (the ceiling for AIVAT action corrections) versus card-conditional.
 fn variance(args: &[String]) {
-    let tables: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(16);
-    let hands: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(600);
-    let salts: usize = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(4).max(2);
-    let parse = sv10_core::inputs::params;
+    let tables = inputs::count("tables", args.get(2), 16);
+    let hands = inputs::count("hands", args.get(3), 600);
+    let salts = inputs::count("salts", args.get(4), 4).max(2);
+    let parse = inputs::params;
     let (a, b) = (parse("SIM_A"), parse("SIM_B"));
     let stack_bb: i64 = std::env::var("SIM_STACK_BB").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
     let seed: u64 = std::env::var("SIM_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(4242);
@@ -139,8 +140,8 @@ fn main() {
     if args.get(1).map(|s| s == "variance").unwrap_or(false) {
         return variance(&args);
     }
-    let hands: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(2000);
-    let tables: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(8);
+    let hands = inputs::count("hands", args.get(1), 2000);
+    let tables = inputs::count("tables", args.get(2), 8);
     let stack_bb: i64 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(100);
     let mix = args.get(4).cloned().unwrap_or_else(|| "all".into());
     let pool: Vec<&str> = match mix.as_str() {

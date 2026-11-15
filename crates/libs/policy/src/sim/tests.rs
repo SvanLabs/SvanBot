@@ -150,3 +150,17 @@ fn empty_paired_results_do_not_poison_independent_pooling() {
     assert_eq!(pooled.mean_bb, 0.0);
     assert_eq!(pooled.se_bb, f64::INFINITY);
 }
+
+#[test]
+fn an_empty_evaluation_has_no_interval_instead_of_a_zero_width_one() {
+    let p = crate::policy::Params { samples: 40, ..Default::default() };
+    let models = sv10_model::model::ModelStore::default();
+    let clones = vec![(crate::agents::ProfileClone::exact("v", models.profile("v")), 1.0)];
+    let arm = Arm { params: &p, nn: None };
+    for (tables, hands) in [(1, 0), (0, 5), (0, 0)] {
+        let r = paired_eval_arms(&arm, &[Arm { params: &p, nn: None }], &clones, &models, tables, hands, 100, 7);
+        assert_eq!(r.len(), 1, "{tables} tables x {hands} hands");
+        assert_eq!(r[0].hands, 0);
+        assert!(r[0].se_bb.is_infinite(), "{tables} x {hands}: se {}", r[0].se_bb);
+    }
+}

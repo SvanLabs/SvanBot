@@ -37,3 +37,22 @@ fn an_empty_live_pool_stops_sim_with_a_message_instead_of_a_panic() {
     }
     std::fs::remove_file(models).ok();
 }
+
+fn sim_refuses(args: &[&str], env: &[(&str, &str)], needle: &str) {
+    let output = Command::new(env!("CARGO_BIN_EXE_sim")).args(args).envs(env.iter().copied()).output().unwrap();
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "{args:?} {env:?}: {err}");
+    assert!(err.contains(needle), "{args:?} {env:?}: {err}");
+    assert!(!err.contains("panicked"), "{args:?} {env:?}: {err}");
+}
+
+#[test]
+fn a_zero_sized_run_is_refused_not_reported_as_a_precise_zero() {
+    sim_refuses(&["paired", "0", "1"], &[], "tables must be at least 1");
+    sim_refuses(&["paired", "1", "0"], &[], "hands must be at least 1");
+    sim_refuses(&["variance", "0", "1"], &[], "tables must be at least 1");
+    sim_refuses(&["variance", "1", "0"], &[], "hands must be at least 1");
+    sim_refuses(&["variance", "1", "1", "0"], &[], "salts must be at least 1");
+    sim_refuses(&["0", "1"], &[], "hands must be at least 1");
+    sim_refuses(&["1", "0"], &[], "tables must be at least 1");
+}

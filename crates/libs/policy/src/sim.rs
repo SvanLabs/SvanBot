@@ -260,10 +260,16 @@ pub fn paired_eval_arms<O: crate::agents::OpponentSpec>(
     stack_bb: i64,
     seed: u64,
 ) -> Vec<PairedResult> {
+    if tables == 0 || hands == 0 {
+        return challengers.iter().map(|_| PairedResult::default()).collect();
+    }
     let (base, rest) = paired_logs(champion, challengers, opponents, models, 0..tables, hands, StackPlan::Uniform(stack_bb), seed);
-    rest.chunks(tables.max(1))
+    rest.chunks(tables)
         .map(|runs| {
             let all: Vec<f64> = base.iter().zip(runs).flat_map(|(a, b)| a.iter().zip(b.iter()).map(|(x, y)| (*y - *x) / 20.0)).collect();
+            if all.is_empty() {
+                return PairedResult::default();
+            }
             let n = all.len() as f64;
             let differing = all.iter().filter(|d| d.abs() > 1e-9).count() as u64;
             let mean = all.iter().sum::<f64>() / n.max(1.0);
