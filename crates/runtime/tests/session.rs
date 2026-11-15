@@ -269,3 +269,31 @@ fn a_shared_hand_is_folded_even_when_the_check_is_free() {
         "{step:?}"
     );
 }
+
+#[test]
+fn an_action_the_venue_dropped_for_the_rate_limit_is_resent_unchanged_until_acked() {
+    let mut session = session();
+    session.on_frame(start(), never);
+    let played = session
+        .on_frame(turn(facing_a_blind()), |_| Action::Call)
+        .send;
+    let rate_limited = || Inbound::Error {
+        code: "rate_limited".into(),
+        table_id: None,
+    };
+    // The same id and payload: the venue treats it as a safe retry.
+    assert_eq!(session.on_frame(rate_limited(), never).send, played);
+    let Outbound::Action {
+        client_action_id, ..
+    } = &played[0]
+    else {
+        unreachable!()
+    };
+    session.on_frame(
+        Inbound::ActionAck {
+            client_action_id: client_action_id.clone(),
+        },
+        never,
+    );
+    assert_eq!(session.on_frame(rate_limited(), never).send, []);
+}
