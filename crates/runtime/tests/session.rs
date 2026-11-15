@@ -103,6 +103,7 @@ fn at_its_turn_it_decides_on_the_spot_and_echoes_the_hand_and_token() {
         (spot.pot, spot.legal.call, spot.opponents, spot.stack),
         (30, Some(20), 1, 1990)
     );
+    assert_eq!((spot.committed, spot.big_blind), (0, 20));
     let [
         Outbound::Action {
             hand_id,

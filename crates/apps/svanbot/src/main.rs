@@ -1,5 +1,5 @@
 //! `svanbot`: one bot at the venue. It connects with the bot's key, plays every turn by the
-//! pricer, leaves any table a stablemate sits at, and reconnects with a backoff when the venue
+//! policy (a re-solve heads up after the flop, the pricer otherwise), leaves any table a stablemate sits at, and reconnects with a backoff when the venue
 //! closes the connection, resyncing the table it sat at if the venue still holds the seat.
 //!
 //! It reads its setup from the environment, as the venue's docs advise for keys:
@@ -29,7 +29,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use svanbot_runtime::client::{Bot, ClientError, Config, Event, VENUE, fresh_seed, play};
 use svanbot_runtime::store::{Source, Store};
-use svanbot_strategy::pricer::{Budget, decide};
+use svanbot_strategy::policy::decide;
+use svanbot_strategy::pricer::Budget;
+use svanbot_strategy::resolve::iterations_for;
 
 /// Deals sampled per decision: a small cost next to the 45 s action clock. `/measure` will size it.
 const SAMPLES: u64 = 20_000;
@@ -67,8 +69,10 @@ fn main() -> ExitCode {
                     samples: SAMPLES,
                     seed: fresh_seed(),
                 };
+                // The compute budget: a bigger pot buys the re-solve more iterations.
+                let iterations = iterations_for(spot.pot, spot.big_blind);
                 // No fitted action model yet: one is used only after it passes the gate.
-                decide(spot, None, budget).action
+                decide(spot, None, budget, iterations)
             },
             |event| keep(&store, event),
         );

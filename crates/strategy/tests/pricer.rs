@@ -20,6 +20,8 @@ fn spot(hole: &str, board: &str, pot: u32, legal: Legal, opponents: usize) -> Sp
         legal,
         opponents,
         stack: 2000,
+        committed: 0,
+        big_blind: 20,
         lines: vec![],
     }
 }
@@ -113,6 +115,8 @@ fn every_decision_is_legal_and_the_same_seed_repeats_it() {
             legal,
             opponents: 1 + rng.below(5) as usize,
             stack: 2000,
+            committed: 0,
+            big_blind: 20,
             lines: vec![],
         };
         let budget = Budget {

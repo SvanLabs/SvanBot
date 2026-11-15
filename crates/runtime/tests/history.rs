@@ -88,6 +88,9 @@ fn each_seat_s_line_has_its_street_board_facing_and_size() {
         }
     );
     assert!(lines.folded(5) && !lines.folded(4));
+    // The river: each seat's chips in on the street, and the big blind of the hand.
+    assert_eq!((lines.committed(0), lines.committed(5)), (400, 0));
+    assert_eq!(lines.big_blind(), 20);
 }
 
 #[test]

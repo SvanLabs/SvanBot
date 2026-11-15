@@ -18,6 +18,10 @@ pub struct Spot {
     pub opponents: usize,
     /// The bot's chips behind.
     pub stack: u32,
+    /// The chips the bot has put in on this street already: a raise-to is this plus what it adds.
+    pub committed: u32,
+    /// The hand's big blind, the unit a pot is sized in.
+    pub big_blind: u32,
     /// What each opponent still in the hand has done in it so far, one line per opponent. Empty
     /// when the caller did not follow the hand.
     pub lines: Vec<Vec<Act>>,

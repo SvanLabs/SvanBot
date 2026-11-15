@@ -375,6 +375,8 @@ impl Session {
             },
             opponents: lines.len(),
             stack: mine.map_or(0, |player| player.stack),
+            committed: self.seat.map_or(0, |seat| self.lines.committed(seat)),
+            big_blind: self.lines.big_blind(),
             lines,
         }
     }
