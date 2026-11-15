@@ -17,6 +17,18 @@ pub fn is_packed(bytes: &[u8]) -> bool {
     bytes.len() >= HEADER && bytes[..3] == MAGIC
 }
 
+/// Whether `bytes` are a legacy plain-text value, as opposed to a frame, or a frame cut inside its
+/// header (which starts with the magic and so must not be read as text).
+fn plain_text(bytes: &[u8]) -> Result<bool, Error> {
+    if is_packed(bytes) {
+        Ok(false)
+    } else if bytes.starts_with(&MAGIC) {
+        Err(Error::Truncated)
+    } else {
+        Ok(true)
+    }
+}
+
 /// The preset dictionary id a frame names (0 = none), if `bytes` is a frame.
 pub fn dictionary_id(bytes: &[u8]) -> Option<u8> {
     is_packed(bytes).then(|| bytes[3])
@@ -97,7 +109,7 @@ pub fn unpack_prepared<'d>(frame: &[u8], limit: usize, dictionary: impl Fn(u8) -
 
 /// [`text_with`] with prepared dictionaries.
 pub fn text_prepared<'d>(bytes: &[u8], limit: usize, dictionary: impl Fn(u8) -> Option<&'d Dictionary>) -> Result<String, Error> {
-    let raw = if is_packed(bytes) { unpack_prepared(bytes, limit, dictionary)? } else { bytes.to_vec() };
+    let raw = if plain_text(bytes)? { bytes.to_vec() } else { unpack_prepared(bytes, limit, dictionary)? };
     String::from_utf8(raw).map_err(|_| Error::Corrupt)
 }
 
@@ -118,7 +130,7 @@ fn frame_header(frame: &[u8], limit: usize) -> Result<(u8, usize, u32), Error> {
 /// The text of a stored value that is either a frame or plain UTF-8 (rows written before
 /// compression, or by older builds), limited to `limit` bytes.
 pub fn text_with<'d>(bytes: &[u8], limit: usize, dictionary: impl Fn(u8) -> Option<&'d [u8]>) -> Result<String, Error> {
-    let raw = if is_packed(bytes) { unpack_with(bytes, limit, dictionary)? } else { bytes.to_vec() };
+    let raw = if plain_text(bytes)? { bytes.to_vec() } else { unpack_with(bytes, limit, dictionary)? };
     String::from_utf8(raw).map_err(|_| Error::Corrupt)
 }
 

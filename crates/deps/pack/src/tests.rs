@@ -303,3 +303,17 @@ fn prepared_decoding_matches_across_alternating_dictionaries_and_errors() {
     }
     assert!(text_prepared(b"plain text", 100, |_| None).unwrap() == "plain text");
 }
+
+/// A value cut inside its 16-byte header still starts with the magic, so it is a damaged frame, not
+/// legacy plain text (1010). Every stored text column holds JSON, which never starts with `SVZ`.
+#[test]
+fn a_frame_cut_inside_its_header_is_truncated_not_text() {
+    let frame = pack(b"{}");
+    for cut in 3..HEADER {
+        assert!(matches!(text(&frame[..cut], 100), Err(Error::Truncated)), "cut at {cut}");
+        assert!(matches!(text_prepared(&frame[..cut], 100, |_| None), Err(Error::Truncated)), "prepared cut at {cut}");
+    }
+    assert_eq!(text(b"SV", 100).unwrap(), "SV");
+    assert_eq!(text(br#"{"a":1}"#, 100).unwrap(), r#"{"a":1}"#);
+    assert_eq!(text(&frame, 100).unwrap(), "{}");
+}
