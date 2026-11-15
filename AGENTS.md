@@ -32,14 +32,15 @@ tier runs both:
 
 ## The gate
 
-- `bun tools/gate.ts commit` runs the fast checks: fmt, the 500-line limit on Rust files, the
-  secret scan of staged changes, provenance, the layering check and clippy. The pre-commit hook
-  runs it.
-- `bun tools/gate.ts full` adds the workspace tests and the tool tests. Run it before you push.
+`mise.toml` pins every tool, and `tools/package.json` pins TypeScript. Set a clone up once with
+`mise run setup`: it installs the tools and the TypeScript packages, and turns the git hooks on.
 
-Turn the hooks on once per clone with `git config core.hooksPath .githooks`. The commit-msg hook
-refuses a message without a `Generated-by:` line. Cargo builds into `target/dev` at low priority,
-on four jobs.
+- `mise run commit` runs the fast checks: fmt, Biome, the 500-line limit on Rust files, the secret
+  scan of staged changes, provenance, the layering check and clippy. The pre-commit hook runs it.
+- `mise run full` adds nextest, the doc tests, `tsc` and the tool tests. Run it before you push.
+
+The commit-msg hook refuses a message without a `Generated-by:` line. Cargo builds into
+`target/dev` at low priority, on four jobs.
 
 ## The loop
 

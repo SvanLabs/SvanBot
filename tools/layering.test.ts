@@ -111,7 +111,7 @@ test("library code in a pure layer never turns off the clippy bans on I/O", () =
       dir: "crates/core",
       files: {
         "src/lib.rs": `#![allow(unused)]\n${optOut}`,
-        "src/hand/mod.rs": "#[expect(\n    clippy::style,\n    reason = \"x\"\n)]\nfn f() {}\n",
+        "src/hand/mod.rs": '#[expect(\n    clippy::style,\n    reason = "x"\n)]\nfn f() {}\n',
         "tests/golden.rs": optOut,
       },
     },
@@ -119,15 +119,27 @@ test("library code in a pure layer never turns off the clippy bans on I/O", () =
   ]);
   expect(checkWorkspace(root)).toEqual([
     { crate: "w-core", rule: "io-opt-out", detail: "src/hand/mod.rs turns off clippy::style" },
-    { crate: "w-core", rule: "io-opt-out", detail: "src/lib.rs turns off clippy::disallowed_methods" },
-    { crate: "w-core", rule: "io-opt-out", detail: "src/lib.rs turns off clippy::disallowed_types" },
+    {
+      crate: "w-core",
+      rule: "io-opt-out",
+      detail: "src/lib.rs turns off clippy::disallowed_methods",
+    },
+    {
+      crate: "w-core",
+      rule: "io-opt-out",
+      detail: "src/lib.rs turns off clippy::disallowed_types",
+    },
   ]);
 });
 
 test("a path dependency outside the workspace counts as third-party", () => {
   const outside = mkdtempSync(join(tmpdir(), "layering-outside-"));
   roots.push(outside);
-  write(outside, "Cargo.toml", `[package]\nname = "vendored"\nversion = "0.0.0"\nedition = "2024"\n`);
+  write(
+    outside,
+    "Cargo.toml",
+    `[package]\nname = "vendored"\nversion = "0.0.0"\nedition = "2024"\n`,
+  );
   write(outside, "src/lib.rs", "");
   const root = workspace([
     { dir: "crates/strategy", manifest: `[dependencies]\nvendored = { path = "${outside}" }\n` },

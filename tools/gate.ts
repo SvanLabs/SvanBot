@@ -1,34 +1,37 @@
 // The gate: the checks a change passes, in tiers (V11-03). The commit tier is the fast one, run
-// by the pre-commit hook. The full tier runs before a push and adds the workspace and tool tests.
-//   bun tools/gate.ts commit   fmt, the 500-line limit, the secret scan, provenance, the layering
-//                              check and clippy
-//   bun tools/gate.ts full     the commit tier, plus the tests
+// by the pre-commit hook. The full tier runs before a push and adds the tests and the type check.
+// Run it under mise (`mise run commit`, `mise run full`), so every tool is the pinned one.
+//   bun tools/gate.ts commit   fmt, biome, the 500-line limit, the secret scan, provenance, the
+//                              layering check and clippy
+//   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc and the tool tests
 import { join } from "node:path";
 
 export type Step = { name: string; argv: string[]; env: Record<string, string> };
 
 // Fast checks first, so a typo fails in a second rather than after a build.
-const COMMIT = ["fmt", "file-size", "secrets", "provenance", "layering", "clippy"];
+const COMMIT = ["fmt", "biome", "file-size", "secrets", "provenance", "layering", "clippy"];
 const TIERS: Record<string, string[]> = {
   commit: COMMIT,
-  full: [...COMMIT, "cargo-test", "tools-test"],
+  full: [...COMMIT, "nextest", "doc-test", "tsc", "tools-test"],
 };
 
 const ROOT = join(import.meta.dir, "..");
 const TARGET = { CARGO_TARGET_DIR: "target/dev" };
 
 // Cargo runs at low priority, on four jobs, one build at a time. The fleet shares this box.
-function cargo(args: string[]): string[] {
+function cargo(args: string[], jobs = ["-j4"]): string[] {
   const split = args.indexOf("--");
   const head = split < 0 ? args : args.slice(0, split);
   const tail = split < 0 ? [] : args.slice(split);
-  return ["nice", "-n", "15", "ionice", "-c3", "cargo", ...head, "-j4", ...tail];
+  return ["nice", "-n", "15", "ionice", "-c3", "cargo", ...head, ...jobs, ...tail];
 }
 
 function stepFor(name: string): Step {
   switch (name) {
     case "fmt":
       return { name, argv: ["cargo", "fmt", "--all", "--check"], env: {} };
+    case "biome":
+      return { name, argv: ["biome", "check", "tools"], env: {} };
     case "file-size":
     case "secrets":
     case "provenance":
@@ -40,8 +43,20 @@ function stepFor(name: string): Step {
         argv: cargo(["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]),
         env: TARGET,
       };
-    case "cargo-test":
-      return { name, argv: cargo(["test", "--workspace"]), env: TARGET };
+    case "nextest":
+      // nextest's own -j is its test threads, so the build jobs take their long flag.
+      return {
+        name,
+        argv: cargo(
+          ["nextest", "run", "--workspace", "--no-tests=warn"],
+          ["--build-jobs", "4", "--test-threads", "4"],
+        ),
+        env: TARGET,
+      };
+    case "doc-test":
+      return { name, argv: cargo(["test", "--workspace", "--doc"]), env: TARGET };
+    case "tsc":
+      return { name, argv: ["tools/node_modules/.bin/tsc", "-p", "tools"], env: {} };
     case "tools-test":
       return { name, argv: [process.execPath, "test", "tools"], env: {} };
     default:
