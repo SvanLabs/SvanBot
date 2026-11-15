@@ -26,3 +26,6 @@ V11-00.
   action is pinned to a commit.
 - Disk: the dev profile keeps line tables only, and the full tier ends by reporting `target/`
   against a 9 GiB budget, failing over it.
+- Cards: `svanbot-core` reads and writes the venue's two-character notation (`Ah`, `Ts`, `2c`),
+  and a `CardSet` holds a board, a player's hole cards or what is left of the deck. With tests in
+  the workspace, nextest now fails a run that finds none.

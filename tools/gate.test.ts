@@ -70,7 +70,7 @@ test("cargo builds into target/dev, at low priority, on four jobs", () => {
       "nextest",
       "run",
       "--workspace",
-      "--no-tests=warn",
+      "--no-tests=fail",
       "--build-jobs",
       "4",
       "--test-threads",
