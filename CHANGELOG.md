@@ -44,3 +44,7 @@ V11-00.
   on 64 fixed blocks with a stream each. Shares count in whole sixtieths, so the same seed gives
   the same bits on any machine. Checked by counted outs, suit relabelling, and about 82% for aces
   against kings.
+- Venue wire format: `svanbot-runtime` reads the venue's frames (turns with exactly the offered
+  actions, hands, cards, seat lists, results, errors) into typed values, keeps frames it does not
+  act on as `Other`, and writes actions that echo the hand and the turn token. Each case is the
+  venue docs' own example (rev 2026-09-02).
