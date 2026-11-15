@@ -166,7 +166,12 @@ fn main() -> Result<()> {
                     // The audit grades the record's own knobs and prices at the analyst's depth: the
                     // recorded decision re-solved on a bigger budget, nothing else varied.
                     let deep = sv10_core::policy::Params { samples, deal_chunks: threads, ..rec.params.clone() };
-                    Some(audit(&rec, &deep, nn.as_deref(), &job.bot, &job.hand_id))
+                    let verdict = audit(&rec, &deep, nn.as_deref(), &job.bot, &job.hand_id);
+                    if verdict.is_none() {
+                        tracing::warn!("audit record {} re-solved with no equity, no verdict stored", job.id);
+                        skipped += 1;
+                    }
+                    verdict
                 }
                 Err(e) => {
                     tracing::warn!("audit record {} unreadable, skipped: {e}", job.id);

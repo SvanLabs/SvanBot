@@ -334,8 +334,11 @@ pub fn checks(src: &Sources) -> Vec<Check> {
     let failing: Vec<String> = src
         .filesystems
         .iter()
-        .filter(|f| f.errors > 0)
+        .filter(|f| f.errors > 0 || f.unreadable)
         .map(|f| {
+            if f.unreadable {
+                return format!("{} ({}): error count unreadable", f.mount.as_deref().unwrap_or("unmounted"), f.device);
+            }
             let age = if f.last_error_time > 0 {
                 format!(", latest {} min ago", src.now.saturating_sub(f.last_error_time) / 60)
             } else {
@@ -412,7 +415,15 @@ pub fn checks(src: &Sources) -> Vec<Check> {
         let advice = "the CPU reaches its 100 °C limit and slows itself down. Expected while builds, tests and the learner run flat out, and \
                       harmless to the chip, but throttled time is lost work: a cleaner cooler (fins, fan curve, paste) or fewer learner threads \
                       (a balanced or custom compute profile on the dashboard) gives it back";
-        push("heat", "CPU heat", value, if hot { Status::Warn } else { Status::Ok }, hot.then_some(advice));
+        // A counter the kernel does not expose is stated as such, never as a clean reading (#1015).
+        let status = if hot {
+            Status::Warn
+        } else if h.throttled_ms.is_none() {
+            Status::Info
+        } else {
+            Status::Ok
+        };
+        push("heat", "CPU heat", value, status, hot.then_some(advice));
     }
 
     if let Some(kernel) = &src.kernel {

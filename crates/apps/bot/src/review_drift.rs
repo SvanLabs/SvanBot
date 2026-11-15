@@ -216,12 +216,13 @@ pub fn drift_check(
             continue;
         }
         let deep = drift_basis(&r.current, &rec, samples, threads);
+        // A re-solve that measured no equity is no verdict: it is neither a flip nor a 0 bb gap (#1015).
+        let Some(a) = audit(&rec, &deep, nn.as_deref(), &row.bot, &row.hand_id) else { continue };
         let now_d = rerun(&rec, &deep, nn.as_deref());
         r.n += 1;
         if (now_d.action_name.as_str(), now_d.amount) != (rec.action.0.as_str(), rec.action.1) {
             r.flips += 1;
         }
-        let a = audit(&rec, &deep, nn.as_deref(), &row.bot, &row.hand_id);
         r.gap_sum += a.gap_bb;
         r.gap_max = r.gap_max.max(a.gap_bb);
     }

@@ -24,7 +24,8 @@ pub fn recent(store: &Store, bot: &str, n: usize) -> Result<String> {
     let bb = store.latest_big_blind()?.unwrap_or(crate::live::DEFAULT_BIG_BLIND) as f64;
     let rows = store.bot_ev_results(bot)?;
     // (net, all-in EV net, showdown, ended_at), newest first, then oldest first for the stats.
-    let newest: Vec<Hand> = rows.iter().rev().take(n).cloned().collect();
+    // A hand with no recorded net is not a zero-chip hand: it takes no slot in the window (#1015).
+    let newest: Vec<Hand> = rows.iter().rev().filter(|r| r.0.is_some()).take(n).cloned().collect();
     if newest.is_empty() {
         return Ok(format!("{bot}: no hands stored"));
     }

@@ -54,10 +54,17 @@ pub fn check(store: &Store, root: &Path, hours: f64) -> Result<(String, bool)> {
 fn scan(store: &Store, db: &crate::history::HistoryDb, since: &str, swaps: &[DateTime<Utc>]) -> Result<(Vec<Missing>, Vec<Missing>)> {
     let rows = db.raw_after(since)?;
     let ids: Vec<String> = rows.iter().map(|r| r.1.clone()).collect();
-    let recorded = store.recorded_hand_ids(&ids)?;
+    let labels: std::collections::HashSet<String> = rows.iter().map(|r| r.0.clone()).collect();
+    let mut stored: HashMap<String, Vec<String>> = HashMap::new();
+    for (bot, id) in store.recorded_hands(&ids)? {
+        stored.entry(id).or_default().push(bot);
+    }
+    // Recorded for this bot, or under a name the export no longer uses (a rename, 0151). A hand another
+    // current bot of ours stored is that bot's record, not this one's (#1015).
+    let recorded = |bot: &str, id: &str| stored.get(id).is_some_and(|bots| bots.iter().any(|b| b == bot || !labels.contains(b)));
     let (mut missing, mut gaps) = (Vec::new(), Vec::new());
     for (bot, id, started_at, profit) in rows {
-        if recorded.contains(&id) {
+        if recorded(&bot, &id) {
             continue;
         }
         let m = Missing { bot, started_at, profit };
@@ -219,6 +226,49 @@ mod tests {
         assert!(text.contains("at a hot swap, not flagged: 1 hand, +20 chips"), "{text}");
         // The season window starts before every row, so it sees the same hands as the recent one.
         assert!(text.contains("season (since "), "{text}");
+    }
+
+    /// #1015: a hand two of our bots shared is recorded for the bot that stored it, not for the one the
+    /// export row names. Matching on the id alone called Foo's row recorded because Bar had stored it.
+    #[test]
+    fn a_shared_hand_recorded_for_another_bot_is_still_missing_for_this_one() {
+        let now = Utc::now();
+        let (root, store) = fixture(
+            "shared",
+            &[("Foo", "h-shared", now - Duration::minutes(10), -100), ("Bar", "h-bar", now - Duration::minutes(12), 40)],
+            None,
+        );
+        for id in ["h-shared", "h-bar"] {
+            store
+                .insert_hand(&HandRow {
+                    bot: "Bar".into(),
+                    hand_id: id.into(),
+                    ended_at: stamp(now - Duration::minutes(9)),
+                    ..Default::default()
+                })
+                .unwrap();
+        }
+        let (text, flagged) = check(&store, &root, 2.0).unwrap();
+        assert!(flagged, "{text}");
+        assert!(text.contains("1 hand, -100 chips: Foo 1 (-100)"), "{text}");
+    }
+
+    /// The rename case the id-only match existed for still holds: an id stored under a name the
+    /// export no longer uses is recorded.
+    #[test]
+    fn a_hand_stored_under_a_renamed_bot_is_still_recorded() {
+        let now = Utc::now();
+        let (root, store) = fixture("renamed", &[("Foo", "h-old", now - Duration::minutes(10), 55)], None);
+        store
+            .insert_hand(&HandRow {
+                bot: "OldName".into(),
+                hand_id: "h-old".into(),
+                ended_at: stamp(now - Duration::minutes(9)),
+                ..Default::default()
+            })
+            .unwrap();
+        let (text, flagged) = check(&store, &root, 2.0).unwrap();
+        assert!(!flagged, "{text}");
     }
 
     /// A store that recorded everything exports nothing unrecorded, and the check exits 0.

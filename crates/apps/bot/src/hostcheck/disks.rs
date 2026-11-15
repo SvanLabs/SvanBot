@@ -16,6 +16,8 @@ pub struct FsHealth {
     pub mount: Option<String>,
     /// `errors_count`.
     pub errors: u64,
+    /// `errors_count` could not be read: the filesystem is listed, not assumed clean (#1015).
+    pub unreadable: bool,
     /// `last_error_time`, unix seconds (0 = none).
     pub last_error_time: u64,
     /// `last_error_errcode`, ext4's own code (2 I/O error, 4 bad checksum, 5 corrupted metadata).
@@ -73,7 +75,12 @@ fn read_smart(disk: &str) -> Option<DiskHealth> {
 
 /// The ext4 error records of every mounted ext4 filesystem.
 pub(super) fn read_filesystems() -> Vec<FsHealth> {
-    let mounts = std::fs::read_to_string("/proc/mounts").unwrap_or_default();
+    read_filesystems_from(Path::new("/sys/fs/ext4"), &std::fs::read_to_string("/proc/mounts").unwrap_or_default())
+}
+
+/// [`read_filesystems`] over a named sysfs directory and mount table, so a test can stand in a
+/// scratch directory for the machine.
+pub(super) fn read_filesystems_from(sys_ext4: &Path, mounts: &str) -> Vec<FsHealth> {
     let mount_of = |dev: &str| {
         mounts.lines().find_map(|l| {
             let mut f = l.split_whitespace();
@@ -82,25 +89,26 @@ pub(super) fn read_filesystems() -> Vec<FsHealth> {
         })
     };
     let num = |dir: &Path, name: &str| std::fs::read_to_string(dir.join(name)).ok().and_then(|v| v.trim().parse::<i64>().ok());
-    let mut out: Vec<FsHealth> = std::fs::read_dir("/sys/fs/ext4")
+    let mut out: Vec<FsHealth> = std::fs::read_dir(sys_ext4)
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
-        .filter_map(|e| {
+        .map(|e| {
             let dir = e.path();
-            let errors = num(&dir, "errors_count")?;
+            let errors = num(&dir, "errors_count");
             let device = e.file_name().to_string_lossy().into_owned();
             // SMART only where it matters: a filesystem with errors (udisks is a process call).
-            let disk = (errors > 0).then(|| parent_disk(&device)).and_then(|d| read_smart(&d).map(|h| (d, h)));
-            Some(FsHealth {
+            let disk = (errors.unwrap_or(0) > 0).then(|| parent_disk(&device)).and_then(|d| read_smart(&d).map(|h| (d, h)));
+            FsHealth {
                 mount: mount_of(&device),
                 device,
-                errors: errors.max(0) as u64,
+                errors: errors.unwrap_or(0).max(0) as u64,
+                unreadable: errors.is_none(),
                 last_error_time: num(&dir, "last_error_time").unwrap_or(0).max(0) as u64,
                 last_errcode: num(&dir, "last_error_errcode"),
                 first_errcode: num(&dir, "first_error_errcode"),
                 disk,
-            })
+            }
         })
         .collect();
     out.sort_by(|a, b| a.device.cmp(&b.device));

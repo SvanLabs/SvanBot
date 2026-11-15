@@ -7,8 +7,9 @@
 pub struct Heat {
     /// The hottest `coretemp` reading now, °C.
     pub max_c: f64,
-    /// `package_throttle_total_time_ms` of cpu0: time the package ran throttled since boot.
-    pub throttled_ms: u64,
+    /// `package_throttle_total_time_ms` of cpu0: time the package ran throttled since boot; `None`
+    /// when the kernel does not expose it, which is not the same as never throttled (#1015).
+    pub throttled_ms: Option<u64>,
     /// Seconds since boot.
     pub uptime_s: u64,
 }
@@ -20,11 +21,14 @@ const THROTTLED_SHARE: f64 = 0.01;
 
 /// The row's text and whether it warns.
 pub(super) fn verdict(h: &Heat) -> (String, bool) {
-    let share = h.throttled_ms as f64 / 1000.0 / h.uptime_s.max(1) as f64;
+    let Some(throttled_ms) = h.throttled_ms else {
+        return (format!("{:.0} °C now; thermal throttle counter unreadable", h.max_c), h.max_c >= HOT_C);
+    };
+    let share = throttled_ms as f64 / 1000.0 / h.uptime_s.max(1) as f64;
     let value = format!(
         "{:.0} °C now; thermal throttling {:.1} h since boot ({:.1}% of uptime)",
         h.max_c,
-        h.throttled_ms as f64 / 3.6e6,
+        throttled_ms as f64 / 3.6e6,
         share * 100.0
     );
     (value, h.max_c >= HOT_C || share >= THROTTLED_SHARE)
@@ -32,8 +36,16 @@ pub(super) fn verdict(h: &Heat) -> (String, bool) {
 
 /// Read the sensors; `None` without a `coretemp` driver.
 pub(super) fn read() -> Option<Heat> {
+    read_from(
+        std::path::Path::new("/sys/class/hwmon"),
+        std::path::Path::new("/sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_total_time_ms"),
+    )
+}
+
+/// [`read`] over named sysfs paths, so a test can stand in a scratch directory for the machine.
+pub(super) fn read_from(hwmon: &std::path::Path, throttle: &std::path::Path) -> Option<Heat> {
     let num = |p: std::path::PathBuf| std::fs::read_to_string(p).ok()?.trim().parse::<u64>().ok();
-    let coretemp = std::fs::read_dir("/sys/class/hwmon")
+    let coretemp = std::fs::read_dir(hwmon)
         .ok()?
         .flatten()
         .map(|e| e.path())
@@ -45,7 +57,7 @@ pub(super) fn read() -> Option<Heat> {
         .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().ends_with("_input")))
         .filter_map(num)
         .max()?;
-    let throttled_ms = num("/sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_total_time_ms".into()).unwrap_or(0);
+    let throttled_ms = num(throttle.to_path_buf());
     let uptime_s = std::fs::read_to_string("/proc/uptime").ok()?.split_whitespace().next()?.parse::<f64>().ok()? as u64;
     Some(Heat { max_c: max_milli as f64 / 1000.0, throttled_ms, uptime_s })
 }

@@ -60,6 +60,13 @@ pub(super) fn resume_capped_backfill(done: bool, frontier: i64, total: i64, cap:
 /// (`server_total - total`) push everything older deeper, so they are skipped too, but only once a total is known:
 /// on a fresh store `total` is still 0, and the whole export would read as "arrived during the backfill", jumping the
 /// frontier to the end and declaring a 160,000-hand history complete after one page (found by the #766 rebuild drill).
+/// Whether the backfill has reached the end of the server's history: a short page only ends it when
+/// the frontier it left is at the server's total. An empty or short page below the total is a server
+/// hiccup, and marking the download finished there would stop it with history still unread (#1015).
+pub(super) fn backfill_finished(got: i64, page: i64, frontier: i64, server_total: i64) -> bool {
+    got < page && frontier >= server_total
+}
+
 pub(super) fn next_frontier(frontier: i64, got: i64, total: i64, server_total: i64) -> i64 {
     frontier + got + if total > 0 { (server_total - total).max(0) } else { 0 }
 }
@@ -277,8 +284,19 @@ pub async fn run(shared: std::sync::Arc<Shared>) {
                         shared.log("history", "info", format!("{}: downloaded back to hand {frontier} of {total}", bot.name));
                     }
                     if got < PAGE {
-                        db.set_meta(&key("done"), "1");
-                        shared.log("history", "info", format!("{}: full history downloaded ({total} hands)", bot.name));
+                        if backfill_finished(got, PAGE, frontier, server_total) {
+                            db.set_meta(&key("done"), "1");
+                            shared.log("history", "info", format!("{}: full history downloaded ({total} hands)", bot.name));
+                        } else {
+                            shared.log(
+                                "history",
+                                "warn",
+                                format!(
+                                    "{}: a short page of {got} hands at {frontier} of {total}; not finished, retrying next pass",
+                                    bot.name
+                                ),
+                            );
+                        }
                         break;
                     }
                     tokio::time::sleep(REQUEST_GAP.saturating_sub(started.elapsed())).await;
@@ -387,6 +405,15 @@ mod tests {
     }
 
     use super::*;
+
+    /// #1015: an empty page below the server's total is not the end of the history.
+    #[test]
+    fn a_short_page_below_the_server_total_does_not_finish_the_backfill() {
+        assert!(!backfill_finished(0, 500, 1_000, 160_000), "an empty page at 1,000 of 160,000");
+        assert!(!backfill_finished(120, 500, 1_120, 160_000));
+        assert!(backfill_finished(120, 500, 1_120, 1_120), "the last, short page reaches the total");
+        assert!(!backfill_finished(500, 500, 1_500, 1_500), "a full page is never the end by itself");
+    }
 
     #[test]
     fn a_fresh_store_does_not_read_the_whole_export_as_hands_that_arrived_during_the_backfill() {

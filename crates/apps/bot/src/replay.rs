@@ -204,9 +204,15 @@ pub fn audit_filter(min_pot_bb: f64) -> String {
     )
 }
 
-pub fn audit(rec: &ReplayRecord, deep: &Params, nn: Option<&Mlp>, bot: &str, hand_id: &str) -> sv10_bot_store::AuditResult {
+/// Grade one recorded decision against a deeper re-solve of the same spot.
+///
+/// `None` when the re-solve measured no equity (the deal draw could not fill its budget): that spot was
+/// not priced, so there is no verdict, and storing it as a 0 bb gap would read as "the live choice
+/// was optimal" (#1015).
+pub fn audit(rec: &ReplayRecord, deep: &Params, nn: Option<&Mlp>, bot: &str, hand_id: &str) -> Option<sv10_bot_store::AuditResult> {
     let started = std::time::Instant::now();
     let d = rerun(rec, deep, nn);
+    d.equity?;
     let bb = rec.situation.bb.max(1) as f64;
     let best = d.candidates.iter().max_by(|a, b| a.ev.total_cmp(&b.ev));
     let (live_name, live_amount) = &rec.action;
@@ -220,7 +226,7 @@ pub fn audit(rec: &ReplayRecord, deep: &Params, nn: Option<&Mlp>, bot: &str, han
         (Some(b), Some(l)) => ((b.ev - l) / bb).max(0.0),
         _ => 0.0,
     };
-    sv10_bot_store::AuditResult {
+    Some(sv10_bot_store::AuditResult {
         bot: bot.to_string(),
         hand_id: hand_id.to_string(),
         street: rec.situation.street.name().to_string(),
@@ -233,7 +239,7 @@ pub fn audit(rec: &ReplayRecord, deep: &Params, nn: Option<&Mlp>, bot: &str, han
         // The verdict's own provenance: a gap measured on a record without the live inputs (pre-v3)
         // is not comparable with one measured on a record that has them (0316).
         replay_version: Some(rec.version),
-    }
+    })
 }
 
 /// Whether a re-run reproduced the recorded action, amount and every candidate EV exactly.
@@ -345,12 +351,12 @@ mod tests {
         assert!(what_if.candidates.len() == again.candidates.len());
         assert!(!exact_inputs(&back, &tighter, None));
         // The recorded strategy re-solved with the same budget and seed agrees with itself.
-        let same = audit(&back, &back.params, None, "b", "h");
+        let same = audit(&back, &back.params, None, "b", "h").unwrap();
         assert_eq!((same.live_action.as_str(), same.gap_bb), (same.deep_action.as_str(), 0.0));
         assert_eq!((same.street.as_str(), same.samples, same.bot.as_str()), (sit.street.name(), 400, "b"));
         // A deep, parallel re-solve still produces a gap measured against its own best action.
         let deep = Params { samples: 20_000, deal_chunks: 4, ..back.params.clone() };
-        let r = audit(&back, &deep, None, "b", "h");
+        let r = audit(&back, &deep, None, "b", "h").unwrap();
         assert!(r.gap_bb >= 0.0 && r.gap_bb.is_finite());
         assert!(r.pot_bb > 0.0);
 
@@ -387,8 +393,28 @@ mod tests {
         assert_eq!(rec.corrections["villain"], Corrections { fold_offset: Some(-1.0), size_tell: Some(0.3), response_ratio: None });
         let back: ReplayRecord = serde_json::from_str(&serde_json::to_string(&rec).unwrap()).unwrap();
         assert!(identical(&back, &rerun(&back, &back.params, None)), "a corrected decision must replay exactly");
-        let same = audit(&back, &back.params, None, "b", "h");
+        let same = audit(&back, &back.params, None, "b", "h").unwrap();
         assert_eq!(same.gap_bb, 0.0, "the audit sees the same model the live decision saw");
+    }
+
+    /// #1015: a re-solve that measured no equity is not a verdict. It used to be stored as a 0 bb gap.
+    #[test]
+    fn a_re_solve_that_measured_no_equity_is_not_graded_as_a_zero_gap() {
+        let mut rng = SmallRng::seed_from_u64(41);
+        let mut hand = Hand::new(&[2_000; 2], 0, 10, 20, &mut rng);
+        hand.apply(Action::Call).unwrap();
+        hand.apply(Action::Check).unwrap();
+        let actor = hand.actor().unwrap();
+        let names: Vec<String> = (0..2).map(|i| if i == actor { "hero".into() } else { "villain".into() }).collect();
+        let sit = Situation::from_hand(&hand, actor, &names);
+        let params = Params { samples: 400, ..Default::default() };
+        let models = ModelStore::default();
+        let d = decide_with(&sit, &models, &params, None, &mut SmallRng::seed_from_u64(7));
+        let rec = record(&sit, 7, &params, &models, None, &d);
+        let starved = Params { samples: 0, ..rec.params.clone() };
+        assert!(rerun(&rec, &starved, None).equity.is_none(), "the premise: a draw of no samples measures no equity");
+        assert!(audit(&rec, &starved, None, "b", "h").is_none());
+        assert!(audit(&rec, &rec.params, None, "b", "h").is_some(), "a measured re-solve is still graded");
     }
 
     #[test]

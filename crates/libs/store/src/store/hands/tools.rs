@@ -37,6 +37,22 @@ impl Store {
         Ok(rows)
     }
 
+    /// The (bot, hand id) pairs this store has for any of `hand_ids`: a hand two of our bots shared is
+    /// one id with a row per bot, so who recorded it is part of the answer (#1015).
+    pub fn recorded_hands(&self, hand_ids: &[String]) -> Result<Vec<(String, String)>> {
+        let conn = self.read();
+        let mut out = Vec::new();
+        for chunk in hand_ids.chunks(500) {
+            let list = vec!["?"; chunk.len()].join(",");
+            let mut stmt = conn.prepare(&format!("SELECT bot, hand_id FROM hands WHERE hand_id IN ({list})"))?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(chunk), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+            for row in rows {
+                out.push(row?);
+            }
+        }
+        Ok(out)
+    }
+
     /// Which of `hand_ids` this store has a hand for, by id alone — a renamed bot's older hands the
     /// server later labels with its new name still count as recorded (0151).
     pub fn recorded_hand_ids(&self, hand_ids: &[String]) -> Result<HashSet<String>> {
