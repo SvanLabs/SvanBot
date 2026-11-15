@@ -308,7 +308,9 @@ pub fn compact_candidates(conn: &Connection, codec: &Codec, column: Column, afte
 pub fn compact_rows(conn: &Connection, codec: &Codec, column: Column, rows: &[(i64, String)]) -> Result<(usize, Option<i64>)> {
     let (table, col, fill) = (column.table, column.column, column.fill);
     let Some(last) = rows.last().map(|r| r.0) else { return Ok((0, None)) };
-    let tx = conn.unchecked_transaction()?;
+    // Immediate: it reads before it writes, and a deferred transaction upgrading from a read does not
+    // wait for a peer's lock, it fails at once (1012).
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
     let mut written = 0;
     {
         // Read under the transaction: SQLite cannot promote a snapshot invalidated by another
