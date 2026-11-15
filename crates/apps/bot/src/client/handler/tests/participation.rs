@@ -71,3 +71,31 @@ async fn an_absurd_rebuy_cooldown_does_not_end_the_session() {
     let conn = Conn { out: tx };
     rig.feed(&conn, json!({"type": "auto_rebuy_scheduled", "cooldown_seconds": u64::MAX})).await;
 }
+
+/// Spec (reconnection-idempotency, recovery loop guard): only a *player* resync ends recovery. After an
+/// outage past the 120 s seat window the server answers our resync as a spectator; the bot used to
+/// install that snapshot, call itself playing and wait for turns that never come. It rejoins instead.
+#[tokio::test]
+async fn a_resync_answered_as_a_spectator_sends_the_bot_back_to_the_lobby() {
+    let mut rig = Rig::new("spectator-resync");
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.feed(&conn, json!({"type": "table_joined", "table_id": "t1", "seat": 2, "players": []})).await;
+    assert!(!rig.seat.pending_join);
+    rig.feed(
+        &conn,
+        json!({"type": "resync_response", "role": "spectator", "to_table_seq": 50, "replayed_events": [],
+        "snapshot": {"type": "table_state", "hand_id": "h1", "actor_seat": 4, "street": "flop", "pot": 90, "board": [], "seats": []}}),
+    )
+    .await;
+    assert_eq!(rig.tracker.table_id, None, "the table is no longer ours");
+    assert!(rig.seat.pending_join, "and the bot re-queues");
+    assert!(rig.shared.log.lock().iter().any(|l| l.message.contains("spectator")), "and says why");
+    // A player resync is the normal path and changes nothing.
+    rig.feed(&conn, json!({"type": "table_joined", "table_id": "t2", "seat": 2, "players": []})).await;
+    rig.seat.pending_join = false;
+    rig.feed(&conn, json!({"type": "resync_response", "role": "player", "to_table_seq": 3, "replayed_events": [],
+        "snapshot": {"type": "table_state", "hand_id": "h2", "street": "preflop", "pot": 30, "board": [], "seats": [], "hero": {"seat": 2}}})).await;
+    assert_eq!(rig.tracker.table_id.as_deref(), Some("t2"));
+    assert!(!rig.seat.pending_join);
+}

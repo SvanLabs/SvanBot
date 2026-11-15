@@ -34,12 +34,13 @@ mod handler;
 mod quality;
 mod recover;
 mod rest;
+mod rows;
 mod seat;
 mod turn_authority;
 mod turns;
 
 // The calibration round (a blocking-pool caller) shares the 0322 locked-write retry (#744).
-pub(crate) use decide::retry_locked_write_blocking;
+pub(crate) use rows::retry_locked_write_blocking;
 
 use decide::act;
 pub use decide::legalize;
@@ -276,9 +277,17 @@ async fn session(
                 shared.log(&bot.name, "warn", "websocket writer stopped; reconnecting");
                 break Ok(SessionEnd::Closed);
             }
-            Some(prepared) = async { buying_in.as_mut()?.await.ok() }, if buying_in.is_some() => {
+            Some(joined) = async { Some(buying_in.as_mut()?.await) }, if buying_in.is_some() => {
                 buying_in = None;
+                // A panicked task is a failed prepare: log it and queue the join again.
+                let prepared = joined.unwrap_or_else(|e| {
+                    shared.log(&bot.name, "warn", format!("buy-in preparation failed: {e}"));
+                    None
+                });
+                // The prepare can take many seconds; the operator may have paused or stopped the bot, or a leave may be queued, meanwhile.
+                let still_wanted = shared.bots[slot].read().desired == "run" && !seat.leaving();
                 match prepared {
+                    Some(_) if !still_wanted => shared.log(&bot.name, "info", "join skipped: the bot was paused or is leaving while the buy-in was prepared"),
                     Some(buy_in) if tracker.table_id.is_none() => {
                         conn.send(json!({"type": "join_lobby", "buy_in": buy_in}));
                         conn.send(json!({"type": "set_auto_rebuy", "enabled": true}));
