@@ -262,7 +262,7 @@ fn a_new_live_response_net_retires_what_the_ledger_measured_against_the_old_one(
     let run = begin(&ctx, Lane::default(), 0, 0.0, 0).unwrap().unwrap();
     let none = super::evaluation(&store, &run);
     let live = crate::StoredNet {
-        net: sv10_core::nn::Mlp::new(crate::neural::SHAPE, 3),
+        net: sv10_core::nn::Mlp::new(&[sv10_core::features::N_FEATURES, 48, 24, 3], 3),
         active: true,
         training_contract: crate::neural::RESPONSE_TRAINING_CONTRACT.into(),
         paired_poker_approved: true,
@@ -276,7 +276,7 @@ fn a_new_live_response_net_retires_what_the_ledger_measured_against_the_old_one(
     let first = super::evaluation(&store, &run);
     assert_ne!(first, none, "an installed net is part of what was measured");
     assert_eq!(first, super::evaluation(&store, &run), "the same net names the same evaluation");
-    let other = crate::StoredNet { net: sv10_core::nn::Mlp::new(crate::neural::SHAPE, 4), ..live };
+    let other = crate::StoredNet { net: sv10_core::nn::Mlp::new(&[sv10_core::features::N_FEATURES, 48, 24, 3], 4), ..live };
     store.put_kv(crate::NN_KEY, &serde_json::to_string(&other).unwrap()).unwrap();
     assert_ne!(first, super::evaluation(&store, &run), "another net retires the measurements");
     std::fs::remove_dir_all(dir).unwrap();
