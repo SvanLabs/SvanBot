@@ -11,7 +11,7 @@ async fn abandoned_update_progress_recovers_without_operator_intervention() {
     let progress = json!({"state":"running", "started":now_secs()-120.0, "updated":now_secs()-110.0,
         "stages":[{"name":"fetch","state":"running","started":now_secs()-120.0}]});
     std::fs::write(s.config.artifacts.join("release-progress.json"), progress.to_string()).unwrap();
-    let Json(v) = release_progress(State(s)).await;
+    let Json(v) = release_progress_blocking(&s);
     assert_eq!(v["state"], "failed", "a dead updater must not keep the controls busy");
     assert_eq!(v["running"], false);
     assert!(v["eta"].is_null());
@@ -24,7 +24,7 @@ async fn split_head_counts_remote_playing_bots_in_progress() {
     // Single process: a locally playing bot counts.
     let s = Shared::for_test("progress-playing-single", &["A"]);
     s.bots[0].write().mode = "playing".into();
-    let Json(v) = release_progress(State(s)).await;
+    let Json(v) = release_progress_blocking(&s);
     assert_eq!((v["bots_playing"].as_u64(), v["bots_total"].as_u64()), (Some(1), Some(1)));
     // Split head: the local slot stays offline, so the fresh worker heartbeat behind
     // the fleet view raw shows must count — or the updater reads 0 of N playing.
@@ -34,7 +34,7 @@ async fn split_head_counts_remote_playing_bots_in_progress() {
     shared.bots[0].write().mode = "offline".into();
     let worker = BotLive { name: "A".into(), mode: "playing".into(), ..Default::default() };
     shared.store.put_kv(&heartbeat_key("A"), &wrap_heartbeat(&worker, now_secs()).to_string()).unwrap();
-    let Json(v) = release_progress(State(s)).await;
+    let Json(v) = release_progress_blocking(&s);
     assert_eq!((v["bots_playing"].as_u64(), v["bots_total"].as_u64()), (Some(1), Some(1)), "a split head counts what raw shows: {v}");
 }
 
@@ -96,7 +96,7 @@ async fn manual_release_operation_remains_active_without_dashboard_lock() {
     let progress = json!({"state":"running", "started":now_secs()-120.0, "updated":now_secs()-110.0,
         "stages":[{"name":"build","state":"running","started":now_secs()-120.0}]});
     std::fs::write(s.config.artifacts.join("release-progress.json"), progress.to_string()).unwrap();
-    let Json(v) = release_progress(State(s)).await;
+    let Json(v) = release_progress_blocking(&s);
     assert_eq!(v["state"], "running");
     assert_eq!(v["running"], true, "a hand-run release owns the operation lock");
     drop(operation);

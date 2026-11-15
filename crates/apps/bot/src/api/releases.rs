@@ -211,7 +211,11 @@ fn worker_commits(s: &Shared) -> Vec<Value> {
         .collect()
 }
 
-pub(super) async fn release_progress(State(s): State<Arc<Shared>>) -> Json<Value> {
+pub(super) async fn release_progress(State(s): State<Arc<Shared>>) -> Response {
+    off_runtime(move || release_progress_blocking(&s)).await.into_response()
+}
+
+fn release_progress_blocking(s: &Shared) -> Json<Value> {
     let artifacts = s.config.artifacts.clone();
     let read = |name: &str| std::fs::read_to_string(artifacts.join(name)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
     let running = update_running(&artifacts);
@@ -227,7 +231,7 @@ pub(super) async fn release_progress(State(s): State<Arc<Shared>>) -> Json<Value
             .and_then(|t| serde_json::from_str::<Value>(&t).ok())
             .and_then(|v| v["commit"].as_str().map(String::from))
     };
-    let workers = worker_commits(&s);
+    let workers = worker_commits(s);
     let now = now_secs();
     let playing = s
         .bots
@@ -262,7 +266,11 @@ pub(super) async fn release_progress(State(s): State<Arc<Shared>>) -> Json<Value
     Json(view)
 }
 
-pub(super) async fn release_log(State(s): State<Arc<Shared>>) -> Json<Value> {
+pub(super) async fn release_log(State(s): State<Arc<Shared>>) -> Response {
+    off_runtime(move || release_log_blocking(&s)).await.into_response()
+}
+
+fn release_log_blocking(s: &Shared) -> Json<Value> {
     Json(json!({
         "running": update_running(&s.config.artifacts),
         "log": tail_lines(&s.config.artifacts.join("release.log"), 64 * 1024),

@@ -29,12 +29,16 @@ pub(super) const LAYOUT_KEY: &str = "dashboard.layout.v1";
 /// `GET /api/layout`: the saved arrangement, or `null` when none is stored — the client falls back
 /// to this browser's copy.
 pub(super) async fn get_layout(State(s): State<Arc<Shared>>) -> Result<Json<Value>, ApiError> {
-    Ok(Json(stored_json(&s, LAYOUT_KEY)?.unwrap_or(Value::Null)))
+    Ok(Json(off_runtime(move || stored_json(&s, LAYOUT_KEY)).await??.unwrap_or(Value::Null)))
 }
 
 /// `POST /api/layout`: save the arrangement the Arrange mode just produced; a `null` body stores
 /// none, which is how a test returns the sandbox to how it started. Answers with what was stored.
 pub(super) async fn save_layout(State(s): State<Arc<Shared>>, Json(body): Json<Value>) -> Response {
+    off_runtime(move || save_layout_blocking(&s, body)).await.into_response()
+}
+
+fn save_layout_blocking(s: &Shared, body: Value) -> Response {
     let saved = match body {
         Value::Null => Value::Null,
         body => match serde_json::from_value::<DashboardLayout>(body) {

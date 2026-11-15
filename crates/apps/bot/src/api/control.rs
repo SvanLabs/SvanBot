@@ -6,6 +6,10 @@ use super::*;
 mod tests;
 
 pub(super) async fn bot_command(State(s): State<Arc<Shared>>, Path(slot): Path<usize>, Json(body): Json<Value>) -> Response {
+    off_runtime(move || bot_command_blocking(&s, slot, body)).await.into_response()
+}
+
+fn bot_command_blocking(s: &Shared, slot: usize, body: Value) -> Response {
     let Some(b) = s.bots.get(slot) else {
         return (StatusCode::NOT_FOUND, Json(json!({"detail": "Unknown bot slot"}))).into_response();
     };
@@ -32,6 +36,10 @@ pub(super) async fn bot_command(State(s): State<Arc<Shared>>, Path(slot): Path<u
 }
 
 pub(super) async fn training_command(State(s): State<Arc<Shared>>, Json(body): Json<Value>) -> Response {
+    off_runtime(move || training_command_blocking(&s, body)).await.into_response()
+}
+
+fn training_command_blocking(s: &Shared, body: Value) -> Response {
     let command = body["command"].as_str().unwrap_or("").to_string();
     if !crate::pacing::learner_acts_on(&command) {
         let detail = format!("the learner does not act on `{command}`; it accepts `start`");
@@ -51,6 +59,10 @@ pub(super) async fn training_command(State(s): State<Arc<Shared>>, Json(body): J
 /// (minutes to let a search cool down; live hands after which a search starts at once). Evidence
 /// refreshes are not set here: they run on the hands as they arrive (#314).
 pub(super) async fn training_settings(State(s): State<Arc<Shared>>, Json(body): Json<Value>) -> Response {
+    off_runtime(move || training_settings_blocking(&s, body)).await.into_response()
+}
+
+fn training_settings_blocking(s: &Shared, body: Value) -> Response {
     let stored = crate::pacing::LearnerSettings::parse(s.store.get_kv(crate::pacing::SETTINGS_KEY).ok().flatten().as_deref());
     let settings = match stored.update(&body) {
         Ok(v) => v,
@@ -68,6 +80,10 @@ pub(super) async fn training_settings(State(s): State<Arc<Shared>>, Json(body): 
 /// Operator compute profile (0187): `{"name": "quiet" | "balanced" | "max"}` or a checked custom profile.
 /// The live bots apply it on the watcher's next poll, the learner and analyst between runs.
 pub(super) async fn compute_profile(State(s): State<Arc<Shared>>, Json(body): Json<Value>) -> Response {
+    off_runtime(move || compute_profile_blocking(&s, body)).await.into_response()
+}
+
+fn compute_profile_blocking(s: &Shared, body: Value) -> Response {
     let hardware = s.store.get_kv(crate::HARDWARE_PROFILE_KEY).ok().flatten();
     let logical =
         hardware.as_deref().and_then(|h| serde_json::from_str::<Value>(h).ok()).and_then(|h| h["logical_cores"].as_u64()).unwrap_or(1)
@@ -87,7 +103,7 @@ pub(super) async fn compute_profile(State(s): State<Arc<Shared>>, Json(body): Js
             profile.name, profile.live_scale, profile.learner_threads, profile.analyst_threads
         ),
     );
-    Json(compute_profile_json(&s, logical)).into_response()
+    Json(compute_profile_json(s, logical)).into_response()
 }
 
 pub(super) async fn starting_hands(State(s): State<Arc<Shared>>) -> Json<Value> {

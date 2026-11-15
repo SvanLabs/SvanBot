@@ -833,8 +833,12 @@ pub(super) const TABLE_EVERY: Duration = Duration::from_millis(150);
 /// Gap between full `state` snapshots on the realtime stream.
 const STATE_EVERY: Duration = Duration::from_secs(5);
 
-pub(super) async fn raw_state(State(s): State<Arc<Shared>>) -> Json<Value> {
-    let bots: Vec<Value> = s.bots.iter().map(|b| fleet_bot_raw(&s, &b.read())).collect();
+pub(super) async fn raw_state(State(s): State<Arc<Shared>>) -> Response {
+    off_runtime(move || raw_state_blocking(&s)).await.into_response()
+}
+
+fn raw_state_blocking(s: &Shared) -> Json<Value> {
+    let bots: Vec<Value> = s.bots.iter().map(|b| fleet_bot_raw(s, &b.read())).collect();
     let log: Vec<Value> = s.log.lock().iter().rev().take(50).map(|l| serde_json::to_value(l).unwrap()).collect();
     Json(
         json!({"version": crate::VERSION, "started_at": s.started_at, "bots": bots, "log": log, "known_opponents": s.models.read().players.len()}),

@@ -24,12 +24,16 @@ pub(super) const NOTES_KEY: &str = "dashboard.notes.v1";
 /// `GET /api/notes`: the saved scratchpad, or `null` when none is stored — the client then shows the
 /// copy this browser remembers, and offers it back.
 pub(super) async fn get_notes(State(s): State<Arc<Shared>>) -> Result<Json<Value>, ApiError> {
-    Ok(Json(stored_json(&s, NOTES_KEY)?.unwrap_or(Value::Null)))
+    Ok(Json(off_runtime(move || stored_json(&s, NOTES_KEY)).await??.unwrap_or(Value::Null)))
 }
 
 /// `POST /api/notes`: save the scratchpad. A body that is not `{text: string}`, or text past the cap,
 /// is refused with 400 and changes nothing; empty text clears the stored note.
 pub(super) async fn save_notes(State(s): State<Arc<Shared>>, Json(body): Json<Value>) -> Response {
+    off_runtime(move || save_notes_blocking(&s, body)).await.into_response()
+}
+
+fn save_notes_blocking(s: &Shared, body: Value) -> Response {
     let notes = match serde_json::from_value::<DashboardNotes>(body) {
         Ok(notes) if notes.text.chars().count() <= NOTES_MAX_CHARS => notes,
         Ok(_) => {
