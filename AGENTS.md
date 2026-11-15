@@ -39,7 +39,8 @@ Both build into `target/dev` at low priority, on four jobs.
 
 ## The loop
 
-1. **Claim the ticket:** assign yourself and add `agent-claimed`.
+1. **Claim the ticket:** add `agent-claimed`, working as `svanlabs[bot]`
+   (`docs/agents/issue-tracker.md`).
 2. **Agree the seams**, then work in **tracer bullets** with the `tdd` skill. Each slice is one test
    going red, then the least code that turns it green.
 3. **Review** the branch with the `code-review` skill, inline, before you open the PR.
