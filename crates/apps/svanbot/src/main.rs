@@ -116,7 +116,7 @@ fn open_store(me: &str) -> Result<Store, String> {
         std::fs::create_dir_all(dir)
             .map_err(|e| format!("store: cannot make {}: {e}", dir.display()))?;
     }
-    Store::open(&path).map_err(|e| format!("{e} at {}", path.display()))
+    Store::open(&path, me).map_err(|e| format!("{e} at {}", path.display()))
 }
 
 fn config_from_env() -> Result<Config, String> {

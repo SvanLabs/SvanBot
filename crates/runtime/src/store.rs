@@ -1,4 +1,6 @@
-//! The store: one SQLite file per bot, so each bot's reads are its own by construction.
+//! The store: one SQLite file per bot, so each bot's reads are its own by construction
+//! (`docs/adr/0004-reads-are-per-bot.md`). A store keeps its bot's name and refuses to open as
+//! any other bot.
 //!
 //! It runs in WAL mode, so a reader never blocks the bot's writes. Its tables are `STRICT` and
 //! append-only: triggers refuse every `UPDATE` and `DELETE`, so a stored hand or incident stays as
@@ -13,6 +15,14 @@ use crate::record::Hand;
 use crate::session::Incident;
 
 const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS meta_no_update BEFORE UPDATE ON meta
+    BEGIN SELECT RAISE(ABORT, 'meta is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS meta_no_delete BEFORE DELETE ON meta
+    BEGIN SELECT RAISE(ABORT, 'meta is append-only'); END;
 CREATE TABLE IF NOT EXISTS hands (
     hand_id     TEXT PRIMARY KEY,
     table_id    TEXT NOT NULL,
@@ -82,8 +92,9 @@ pub struct Store {
 }
 
 impl Store {
-    /// Opens the store at `path`, creating it and its schema if it is new.
-    pub fn open(path: &Path) -> Result<Self, StoreError> {
+    /// Opens `bot`'s store at `path`, creating it and its schema if it is new. A store made for
+    /// another bot is refused: two bots on one store would pool their reads.
+    pub fn open(path: &Path, bot: &str) -> Result<Self, StoreError> {
         let db = Connection::open(path)?;
         let mode: String = db.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
         if mode != "wal" {
@@ -92,6 +103,19 @@ impl Store {
         // WAL with NORMAL sync keeps every committed write but the last few across a power cut.
         db.execute_batch("PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
         db.execute_batch(SCHEMA)?;
+        db.execute(
+            "INSERT INTO meta (key, value) VALUES ('bot', ?1) ON CONFLICT (key) DO NOTHING",
+            [bot],
+        )?;
+        let owner: String =
+            db.query_row("SELECT value FROM meta WHERE key = 'bot'", [], |row| {
+                row.get(0)
+            })?;
+        if owner != bot {
+            return Err(StoreError(format!(
+                "this store is {owner}'s; {bot} may not open it"
+            )));
+        }
         Ok(Self { db })
     }
 
