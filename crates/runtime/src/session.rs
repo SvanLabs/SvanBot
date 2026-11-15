@@ -8,7 +8,9 @@
 //! [`Session::seat_list`], which is where the fair-play guard lives (V11-01). A stablemate at our
 //! table is a shared table: the session leaves at once and raises an incident. A hand dealt with
 //! a stablemate in it is a shared hand: the session folds, leaves and raises an incident. A
-//! snapshot's seats pass through the same seam.
+//! snapshot's seats pass through the same seam. It leaves once: a later seat list with the
+//! stablemate still in it sends nothing more, because repeated messages count toward the venue's
+//! flood limits. Once its own seat is left, it goes back to the lobby.
 //!
 //! **Reconnects.** A session outlives its connection. It keeps the table and the highest
 //! `table_seq` it applied, so a reconnect asks for the missed events instead of joining the lobby
@@ -83,6 +85,10 @@ pub struct Session {
     table_seq: u64,
     /// A `resync_request` is out and unanswered.
     resyncing: bool,
+    /// Our seat at the table, once the venue names it.
+    seat: Option<usize>,
+    /// A fair-play `leave_table` is out: the bot is on its way off this table.
+    leaving: bool,
     players: BTreeMap<usize, Player>,
     hand: Option<HandSeen>,
     actions_sent: u64,
@@ -109,6 +115,8 @@ impl Session {
             table_id: String::new(),
             table_seq: 0,
             resyncing: false,
+            seat: None,
+            leaving: false,
             players: BTreeMap::new(),
             hand: None,
             actions_sent: 0,
@@ -136,6 +144,8 @@ impl Session {
         self.table_id.clear();
         self.table_seq = 0;
         self.resyncing = false;
+        self.seat = None;
+        self.leaving = false;
         self.players.clear();
         self.hand = None;
     }
@@ -169,15 +179,18 @@ impl Session {
     fn apply(&mut self, frame: Inbound) -> Step {
         match frame {
             Inbound::TableJoined {
-                table_id, players, ..
+                table_id,
+                seat,
+                players,
             } => {
+                self.forget_table();
                 self.table_id = table_id;
-                self.table_seq = 0;
-                self.resyncing = false;
-                self.players.clear();
+                self.seat = Some(seat);
                 self.seat_list(players)
             }
             Inbound::PlayerJoined(player) => self.seat_list(vec![player]),
+            // Our own seat left, by our leave or the venue's: there is no table to come back to.
+            Inbound::PlayerLeft { seat } if self.seat == Some(seat) => self.rejoin(),
             Inbound::PlayerLeft { seat } => {
                 self.players.remove(&seat);
                 Step::default()
@@ -216,10 +229,10 @@ impl Session {
                 self.hand = None;
                 Step::default()
             }
-            Inbound::TableClosed | Inbound::SeasonEnded => {
-                self.forget_table();
-                Step::send(Outbound::JoinLobby { buy_in: BUY_IN })
-            }
+            // The docs: a table that closes before our own `player_left` gets one final
+            // `leave_table`, and the `not_at_table` that follows is a clean exit.
+            Inbound::TableClosed if self.leaving => Step::send(Outbound::LeaveTable),
+            Inbound::TableClosed | Inbound::SeasonEnded => self.rejoin(),
             Inbound::ActionAck { client_action_id } => {
                 if let Some(Outbound::Action {
                     client_action_id: sent,
@@ -248,16 +261,28 @@ impl Session {
         for player in players {
             self.players.insert(player.seat, player);
         }
+        if self.leaving {
+            return Step::default();
+        }
         match self.stablemate() {
-            Some(stablemate) => Step {
-                send: vec![Outbound::LeaveTable],
-                incidents: vec![Incident::SharedTable {
-                    table_id: self.table_id.clone(),
-                    stablemate,
-                }],
-            },
+            Some(stablemate) => {
+                self.leaving = true;
+                Step {
+                    send: vec![Outbound::LeaveTable],
+                    incidents: vec![Incident::SharedTable {
+                        table_id: self.table_id.clone(),
+                        stablemate,
+                    }],
+                }
+            }
             None => Step::default(),
         }
+    }
+
+    /// Off this table and back to the lobby.
+    fn rejoin(&mut self) -> Step {
+        self.forget_table();
+        Step::send(Outbound::JoinLobby { buy_in: BUY_IN })
     }
 
     /// A stablemate seated at our table, if there is one.
@@ -273,7 +298,8 @@ impl Session {
     }
 
     fn your_turn(&mut self, turn: Turn, decide: impl FnOnce(&Spot) -> Action) -> Step {
-        let shared = self.seat_list(turn.players.clone());
+        let left = self.seat_list(turn.players.clone());
+        let stablemate = self.stablemate();
         let hand = self.hand.clone().unwrap_or_default();
         let Some(hand_id) = turn
             .hand_id
@@ -281,18 +307,18 @@ impl Session {
             .or((!hand.hand_id.is_empty()).then(|| hand.hand_id.clone()))
         else {
             // An action must echo the hand. Without one the venue acts for us at the clock.
-            return shared;
+            return left;
         };
         if self.played_token.as_ref() == Some(&turn.turn_token) {
             // Played already: the venue rejects a token's second use.
-            return shared;
+            return left;
         }
         self.played_token = Some(turn.turn_token.clone());
         // In a shared hand the bot folds outright, even when the check is free: it takes no further
         // part in a hand a stablemate is in.
-        let action = match shared.incidents.is_empty() {
-            false => VenueAction::Fold,
-            true => offered(decide(&self.spot(&turn, &hand)), &turn.offer),
+        let action = match stablemate {
+            Some(_) => VenueAction::Fold,
+            None => offered(decide(&self.spot(&turn, &hand)), &turn.offer),
         };
         self.actions_sent += 1;
         let action = Outbound::Action {
@@ -303,17 +329,14 @@ impl Session {
         };
         self.unacked = Some(action.clone());
         let mut send = vec![action];
-        send.extend(shared.send);
-        let incidents = shared
-            .incidents
-            .into_iter()
-            .map(|incident| match incident {
-                Incident::SharedTable { stablemate, .. } => Incident::SharedHand {
-                    hand_id: hand_id.clone(),
-                    stablemate,
-                },
-                hand @ Incident::SharedHand { .. } => hand,
+        send.extend(left.send);
+        // A hand dealt with a stablemate is a shared hand, whether or not the leave is out already.
+        let incidents = stablemate
+            .map(|stablemate| Incident::SharedHand {
+                hand_id,
+                stablemate,
             })
+            .into_iter()
             .collect();
         Step { send, incidents }
     }
