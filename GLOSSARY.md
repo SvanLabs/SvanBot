@@ -112,6 +112,11 @@ How likely an opponent is to fold, check, call or bet each size at a spot, given
 A range follows from it and the actions seen so far.
 _Avoid_: showdown fit, tendency table
 
+**Strength bucket**:
+Where a pair of hole cards ranks among every pair still possible on the board at that moment, cut
+into eight equal shares. The action model sees hole cards only through their bucket.
+_Avoid_: tier, hand class
+
 **Prior**:
 What SvanBot believes about an opponent it has not yet seen enough of, taken from the whole
 population.

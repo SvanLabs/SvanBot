@@ -9,4 +9,5 @@
 //! `strategy` sits on `sim` and `core` (`docs/adr/0003-crate-graph.md`) and is pure: no
 //! network, no store, no clock, and the same result for the same inputs.
 
+pub mod action;
 pub mod pricer;
