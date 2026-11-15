@@ -211,3 +211,33 @@ fn a_flush_draw_on_the_turn_is_worth_the_cards_to_come() {
     assert!(draw > 0.7, "the draw continues {draw}");
     assert!(nothing < draw - 0.3, "no draw continues {nothing}");
 }
+
+#[test]
+fn with_no_fitted_model_a_raise_still_narrows_the_villain_to_strong_hands() {
+    use svanbot_core::rules::Street;
+    use svanbot_core::spot::{Act, ActKind};
+    // Second pair on an ace-high flop. The villain bet, we raised, and they shoved over it.
+    let board = "2c6cAs";
+    let mut flop = spot("6dKd", board, 770, facing(350, None));
+    flop.committed = 185;
+    flop.stack = 350;
+    let act = |facing, added, pot| Act {
+        street: Street::Flop,
+        board: board.parse().unwrap(),
+        facing,
+        kind: ActKind::Bet { added, pot },
+    };
+    let fold = |spot: &Spot| {
+        let resolved = resolve(spot, None, 100, SEED).unwrap();
+        frequency(&resolved, |a| a == Abstract::Fold)
+    };
+    // With the hand not followed there is no line, and the villain could hold anything.
+    let unseen = fold(&flop);
+    flop.lines = vec![vec![act(false, 50, 40), act(true, 485, 285)]];
+    let raised = fold(&flop);
+    assert!(raised > 0.7, "facing the shove it folds {raised}");
+    assert!(
+        unseen < raised - 0.3,
+        "against any two cards it folds {unseen}"
+    );
+}

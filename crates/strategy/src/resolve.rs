@@ -56,8 +56,11 @@ pub fn resolve(
     }
     let pairs = combos(spot.board);
     let me = pairs.iter().position(|&pair| pair == spot.hole)?;
-    let villain = match (model, spot.lines.first()) {
-        (Some(model), Some(line)) => {
+    // Without a fitted model the baseline reads the line: a bet still narrows the range.
+    let baseline = ActionModel::baseline();
+    let model = model.unwrap_or(&baseline);
+    let villain = match spot.lines.first() {
+        Some(line) if !line.is_empty() => {
             let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
             let read = range(model, &seen, spot.board);
             let mut weights = vec![0.0; pairs.len()];

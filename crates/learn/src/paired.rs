@@ -1,6 +1,7 @@
 //! The paired sim: two policies play the same deals from mirrored seats, heads up, so the luck
 //! of the cards cancels out. Each deal is played twice, once with the challenger in each seat,
-//! and the deal's result is what the challenger won over the two hands.
+//! and the deal's result is what the challenger won over the two hands, with the luck correction
+//! for an all-in ([`play_corrected`]).
 //!
 //! A deal is drawn from its own stream of the seed ([`Rng::stream`]), so the deals can be played
 //! in any order, on any number of threads, and add up the same.
@@ -8,7 +9,7 @@
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
-use svanbot_sim::table::{deal, play};
+use svanbot_sim::table::{deal, play_corrected};
 
 /// What every deal of a paired sim shares: the blinds, the stack each seat starts each hand
 /// with, and the seed.
@@ -32,20 +33,29 @@ pub fn duel(
     champion: &impl Fn(&Spot, u64) -> Action,
 ) -> f64 {
     let cards = deal(2, &mut Rng::stream(game.seed, number));
-    let mut chips = 0;
+    // Both hands of the deal pay an all-in over the same run-outs, so the mirror still cancels.
+    let run_outs = Rng::stream(game.seed ^ DECISIONS, 2 * number).next_u64();
+    let mut chips = 0.0;
     for seat in 0..2 {
         let mut seeds = Rng::stream(game.seed ^ DECISIONS, 2 * number + seat as u64);
-        let won = play(&cards, &[game.stack; 2], 0, game.blinds, |at, spot| {
-            let seed = seeds.next_u64();
-            if at == seat {
-                challenger(spot, seed)
-            } else {
-                champion(spot, seed)
-            }
-        });
+        let won = play_corrected(
+            &cards,
+            &[game.stack; 2],
+            0,
+            game.blinds,
+            run_outs,
+            |at, spot| {
+                let seed = seeds.next_u64();
+                if at == seat {
+                    challenger(spot, seed)
+                } else {
+                    champion(spot, seed)
+                }
+            },
+        );
         chips += won[seat];
     }
-    chips as f64 / (2.0 * f64::from(game.blinds.big))
+    chips / (2.0 * f64::from(game.blinds.big))
 }
 
 /// What a paired sim found: the challenger's win rate over the champion in mbb/100, and the

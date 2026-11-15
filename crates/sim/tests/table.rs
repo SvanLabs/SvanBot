@@ -6,7 +6,7 @@ use svanbot_core::card::Card;
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Blinds, Street};
 use svanbot_core::spot::{ActKind, Spot};
-use svanbot_sim::table::{Deal, deal, play};
+use svanbot_sim::table::{Deal, deal, play, play_corrected};
 
 const BLINDS: Blinds = Blinds { small: 10, big: 20 };
 
@@ -132,4 +132,49 @@ fn no_chip_is_made_or_lost_whatever_the_seats_ask_for() {
             }
         }
     }
+}
+
+fn shove(spot: &Spot) -> Action {
+    match spot.legal.raise {
+        Some(range) => Action::RaiseTo(range.max),
+        None => check_or_call(spot),
+    }
+}
+
+#[test]
+fn an_all_in_before_the_river_pays_each_seat_its_share_of_the_run_outs() {
+    // Checked to the turn, then all in: AhKh wins on 15 of the 44 rivers (the equity test counts
+    // them), whatever river was dealt. Each seat has 2,000 in.
+    let cards = dealt(&["AhKh", "2c2d"], "Qh7h3s9c5s");
+    let all_in_on_the_turn = |_: usize, spot: &Spot| match spot.board.len() {
+        4 => shove(spot),
+        _ => check_or_call(spot),
+    };
+    assert_eq!(
+        play(&cards, &[2000, 2000], 0, BLINDS, all_in_on_the_turn),
+        [-2000, 2000]
+    );
+    let fair = play_corrected(&cards, &[2000, 2000], 0, BLINDS, 1, all_in_on_the_turn);
+    let share = 15.0 / 44.0 * 4000.0 - 2000.0;
+    assert!((fair[0] - share).abs() < 1e-6, "{fair:?}");
+    assert!((fair[0] + fair[1]).abs() < 1e-6, "{fair:?}");
+}
+
+#[test]
+fn an_all_in_before_the_flop_is_paid_close_to_its_equity_and_a_hand_bet_to_the_river_as_dealt() {
+    // Aces against kings hold about 82% of the time.
+    let cards = dealt(&["AhAs", "KcKd"], "Kh7h3s9c5s");
+    let fair = play_corrected(&cards, &[2000, 2000], 0, BLINDS, 1, |_, spot| shove(spot));
+    let share = 0.82 * 4000.0 - 2000.0;
+    assert!((fair[0] - share).abs() < 150.0, "{fair:?}");
+    assert!((fair[0] + fair[1]).abs() < 1e-6, "{fair:?}");
+    // The same seed pays the same.
+    assert_eq!(
+        fair,
+        play_corrected(&cards, &[2000, 2000], 0, BLINDS, 1, |_, spot| shove(spot))
+    );
+    let checked = play_corrected(&cards, &[2000, 2000], 0, BLINDS, 1, |_, spot| {
+        check_or_call(spot)
+    });
+    assert_eq!(checked, [-20.0, 20.0]);
 }

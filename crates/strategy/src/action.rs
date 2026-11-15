@@ -168,6 +168,39 @@ impl ActionModel {
         Self::from_counts(&Counts::default(), 1.0)
     }
 
+    /// The baseline: how a sound opponent is taken to play until a fit on real hands passes the
+    /// gate. The stronger the bucket, the more it bets and raises, the bigger it sizes, and the
+    /// less it folds; the weakest bucket bluffs a little. It is set by hand, so it claims little:
+    /// enough that a bet or a raise narrows a range to strong hands and some bluffs.
+    pub fn baseline() -> Self {
+        let mut counts = Counts::default();
+        for situation in Situation::all() {
+            for bucket in 0..BUCKETS {
+                let x = bucket as f64 / (BUCKETS - 1) as f64;
+                let bluff = if bucket == 0 { 1.0 } else { 0.0 };
+                // How the bets split over small, medium and large: bigger with strength.
+                let sizes = [0.5 - 0.3 * x, 0.35, 0.15 + 0.3 * x];
+                let bets = [Move::Small, Move::Medium, Move::Large];
+                if situation.facing {
+                    let raise = 0.02 + 0.33 * x.powi(4) + 0.04 * bluff;
+                    let fold = (1.0 - raise) * 0.9 * (1.0 - x).powf(1.5);
+                    counts.add(situation, bucket, Move::Fold, fold);
+                    counts.add(situation, bucket, Move::Call, 1.0 - raise - fold);
+                    for (mv, share) in bets.into_iter().zip(sizes) {
+                        counts.add(situation, bucket, mv, raise * share);
+                    }
+                } else {
+                    let bet = 0.06 + 0.64 * x * x + 0.12 * bluff;
+                    counts.add(situation, bucket, Move::Check, 1.0 - bet);
+                    for (mv, share) in bets.into_iter().zip(sizes) {
+                        counts.add(situation, bucket, mv, bet * share);
+                    }
+                }
+            }
+        }
+        Self::from_counts(&counts, 0.0)
+    }
+
     /// The model the counts give, each open move's count raised by `alpha`, a Dirichlet prior,
     /// so no open move has probability 0.
     pub fn from_counts(counts: &Counts, alpha: f64) -> Self {

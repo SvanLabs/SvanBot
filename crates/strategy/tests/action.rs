@@ -132,3 +132,43 @@ fn a_big_river_bet_moves_the_range_to_the_strong_combos_and_a_check_away_from_th
     // A dead card is in no combo of the range.
     assert_eq!(weight_of(&bet, "3s4s"), 0.0);
 }
+
+#[test]
+fn the_baseline_model_bets_and_continues_more_the_stronger_the_cards() {
+    use svanbot_strategy::action::{ActionModel, BUCKETS, Move, Situation};
+    let model = ActionModel::baseline();
+    for situation in Situation::all() {
+        let aggression = |bucket| {
+            [Move::Small, Move::Medium, Move::Large]
+                .map(|mv| model.prob(situation, bucket, mv))
+                .iter()
+                .sum::<f64>()
+        };
+        // The weakest bucket bluffs; from the second up, aggression only grows.
+        for bucket in 2..BUCKETS {
+            assert!(
+                aggression(bucket) >= aggression(bucket - 1),
+                "{situation:?}"
+            );
+        }
+        assert!(
+            aggression(BUCKETS - 1) > 3.0 * aggression(1),
+            "{situation:?}"
+        );
+        assert!(aggression(0) > aggression(1), "{situation:?}");
+        if situation.facing {
+            for bucket in 1..BUCKETS {
+                let fold = |bucket| model.prob(situation, bucket, Move::Fold);
+                assert!(fold(bucket) <= fold(bucket - 1), "{situation:?}");
+            }
+        }
+        for bucket in 0..BUCKETS {
+            let total: f64 = situation
+                .moves()
+                .iter()
+                .map(|&mv| model.prob(situation, bucket, mv))
+                .sum();
+            assert!((total - 1.0).abs() < 1e-9);
+        }
+    }
+}

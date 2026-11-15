@@ -53,8 +53,105 @@ pub fn play(
     stacks: &[u32],
     button: usize,
     blinds: Blinds,
-    mut decide: impl FnMut(usize, &Spot) -> Action,
+    decide: impl FnMut(usize, &Spot) -> Action,
 ) -> Vec<i64> {
+    let (hand, _) = bet(deal, stacks, button, blinds, decide);
+    let all = deal.shown(Street::River);
+    let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
+    paid.iter()
+        .zip(hand.committed())
+        .map(|(&paid, put_in)| i64::from(paid) - i64::from(put_in))
+        .collect()
+}
+
+/// The most run-outs an all-in is paid over. Two cards to come are at most 1,081, so an all-in
+/// on the flop or the turn is paid over every one, and one before the flop over a sample.
+pub const RUNOUTS: usize = 1_500;
+
+/// Plays one hand as [`play`] does, with the luck correction for an all-in: when the betting
+/// ends before the river with the cards still to decide it, each seat is paid its average over
+/// the run-outs of the board, every one of them or [`RUNOUTS`] drawn from `seed`, and not by the
+/// one board that was dealt.
+pub fn play_corrected(
+    deal: &Deal,
+    stacks: &[u32],
+    button: usize,
+    blinds: Blinds,
+    seed: u64,
+    decide: impl FnMut(usize, &Spot) -> Action,
+) -> Vec<f64> {
+    let (hand, last) = bet(deal, stacks, button, blinds, decide);
+    let put_in = hand.committed();
+    let net = |paid: &[f64]| -> Vec<f64> {
+        paid.iter()
+            .zip(&put_in)
+            .map(|(paid, &put_in)| paid - f64::from(put_in))
+            .collect()
+    };
+    let shown = deal.shown(last);
+    if !hand.is_showdown() || shown.len() == 5 {
+        let all = deal.shown(Street::River);
+        let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
+        return net(&paid
+            .iter()
+            .map(|&chips| f64::from(chips))
+            .collect::<Vec<_>>());
+    }
+    let held = deal.holes.iter().fold(shown, |cards, &hole| cards | hole);
+    let deck: Vec<Card> = Rank::ALL
+        .into_iter()
+        .flat_map(|rank| Suit::ALL.map(|suit| Card::new(rank, suit)))
+        .filter(|&card| !held.contains(card))
+        .collect();
+    let missing = 5 - shown.len();
+    let mut paid = vec![0.0; stacks.len()];
+    let mut count = 0.0;
+    let mut pay = |full: CardSet| {
+        let chips = hand.payouts(|seat| strength(deal.holes[seat] | full));
+        for (total, chips) in paid.iter_mut().zip(chips) {
+            *total += f64::from(chips);
+        }
+        count += 1.0;
+    };
+    match missing {
+        1 => {
+            for &card in &deck {
+                pay(shown | [card].into_iter().collect());
+            }
+        }
+        2 => {
+            for (i, &first) in deck.iter().enumerate() {
+                for &second in &deck[i + 1..] {
+                    pay(shown | [first, second].into_iter().collect());
+                }
+            }
+        }
+        _ => {
+            let mut rng = Rng::seeded(seed);
+            for _ in 0..RUNOUTS {
+                let mut rest = deck.clone();
+                let mut full = shown;
+                for _ in 0..missing {
+                    full.insert(rest.swap_remove(rng.below(rest.len() as u64) as usize));
+                }
+                pay(full);
+            }
+        }
+    }
+    for total in &mut paid {
+        *total /= count;
+    }
+    net(&paid)
+}
+
+/// Plays the betting of one hand, and returns it with the last street that was bet.
+fn bet(
+    deal: &Deal,
+    stacks: &[u32],
+    button: usize,
+    blinds: Blinds,
+    mut decide: impl FnMut(usize, &Spot) -> Action,
+) -> (Hand, Street) {
     let seats = stacks.len();
     let mut hand = Hand::new(stacks, button, blinds);
     let mut lines: Vec<Vec<Act>> = vec![Vec::new(); seats];
@@ -102,12 +199,7 @@ pub fn play(
             },
         });
     }
-    let all = deal.shown(Street::River);
-    let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
-    paid.iter()
-        .zip(hand.committed())
-        .map(|(&paid, put_in)| i64::from(paid) - i64::from(put_in))
-        .collect()
+    (hand, street)
 }
 
 /// The legal action nearest to `wanted`.
