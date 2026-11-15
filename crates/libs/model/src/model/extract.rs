@@ -97,6 +97,7 @@ pub(super) fn extract(hand: &HandSummary) -> HashMap<usize, PlayerStats> {
     for street in [Street::Flop, Street::Turn, Street::River] {
         let st = street.index() - 1;
         let mut bet_seen = false;
+        let mut aggressions = 0usize;
         let mut first_bettor: Option<usize> = None;
         for rec in hand.history.iter().filter(|r| r.street == street) {
             let s = out.entry(rec.seat).or_default();
@@ -111,7 +112,10 @@ pub(super) fn extract(hand: &HandSummary) -> HashMap<usize, PlayerStats> {
                 s.raise_vs_bet[st].add(aggr);
                 let base = (rec.pot_before - rec.to_call_before).max(1) as f64;
                 s.fold_vs_size[size_bucket(rec.to_call_before as f64 / base)].add(rec.kind == ActionKind::Fold);
-                if street == Street::Flop && first_bettor.is_some() && first_bettor == last_raiser && first_bettor != Some(rec.seat) {
+                // The c-bet still being the street's only aggression is what makes the next player's
+                // fold a fold to the c-bet: once someone bets over it the spot is gone, and that hand
+                // is a fold or a raise to the raise (1011).
+                if street == Street::Flop && aggressions == 1 && first_bettor == last_raiser && first_bettor != Some(rec.seat) {
                     s.fold_to_cbet.add(rec.kind == ActionKind::Fold);
                 }
             }
@@ -120,6 +124,7 @@ pub(super) fn extract(hand: &HandSummary) -> HashMap<usize, PlayerStats> {
                     first_bettor = Some(rec.seat);
                 }
                 bet_seen = true;
+                aggressions += 1;
                 if street == Street::River {
                     last_river_aggressor = Some(rec.seat);
                 }

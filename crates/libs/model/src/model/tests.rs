@@ -171,6 +171,41 @@ fn postflop_fold_to_bet_and_cbet() {
     assert_eq!(bb.wtsd.hit, 0.0);
 }
 
+/// A fold to a raise over the c-bet is not a fold to the c-bet. seat 3 opens, seats 1 and 2 call,
+/// seat 3 c-bets the flop, seat 1 raises and seat 2 folds: seat 2 folded to the raise, so it has no
+/// fold-to-c-bet sample at all, while seat 1's raise is a sample that continued (1011).
+#[test]
+fn a_fold_to_a_raise_over_the_cbet_is_not_a_fold_to_the_cbet() {
+    let mut rng = SmallRng::seed_from_u64(31);
+    let mut h = Hand::new(&[2000; 4], 0, 10, 20, &mut rng);
+    h.apply(Action::RaiseTo(60)).unwrap(); // seat 3 opens
+    h.apply(Action::Fold).unwrap(); // seat 0 folds
+    h.apply(Action::Call).unwrap(); // seat 1 (sb) calls
+    h.apply(Action::Call).unwrap(); // seat 2 (bb) calls
+    h.apply(Action::Check).unwrap(); // seat 1 checks the flop
+    h.apply(Action::Check).unwrap(); // seat 2 checks
+    h.apply(Action::RaiseTo(80)).unwrap(); // seat 3 c-bets 2/3 pot
+    h.apply(Action::RaiseTo(220)).unwrap(); // seat 1 raises over the c-bet
+    h.apply(Action::Fold).unwrap(); // seat 2 folds to the raise
+    h.apply(Action::Fold).unwrap(); // seat 3 folds
+    let mut m = ModelStore::default();
+    m.observe(&summary(&h), None);
+    let folder = &m.players["p2"];
+    assert_eq!(
+        (folder.fold_to_cbet.opp, folder.fold_to_cbet.hit),
+        (0.0, 0.0),
+        "seat 2 folded to the raise over the c-bet, not to the c-bet"
+    );
+    let raiser = &m.players["p1"];
+    assert_eq!(
+        (raiser.fold_to_cbet.opp, raiser.fold_to_cbet.hit),
+        (1.0, 0.0),
+        "the raise over the c-bet is a fold-to-c-bet sample that continued"
+    );
+    let cbetter = &m.players["p3"];
+    assert_eq!((cbetter.fold_to_cbet.opp, cbetter.fold_to_cbet.hit), (0.0, 0.0), "the c-bettor facing a raise is not facing its own c-bet");
+}
+
 #[test]
 fn shrinkage_moves_with_samples() {
     let mut m = ModelStore::default();
