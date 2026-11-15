@@ -143,7 +143,7 @@ and the calibration cannot price folds.
 
 The residuals are luck-adjusted. Each row is a priced class that loses to its own price.
 
-| # | Spot | Hands | Residual bb/decision (95%) | Contribution bb/100 (95%) | z | Primary cohort |
+| # | Spot | Hands | Residual bb per hand (95%) | Contribution bb/100 (95%) | z | Primary cohort |
 |---|---|---:|---:|---:|---:|---|
 | 1 | River all-in (hero jams), all | 23 | −78.8 (−137.3, −20.3) | **−24.6 (−45.1, −4.1)** | −2.35 | 15 hands, −13.7 (−32.4, +5.0) |
 | 1a | … out of position, pot ≥ 50 bb | 15 | −120.9 (−198.5, −43.2) | −24.6 (−44.3, −4.9) | −2.45 | n/a |
@@ -269,7 +269,7 @@ measured denominator. It does not support any leak ranking.
 3. **Record fold decisions' foregone value.** Today the fold half of every spot is unmeasured
    (`mod.rs:50`). If over-folding is a leak, this audit cannot see it.
 4. **Rerun this audit on a later cutoff.** Rows 1 to 4 need roughly 3–4× their current hands before
-   a 0.2–0.3 bb/decision effect would clear a family-corrected threshold.
+   a 0.2–0.3 bb-per-hand effect would clear a family-corrected threshold.
 
 ## What this cannot establish
 
