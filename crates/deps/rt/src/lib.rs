@@ -26,6 +26,20 @@ pub fn load_env_file(path: &Path) -> std::io::Result<usize> {
     Ok(loaded)
 }
 
+/// Byte index of the first closing `quote` in `rest`; a double-quoted value may escape it with `\\`.
+/// The first one, not the last, so a trailing comment holding a quote is not part of the value (1010).
+fn closing_quote(rest: &str, quote: char) -> Option<usize> {
+    let mut chars = rest.char_indices();
+    while let Some((i, c)) = chars.next() {
+        if c == '\\' && quote == '"' {
+            chars.next();
+        } else if c == quote {
+            return Some(i);
+        }
+    }
+    None
+}
+
 /// Parse `.env` text into (key, value) pairs: `export` prefixes, comments, single and double quotes
 /// (with escapes in double quotes); invalid lines are skipped.
 pub fn parse_env(text: &str) -> Vec<(String, String)> {
@@ -42,7 +56,7 @@ pub fn parse_env(text: &str) -> Vec<(String, String)> {
             continue;
         }
         let rest = rest.trim();
-        let value = if let Some(inner) = rest.strip_prefix('"').and_then(|r| r.rfind('"').map(|i| &r[..i])) {
+        let value = if let Some(inner) = rest.strip_prefix('"').and_then(|r| closing_quote(r, '"').map(|i| &r[..i])) {
             let mut v = String::with_capacity(inner.len());
             let mut chars = inner.chars();
             while let Some(c) = chars.next() {
@@ -57,7 +71,7 @@ pub fn parse_env(text: &str) -> Vec<(String, String)> {
                 }
             }
             v
-        } else if let Some(inner) = rest.strip_prefix('\'').and_then(|r| r.rfind('\'').map(|i| &r[..i])) {
+        } else if let Some(inner) = rest.strip_prefix('\'').and_then(|r| closing_quote(r, '\'').map(|i| &r[..i])) {
             inner.to_string()
         } else {
             // Unquoted: an inline comment starts at " #".
@@ -388,6 +402,15 @@ mod durable_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A quoted value ends at its first unescaped closing quote, so a trailing comment that holds a
+    /// quote of its own is not part of the value (1010).
+    #[test]
+    fn a_quoted_value_ends_at_its_first_closing_quote() {
+        let got = parse_env("A=\"abc\" # note \"x\"\nB='abc' # it's\nC=\"a\\\"b\" # \"\nD=\"unclosed\n");
+        let want = [("A", "abc"), ("B", "abc"), ("C", "a\"b"), ("D", "\"unclosed")];
+        assert_eq!(got, want.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>());
+    }
 
     #[test]
     fn env_parsing_covers_quotes_comments_and_exports() {
