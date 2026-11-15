@@ -147,11 +147,13 @@ pub fn to_summary(raw: &RawHand, names: &HashMap<usize, String>, anon: &dyn Fn(u
         (order[0], order[1])
     };
     let mut pot = 0;
+    let mut contrib: HashMap<usize, i64> = seats.iter().map(|&s| (s, 0)).collect();
     for (seat, amt) in [(sb_seat, sb), (bb_seat, bb)] {
         let a = amt.min(stack[&seat]);
         *stack.get_mut(&seat)? -= a;
         bet.insert(seat, a);
         pot += a;
+        *contrib.get_mut(&seat)? += a;
     }
     let mut level = bb;
     let mut last_raise = bb;
@@ -184,6 +186,18 @@ pub fn to_summary(raw: &RawHand, names: &HashMap<usize, String>, anon: &dyn Fn(u
                 let target = if a.amount > level { a.amount } else { min_to };
                 (ActionKind::Raise, target.min(before + behind))
             }
+            // The export gives our stack and nobody else's, so another seat's shove would be priced
+            // from *our* stack (est_stack) and read as an aggression we never faced. The pot is the
+            // sum of every contribution, so it bounds what the seat wagered: cap an unknown seat's
+            // shove there. The cap never prices the shove below what the rules allow a shove to be
+            // -- the call it faces, or a minimum bet when it faces none -- so a shove that really
+            // did aggress keeps its kind and stays aggressive to the tallies (1011).
+            "all_in" if seat != raw.seat => {
+                let call_to = before + to_call.min(behind);
+                let floor = if to_call > 0 { call_to } else { before + bb.min(behind) };
+                let room = (raw.pot_total - contrib[&seat]).max(0);
+                (ActionKind::AllIn, (before + room).min(before + behind).max(floor))
+            }
             "all_in" => (ActionKind::AllIn, before + behind),
             _ => return None,
         };
@@ -204,6 +218,7 @@ pub fn to_summary(raw: &RawHand, names: &HashMap<usize, String>, anon: &dyn Fn(u
             let add = to - before;
             *stack.get_mut(&seat)? -= add;
             pot += add;
+            *contrib.get_mut(&seat)? += add;
             bet.insert(seat, to);
         }
         if to > level {
@@ -275,133 +290,4 @@ pub fn attribute_names(hands: &[&RawHand], reach: i64) -> Vec<HashMap<usize, Str
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn raw(json: &str) -> RawHand {
-        serde_json::from_str(json).unwrap()
-    }
-
-    const HAND: &str = r#"{"hand_id":"h1","table_id":"t","hand_number":5,"seat":1,"stack_start":2000,"profit":-10,
-        "all_actions":[
-          {"seat":0,"action":"fold","amount":0,"street":"preflop","sequence_in_hand":1},
-          {"seat":1,"action":"fold","amount":0,"street":"preflop","sequence_in_hand":2},
-          {"seat":2,"action":"raise","amount":45,"street":"preflop","sequence_in_hand":3},
-          {"seat":3,"action":"fold","amount":0,"street":"preflop","sequence_in_hand":4},
-          {"seat":4,"action":"call","amount":0,"street":"preflop","sequence_in_hand":5},
-          {"seat":5,"action":"fold","amount":0,"street":"flop","sequence_in_hand":6},
-          {"seat":4,"action":"check","amount":0,"street":"flop","sequence_in_hand":7},
-          {"seat":2,"action":"raise","amount":60,"street":"flop","sequence_in_hand":8},
-          {"seat":4,"action":"raise","amount":200,"street":"flop","sequence_in_hand":9},
-          {"seat":2,"action":"call","amount":0,"street":"turn","sequence_in_hand":10},
-          {"seat":4,"action":"check","amount":0,"street":"turn","sequence_in_hand":11},
-          {"seat":2,"action":"check","amount":0,"street":"river","sequence_in_hand":12},
-          {"seat":4,"action":"check","amount":0,"street":"river","sequence_in_hand":13},
-          {"seat":2,"action":"check","amount":0,"street":"showdown","sequence_in_hand":14}],
-        "board":["Qc","Jc","5c","3c","8s"],"pot_total":510,"num_players":6,"small_blind":10,"big_blind":20,
-        "dealer_seat":3,"winners":[{"seat":2,"name":"gouda"}],"hole_cards":["6d","5h"],
-        "shown_cards":{"4":["Td","As"],"2":["Qh","Ts"]}}"#;
-
-    #[test]
-    fn replays_bets_streets_and_pot() {
-        let r = raw(HAND);
-        let s = to_summary(&r, &HashMap::from([(2, "gouda".to_string())]), &|seat| format!("\u{0}anon{seat}")).unwrap();
-        assert_eq!(s.players.len(), 6);
-        assert_eq!(s.history.len(), 14);
-        // SB (seat 4) calls 45 facing a raise: to-call 35.
-        let call = &s.history[4];
-        assert_eq!(
-            (call.street, call.kind, call.to, call.to_call_before, call.bet_before),
-            (Street::Preflop, ActionKind::Call, 45, 35, 10)
-        );
-        // BB folds preflop even though its label says flop.
-        assert_eq!((s.history[5].street, s.history[5].kind), (Street::Preflop, ActionKind::Fold));
-        // Flop: pot 110, bet 60, check-raise to 200 is a full raise, call 140.
-        let bet = &s.history[7];
-        assert_eq!((bet.street, bet.to, bet.pot_before, bet.to_call_before), (Street::Flop, 60, 110, 0));
-        let raise = &s.history[8];
-        assert!(raise.full_raise && raise.to == 200 && raise.to_call_before == 60);
-        let call = &s.history[9];
-        assert_eq!((call.street, call.to, call.to_call_before), (Street::Flop, 200, 140));
-        let last = s.history.last().unwrap();
-        assert_eq!(last.street, Street::River);
-        // Pot reconstruction matches the export: 30 blinds + 25 + 35 + 60 + 200 + 140 + ... = 510.
-        assert_eq!(last.pot_before, 510);
-        assert_eq!(s.shown.len(), 2);
-        assert_eq!(s.players.iter().find(|p| p.0 == 2).unwrap().1, "gouda");
-    }
-
-    /// Replays real exported pages (HISTORY_SAMPLES=dir of page JSON files) and reports how
-    /// often the reconstructed pot matches the server's pot total.
-    #[test]
-    #[ignore]
-    fn replays_real_exports() {
-        let Ok(dir) = std::env::var("HISTORY_SAMPLES") else { return };
-        let (mut n, mut ok, mut failed, mut named) = (0, 0, 0, 0);
-        for f in std::fs::read_dir(dir).unwrap().flatten() {
-            let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(f.path()).unwrap()).unwrap();
-            let hands: Vec<RawHand> = serde_json::from_value(v["hands"].clone()).unwrap();
-            let refs: Vec<&RawHand> = hands.iter().collect();
-            named += attribute_names(&refs, 40).iter().map(|m| m.len()).sum::<usize>();
-            for h in &hands {
-                n += 1;
-                match to_summary(h, &HashMap::new(), &|s| format!("x{s}")) {
-                    None => failed += 1,
-                    Some(s) => {
-                        // Final pot less the uncalled part of the last street's top bet.
-                        let last = s.history.last().unwrap();
-                        let mut pot = last.pot_before + (last.to - last.bet_before).max(0);
-                        let mut bets: HashMap<usize, i64> = HashMap::new();
-                        for r in s.history.iter().filter(|r| r.street == last.street) {
-                            if r.to > 0 {
-                                bets.insert(r.seat, r.to);
-                            }
-                        }
-                        let mut v: Vec<i64> = bets.values().copied().collect();
-                        v.sort_unstable_by(|a, b| b.cmp(a));
-                        if last.street == Street::Preflop {
-                            // Blinds count as street bets preflop.
-                            v.extend([h.small_blind, h.big_blind]);
-                            v.sort_unstable_by(|a, b| b.cmp(a));
-                        }
-                        if v.len() >= 2 {
-                            pot -= v[0] - v[1];
-                        } else if v.len() == 1 {
-                            pot -= v[0];
-                        }
-                        if (pot - h.pot_total).abs() <= h.big_blind {
-                            ok += 1
-                        } else if std::env::var("HISTORY_VERBOSE").is_ok() && n % 3 == 0 {
-                            eprintln!(
-                                "pot {pot} vs {} dealer {} :: {:?}",
-                                h.pot_total,
-                                h.dealer_seat,
-                                h.all_actions
-                                    .iter()
-                                    .map(|a| format!("{}:{}:{}:{}", a.seat, a.action, a.amount, a.street))
-                                    .collect::<Vec<_>>()
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        eprintln!("hands {n} failed {failed} pot-match {ok} ({:.1}%) named seats {named}", 100.0 * ok as f64 / n.max(1) as f64);
-    }
-
-    #[test]
-    fn names_follow_winner_sightings() {
-        let mk = |n: i64, winner: Option<(usize, &str)>| {
-            let mut r = raw(HAND);
-            r.hand_number = n;
-            r.winners = winner.map(|(s, name)| vec![RawWinner { seat: s, name: name.into() }]).unwrap_or_default();
-            r
-        };
-        let hands = [mk(1, Some((4, "a"))), mk(2, None), mk(3, Some((4, "a"))), mk(4, None), mk(90, Some((4, "b")))];
-        let refs: Vec<&RawHand> = hands.iter().collect();
-        let names = attribute_names(&refs, 30);
-        assert_eq!(names[1].get(&4).map(String::as_str), Some("a"));
-        assert_eq!(names[3].get(&4).map(String::as_str), Some("a"));
-        assert_eq!(names[4].get(&4).map(String::as_str), Some("b"));
-    }
-}
+mod tests;

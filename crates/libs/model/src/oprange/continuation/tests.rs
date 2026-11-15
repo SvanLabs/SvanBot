@@ -359,3 +359,53 @@ fn a_memo_oversubscribed_by_distinct_arguments_still_matches_the_inline_soft() {
         same_continue(&got, &want, &format!("oversubscribed, need {need}"));
     }
 }
+
+/// Hero 3-bets a button open heads-up, so the fraction read is the profile's `three_bet`.
+fn hero_three_bet_spot() -> Situation {
+    let p = |seat, bet| sv10_engine::situation::PlayerInfo { seat, name: format!("p{seat}"), stack: 1800, bet, folded: false };
+    let open = ActionRecord {
+        seat: 0,
+        street: Street::Preflop,
+        kind: ActionKind::Raise,
+        to: 50,
+        pot_before: 30,
+        to_call_before: 20,
+        bet_before: 10,
+        full_raise: true,
+        think_ms: None,
+        street_open: false,
+    };
+    Situation {
+        hero_seat: 1,
+        hole: [Card::parse("Ah").unwrap(), Card::parse("Ad").unwrap()],
+        board: vec![],
+        street: Street::Preflop,
+        button: 0,
+        bb: 20,
+        pot: 70,
+        call_amount: 30,
+        current_bet_to: Some(50),
+        can_check: false,
+        min_raise_to: Some(80),
+        max_raise_to: Some(1820),
+        players: vec![p(0, 50), p(1, 20)],
+        history: vec![open],
+    }
+}
+
+/// The replay widens or narrows a raiser's range by the fitted `raise_width`; the perception of
+/// our own raise must read the same width or the two disagree once the fit leaves 1.0 (1011).
+#[test]
+fn the_preflop_raise_fraction_follows_the_fitted_raise_width() {
+    let sit = hero_three_bet_spot();
+    let prof = Profile { three_bet: 0.08, ..ModelStore::default().profile("x") };
+    let at = |w: f32| preflop_raise_fraction(&sit, &prof, 165, &RangeParams { raise_width: w, ..RangeParams::DEFAULT });
+    let (base, wide) = (at(1.0), at(1.5));
+    assert!((base - 0.08).abs() < 1e-6, "{base}");
+    assert!((wide - 0.12).abs() < 1e-6, "{wide}");
+    let aggr = |w: f32| {
+        let rp = RangeParams { raise_width: w, ..RangeParams::DEFAULT };
+        aggressive_likelihood(&sit, &prof, 165, &Range::default(), &[], &rp).iter().sum::<f32>()
+    };
+    assert!(aggr(1.5) > aggr(1.0));
+}
