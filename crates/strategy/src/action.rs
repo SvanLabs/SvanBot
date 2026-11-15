@@ -185,6 +185,43 @@ impl ActionModel {
         Self { probs }
     }
 
+    /// This model with each move's probability at each situation multiplied by `tilt`, then
+    /// normalised again over the open moves. A tilt of 1 everywhere leaves it as it is.
+    pub fn tilted(&self, tilt: impl Fn(Situation, Move) -> f64) -> Self {
+        let mut probs = self.probs.clone();
+        for situation in Situation::all() {
+            let open = situation.moves();
+            let factors: Vec<f64> = open
+                .iter()
+                .map(|&mv| tilt(situation, mv).max(0.0))
+                .collect();
+            for bucket in 0..BUCKETS {
+                let row = &mut probs[situation.index() * BUCKETS + bucket];
+                let total: f64 = open
+                    .iter()
+                    .zip(&factors)
+                    .map(|(mv, factor)| row[mv.index()] * factor)
+                    .sum();
+                if total <= 0.0 {
+                    continue;
+                }
+                for (mv, factor) in open.iter().zip(&factors) {
+                    row[mv.index()] = row[mv.index()] * factor / total;
+                }
+            }
+        }
+        Self { probs }
+    }
+
+    /// The chance of `mv` at `situation` from a player whose bucket is not known: the mean over
+    /// the buckets, which are equal shares of the pairs.
+    pub fn marginal(&self, situation: Situation, mv: Move) -> f64 {
+        (0..BUCKETS)
+            .map(|bucket| self.prob(situation, bucket, mv))
+            .sum::<f64>()
+            / BUCKETS as f64
+    }
+
     /// The probability of `mv` at `situation` from a player in `bucket`.
     pub fn prob(&self, situation: Situation, bucket: usize, mv: Move) -> f64 {
         self.probs[situation.index() * BUCKETS + bucket][situation.counted(mv).index()]
