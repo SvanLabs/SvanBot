@@ -41,6 +41,8 @@ mod wiring;
 #[cfg(test)]
 mod alias_history_tests;
 #[cfg(test)]
+mod blocking_tests;
+#[cfg(test)]
 mod report_failures;
 
 use control::*;
