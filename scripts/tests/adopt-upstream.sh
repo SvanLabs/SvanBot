@@ -76,7 +76,15 @@ grep -q unscrubbed "$box/crates/a.rs" || fail "dry run reverted an edit"
 [ "$(git -C "$box" remote get-url origin)" = "$t/private.git" ] || fail "dry run re-pointed origin"
 
 # 3. The real run: onto the public branch, runtime state and .env untouched, old remote kept.
-out=$(adopt --backup "$t/backup") || fail "adoption failed"
+# `sync` and `git reset --hard` are shimmed to log their order: the backup has to be on disk before
+# the working tree is reverted (#1028).
+mkdir "$t/shim"
+real_git=$(command -v git)
+printf '#!/bin/sh\necho sync >> "%s/order"\nexec /bin/sync "$@"\n' "$t" > "$t/shim/sync"
+printf '#!/bin/sh\ncase " $* " in *" reset "*--hard*) echo reset >> "%s/order" ;; esac\nexec "%s" "$@"\n' "$t" "$real_git" > "$t/shim/git"
+chmod +x "$t/shim/sync" "$t/shim/git"
+out=$(PATH="$t/shim:$PATH" adopt --backup "$t/backup") || fail "adoption failed"
+[ "$(grep -n -m1 -E '^(sync|reset)$' "$t/order" | cut -d: -f2)" = sync ] || fail "git reset --hard ran before the backup was synced: $(tr '\n' ' ' < "$t/order")"
 [ "$(git -C "$box" rev-parse HEAD)" = "$(git -C "$t/dev" rev-parse HEAD)" ] || fail "did not reach the public branch"
 [ "$(sum "$box/.env")" = "$env_sum" ] || fail ".env changed"
 [ "$(sum "$box/artifacts/live-state.json")" = "$live_sum" ] || fail "artifacts/ changed"

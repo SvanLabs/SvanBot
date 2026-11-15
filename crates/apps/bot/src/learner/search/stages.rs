@@ -25,7 +25,8 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
     let total = e.proposals.len();
     // The rejection ledger (0285): repeats continue their stored interval instead of restarting
     // it, and decided-dead transitions are not proposed while this champion and evidence stand.
-    let ledger = search_ledger::load_evaluated(store, &run.lane, &run.champion_version, run.refit_rowid, &run.stacks.digest);
+    let ledger =
+        search_ledger::load_evaluated(store, &run.lane, &run.champion_version, run.refit_rowid, &super::evaluation(e.ctx.store, run));
     let fresh = e.proposals.iter().map(|(k, o, n, p)| (k.clone(), *o, *n, p.clone(), None)).collect();
     let (kept, barred) = search_ledger::seed_and_filter(fresh, &ledger, e.ctx.tables, e.ctx.hands);
     if barred > 0 {
@@ -66,7 +67,7 @@ pub(super) fn start_halving(e: &Env, run: &mut SearchRun) -> Stage {
             t.sim.clone(),
             Source::Confirmation,
         )
-        .with_evaluation(&run.stacks.digest);
+        .with_evaluation(&super::evaluation(e.ctx.store, run));
         publish_targets(store, &run.lane, &ledger, &e.sc.champion, run.cycle, Some(confirming), (e.ctx.tables, e.ctx.hands));
         return Stage::Confirm(Box::new(Confirm {
             knob: t.knob,
@@ -243,7 +244,12 @@ fn judge_round(e: &Env, run: &mut SearchRun) -> Flow {
                     r.upper_95() * 100.0,
                     why.message()
                 );
-                funnel::note(e.ctx.store, &format!("search/{}", why.code()), Some(knob), 1);
+                funnel::note_once(
+                    e.ctx.store,
+                    &format!("{}:{cycle}:r{round}:{knob}:{new:.3}", run.lane.key("drop")),
+                    &format!("search/{}", why.code()),
+                    Some(knob),
+                );
                 push_experiment(
                     e.ctx.store,
                     json!({
@@ -274,7 +280,12 @@ fn judge_round(e: &Env, run: &mut SearchRun) -> Flow {
         // Not a death by a bar: this candidate was pushed out by the ranking, and stays in the
         // ledger to be ranked again. Counted anyway — it is the stage most candidates end in, and
         // the panel cannot say where the search spends its budget without it (#317).
-        funnel::note(e.ctx.store, funnel::HALVED_OUT, Some(&c.knob), 1);
+        funnel::note_once(
+            e.ctx.store,
+            &format!("{}:{cycle}:r{round}:{}:{:.3}", run.lane.key("halved"), c.knob, c.new),
+            funnel::HALVED_OUT,
+            Some(&c.knob),
+        );
         run.ledger_done.push((transition_key(&c.knob, c.old, c.new), c.prior.unwrap_or_default()));
     }
     tracing::info!("cycle {cycle} r{round}: {} of {before} candidates continue", survivors.len());
@@ -301,7 +312,8 @@ fn end_halving(e: &Env, run: &mut SearchRun) -> Flow {
             run.ledger_done.push((transition_key(&c.knob, c.old, c.new), p.clone()));
         }
     }
-    let mut ledger = search_ledger::load_evaluated(e.ctx.store, &run.lane, &run.champion_version, run.refit_rowid, &run.stacks.digest);
+    let mut ledger =
+        search_ledger::load_evaluated(e.ctx.store, &run.lane, &run.champion_version, run.refit_rowid, &super::evaluation(e.ctx.store, run));
     let done: Vec<(String, PairedResult)> = run.ledger_done.iter().map(|(k, v)| (k.clone(), v.to_paired())).collect();
     search_ledger::record(&mut ledger, &done);
     if let Err(err) = search_ledger::save(e.ctx.store, &run.lane, &ledger) {
@@ -352,7 +364,7 @@ fn end_halving(e: &Env, run: &mut SearchRun) -> Flow {
             LedgerEntry::from_paired(r),
             Source::Confirmation,
         )
-        .with_evaluation(&run.stacks.digest)
+        .with_evaluation(&super::evaluation(e.ctx.store, run))
     });
     publish_targets(e.ctx.store, &run.lane, &ledger, &e.sc.champion, run.cycle, confirming, (e.ctx.tables, e.ctx.hands));
     match best {

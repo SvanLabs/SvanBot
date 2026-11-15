@@ -152,6 +152,22 @@ impl Store {
         rows.retain(|h| !treated.contains(&arm(h)));
         Ok(rows)
     }
+
+    /// The fit hands of every bot in `bots`, each hand once: two of our seats at one table store the
+    /// same shared hand under the same `hand_id`, and a fit that read both would count its showdown
+    /// twice. The first row seen for an id wins; bots are read in the order given.
+    pub fn recent_fit_hands_of(&self, bots: &[String], limit: usize) -> Result<Vec<HandRow>> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for bot in bots {
+            for row in self.recent_fit_hands(bot, limit)? {
+                if seen.insert(row.hand_id.clone()) {
+                    out.push(row);
+                }
+            }
+        }
+        Ok(out)
+    }
 }
 
 fn insert_tag(conn: &Connection, bot: &str, hand_id: &str, tag: &HandTag) -> Result<()> {
@@ -209,6 +225,21 @@ mod tests {
         assert_eq!(arms, vec![(TREATMENT_ARM.into(), Some(-40), Some(20)), (CONTROL_ARM.into(), Some(20), Some(20))]);
         assert_eq!(s.hand_tag("A", "h2").unwrap().map(|t| t.arm), Some(TREATMENT_ARM.to_string()));
         assert_eq!(s.hand_tag("A", "h1").unwrap(), None);
+    }
+
+    /// A hand two of our bots both sat in is one hand, not two, to every fit that reads the
+    /// whole fleet.
+    #[test]
+    fn a_hand_shared_by_two_seats_is_read_once_by_the_fleet_wide_fit_read() {
+        let s = store("shared");
+        let mut b = hand("h1", 10);
+        s.insert_hand_tagged(&hand("h1", 10), None).unwrap();
+        b.bot = "B".into();
+        s.insert_hand_tagged(&b, None).unwrap();
+        s.insert_hand_tagged(&hand("h2", 5), None).unwrap();
+        let ids: Vec<String> = s.recent_fit_hands_of(&["A".into(), "B".into()], 10).unwrap().into_iter().map(|h| h.hand_id).collect();
+        assert_eq!(ids.iter().filter(|i| *i == "h1").count(), 1, "{ids:?}");
+        assert_eq!(ids.len(), 2, "{ids:?}");
     }
 
     #[test]

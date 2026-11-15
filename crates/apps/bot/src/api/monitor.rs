@@ -29,7 +29,11 @@ fn pressure(kind: &str) -> Option<f64> {
     line.split_whitespace().find_map(|f| f.strip_prefix("avg60=")).and_then(|v| v.parse().ok())
 }
 
-pub(super) async fn monitor(State(s): State<Arc<Shared>>) -> Json<Value> {
+pub(super) async fn monitor(State(s): State<Arc<Shared>>) -> Response {
+    off_runtime(move || monitor_blocking(&s)).await.into_response()
+}
+
+fn monitor_blocking(s: &Shared) -> Json<Value> {
     let logs = s.config.artifacts.join("logs");
     let monitor_log = logs.join("monitor.log");
     let lines = tail_lines(&monitor_log, 256 * 1024);

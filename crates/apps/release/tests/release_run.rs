@@ -136,3 +136,31 @@ fn a_release_installs_snapshots_the_previous_build_and_a_failed_build_changes_no
     assert_eq!(out.status.code(), Some(1));
     assert!(text(&out).contains("Commit the listed build inputs first"), "{}", text(&out));
 }
+
+/// `update --rollback` steps aside while another release holds the operation lock (#1017): it used
+/// to truncate that release's log, fail its progress card and delete its `release.lock` marker.
+#[test]
+fn a_rollback_while_another_release_holds_the_lock_changes_nothing() {
+    let c = Checkout::new("rollback-busy");
+    let artifacts = c.dir.join("artifacts");
+    std::fs::create_dir_all(&artifacts).unwrap();
+    let held = std::fs::File::create(artifacts.join("release-operation.lock")).unwrap();
+    held.lock().unwrap();
+    write(&artifacts.join("release.log"), "the running release's log\n", false);
+    write(&artifacts.join("release.lock"), "marker\n", false);
+    write(&artifacts.join("release-progress.json"), "{\"state\":\"running\"}\n", false);
+    let out = Command::new(env!("CARGO_BIN_EXE_sv10-release"))
+        .args(["update", "--rollback", "abc1234"])
+        .current_dir(&c.dir)
+        .env_clear()
+        .env("PATH", &c.path)
+        .env("HOME", &c.home)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(text(&out).contains("another release, update or rollback is running"), "{}", text(&out));
+    assert_eq!(std::fs::read_to_string(artifacts.join("release.log")).unwrap(), "the running release's log\n");
+    assert_eq!(std::fs::read_to_string(artifacts.join("release.lock")).unwrap(), "marker\n");
+    assert_eq!(c.progress(), "{\"state\":\"running\"}\n");
+    drop(held);
+}

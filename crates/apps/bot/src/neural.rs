@@ -148,13 +148,12 @@ pub struct LiveHand {
 /// Every stored live hand of `bots` with its seat stacks, oldest first, with its end time.
 pub fn live_hands(store: &Store, bots: &[String]) -> Option<Vec<LiveHand>> {
     let mut hands = Vec::new();
-    for b in bots {
-        for row in store.recent_fit_hands(b, 200_000).ok()? {
-            if let Ok(h) = serde_json::from_str::<HandSummary>(&row.summary)
-                && !h.stacks.is_empty()
-            {
-                hands.push(LiveHand { hand_id: row.hand_id, ended_at: row.ended_at, summary: h });
-            }
+    // Each hand once: two of our seats at a table store the same hand_id.
+    for row in store.recent_fit_hands_of(bots, 200_000).ok()? {
+        if let Ok(h) = serde_json::from_str::<HandSummary>(&row.summary)
+            && !h.stacks.is_empty()
+        {
+            hands.push(LiveHand { hand_id: row.hand_id, ended_at: row.ended_at, summary: h });
         }
     }
     hands.sort_by(|a, b| (&a.ended_at, &a.hand_id).cmp(&(&b.ended_at, &b.hand_id)));
@@ -283,6 +282,8 @@ pub fn train_response_model(
     })
 }
 
+#[cfg(test)]
+mod shared_hands;
 #[cfg(test)]
 mod tests {
     use super::*;

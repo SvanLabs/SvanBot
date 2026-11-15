@@ -6,6 +6,9 @@ pid_alive() {
   pid=$(cat "$1")
   [[ $pid =~ ^[1-9][0-9]*$ ]] || return 1
   kill -0 "$pid" 2>/dev/null || return 1
+  # A pid file outlives its process, and the pid can be reused by anything: only a process running
+  # from this checkout counts, as release/src/fleet.rs does (#1028).
+  [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$(pwd -P)" ] || return 1
   [[ $(ps -o stat= -p "$pid" 2>/dev/null) != Z* ]]
 }
 

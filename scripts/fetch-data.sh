@@ -5,7 +5,10 @@
 # Default: the two live databases. `--all` also restores backups, release snapshots, tables/logs and
 # screenshots. `--derived` instead fetches the public derived set (aggregates + schema, #17) into
 # `artifacts/derived/` for analysis: it never touches the live databases and the fleet may run.
-# Refuses while a known fleet writer or restart supervisor runs. FORCE=1 only bypasses existing data.
+# Refuses while a known fleet writer or restart supervisor runs, or while a release, snapshot or
+# rollback holds artifacts/release-operation.lock. FORCE=1 only bypasses existing data.
+# The databases are decompressed beside their targets as `*.new`, synced, and only then renamed, so
+# a failure part-way leaves the live files as they were.
 # Snapshots are made with sqlite `.backup` + zstd (see the release notes).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -29,6 +32,11 @@ if [ "$derived" = 1 ]; then
   echo "derived set in artifacts/derived/ (aggregates + schema only; no databases touched)"
   exit 0
 fi
+
+# The same lock a release, snapshot or rollback takes, held to the end of the run (#1028).
+mkdir -p artifacts
+exec 9> artifacts/release-operation.lock
+flock -n 9 || { echo "a release operation holds artifacts/release-operation.lock; try again when it ends" >&2; exit 1; }
 
 for writer_pidfile in artifacts/bot.pid artifacts/head.pid artifacts/worker-*.pid     artifacts/supervisor.pid artifacts/head-supervisor.pid     artifacts/learner.pid artifacts/learner-supervisor.pid     artifacts/analyst.pid artifacts/analyst-supervisor.pid; do
   [ -f "$writer_pidfile" ] || continue
@@ -55,10 +63,16 @@ patterns=(-p 'svanbot10.db.zst' -p 'history.db.zst' -p 'misc.tar.zst' -p 'SHA256
 gh release download "$tag" --repo "$repo" --dir "$tmp" "${patterns[@]}"
 (cd "$tmp" && cat SHA256SUMS* | sha256sum --check --ignore-missing --quiet)
 
-mkdir -p artifacts
+# Stage everything first: a corrupt download must not have replaced a live database already.
+for t in "$tmp"/*.zst; do zstd -tq "$t" || { echo "$t is not a valid zstd file; nothing was changed" >&2; exit 1; }; done
+trap 'rm -rf "$tmp"; rm -f artifacts/svanbot10.db.new artifacts/history.db.new' EXIT
+zstd -dqf "$tmp/svanbot10.db.zst" -o artifacts/svanbot10.db.new
+zstd -dqf "$tmp/history.db.zst" -o artifacts/history.db.new
+sync artifacts/svanbot10.db.new artifacts/history.db.new
 rm -f artifacts/svanbot10.db-wal artifacts/svanbot10.db-shm artifacts/history.db-wal artifacts/history.db-shm
-zstd -dqf "$tmp/svanbot10.db.zst" -o artifacts/svanbot10.db
-zstd -dqf "$tmp/history.db.zst" -o artifacts/history.db
+mv artifacts/svanbot10.db.new artifacts/svanbot10.db
+mv artifacts/history.db.new artifacts/history.db
+sync artifacts
 for t in "$tmp"/*.tar.zst; do
   zstd -dc "$t" | tar -C artifacts -xf -
 done

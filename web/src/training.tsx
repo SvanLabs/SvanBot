@@ -35,7 +35,12 @@ export function Performance({metrics}: {metrics?:Metrics}) {
 }
 
 export function CooldownSetting({training}: {training?:Training}) {
-  const cfg = training?.settings;
+  const polled = training?.settings;
+  // What a save returned, with the settings the snapshot showed when it was saved. The response
+  // stands in for the snapshot only while the snapshot still equals that baseline (an SSE snapshot
+  // up to 5 s old does); any later snapshot is the server's word and wins.
+  const [saved,setSaved] = useState<{values:{cooldown_minutes:number;min_new_hands:number};baseline:string}>();
+  const cfg = polled && saved && JSON.stringify(polled) === saved.baseline ? {...polled, ...saved.values} : polled;
   const [draft,setDraft] = useState<{minutes?:string;hands?:string}>({});
   const [state,setState] = useState<{saving:boolean;message:string;error:boolean}>({saving:false,message:'',error:false});
   const minutesValue = draft.minutes ?? (cfg?.cooldown_minutes == null ? '' : String(cfg.cooldown_minutes));
@@ -56,6 +61,7 @@ export function CooldownSetting({training}: {training?:Training}) {
       if (draft.hands !== undefined) body.min_new_hands = hands;
       const r = await api<{cooldown_minutes:number;min_new_hands:number}>('/training/settings', body);
       setDraft({});
+      setSaved({values:{cooldown_minutes:r.cooldown_minutes,min_new_hands:r.min_new_hands},baseline:JSON.stringify(polled)});
       setState({saving:false,message:`Saved: champion search after ${format(r.min_new_hands)} new hands after season day 3; ${format(r.cooldown_minutes)} min search cooldown; evidence refreshes run on the hands as they arrive`,error:false});
     } catch (e) {
       setState({saving:false,message:e instanceof Error ? e.message : 'Could not save',error:true});

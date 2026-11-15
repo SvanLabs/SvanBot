@@ -33,6 +33,13 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
             "rationale": format!("Won search ({:+.2} bb/100) and fresh-deal confirmation ({:+.2} bb/100, lower bound {:+.2}).", c.search.mean_bb * 100.0, confirm.mean_bb * 100.0, confirm.lower_95() * 100.0),
             "population": population
         });
+        // Queued before the install: the offer is idempotent, so a step killed between the two
+        // offers again on its re-run, whereas one queued after could be lost for good.
+        if let Some(bot) = run.lane.0.as_deref() {
+            let others =
+                Lane::rotation(std::env::var("LEARNER_LINEAGES").ok().as_deref()).into_iter().filter_map(|l| l.0).filter(|b| b != bot);
+            transfer::offer(store, bot, knob, (old, new), &e.sc.champion, &c.params, others.collect());
+        }
         super::super::progress::install(store, &run.lane, &params_json, &lineage_json, &promotion)?;
         if let Some(own) = knob.strip_prefix(transfer::PREFIX) {
             let from = run.transfers.iter().find(|t| t.knob == own).map(|t| t.from.clone());
@@ -41,13 +48,8 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
                 tracing::warn!("cycle {cycle}: last transfer not recorded ({err})");
             }
         }
-        if let Some(bot) = run.lane.0.as_deref() {
-            let others =
-                Lane::rotation(std::env::var("LEARNER_LINEAGES").ok().as_deref()).into_iter().filter_map(|l| l.0).filter(|b| b != bot);
-            transfer::offer(store, bot, knob, (old, new), &e.sc.champion, &c.params, others.collect());
-        }
         push_experiment(store, promotion);
-        funnel::note(store, funnel::PROMOTED, Some(knob), 1);
+        funnel::note_once(store, &format!("{}:{cycle}:promoted:{knob}:{new:.3}", run.lane.key("promo")), funnel::PROMOTED, Some(knob));
         tracing::info!("cycle {cycle}: PROMOTED {version} ({knob} {old:.3}->{new:.3})");
         // Every target was measured against the old champion; the next cycle publishes anew.
         if run.lane.is_shared() {
@@ -63,9 +65,15 @@ pub(super) fn conclude(e: &Env, run: &SearchRun, c: &Confirm, outcome: Verdict, 
         _ => ("incomplete", "confirmation incomplete"),
     };
     tracing::info!("cycle {cycle}: best candidate failed confirmation ({:+.2} bb/100): {why}", confirm.mean_bb * 100.0);
-    funnel::note(store, &format!("confirm/{code}"), Some(knob), 1);
+    funnel::note_once(
+        store,
+        &format!("{}:{cycle}:confirm:{knob}:{new:.3}", run.lane.key("confirm")),
+        &format!("confirm/{code}"),
+        Some(knob),
+    );
     // A completed fresh-deal rejection is never offered to the experiment pair again.
-    let mut ledger = search_ledger::load_evaluated(store, &run.lane, &run.champion_version, run.refit_rowid, &run.stacks.digest);
+    let mut ledger =
+        search_ledger::load_evaluated(store, &run.lane, &run.champion_version, run.refit_rowid, &super::evaluation(store, run));
     ledger.confirm_rejected.insert(transition_key(knob, old, new));
     // The result is discarded, not stored: `confirm_rejected` holds only the key, so a key that
     // comes back costs the full confirmation again. Record the measurement beside the key so the

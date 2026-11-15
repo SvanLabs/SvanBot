@@ -53,6 +53,11 @@ pub fn offer(store: &Store, from: &str, knob: &str, (old, new): (f64, f64), befo
         return;
     }
     let mut queue = load(store);
+    // Offered before the promotion installs, so a killed step offers again: the same change from the
+    // same lineage is one offer, however many times it is queued.
+    if queue.iter().any(|t| t.from == from && t.knob == knob && t.old == old && t.new == new && t.delta == delta) {
+        return;
+    }
     queue.push(Transfer { from: from.to_string(), knob: knob.to_string(), old, new, delta, to });
     if let Err(e) = serde_json::to_string(&queue).map_err(anyhow::Error::from).and_then(|j| store.put_kv(TRANSFERS_KEY, &j)) {
         tracing::warn!("gene transfer of {knob} not queued ({e})");
@@ -89,6 +94,7 @@ mod tests {
         offer(store, "A", "call_margin", (0.0, 0.31), &before, &after, vec!["B".into(), "C".into()]);
         offer(store, "A", "transfer/call_margin", (0.0, 0.31), &before, &after, vec!["B".into()]);
         offer(store, "A", "call_margin", (0.0, 0.0), &before, &before, vec!["B".into()]);
+        offer(store, "A", "call_margin", (0.0, 0.31), &before, &after, vec!["B".into(), "C".into()]);
         let for_b = take(store, "B");
         assert_eq!(for_b.len(), 1, "a transfer is not offered on, and a no-op is not offered");
         assert_eq!(for_b[0].delta.keys().collect::<Vec<_>>(), ["call_margin"]);

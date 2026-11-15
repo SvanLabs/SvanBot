@@ -141,6 +141,12 @@ impl Update {
             eprintln!("update: usage: scripts/update.sh --rollback <commit>");
             return 2;
         }
+        // The same question `update` asks, and for the same reason: `begin` truncates the running
+        // release's log, fails its progress card, and the exit below deletes its marker (#1017).
+        if self.var("SV10_RELEASE_LOCK_FD").is_none_or(str::is_empty) && lock::busy(&self.root) {
+            eprintln!("update: another release, update or rollback is running; nothing was changed");
+            return 1;
+        }
         if !self.begin() {
             return 1;
         }
