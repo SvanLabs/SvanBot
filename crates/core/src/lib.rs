@@ -1,6 +1,6 @@
 //! The rules of no-limit hold'em as the venue plays them, and the values every layer above shares.
 //!
-//! It holds the cards and their notation (`Ah`, `Ts`). It will also hold the hand evaluator, the
+//! It holds the cards and their notation (`Ah`, `Ts`) and the evaluator. It will also hold the
 //! rules of a hand (blinds, legal actions, raise-to sizes, side pots, showdown), spots, the seeded
 //! random generator and digests.
 //!
@@ -9,3 +9,4 @@
 //! the same inputs.
 
 pub mod card;
+pub mod eval;

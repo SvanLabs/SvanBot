@@ -29,3 +29,7 @@ V11-00.
 - Cards: `svanbot-core` reads and writes the venue's two-character notation (`Ah`, `Ts`, `2c`),
   and a `CardSet` holds a board, a player's hole cards or what is left of the deck. With tests in
   the workspace, nextest now fails a run that finds none.
+- Evaluator: the strength of the best five of five to seven cards, after OMPEval. Cards fold
+  into a key by addition, so a board's key is made once and each player's two cards cost two adds
+  and one table read. The tables are built in-process on first use. Checked against the published
+  five-card counts (7,462 distinct strengths) and against a best-of-21 reference.
