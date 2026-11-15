@@ -181,8 +181,9 @@ impl Store {
     /// One-time migration: digest hands stored before the column existed.
     fn backfill_digests(&self) -> Result<()> {
         let conn = self.write_lock();
-        // Read and write one snapshot: a peer commit cannot be overwritten with a stale digest.
-        let tx = conn.unchecked_transaction()?;
+        // Read and write one snapshot: a peer commit cannot be overwritten with a stale digest. Immediate,
+        // so it waits for a peer's lock instead of failing at the upgrade (1012).
+        let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)?;
         let rows: Vec<(i64, [String; 6])> = tx
             .prepare("SELECT rowid, bot, hand_id, ended_at, COALESCE(hole, ''), COALESCE(board, ''), COALESCE(summary, '') FROM hands WHERE digest IS NULL")?
             .query_map([], |r| Ok((r.get(0)?, [r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?])))?
@@ -210,8 +211,8 @@ impl Store {
     /// One-time migration: derive the showdown flag for hands stored before the column existed.
     fn backfill_showdown(&self) -> Result<()> {
         let conn = self.write_lock();
-        // The showdown flag must describe the summary in the snapshot being written.
-        let tx = conn.unchecked_transaction()?;
+        // The showdown flag must describe the summary in the snapshot being written. Immediate, as above.
+        let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)?;
         let rows: Vec<(i64, Option<i64>, String)> = tx
             .prepare("SELECT rowid, hero_seat, COALESCE(summary, '') FROM hands WHERE showdown IS NULL")?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
