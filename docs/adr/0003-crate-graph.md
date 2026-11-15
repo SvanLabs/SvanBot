@@ -60,9 +60,8 @@ each other within the layer. `web/` (the dashboard, a static export the bot serv
   - library code in a pure layer that turns a clippy ban off (`io-opt-out`). Integration tests
     under `tests/` may turn one off, for example to read a golden file.
 
-V11-03 wires both into the gate's commit tier, so a broken rule is caught before it is pushed.
-Until then, run them by hand: `cargo clippy --workspace --all-targets -- -D warnings`, then
-`bun tools/layering.ts`.
+The gate's commit tier, `bun tools/gate.ts commit`, runs both, so a broken rule is caught before
+it is committed (V11-03).
 
 ## Considered options
 

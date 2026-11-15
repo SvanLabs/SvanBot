@@ -3,6 +3,11 @@
 Issues live on GitHub in `SvanLabs/SvanBot` and are worked with `gh`. The box has `gh` 2.46, so sub-issues and blocking go through the REST API. This repo is the
 operator's own. Never file issues anywhere else.
 
+Agents work as the GitHub App `svanlabs[bot]`, never as the operator's account. Run `gh` and
+`git push` with an installation token of the App in `GH_TOKEN`. On this box,
+`~/.config/svanbot/app-token.sh` prints one that lasts an hour. The App's key stays outside the
+repo.
+
 ## Operations
 
 - **Create:** `gh issue create --title "…" --body-file <file>`. Every body ends with the
@@ -29,10 +34,10 @@ PRs are not a request surface. `/triage` reads issues only.
   Decisions so far, Not yet specified, and Out of scope.
 - **Ticket:** a sub-issue of the map, titled `V11-<nn>: …`, with a `wayfinder:<type>` label plus
   `v11`.
-- **Frontier:** the map's open sub-issues that have no open blocker and no assignee. The first in
-  map order wins.
-- **Claim:** `gh issue edit <n> --add-assignee @me --add-label agent-claimed`, as the session's
-  first write.
+- **Frontier:** the map's open sub-issues that have no open blocker and no `agent-claimed` label.
+  The first in map order wins.
+- **Claim:** `gh issue edit <n> --add-label agent-claimed`, as the session's first write. The label
+  is the claim and nobody is assigned: GitHub cannot assign an issue to an App.
 - **Resolve:**
   1. Post the answer as a comment.
   2. Close the ticket.

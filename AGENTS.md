@@ -25,14 +25,22 @@ disagrees with v10, it wins.
 
 `core` → `sim` → `strategy` → `learn` → `runtime` → `apps`, with one crate per layer under
 `crates/<layer>/` (`docs/adr/0003-crate-graph.md`). A crate depends only on its own layer or lower
-ones, and the four layers below `runtime` are pure. Two checks enforce it, and you run both before
-you push:
+ones, and the four layers below `runtime` are pure. Two checks enforce it, and the gate's commit
+tier runs both:
 - `cargo clippy --workspace --all-targets -- -D warnings`: `clippy.toml` bans I/O and the clock
 - `bun tools/layering.ts`: the edges and the third-party crates
 
+## The gate
+
+- `bun tools/gate.ts commit` runs the fast checks. Run it before every commit.
+- `bun tools/gate.ts full` adds the workspace tests and the tool tests. Run it before you push.
+
+Both build into `target/dev` at low priority, on four jobs.
+
 ## The loop
 
-1. **Claim the ticket:** assign yourself and add `agent-claimed`.
+1. **Claim the ticket:** add `agent-claimed`, working as `svanlabs[bot]`
+   (`docs/agents/issue-tracker.md`).
 2. **Agree the seams**, then work in **tracer bullets** with the `tdd` skill. Each slice is one test
    going red, then the least code that turns it green.
 3. **Review** the branch with the `code-review` skill, inline, before you open the PR.
