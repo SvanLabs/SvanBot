@@ -2,7 +2,8 @@
 //!
 //! It connects to `wss://openpoker.ai/ws` with the bot's key as a bearer token, reads frames,
 //! hands each to the session, and sends what the session answers. [`play`] runs one connection
-//! until it closes. Reconnecting, with a backoff, is the caller's choice.
+//! until it closes. Reconnecting, with a backoff, is the caller's choice: it passes the same
+//! session back in, so the session resyncs the table it sits at.
 
 use std::fmt;
 
@@ -75,6 +76,7 @@ impl From<tungstenite::Error> for ClientError {
 /// `on_incident` hears every fair-play incident the session raises.
 pub fn play(
     config: &Config,
+    session: &mut Session,
     mut decide: impl FnMut(&Spot) -> Action,
     mut on_incident: impl FnMut(&Incident),
 ) -> Result<(), ClientError> {
@@ -87,7 +89,6 @@ pub fn play(
         .map_err(|_| ClientError::BadConfig("the key is not a valid header value".into()))?;
     request.headers_mut().insert(AUTHORIZATION, bearer);
     let (mut socket, _) = tungstenite::connect(request)?;
-    let mut session = Session::new(&config.me, config.roster.iter().cloned());
     loop {
         let text = match socket.read() {
             Ok(Message::Text(text)) => text,
@@ -98,27 +99,24 @@ pub fn play(
             }
             Err(error) => return Err(error.into()),
         };
-        let frame = match wire::parse(text.as_str()) {
+        let frame = match wire::parse_frame(text.as_str()) {
             Ok(frame) => frame,
             Err(error) => {
                 eprintln!("svanbot: skipped a frame: {error}");
                 continue;
             }
         };
-        let outbound = match frame {
+        let outbound = match &frame.inbound {
             Inbound::Connected { .. } => session.on_connect(),
-            Inbound::Error { code } if code == "auth_failed" => {
+            Inbound::Error { code, .. } if code == "auth_failed" => {
                 return Err(ClientError::AuthFailed);
             }
-            Inbound::Error { code } => {
-                eprintln!("svanbot: the venue reported {code}");
-                continue;
-            }
-            frame => {
-                let step = session.on_frame(frame, |spot| decide(spot));
-                if let Some(incident) = &step.incident {
-                    on_incident(incident);
+            inbound => {
+                if let Inbound::Error { code, .. } = inbound {
+                    eprintln!("svanbot: the venue reported {code}");
                 }
+                let step = session.on_frame(frame, |spot| decide(spot));
+                step.incidents.iter().for_each(&mut on_incident);
                 step.send
             }
         };

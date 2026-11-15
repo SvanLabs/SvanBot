@@ -9,6 +9,7 @@ use std::thread;
 use serde_json::{Value, json};
 use svanbot_core::rules::Action;
 use svanbot_runtime::client::{Config, play};
+use svanbot_runtime::session::Session;
 use tungstenite::Message;
 use tungstenite::handshake::server::{Request, Response};
 
@@ -77,8 +78,10 @@ fn it_authenticates_joins_and_answers_its_turn() {
         me: "SurSvan".into(),
         roster: vec!["Svanar".into(), "SurSvan".into()],
     };
+    let mut session = Session::new(&config.me, config.roster.iter().cloned());
     let ended = play(
         &config,
+        &mut session,
         |_| Action::RaiseTo(60),
         |incident| panic!("{incident:?}"),
     );

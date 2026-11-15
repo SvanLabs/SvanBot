@@ -91,6 +91,12 @@ _Avoid_: move, choice
 The time the venue allows a bot to act at a spot before it acts for the bot.
 _Avoid_: timeout, timer
 
+**Resync**:
+How a session survives a dropped connection: the bot asks the venue for every event after the last
+one it applied, then takes the table as the venue's snapshot shows it. The action clock keeps
+running meanwhile.
+_Avoid_: catch-up; a reconnect is only the new socket
+
 **Win rate**:
 Chips won per hand, in milli-big-blinds per 100 hands (mbb/100).
 _Avoid_: profit, score, bb/100 (when mbb/100 is meant)

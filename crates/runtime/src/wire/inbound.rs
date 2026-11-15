@@ -6,6 +6,8 @@ use serde_json::Value;
 use svanbot_core::card::Card;
 use svanbot_core::rules::RaiseRange;
 
+use super::snapshot::{Resync, Snapshot, resync, snapshot};
+
 /// A seat as a frame lists it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Player {
@@ -40,6 +42,23 @@ pub struct Turn {
     pub players: Vec<Player>,
 }
 
+/// One frame with its envelope's `table_seq`: the table-wide watermark that orders events and
+/// names the point a resync starts from. Not every frame carries one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Frame {
+    pub table_seq: Option<u64>,
+    pub inbound: Inbound,
+}
+
+impl From<Inbound> for Frame {
+    fn from(inbound: Inbound) -> Self {
+        Self {
+            table_seq: None,
+            inbound,
+        }
+    }
+}
+
 /// One frame from the venue.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Inbound {
@@ -47,8 +66,10 @@ pub enum Inbound {
         name: String,
     },
     /// A protocol or authentication failure. Branch on the code, never on the message.
+    /// `already_seated` names the table the bot already sits at.
     Error {
         code: String,
+        table_id: Option<String>,
     },
     TableJoined {
         table_id: String,
@@ -93,6 +114,10 @@ pub enum Inbound {
     TableClosed,
     Busted,
     SeasonEnded,
+    /// The table as it stands: authoritative for the fields it holds.
+    TableState(Snapshot),
+    /// The answer to a `resync_request`.
+    Resync(Resync),
     /// A frame the bot does not act on, by its type.
     Other {
         kind: String,
@@ -101,7 +126,7 @@ pub enum Inbound {
 
 /// A frame that is not valid JSON, or lacks a field its type needs.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WireError(String);
+pub struct WireError(pub(super) String);
 
 impl fmt::Display for WireError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -111,79 +136,99 @@ impl fmt::Display for WireError {
 
 impl std::error::Error for WireError {}
 
-type Read<T> = Result<T, WireError>;
+pub(super) type Read<T> = Result<T, WireError>;
 
-/// Reads one frame.
+/// Reads one frame, without its envelope.
 pub fn parse(text: &str) -> Read<Inbound> {
+    parse_frame(text).map(|frame| frame.inbound)
+}
+
+/// Reads one frame with its envelope's `table_seq`.
+pub fn parse_frame(text: &str) -> Read<Frame> {
     let frame: Value = serde_json::from_str(text).map_err(|e| WireError(e.to_string()))?;
-    let kind = text_at(&frame, "type")?;
+    frame_of(&frame)
+}
+
+pub(super) fn frame_of(frame: &Value) -> Read<Frame> {
+    Ok(Frame {
+        table_seq: frame.get("table_seq").and_then(Value::as_u64),
+        inbound: inbound(frame)?,
+    })
+}
+
+fn inbound(frame: &Value) -> Read<Inbound> {
+    let kind = text_at(frame, "type")?;
     Ok(match kind.as_str() {
         "connected" => Inbound::Connected {
-            name: text_at(&frame, "name")?,
+            name: text_at(frame, "name")?,
         },
         "error" => Inbound::Error {
-            code: text_at(&frame, "code")?,
+            code: text_at(frame, "code")?,
+            table_id: optional_text(frame, "table_id"),
         },
         "table_joined" => Inbound::TableJoined {
-            table_id: text_at(&frame, "table_id")?,
-            seat: seat_at(&frame, "seat")?,
-            players: players_at(&frame, "players")?,
+            table_id: text_at(frame, "table_id")?,
+            seat: seat_at(frame, "seat")?,
+            players: players_at(frame, "players")?,
         },
         "hand_start" => {
             let blinds = frame.get("blinds").unwrap_or(&Value::Null);
             Inbound::HandStart {
-                hand_id: text_at(&frame, "hand_id")?,
-                seat: seat_at(&frame, "seat")?,
-                dealer_seat: seat_at(&frame, "dealer_seat")?,
+                hand_id: text_at(frame, "hand_id")?,
+                seat: seat_at(frame, "seat")?,
+                dealer_seat: seat_at(frame, "dealer_seat")?,
                 small_blind: chips_at(blinds, "small_blind")?,
                 big_blind: chips_at(blinds, "big_blind")?,
             }
         }
         "hole_cards" => Inbound::HoleCards {
-            cards: cards_at(&frame, "cards")?,
+            cards: cards_at(frame, "cards")?,
         },
         "your_turn" => Inbound::YourTurn(Turn {
-            hand_id: frame
-                .get("hand_id")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
-            turn_token: text_at(&frame, "turn_token")?,
-            offer: offer_at(&frame)?,
-            pot: chips_at(&frame, "pot")?,
-            board: cards_at(&frame, "community_cards")?,
-            players: players_at(&frame, "players")?,
+            hand_id: optional_text(frame, "hand_id"),
+            turn_token: text_at(frame, "turn_token")?,
+            offer: offer_at(frame)?,
+            pot: chips_at(frame, "pot")?,
+            board: cards_at(frame, "community_cards")?,
+            players: players_at(frame, "players")?,
         }),
         "action_ack" => Inbound::ActionAck {
-            client_action_id: text_at(&frame, "client_action_id")?,
+            client_action_id: text_at(frame, "client_action_id")?,
         },
         "action_rejected" => Inbound::ActionRejected {
-            code: text_at(&frame, "code")?,
+            code: text_at(frame, "code")?,
         },
         "player_action" => Inbound::PlayerAction {
-            seat: seat_at(&frame, "seat")?,
-            action: text_at(&frame, "action")?,
+            seat: seat_at(frame, "seat")?,
+            action: text_at(frame, "action")?,
             // `null` for a check or a fold, as the docs' "Null Fields" say.
             amount: match frame.get("amount") {
                 None | Some(Value::Null) => 0,
-                Some(_) => chips_at(&frame, "amount")?,
+                Some(_) => chips_at(frame, "amount")?,
             },
-            stack: chips_at(&frame, "stack")?,
+            stack: chips_at(frame, "stack")?,
         },
         "community_cards" => Inbound::CommunityCards {
-            cards: cards_at(&frame, "cards")?,
+            cards: cards_at(frame, "cards")?,
         },
         "hand_result" => Inbound::HandResult {
-            final_stacks: final_stacks(&frame)?,
+            final_stacks: final_stacks(frame)?,
         },
-        "player_joined" => Inbound::PlayerJoined(player(&frame)?),
+        "player_joined" => Inbound::PlayerJoined(player(frame)?),
         "player_left" => Inbound::PlayerLeft {
-            seat: seat_at(&frame, "seat")?,
+            seat: seat_at(frame, "seat")?,
         },
         "table_closed" => Inbound::TableClosed,
         "busted" => Inbound::Busted,
         "season_ended" => Inbound::SeasonEnded,
+        "table_state" => Inbound::TableState(snapshot(frame)?),
+        "resync_response" => Inbound::Resync(resync(frame)?),
         _ => Inbound::Other { kind },
     })
+}
+
+pub(super) fn optional_text(frame: &Value, key: &str) -> Option<String> {
+    frame.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
 fn field<'a>(frame: &'a Value, key: &str) -> Read<&'a Value> {
@@ -192,7 +237,7 @@ fn field<'a>(frame: &'a Value, key: &str) -> Read<&'a Value> {
         .ok_or_else(|| WireError(format!("no `{key}`")))
 }
 
-fn text_at(frame: &Value, key: &str) -> Read<String> {
+pub(super) fn text_at(frame: &Value, key: &str) -> Read<String> {
     let value = field(frame, key)?;
     value
         .as_str()
@@ -200,7 +245,7 @@ fn text_at(frame: &Value, key: &str) -> Read<String> {
         .ok_or_else(|| WireError(format!("`{key}` is not text: {value}")))
 }
 
-fn chips_at(frame: &Value, key: &str) -> Read<u32> {
+pub(super) fn chips_at(frame: &Value, key: &str) -> Read<u32> {
     let value = field(frame, key)?;
     value
         .as_u64()
@@ -208,11 +253,11 @@ fn chips_at(frame: &Value, key: &str) -> Read<u32> {
         .ok_or_else(|| WireError(format!("`{key}` is not a chip count: {value}")))
 }
 
-fn seat_at(frame: &Value, key: &str) -> Read<usize> {
+pub(super) fn seat_at(frame: &Value, key: &str) -> Read<usize> {
     chips_at(frame, key).map(|n| n as usize)
 }
 
-fn cards_at(frame: &Value, key: &str) -> Read<Vec<Card>> {
+pub(super) fn cards_at(frame: &Value, key: &str) -> Read<Vec<Card>> {
     let value = field(frame, key)?;
     let list = value
         .as_array()
@@ -226,7 +271,7 @@ fn cards_at(frame: &Value, key: &str) -> Read<Vec<Card>> {
         .collect()
 }
 
-fn player(frame: &Value) -> Read<Player> {
+pub(super) fn player(frame: &Value) -> Read<Player> {
     Ok(Player {
         seat: seat_at(frame, "seat")?,
         name: text_at(frame, "name")?,
@@ -234,7 +279,7 @@ fn player(frame: &Value) -> Read<Player> {
     })
 }
 
-fn players_at(frame: &Value, key: &str) -> Read<Vec<Player>> {
+pub(super) fn players_at(frame: &Value, key: &str) -> Read<Vec<Player>> {
     let value = field(frame, key)?;
     let list = value
         .as_array()
@@ -242,7 +287,7 @@ fn players_at(frame: &Value, key: &str) -> Read<Vec<Player>> {
     list.iter().map(player).collect()
 }
 
-fn offer_at(frame: &Value) -> Read<Offer> {
+pub(super) fn offer_at(frame: &Value) -> Read<Offer> {
     let value = field(frame, "valid_actions")?;
     let list = value
         .as_array()
