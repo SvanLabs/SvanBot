@@ -119,7 +119,7 @@ fn at_its_turn_it_decides_on_the_spot_and_echoes_the_hand_and_token() {
         ("h-1", "tok-1", VenueAction::Raise(60))
     );
     assert!(!client_action_id.is_empty());
-    assert_eq!(step.incident, None);
+    assert_eq!(step.incidents, []);
 }
 
 #[test]
@@ -167,11 +167,11 @@ fn a_stablemate_at_the_table_makes_it_leave_and_raises_an_incident() {
     );
     assert_eq!(step.send, [Outbound::LeaveTable]);
     assert_eq!(
-        step.incident,
-        Some(Incident::SharedTable {
+        step.incidents,
+        [Incident::SharedTable {
             table_id: "t-1".into(),
             stablemate: "Svanism".into()
-        })
+        }]
     );
 }
 
@@ -187,7 +187,7 @@ fn a_stablemate_who_sits_down_later_is_caught_too_whatever_the_case_of_the_name(
     );
     let step = session.on_frame(Inbound::PlayerJoined(player(4, "svanar", 2000)), never);
     assert_eq!(step.send, [Outbound::LeaveTable]);
-    assert!(matches!(step.incident, Some(Incident::SharedTable { .. })));
+    assert!(matches!(step.incidents[..], [Incident::SharedTable { .. }]));
 }
 
 #[test]
@@ -221,11 +221,11 @@ fn a_hand_dealt_with_a_stablemate_is_a_shared_hand_and_is_folded() {
     )));
     assert!(step.send.contains(&Outbound::LeaveTable));
     assert_eq!(
-        step.incident,
-        Some(Incident::SharedHand {
+        step.incidents,
+        [Incident::SharedHand {
             hand_id: "h-1".into(),
             stablemate: "SuraGunnar".into()
-        })
+        }]
     );
 }
 

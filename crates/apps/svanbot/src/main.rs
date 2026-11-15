@@ -1,6 +1,6 @@
 //! `svanbot`: one bot at the venue. It connects with the bot's key, plays every turn by the
 //! pricer, leaves any table a stablemate sits at, and reconnects with a backoff when the venue
-//! closes the connection.
+//! closes the connection, resyncing the table it sat at if the venue still holds the seat.
 //!
 //! It reads its setup from the environment, as the venue's docs advise for keys:
 //! - `SVANBOT_API_KEY`: the bot's key. It is never printed.
@@ -20,6 +20,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use svanbot_runtime::client::{ClientError, Config, VENUE, fresh_seed, play};
+use svanbot_runtime::session::Session;
 use svanbot_strategy::pricer::{Budget, decide};
 
 /// Deals sampled per decision: a small cost next to the 45 s action clock. `/measure` will size it.
@@ -37,10 +38,12 @@ fn main() -> ExitCode {
         }
     };
     eprintln!("svanbot: {} connects to {}", config.me, config.url);
+    let mut session = Session::new(&config.me, config.roster.iter().cloned());
     let mut backoff = Duration::from_secs(1);
     loop {
         let ended = play(
             &config,
+            &mut session,
             |spot| {
                 let budget = Budget {
                     samples: SAMPLES,

@@ -5,7 +5,7 @@
 use serde_json::{Value, json};
 use svanbot_core::card::Card;
 use svanbot_core::rules::RaiseRange;
-use svanbot_runtime::wire::{Inbound, Offer, Outbound, VenueAction, parse};
+use svanbot_runtime::wire::{Inbound, Offer, Outbound, VenueAction, parse, parse_frame};
 
 fn card(text: &str) -> Card {
     text.parse().unwrap()
@@ -157,7 +157,8 @@ fn errors_and_rejections_branch_on_their_code_and_unknown_frames_are_kept() {
     assert_eq!(
         parse(r#"{"type":"error","code":"auth_failed","message":"bad key"}"#).unwrap(),
         Inbound::Error {
-            code: "auth_failed".into()
+            code: "auth_failed".into(),
+            table_id: None
         }
     );
     assert_eq!(
@@ -202,4 +203,137 @@ fn an_action_echoes_the_hand_and_token_and_names_an_amount_only_for_a_raise() {
     let join: Value =
         serde_json::from_str(&Outbound::JoinLobby { buy_in: 2000 }.to_json()).unwrap();
     assert_eq!(join, json!({"type": "join_lobby", "buy_in": 2000}));
+}
+
+#[test]
+fn a_frame_carries_its_table_seq_from_the_envelope() {
+    let frame = parse_frame(
+        r#"{"type": "hole_cards", "hand_id": "h-1", "table_seq": 18, "cards": ["Ah", "Kd"]}"#,
+    )
+    .unwrap();
+    assert_eq!(frame.table_seq, Some(18));
+    assert!(matches!(frame.inbound, Inbound::HoleCards { .. }));
+    let bare = parse_frame(r#"{"type": "table_closed", "reason": "insufficient_players"}"#);
+    assert_eq!(bare.unwrap().table_seq, None);
+}
+
+/// The docs' `table_state` example, as the actor sees it in a resync snapshot.
+const SNAPSHOT: &str = r#"{
+  "type": "table_state", "hand_id": "h-7", "street": "flop", "dealer_seat": 0,
+  "small_blind": 10, "big_blind": 20, "pot": 120, "actor_seat": 2, "to_call": 40,
+  "min_raise_to": 80, "max_raise_to": 1880, "board": ["7d", "Ts", "2c"],
+  "seats": [
+    {"seat": 0, "name": "alpha_bot", "stack": 1940, "bet": 0, "status": "active", "in_hand": true, "folded": true, "is_pro": false},
+    {"seat": 1, "name": null, "stack": 0, "bet": 0, "status": "empty", "is_pro": false},
+    {"seat": 2, "name": "my_bot", "stack": 1960, "bet": 40, "status": "active", "in_hand": true, "folded": false, "is_pro": true},
+    {"seat": 4, "name": "beta_bot", "stack": 2000, "bet": 0, "status": "sitting_out", "is_pro": false}
+  ],
+  "hero": {
+    "seat": 2, "hole_cards": ["Ah", "Kd"], "turn_token": "tok-9",
+    "valid_actions": [
+      {"action": "fold"}, {"action": "call", "amount": 40},
+      {"action": "raise", "min": 80, "max": 1880}, {"action": "all_in", "amount": 1880}
+    ]
+  }
+}"#;
+
+#[test]
+fn a_table_state_lists_the_occupied_seats_and_the_heros_cards_offer_and_token() {
+    let Inbound::TableState(snapshot) = parse(SNAPSHOT).unwrap() else {
+        panic!("not a snapshot")
+    };
+    assert_eq!(snapshot.hand_id.as_deref(), Some("h-7"));
+    assert_eq!(snapshot.pot, 120);
+    assert_eq!(snapshot.board, [card("7d"), card("Ts"), card("2c")]);
+    let seats: Vec<_> = snapshot
+        .seats
+        .iter()
+        .map(|seat| (seat.player.seat, seat.player.name.as_str(), seat.folded))
+        .collect();
+    assert_eq!(
+        seats,
+        [
+            (0, "alpha_bot", Some(true)),
+            (2, "my_bot", Some(false)),
+            (4, "beta_bot", None)
+        ]
+    );
+    let hero = snapshot.hero.unwrap();
+    assert_eq!(hero.hole, [card("Ah"), card("Kd")]);
+    assert_eq!(hero.turn_token.as_deref(), Some("tok-9"));
+    assert_eq!(hero.offer.unwrap().call, Some(40));
+}
+
+#[test]
+fn a_pushed_table_state_has_no_token_and_a_spectator_has_no_hero() {
+    let pushed = r#"{"type": "table_state", "pot": 0, "board": [], "seats": [],
+      "hero": {"seat": 2, "hole_cards": ["Ah", "Kd"]}}"#;
+    let Inbound::TableState(snapshot) = parse(pushed).unwrap() else {
+        panic!("not a snapshot")
+    };
+    let hero = snapshot.hero.unwrap();
+    assert_eq!((hero.turn_token, hero.offer), (None, None));
+    let Inbound::TableState(spectator) =
+        parse(r#"{"type": "table_state", "pot": 0, "board": [], "seats": []}"#).unwrap()
+    else {
+        panic!("not a snapshot")
+    };
+    assert!(spectator.hero.is_none());
+}
+
+#[test]
+fn a_resync_replays_its_events_in_sequence_order_then_gives_the_snapshot() {
+    let snapshot: Value = serde_json::from_str(SNAPSHOT).unwrap();
+    let text = json!({
+        "type": "resync_response", "role": "player", "table_id": "t-1",
+        "from_table_seq": 43, "to_table_seq": 50,
+        "replayed_events": [
+            {"type": "player_action", "table_seq": 47, "seat": 0, "action": "fold", "amount": null, "stack": 1940},
+            {"type": "community_cards", "table_seq": 45, "cards": ["7d", "Ts", "2c"]}
+        ],
+        "snapshot": snapshot
+    })
+    .to_string();
+    let Inbound::Resync(resync) = parse(&text).unwrap() else {
+        panic!("not a resync")
+    };
+    assert!(resync.player);
+    assert_eq!(resync.to_table_seq, Some(50));
+    let seqs: Vec<_> = resync
+        .replayed
+        .iter()
+        .map(|frame| frame.table_seq)
+        .collect();
+    assert_eq!(seqs, [Some(45), Some(47)]);
+    assert_eq!(resync.snapshot.unwrap().hand_id.as_deref(), Some("h-7"));
+    let spectator =
+        parse(r#"{"type": "resync_response", "role": "spectator", "replayed_events": []}"#);
+    let Inbound::Resync(spectator) = spectator.unwrap() else {
+        panic!("not a resync")
+    };
+    assert!(!spectator.player && spectator.snapshot.is_none());
+}
+
+#[test]
+fn already_seated_names_the_table_and_a_resync_request_names_the_watermark() {
+    assert_eq!(
+        parse(r#"{"type": "error", "code": "already_seated", "message": "seated", "table_id": "t-3", "seat": 1}"#)
+            .unwrap(),
+        Inbound::Error {
+            code: "already_seated".into(),
+            table_id: Some("t-3".into())
+        }
+    );
+    let resync: Value = serde_json::from_str(
+        &Outbound::ResyncRequest {
+            table_id: "t-3".into(),
+            last_table_seq: 42,
+        }
+        .to_json(),
+    )
+    .unwrap();
+    assert_eq!(
+        resync,
+        json!({"type": "resync_request", "table_id": "t-3", "last_table_seq": 42})
+    );
 }

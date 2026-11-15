@@ -7,7 +7,14 @@
 //! **Fair play.** Every frame that lists who sits at the table passes through one seam,
 //! [`Session::seat_list`], which is where the fair-play guard lives (V11-01). A stablemate at our
 //! table is a shared table: the session leaves at once and raises an incident. A hand dealt with
-//! a stablemate in it is a shared hand: the session folds, leaves and raises an incident.
+//! a stablemate in it is a shared hand: the session folds, leaves and raises an incident. A
+//! snapshot's seats pass through the same seam.
+//!
+//! **Reconnects.** A session outlives its connection. It keeps the table and the highest
+//! `table_seq` it applied, so a reconnect asks for the missed events instead of joining the lobby
+//! again (`resync`).
+
+mod resync;
 
 use std::collections::BTreeMap;
 
@@ -15,7 +22,7 @@ use svanbot_core::card::CardSet;
 use svanbot_core::rules::{Action, Legal, RaiseRange};
 use svanbot_core::spot::Spot;
 
-use crate::wire::{Inbound, Offer, Outbound, Player, Turn, VenueAction};
+use crate::wire::{Frame, Inbound, Offer, Outbound, Player, Turn, VenueAction};
 
 /// The buy-in the session asks for: the venue's default.
 pub const BUY_IN: u32 = 2000;
@@ -36,7 +43,32 @@ pub enum Incident {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Step {
     pub send: Vec<Outbound>,
-    pub incident: Option<Incident>,
+    /// Every incident the frame raised, each once.
+    pub incidents: Vec<Incident>,
+}
+
+impl Step {
+    fn send(message: Outbound) -> Self {
+        Self {
+            send: vec![message],
+            incidents: Vec::new(),
+        }
+    }
+
+    /// Adds `later`'s messages and incidents, leaving out what this step already holds.
+    fn then(mut self, later: Self) -> Self {
+        for message in later.send {
+            if !self.send.contains(&message) {
+                self.send.push(message);
+            }
+        }
+        for incident in later.incidents {
+            if !self.incidents.contains(&incident) {
+                self.incidents.push(incident);
+            }
+        }
+        self
+    }
 }
 
 /// One bot's session.
@@ -45,10 +77,17 @@ pub struct Session {
     me: String,
     /// Every name on the roster, lowercased, aliases included.
     roster: Vec<String>,
+    /// The table the bot sits at; empty when it sits at none.
     table_id: String,
+    /// The highest `table_seq` applied at this table.
+    table_seq: u64,
+    /// A `resync_request` is out and unanswered.
+    resyncing: bool,
     players: BTreeMap<usize, Player>,
     hand: Option<HandSeen>,
     actions_sent: u64,
+    /// The last turn token played: a token is good for one action only.
+    played_token: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -66,27 +105,72 @@ impl Session {
             me: me.to_owned(),
             roster: roster.into_iter().map(|name| name.to_lowercase()).collect(),
             table_id: String::new(),
+            table_seq: 0,
+            resyncing: false,
             players: BTreeMap::new(),
             hand: None,
             actions_sent: 0,
+            played_token: None,
         }
     }
 
-    /// What to send once the venue accepts the connection.
-    pub fn on_connect(&self) -> Vec<Outbound> {
-        vec![
-            Outbound::JoinLobby { buy_in: BUY_IN },
-            Outbound::SetAutoRebuy { enabled: true },
-        ]
+    /// What to send once the venue accepts the connection: a resync of the table the bot sits at,
+    /// or else the lobby.
+    pub fn on_connect(&mut self) -> Vec<Outbound> {
+        if self.table_id.is_empty() {
+            return join_lobby();
+        }
+        self.resyncing = true;
+        vec![Outbound::ResyncRequest {
+            table_id: self.table_id.clone(),
+            last_table_seq: self.table_seq,
+        }]
+    }
+
+    /// Forgets the table: the venue frees a seat 120 s after a disconnect, so after a longer gap
+    /// there is no table to resync.
+    pub fn forget_table(&mut self) {
+        self.table_id.clear();
+        self.table_seq = 0;
+        self.resyncing = false;
+        self.players.clear();
+        self.hand = None;
     }
 
     /// Answers one frame. `decide` is asked only at our turn, with the spot as the session sees it.
-    pub fn on_frame(&mut self, frame: Inbound, decide: impl FnOnce(&Spot) -> Action) -> Step {
+    /// A frame whose `table_seq` is not past the watermark was applied already, and is ignored.
+    pub fn on_frame(
+        &mut self,
+        frame: impl Into<Frame>,
+        decide: impl FnOnce(&Spot) -> Action,
+    ) -> Step {
+        let Frame { table_seq, inbound } = frame.into();
+        if let Inbound::Resync(resync) = inbound {
+            // Carries its own watermarks, one per replayed event.
+            return self.resync(resync, decide);
+        }
+        if let Some(seq) = table_seq {
+            if seq <= self.table_seq {
+                return Step::default();
+            }
+            self.table_seq = seq;
+        }
+        match inbound {
+            Inbound::YourTurn(turn) => self.your_turn(turn, decide),
+            Inbound::TableState(snapshot) => self.install(snapshot, decide),
+            event => self.apply(event),
+        }
+    }
+
+    /// Applies one frame that is not an authority to act.
+    fn apply(&mut self, frame: Inbound) -> Step {
         match frame {
             Inbound::TableJoined {
                 table_id, players, ..
             } => {
                 self.table_id = table_id;
+                self.table_seq = 0;
+                self.resyncing = false;
                 self.players.clear();
                 self.seat_list(players)
             }
@@ -124,19 +208,15 @@ impl Session {
                 }
                 Step::default()
             }
-            Inbound::YourTurn(turn) => self.your_turn(turn, decide),
             Inbound::HandResult { .. } => {
                 self.hand = None;
                 Step::default()
             }
             Inbound::TableClosed | Inbound::SeasonEnded => {
-                self.players.clear();
-                self.hand = None;
-                Step {
-                    send: vec![Outbound::JoinLobby { buy_in: BUY_IN }],
-                    incident: None,
-                }
+                self.forget_table();
+                Step::send(Outbound::JoinLobby { buy_in: BUY_IN })
             }
+            Inbound::Error { code, table_id } => self.error(&code, table_id),
             _ => Step::default(),
         }
     }
@@ -150,10 +230,10 @@ impl Session {
         match self.stablemate() {
             Some(stablemate) => Step {
                 send: vec![Outbound::LeaveTable],
-                incident: Some(Incident::SharedTable {
+                incidents: vec![Incident::SharedTable {
                     table_id: self.table_id.clone(),
                     stablemate,
-                }),
+                }],
             },
             None => Step::default(),
         }
@@ -182,11 +262,16 @@ impl Session {
             // An action must echo the hand. Without one the venue acts for us at the clock.
             return shared;
         };
+        if self.played_token.as_ref() == Some(&turn.turn_token) {
+            // Played already: the venue rejects a token's second use.
+            return shared;
+        }
+        self.played_token = Some(turn.turn_token.clone());
         // In a shared hand the bot folds outright, even when the check is free: it takes no further
         // part in a hand a stablemate is in.
-        let action = match &shared.incident {
-            Some(_) => VenueAction::Fold,
-            None => offered(decide(&self.spot(&turn, &hand)), &turn.offer),
+        let action = match shared.incidents.is_empty() {
+            false => VenueAction::Fold,
+            true => offered(decide(&self.spot(&turn, &hand)), &turn.offer),
         };
         self.actions_sent += 1;
         let action = Outbound::Action {
@@ -197,14 +282,18 @@ impl Session {
         };
         let mut send = vec![action];
         send.extend(shared.send);
-        let incident = shared.incident.map(|incident| match incident {
-            Incident::SharedTable { stablemate, .. } => Incident::SharedHand {
-                hand_id,
-                stablemate,
-            },
-            hand @ Incident::SharedHand { .. } => hand,
-        });
-        Step { send, incident }
+        let incidents = shared
+            .incidents
+            .into_iter()
+            .map(|incident| match incident {
+                Incident::SharedTable { stablemate, .. } => Incident::SharedHand {
+                    hand_id: hand_id.clone(),
+                    stablemate,
+                },
+                hand @ Incident::SharedHand { .. } => hand,
+            })
+            .collect();
+        Step { send, incidents }
     }
 
     fn spot(&self, turn: &Turn, hand: &HandSeen) -> Spot {
@@ -236,6 +325,13 @@ impl Session {
             stack: mine.map_or(0, |player| player.stack),
         }
     }
+}
+
+fn join_lobby() -> Vec<Outbound> {
+    vec![
+        Outbound::JoinLobby { buy_in: BUY_IN },
+        Outbound::SetAutoRebuy { enabled: true },
+    ]
 }
 
 /// The offered action nearest to `decided`. A raise past the range is all in when that is
