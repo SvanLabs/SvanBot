@@ -431,3 +431,42 @@ async fn a_player_resync_without_a_hero_block_lets_the_adopted_table_go() {
         rig.seat.pending_join
     );
 }
+
+/// `Conn::send` is true once the frame is *queued*; the writer may die before it reaches the socket.
+/// So a session that ends records nothing as answered: the reconnect's resync restores the turn only
+/// if the server still holds it unanswered, and then it must be answered again. The recovery claim is
+/// per connection too (1013).
+#[tokio::test]
+async fn a_session_that_ends_forgets_what_it_queued_so_the_resync_is_answered_again() {
+    let mut rig = Rig::new("session-ended");
+    rig.tracker.table_id = Some("t1".into());
+    rig.tracker.hand_id = Some("h1".into());
+    rig.tracker.hero_seat = Some(0);
+    rig.tracker.street = Some(sv10_core::engine::Street::Preflop);
+    rig.tracker.pot = 40;
+    rig.tracker.hole = Some([sv10_core::cards::Card::parse("Ah").unwrap(), sv10_core::cards::Card::parse("Kd").unwrap()]);
+    for (seat, name) in [(0, "A"), (1, "B")] {
+        rig.tracker.seats.insert(
+            seat,
+            sv10_venue::tracker::SeatView { seat, name: name.into(), stack: 1_980, bet: 20, in_hand: true, ..Default::default() },
+        );
+    }
+    // A claim from this connection's own recovery request.
+    rig.authority.claim_missing_state(("t1".into(), "h1".into()));
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let conn = Conn { out: tx };
+    rig.feed(&conn, turn("t1")).await;
+    let out = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert_eq!(out.iter().filter(|v| v["type"] == "action").count(), 1, "queued: {out:?}");
+    assert_eq!(rig.authority.last_token(), Some("t1"));
+    assert!(rig.authority.missing_state().is_some());
+    // The writer failed before that frame was written; the session ends.
+    rig.authority.session_ended();
+    assert_eq!(rig.authority.last_token(), None);
+    assert!(rig.authority.missing_state().is_none());
+    // The new connection's resync restores the same token: answered again, and recovery asked again.
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    rig.feed(&Conn { out: tx }, turn("t1")).await;
+    let out = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert_eq!(out.iter().filter(|v| v["type"] == "action").count(), 1, "the restored turn is answered again: {out:?}");
+}

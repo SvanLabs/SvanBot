@@ -71,8 +71,9 @@ pub async fn run_bot(shared: Arc<Shared>, slot: usize, bot: BotConfig) {
     let mut backoff = Duration::from_secs(1);
     let mut auth_park = authpark::AuthPark::default();
     let mut rng = SmallRng::from_os();
-    // The answered-turn record and its recovery budgets outlive a connection: a reconnect must not
-    // re-answer a turn the writer already accepted or re-open a per-hand budget (0163).
+    // The per-hand recovery budgets outlive a connection: a reconnect must not re-open one (0163). The
+    // answered-turn record does not: a frame queued on a connection that died may never have been
+    // written, so the new session forgets it and answers the resynced turn again (1013).
     let mut authority = TurnAuthority::default();
     loop {
         let desired = shared.bots[slot].read().desired.clone();
@@ -109,6 +110,7 @@ pub async fn run_bot(shared: Arc<Shared>, slot: usize, bot: BotConfig) {
         }
         let began = Instant::now();
         let ended = session(&shared, slot, &bot, &http, &mut tracker, &mut rng, &mut authority).await;
+        authority.session_ended();
         let lasted = began.elapsed();
         let ended = match ended {
             // One refused login must not cost the seat: retry on the backoff path until the third in a row (#744).
