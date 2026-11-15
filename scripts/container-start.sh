@@ -9,8 +9,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] || { echo "mount your .env at /svanbot/.env (see .env.example)" >&2; exit 1; }
 mkdir -p artifacts/logs
+# Installed before start.sh: a slow start is exactly when `docker stop` lands, and without the
+# handler the signal ended this shell with the fleet left running (#1028).
+tail_pid=
+trap 'scripts/stop.sh || true; [ -z "$tail_pid" ] || kill "$tail_pid" 2>/dev/null; exit 0' TERM INT
 scripts/start.sh
 tail -F artifacts/logs/svanbot10.log &
 tail_pid=$!
-trap 'scripts/stop.sh || true; kill "$tail_pid" 2>/dev/null; exit 0' TERM INT
 wait "$tail_pid"
