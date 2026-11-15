@@ -18,7 +18,10 @@ before protocol work and update this file when either side changes.
    with the pair we last sent is skipped, while the same token may be reused by a different hand.
    Within one hand, a sequenced authority older than the newest sent turn is stale. A rejected action
    reopens its turn. An action the writer could not queue is not recorded as sent, persisted as a
-   decision/audit, or retained for calibration; reconnect then resyncs the turn.
+   decision/audit, or retained for calibration; reconnect then resyncs the turn. The record is per
+   connection: a frame queued into a session that then ends may never have been written, so the
+   next session answers a restored turn again, and a server that already had it rejects the stale
+   token, which the per-hand resync budget bounds (`TurnAuthority::session_ended`).
 3. Raise `amount` is the raise-to total, clamped into `[min, max]`; a raise at `max` is sent as
    `all_in` when offered. Calls and checks send no amount.
 4. Branch on `code` (in `error` and `action_rejected`), never on `message`/`reason`.

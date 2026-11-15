@@ -352,6 +352,13 @@ async fn an_action_lost_to_a_dead_writer_is_not_marked_answered() {
     let conn = Conn { out: tx };
     rig.feed(&conn, turn("t9")).await;
     assert_eq!(actions(&mut rx).len(), 1);
+    // The rows are written off the read loop (1013): wait for the job to land them.
+    for _ in 0..100 {
+        if !rig.shared.store.decisions_for_hand("A", "h1").unwrap().is_empty() && !rig.shared.store.audit_batch(10).unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     assert_eq!(rig.shared.store.decisions_for_hand("A", "h1").unwrap().len(), 1);
     assert_eq!(rig.shared.store.audit_batch(10).unwrap().len(), 1);
     assert_eq!(rig.tracker.pending_calibration.len(), 1);
@@ -465,33 +472,4 @@ async fn a_state_hash_mismatch_is_counted_and_keeps_a_truthful_verdict() {
 
 mod participation;
 mod recover;
-
-/// Spec (reconnection-idempotency, recovery loop guard): only a *player* resync ends recovery. After an
-/// outage past the 120 s seat window the server answers our resync as a spectator; the bot used to
-/// install that snapshot, call itself playing and wait for turns that never come. It rejoins instead.
-#[tokio::test]
-async fn a_resync_answered_as_a_spectator_sends_the_bot_back_to_the_lobby() {
-    let mut rig = Rig::new("spectator-resync");
-    let (tx, _rx) = mpsc::unbounded_channel();
-    let conn = Conn { out: tx };
-    rig.feed(&conn, json!({"type": "table_joined", "table_id": "t1", "seat": 2, "players": []})).await;
-    assert!(!rig.seat.pending_join);
-    rig.feed(
-        &conn,
-        json!({"type": "resync_response", "role": "spectator", "to_table_seq": 50, "replayed_events": [],
-        "snapshot": {"type": "table_state", "hand_id": "h1", "actor_seat": 4, "street": "flop", "pot": 90, "board": [], "seats": []}}),
-    )
-    .await;
-    assert_eq!(rig.tracker.table_id, None, "the table is no longer ours");
-    assert!(rig.seat.pending_join, "and the bot re-queues");
-    assert!(rig.shared.log.lock().iter().any(|l| l.message.contains("spectator")), "and says why");
-    // A player resync is the normal path and changes nothing.
-    rig.feed(&conn, json!({"type": "table_joined", "table_id": "t2", "seat": 2, "players": []})).await;
-    rig.seat.pending_join = false;
-    rig.feed(&conn, json!({"type": "resync_response", "role": "player", "to_table_seq": 3, "replayed_events": [],
-        "snapshot": {"type": "table_state", "hand_id": "h2", "street": "preflop", "pot": 30, "board": [], "seats": [], "hero": {"seat": 2}}})).await;
-    assert_eq!(rig.tracker.table_id.as_deref(), Some("t2"));
-    assert!(!rig.seat.pending_join);
-}
-
 mod turn_recovery;

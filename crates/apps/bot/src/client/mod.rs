@@ -34,12 +34,13 @@ mod handler;
 mod quality;
 mod recover;
 mod rest;
+mod rows;
 mod seat;
 mod turn_authority;
 mod turns;
 
 // The calibration round (a blocking-pool caller) shares the 0322 locked-write retry (#744).
-pub(crate) use decide::retry_locked_write_blocking;
+pub(crate) use rows::retry_locked_write_blocking;
 
 use decide::act;
 pub use decide::legalize;
@@ -71,8 +72,9 @@ pub async fn run_bot(shared: Arc<Shared>, slot: usize, bot: BotConfig) {
     let mut backoff = Duration::from_secs(1);
     let mut auth_park = authpark::AuthPark::default();
     let mut rng = SmallRng::from_os();
-    // The answered-turn record and its recovery budgets outlive a connection: a reconnect must not
-    // re-answer a turn the writer already accepted or re-open a per-hand budget (0163).
+    // The per-hand recovery budgets outlive a connection: a reconnect must not re-open one (0163). The
+    // answered-turn record does not: a frame queued on a connection that died may never have been
+    // written, so the new session forgets it and answers the resynced turn again (1013).
     let mut authority = TurnAuthority::default();
     loop {
         let desired = shared.bots[slot].read().desired.clone();
@@ -109,6 +111,7 @@ pub async fn run_bot(shared: Arc<Shared>, slot: usize, bot: BotConfig) {
         }
         let began = Instant::now();
         let ended = session(&shared, slot, &bot, &http, &mut tracker, &mut rng, &mut authority).await;
+        authority.session_ended();
         let lasted = began.elapsed();
         let ended = match ended {
             // One refused login must not cost the seat: retry on the backoff path until the third in a row (#744).
@@ -259,6 +262,9 @@ async fn session(
     // Outcome watchdog: traffic without completed hands (stuck table, empty table) also re-queues.
     let mut hands_seen = shared.bots[slot].read().session_hands;
     let mut hands_changed = Instant::now();
+    // The join's REST calls and sleeps run beside the loop (1013): inline they held the read of
+    // every frame, `your_turn` included, for as long as /season/me and the rebuy took.
+    let mut buying_in: Option<tokio::task::JoinHandle<Option<i64>>> = None;
     let result = loop {
         let recovery_deadline = seat.turn.as_ref().map(|turn| turn.deadline);
         tokio::select! {
@@ -270,6 +276,29 @@ async fn session(
             _ = &mut writer => {
                 shared.log(&bot.name, "warn", "websocket writer stopped; reconnecting");
                 break Ok(SessionEnd::Closed);
+            }
+            Some(joined) = async { Some(buying_in.as_mut()?.await) }, if buying_in.is_some() => {
+                buying_in = None;
+                // A panicked task is a failed prepare: log it and queue the join again.
+                let prepared = joined.unwrap_or_else(|e| {
+                    shared.log(&bot.name, "warn", format!("buy-in preparation failed: {e}"));
+                    None
+                });
+                // The prepare can take many seconds; the operator may have paused or stopped the bot, or a leave may be queued, meanwhile.
+                let still_wanted = shared.bots[slot].read().desired == "run" && !seat.leaving();
+                match prepared {
+                    Some(_) if !still_wanted => shared.log(&bot.name, "info", "join skipped: the bot was paused or is leaving while the buy-in was prepared"),
+                    Some(buy_in) if tracker.table_id.is_none() => {
+                        conn.send(json!({"type": "join_lobby", "buy_in": buy_in}));
+                        conn.send(json!({"type": "set_auto_rebuy", "enabled": true}));
+                        shared.log(&bot.name, "info", format!("joining lobby with buy-in {buy_in}"));
+                    }
+                    Some(_) => shared.log(&bot.name, "info", "seated while the buy-in was prepared; join skipped"),
+                    None => {
+                        seat.pending_join = true;
+                        last_join = Some(Instant::now() + Duration::from_secs(52));
+                    }
+                }
             }
             frame = read.next() => {
                 let Some(frame) = frame else { break Ok(SessionEnd::Closed) };
@@ -336,22 +365,19 @@ async fn session(
                 }
                 // Back off repeated joins (e.g. during season wind-down) instead of hammering the lobby.
                 let join_gap = Duration::from_secs((8u64 << (join_attempts / 3).min(4)).min(120));
-                if desired == "run" && seat.pending_join && last_join.map(|t| t.elapsed() > join_gap).unwrap_or(true) {
+                if desired == "run" && seat.pending_join && buying_in.is_none() && last_join.map(|t| t.elapsed() > join_gap).unwrap_or(true) {
                     last_join = Some(Instant::now());
                     join_attempts += 1;
                     seat.pending_join = false;
-                    if let Some(buy_in) = prepare_buy_in(http, shared, slot, bot).await {
-                        conn.send(json!({"type": "join_lobby", "buy_in": buy_in}));
-                        conn.send(json!({"type": "set_auto_rebuy", "enabled": true}));
-                        shared.log(&bot.name, "info", format!("joining lobby with buy-in {buy_in}"));
-                    } else {
-                        seat.pending_join = true;
-                        last_join = Some(Instant::now() + Duration::from_secs(52));
-                    }
+                    let (http, shared, bot) = (http.clone(), shared.clone(), bot.clone());
+                    buying_in = Some(tokio::spawn(async move { prepare_buy_in(&http, &shared, slot, &bot).await }));
                 }
             }
         }
     };
+    if let Some(task) = buying_in {
+        task.abort();
+    }
     writer.abort();
     result
 }

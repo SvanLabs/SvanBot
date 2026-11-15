@@ -1,6 +1,7 @@
 //! The bot's turn authority: whether a turn still owes an answer, and the two per-hand recovery
 //! budgets. It outlives one connection — the reconnect loop keeps it, as the dashboard state did —
-//! so a reconnect cannot re-answer a turn the writer already accepted or reopen a spent budget. The
+//! so a reconnect cannot reopen a spent budget; what a *dead* connection queued is forgotten
+//! ([`TurnAuthority::session_ended`]), because queued is not written. The
 //! pending missing-state wait is per connection and stays on [`Seat`](super::Seat).
 
 use super::*;
@@ -45,6 +46,18 @@ impl TurnAuthority {
     pub(super) fn rejected(&mut self) {
         self.last_hand = None;
         self.last_token = None;
+    }
+
+    /// A connection ended. `Conn::send` is true once a frame is queued, not written, so an action
+    /// "answered" on a connection that died may never have reached the server: record nothing from
+    /// it. The reconnect's resync restores the turn only if the server still holds it unanswered, and
+    /// then it must be answered again; an accepted action leaves nothing to restore. The missing-state
+    /// claim is per connection for the same reason. The rejection budget stays: it bounds a loop that
+    /// spans connections (1013).
+    pub(super) fn session_ended(&mut self) {
+        self.rejected();
+        self.last_seq = None;
+        self.missing_state = None;
     }
 
     /// Count a rejection in this hand and say whether one more resync is within the budget.
