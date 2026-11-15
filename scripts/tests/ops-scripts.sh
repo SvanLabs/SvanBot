@@ -48,3 +48,26 @@ done
 # stop.sh that saves every bot must not be killed by systemd half way.
 stop_budget=$(sed -n 's/^TimeoutStopSec=//p' "$repo/scripts/svanbot10.service")
 [ "$stop_budget" = 180 ] || fail "svanbot10.service TimeoutStopSec=$stop_budget, keepalive.service budgets 180"
+
+# 6. `start.sh --repair` refuses to start the other layout beside a live supervisor (#1028). The
+# layout is read from the environment each run, so a fleet started with SVANBOT_FLEET=split by hand
+# and repaired by the unit (which reads .env) would otherwise get a second set of database writers.
+layout_case() { # <name> <layout in .env> <pid file of the running supervisor>
+  local r="$t/$1" live
+  mkdir -p "$r/scripts" "$r/artifacts/logs" "$r/target/release" "$r/web/dist"
+  cp "$repo/scripts/start.sh" "$repo/scripts/supervisors.sh" "$r/scripts/"
+  printf '#!/usr/bin/env bash\necho "$0" >> artifacts/launches\nexec sleep 60\n' > "$r/target/release/sv10-bot"
+  chmod +x "$r/target/release/sv10-bot"
+  printf 'SVANBOT_FLEET=%s\nLEARNER=0\nANALYST=0\n' "$2" > "$r/.env"
+  (cd "$r" && exec sleep 60) & live=$!
+  pids+=("$live")
+  echo "$live" > "$r/artifacts/$3"
+  sleep .2
+  (cd "$r" && env -u SVANBOT_FLEET START_API_WAIT=1 SVANBOT_WEB_PORT=1 bash scripts/start.sh --repair >/dev/null 2>&1) || true
+  sleep .5
+  touch "$r/artifacts/stop.flag"
+  for f in "$r"/artifacts/*.pid; do pids+=("$(cat "$f")"); done
+  [ ! -e "$r/artifacts/launches" ] || fail "$1: --repair launched the $2 layout beside the live $3"
+}
+layout_case split-over-all split supervisor.pid
+layout_case all-over-split all head-supervisor.pid

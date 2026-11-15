@@ -29,6 +29,22 @@ set -a; [ ! -f .env ] || source .env; set +a
 [ -z "$caller_fleet" ] || export SVANBOT_FLEET="$caller_fleet"
 [ -z "$caller_learner" ] || export LEARNER="$caller_learner"
 [ -z "$caller_analyst" ] || export ANALYST="$caller_analyst"
+# The layout is read fresh each run, so a repair that disagrees with the running fleet would start
+# a second set of database writers beside it. Refuse rather than guess which layout is meant (#1028).
+if [ "$repair" = 1 ]; then
+  other=
+  if [ "${SVANBOT_FLEET:-all}" = split ]; then
+    pid_alive artifacts/supervisor.pid && other=artifacts/supervisor.pid
+  else
+    for file in artifacts/head-supervisor.pid artifacts/worker-*-supervisor.pid; do
+      if pid_alive "$file"; then other=$file; break; fi
+    done
+  fi
+  if [ -n "$other" ]; then
+    echo "Repair refused: SVANBOT_FLEET=${SVANBOT_FLEET:-all} here, but the other layout's supervisor is alive ($other). Restart the fleet instead." >&2
+    exit 0
+  fi
+fi
 # start.sh never builds: only scripts/release.sh writes target/release (LESSONS 31), and a start that
 # needs a release to pass stays down when the gate fails (#790). sv10-bot is essential; a missing
 # supporting tool is skipped with a warning.
