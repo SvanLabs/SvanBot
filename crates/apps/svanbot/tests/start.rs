@@ -52,3 +52,15 @@ fn without_a_store_it_does_not_start_because_an_incident_must_be_kept() {
     assert_eq!(code, Some(2));
     assert!(stderr.contains("store"), "{stderr}");
 }
+
+#[test]
+fn the_download_needs_the_bot_s_own_key() {
+    let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
+        .arg("download")
+        .env_clear()
+        .env("SVANBOT_NAME", "SurSvan")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("SVANBOT_API_KEY"));
+}

@@ -34,6 +34,16 @@ CREATE TRIGGER IF NOT EXISTS hands_no_update BEFORE UPDATE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS hands_no_delete BEFORE DELETE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
+CREATE TABLE IF NOT EXISTS downloads (
+    id          INTEGER PRIMARY KEY,
+    recorded_ms INTEGER NOT NULL,
+    -- The hand history offset read up to.
+    offset      INTEGER NOT NULL CHECK (offset >= 0)
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS downloads_no_update BEFORE UPDATE ON downloads
+    BEGIN SELECT RAISE(ABORT, 'downloads are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS downloads_no_delete BEFORE DELETE ON downloads
+    BEGIN SELECT RAISE(ABORT, 'downloads are append-only'); END;
 CREATE TABLE IF NOT EXISTS incidents (
     id          INTEGER PRIMARY KEY,
     recorded_ms INTEGER NOT NULL,
@@ -147,6 +157,26 @@ impl Store {
             ],
         )?;
         Ok(added == 1)
+    }
+
+    /// The hand history offset the last download reached, 0 before the first.
+    pub fn download_offset(&self) -> Result<u64, StoreError> {
+        let offset: i64 = self.db.query_row(
+            "SELECT COALESCE(MAX(offset), 0) FROM downloads",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(u64::try_from(offset).unwrap_or(0))
+    }
+
+    /// Records that the hand history has been read up to `offset`.
+    pub fn record_download(&self, offset: u64, recorded_ms: i64) -> Result<(), StoreError> {
+        let offset = i64::try_from(offset).map_err(|e| StoreError(e.to_string()))?;
+        self.db.execute(
+            "INSERT INTO downloads (recorded_ms, offset) VALUES (?1, ?2)",
+            params![recorded_ms, offset],
+        )?;
+        Ok(())
     }
 
     /// Every kept hand, in the order it was kept. Each frame comes back as compact JSON.

@@ -16,6 +16,7 @@
 )]
 
 pub mod client;
+pub mod download;
 pub mod history;
 pub mod limit;
 pub mod lines;
