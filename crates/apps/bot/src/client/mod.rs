@@ -261,6 +261,9 @@ async fn session(
     // Outcome watchdog: traffic without completed hands (stuck table, empty table) also re-queues.
     let mut hands_seen = shared.bots[slot].read().session_hands;
     let mut hands_changed = Instant::now();
+    // The join's REST calls and sleeps run beside the loop (1013): inline they held the read of
+    // every frame, `your_turn` included, for as long as /season/me and the rebuy took.
+    let mut buying_in: Option<tokio::task::JoinHandle<Option<i64>>> = None;
     let result = loop {
         let recovery_deadline = seat.turn.as_ref().map(|turn| turn.deadline);
         tokio::select! {
@@ -272,6 +275,21 @@ async fn session(
             _ = &mut writer => {
                 shared.log(&bot.name, "warn", "websocket writer stopped; reconnecting");
                 break Ok(SessionEnd::Closed);
+            }
+            Some(prepared) = async { buying_in.as_mut()?.await.ok() }, if buying_in.is_some() => {
+                buying_in = None;
+                match prepared {
+                    Some(buy_in) if tracker.table_id.is_none() => {
+                        conn.send(json!({"type": "join_lobby", "buy_in": buy_in}));
+                        conn.send(json!({"type": "set_auto_rebuy", "enabled": true}));
+                        shared.log(&bot.name, "info", format!("joining lobby with buy-in {buy_in}"));
+                    }
+                    Some(_) => shared.log(&bot.name, "info", "seated while the buy-in was prepared; join skipped"),
+                    None => {
+                        seat.pending_join = true;
+                        last_join = Some(Instant::now() + Duration::from_secs(52));
+                    }
+                }
             }
             frame = read.next() => {
                 let Some(frame) = frame else { break Ok(SessionEnd::Closed) };
@@ -338,22 +356,19 @@ async fn session(
                 }
                 // Back off repeated joins (e.g. during season wind-down) instead of hammering the lobby.
                 let join_gap = Duration::from_secs((8u64 << (join_attempts / 3).min(4)).min(120));
-                if desired == "run" && seat.pending_join && last_join.map(|t| t.elapsed() > join_gap).unwrap_or(true) {
+                if desired == "run" && seat.pending_join && buying_in.is_none() && last_join.map(|t| t.elapsed() > join_gap).unwrap_or(true) {
                     last_join = Some(Instant::now());
                     join_attempts += 1;
                     seat.pending_join = false;
-                    if let Some(buy_in) = prepare_buy_in(http, shared, slot, bot).await {
-                        conn.send(json!({"type": "join_lobby", "buy_in": buy_in}));
-                        conn.send(json!({"type": "set_auto_rebuy", "enabled": true}));
-                        shared.log(&bot.name, "info", format!("joining lobby with buy-in {buy_in}"));
-                    } else {
-                        seat.pending_join = true;
-                        last_join = Some(Instant::now() + Duration::from_secs(52));
-                    }
+                    let (http, shared, bot) = (http.clone(), shared.clone(), bot.clone());
+                    buying_in = Some(tokio::spawn(async move { prepare_buy_in(&http, &shared, slot, &bot).await }));
                 }
             }
         }
     };
+    if let Some(task) = buying_in {
+        task.abort();
+    }
     writer.abort();
     result
 }

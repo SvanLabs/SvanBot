@@ -352,6 +352,13 @@ async fn an_action_lost_to_a_dead_writer_is_not_marked_answered() {
     let conn = Conn { out: tx };
     rig.feed(&conn, turn("t9")).await;
     assert_eq!(actions(&mut rx).len(), 1);
+    // The rows are written off the read loop (1013): wait for the job to land them.
+    for _ in 0..100 {
+        if !rig.shared.store.decisions_for_hand("A", "h1").unwrap().is_empty() && !rig.shared.store.audit_batch(10).unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     assert_eq!(rig.shared.store.decisions_for_hand("A", "h1").unwrap().len(), 1);
     assert_eq!(rig.shared.store.audit_batch(10).unwrap().len(), 1);
     assert_eq!(rig.tracker.pending_calibration.len(), 1);

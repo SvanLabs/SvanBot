@@ -117,6 +117,18 @@ pub(super) async fn prepare_buy_in(http: &reqwest::Client, shared: &Shared, slot
 mod tests {
     use super::*;
 
+    /// 1013: `prepare_buy_in` sleeps up to 8 s and makes up to six 20 s REST calls. Awaited inside
+    /// the session's select loop it holds every frame, `your_turn` included, for that long; it runs
+    /// as a spawned task whose result the loop picks up.
+    #[test]
+    fn the_buy_in_is_prepared_beside_the_read_loop() {
+        let source = include_str!("mod.rs");
+        let body = source.split("#[cfg(test)]").next().unwrap();
+        assert!(!body.contains("prepare_buy_in(http, shared, slot, bot).await"), "the join must not be awaited in the loop");
+        assert!(body.contains("tokio::spawn(async move { prepare_buy_in("), "the join runs as its own task");
+        assert!(body.contains("seated while the buy-in was prepared"), "a seat taken meanwhile must not be joined over");
+    }
+
     #[test]
     fn buy_in_plan_defers_to_a_scheduled_auto_rebuy() {
         let now = Instant::now();

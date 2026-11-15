@@ -437,7 +437,7 @@ mod tests {
             latency: 5.0,
             detail: "{}".into(),
         };
-        let started = std::time::Instant::now();
+        let started = Instant::now();
         queue_rows(&shared, "A", vec![row]);
         assert!(started.elapsed() < Duration::from_millis(100), "queueing must not wait for the lock: {:?}", started.elapsed());
         tokio::time::sleep(Duration::from_millis(300)).await;
