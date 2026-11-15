@@ -8,6 +8,8 @@
 //! - `SVANBOT_ROSTER`: every name of every bot the owner has registered, aliases included, comma
 //!   separated. Fair play needs it, so the bot will not start without it.
 //! - `SVANBOT_URL`: the venue's WebSocket URL, `wss://openpoker.ai/ws` unless set.
+//! - `SVANBOT_STORE`: the bot's store, `~/.local/share/svanbot/<name>.db` unless set. Every hand
+//!   and every fair-play incident is kept there, so the bot will not start without it.
 //!
 //! An app does I/O, so it turns off the `clippy.toml` bans here, once (ADR 0003).
 #![allow(
@@ -16,11 +18,12 @@
     clippy::disallowed_macros
 )]
 
+use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use svanbot_runtime::client::{ClientError, Config, VENUE, fresh_seed, play};
-use svanbot_runtime::session::Session;
+use svanbot_runtime::client::{Bot, ClientError, Config, Event, VENUE, fresh_seed, play};
+use svanbot_runtime::store::{Source, Store};
 use svanbot_strategy::pricer::{Budget, decide};
 
 /// Deals sampled per decision: a small cost next to the 45 s action clock. `/measure` will size it.
@@ -37,13 +40,20 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    let store = match open_store(&config.me) {
+        Ok(store) => store,
+        Err(why) => {
+            eprintln!("svanbot: {why}");
+            return ExitCode::from(2);
+        }
+    };
     eprintln!("svanbot: {} connects to {}", config.me, config.url);
-    let mut session = Session::new(&config.me, config.roster.iter().cloned());
+    let mut bot = Bot::new(&config);
     let mut backoff = Duration::from_secs(1);
     loop {
         let ended = play(
             &config,
-            &mut session,
+            &mut bot,
             |spot| {
                 let budget = Budget {
                     samples: SAMPLES,
@@ -51,7 +61,7 @@ fn main() -> ExitCode {
                 };
                 decide(spot, budget).action
             },
-            |incident| eprintln!("svanbot: FAIR-PLAY INCIDENT: {incident:?}"),
+            |event| keep(&store, event),
         );
         match ended {
             Ok(()) => {
@@ -67,6 +77,44 @@ fn main() -> ExitCode {
         std::thread::sleep(backoff);
         backoff = (backoff * 2).min(MAX_BACKOFF);
     }
+}
+
+/// Keeps a finished hand or an incident. A store failure is reported and play goes on: the next
+/// decision does not wait on the disk.
+fn keep(store: &Store, event: Event<'_>) {
+    let kept = match event {
+        Event::Incident(incident) => {
+            eprintln!("svanbot: FAIR-PLAY INCIDENT: {incident:?}");
+            store.append_incident(incident, now_ms())
+        }
+        Event::Hand(hand) => store.append_hand(&hand, Source::Live, now_ms()).map(|_| ()),
+    };
+    if let Err(error) = kept {
+        eprintln!("svanbot: NOT KEPT: {error}");
+    }
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+        })
+}
+
+fn open_store(me: &str) -> Result<Store, String> {
+    let path = match std::env::var_os("SVANBOT_STORE") {
+        Some(path) => PathBuf::from(path),
+        None => {
+            let home = std::env::var_os("HOME").ok_or("set SVANBOT_STORE or HOME for the store")?;
+            PathBuf::from(home).join(format!(".local/share/svanbot/{me}.db"))
+        }
+    };
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("store: cannot make {}: {e}", dir.display()))?;
+    }
+    Store::open(&path).map_err(|e| format!("{e} at {}", path.display()))
 }
 
 fn config_from_env() -> Result<Config, String> {

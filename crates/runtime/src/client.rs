@@ -3,7 +3,8 @@
 //! It connects to `wss://openpoker.ai/ws` with the bot's key as a bearer token, reads frames,
 //! hands each to the session, and sends what the session answers. [`play`] runs one connection
 //! until it closes. Reconnecting, with a backoff, is the caller's choice: it passes the same
-//! session back in, so the session resyncs the table it sits at.
+//! [`Bot`] back in, so the session resyncs the table it sits at and the recorder finishes the
+//! hand it was gathering.
 
 use std::fmt;
 
@@ -15,6 +16,7 @@ use tungstenite::http::header::AUTHORIZATION;
 use tungstenite::{Message, WebSocket};
 
 use crate::limit::Limiter;
+use crate::record::{Hand, Recorder};
 use crate::session::{Incident, Session};
 use crate::wire::{self, Inbound, Outbound};
 
@@ -73,13 +75,39 @@ impl From<tungstenite::Error> for ClientError {
     }
 }
 
+/// What a connection tells its caller, besides the moves it plays.
+#[derive(Debug)]
+pub enum Event<'a> {
+    /// A fair-play incident the session raised.
+    Incident(&'a Incident),
+    /// A hand the recorder finished.
+    Hand(Hand),
+}
+
+/// What a bot carries from one connection to the next.
+#[derive(Clone, Debug)]
+pub struct Bot {
+    pub session: Session,
+    pub recorder: Recorder,
+}
+
+impl Bot {
+    /// A bot with nothing seen yet.
+    pub fn new(config: &Config) -> Self {
+        Self {
+            session: Session::new(&config.me, config.roster.iter().cloned()),
+            recorder: Recorder::default(),
+        }
+    }
+}
+
 /// Plays one connection until the venue closes it. `decide` is asked at each of our turns;
-/// `on_incident` hears every fair-play incident the session raises.
+/// `on_event` hears every incident and every finished hand.
 pub fn play(
     config: &Config,
-    session: &mut Session,
+    bot: &mut Bot,
     mut decide: impl FnMut(&Spot) -> Action,
-    mut on_incident: impl FnMut(&Incident),
+    mut on_event: impl FnMut(Event<'_>),
 ) -> Result<(), ClientError> {
     let mut request = config
         .url
@@ -108,8 +136,11 @@ pub fn play(
                 continue;
             }
         };
+        if let Some(hand) = bot.recorder.record(text.as_str(), &frame) {
+            on_event(Event::Hand(hand));
+        }
         let outbound = match &frame.inbound {
-            Inbound::Connected { .. } => session.on_connect(),
+            Inbound::Connected { .. } => bot.session.on_connect(),
             Inbound::Error { code, .. } if code == "auth_failed" => {
                 return Err(ClientError::AuthFailed);
             }
@@ -117,8 +148,10 @@ pub fn play(
                 if let Inbound::Error { code, .. } = inbound {
                     eprintln!("svanbot: the venue reported {code}");
                 }
-                let step = session.on_frame(frame, |spot| decide(spot));
-                step.incidents.iter().for_each(&mut on_incident);
+                let step = bot.session.on_frame(frame, |spot| decide(spot));
+                for incident in &step.incidents {
+                    on_event(Event::Incident(incident));
+                }
                 step.send
             }
         };

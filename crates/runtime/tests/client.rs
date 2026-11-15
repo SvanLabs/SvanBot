@@ -8,8 +8,7 @@ use std::thread;
 
 use serde_json::{Value, json};
 use svanbot_core::rules::Action;
-use svanbot_runtime::client::{Config, play};
-use svanbot_runtime::session::Session;
+use svanbot_runtime::client::{Bot, Config, Event, play};
 use tungstenite::Message;
 use tungstenite::handshake::server::{Request, Response};
 
@@ -78,12 +77,15 @@ fn it_authenticates_joins_and_answers_its_turn() {
         me: "SurSvan".into(),
         roster: vec!["Svanar".into(), "SurSvan".into()],
     };
-    let mut session = Session::new(&config.me, config.roster.iter().cloned());
+    let mut bot = Bot::new(&config);
     let ended = play(
         &config,
-        &mut session,
+        &mut bot,
         |_| Action::RaiseTo(60),
-        |incident| panic!("{incident:?}"),
+        |event| match event {
+            Event::Incident(incident) => panic!("{incident:?}"),
+            Event::Hand(hand) => panic!("the hand never ended: {hand:?}"),
+        },
     );
     let (bearer, joined, action) = venue.join().unwrap();
     assert!(ended.is_ok(), "{ended:?}");
