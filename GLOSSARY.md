@@ -192,8 +192,7 @@ The one bot that plays live probes and takes every update and promotion first.
 _Avoid_: test bot, guinea pig
 
 **Probe**:
-A live experiment on the canary that compares the champion and one challenger, with arms assigned
-at random per orbit.
+A live experiment on the canary that compares the champion with one challenger.
 _Avoid_: experiment pair, trial, A/B test
 
 **Arm**:
@@ -215,8 +214,7 @@ rest of the fleet.
 _Avoid_: rollout, upgrade, merge
 
 **Ship bar**:
-What a release must clear before the fleet plays it: a paired sim win over the current champion, no
-loss to any sparring archetype, a clean canary run, and the operator's approval.
+The evidence a release must show, and the approval it needs, before the fleet plays it.
 _Avoid_: release criteria, gate (the gate is for changes, the ship bar for releases)
 
 ### Running it

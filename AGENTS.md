@@ -37,7 +37,8 @@ cannot hold a `v11/…` branch beside the `v11` branch.
 
 ## On this box
 
-- Build into `target/dev`. The live fleet runs from `target/release`.
+- Build with `CARGO_TARGET_DIR=target/dev`, in this clone. The checkout that the live fleet runs from is never
+  built in or edited.
 - Run one build at a time at low priority, with
   `nice -n 15 ionice -c3 cargo … -j4`. Concurrent builds have OOM-killed the fleet.
 - The repo is public. Keys, `.env` contents, opponent data and store contents stay out of it: out
