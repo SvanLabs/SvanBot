@@ -35,3 +35,20 @@ fn without_the_roster_it_does_not_start() {
     assert_eq!(code, Some(2));
     assert!(stderr.contains("SVANBOT_ROSTER"), "{stderr}");
 }
+
+#[test]
+fn without_a_store_it_does_not_start_because_an_incident_must_be_kept() {
+    let (code, stderr) = run(&[
+        ("SVANBOT_NAME", "SurSvan"),
+        ("SVANBOT_API_KEY", "k"),
+        ("SVANBOT_ROSTER", "SurSvan,Svanar"),
+        (
+            "SVANBOT_STORE",
+            "/proc/svanbot-has-no-store-here/SurSvan.db",
+        ),
+        // Never reached: the store is opened before the venue is.
+        ("SVANBOT_URL", "ws://127.0.0.1:9/ws"),
+    ]);
+    assert_eq!(code, Some(2));
+    assert!(stderr.contains("store"), "{stderr}");
+}

@@ -25,6 +25,8 @@ publish = false
 svanbot-core = { path = "crates/core" }
 svanbot-sim = { path = "crates/sim" }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+# SQLite compiled in, so the box needs no system library and every machine runs the same one.
+rusqlite = { version = "0.43.0", default-features = false, features = ["bundled"] }
 serde_json = "1.0.154"
 svanbot-runtime = { path = "crates/runtime" }
 svanbot-strategy = { path = "crates/strategy" }
