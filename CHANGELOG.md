@@ -14,7 +14,10 @@ V11-00.
 - Workspace: six layers, `core` → `sim` → `strategy` → `learn` → `runtime` → `apps`, one crate per
   layer (ADR 0003). `clippy.toml` keeps I/O and the clock out of the pure layers, and
   `tools/layering.ts` checks the edges and the third-party crates.
-- Gate: `bun tools/gate.ts commit` runs fmt, the 500-line limit, the secret scan of staged changes,
-  provenance, the layering check and clippy. `bun tools/gate.ts full` adds the workspace tests and
-  the tool tests. Both build into `target/dev` at low priority. The hooks in `.githooks/` run the
-  commit tier and check each commit message.
+- Gate: `mise run commit` runs fmt, Biome, the 500-line limit, the secret scan of staged changes,
+  provenance, the layering check and clippy. `mise run full` adds nextest, the doc tests, `tsc`
+  and the tool tests. Both build into `target/dev` at low priority. The hooks in `.githooks/` run
+  the commit tier and check each commit message.
+- Tools: `mise.toml` pins Rust 1.100.0, Bun 1.4.4, nextest 0.9.152 and Biome 2.6.7, and
+  `tools/package.json` pins TypeScript 7.0.2 and `@types/bun` 1.4.4, each the latest stable
+  release on 2026-11-15. `mise run setup` installs them all.

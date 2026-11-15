@@ -8,7 +8,8 @@ const ghToken = `ghp_${"a1".repeat(18)}`;
 function diff(path: string, added: string[], firstLine = 1, removed: string[] = []): string {
   const hunk = `@@ -1,${removed.length} +${firstLine},${added.length} @@`;
   const lines = [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, hunk];
-  return [...lines, ...removed.map((l) => `-${l}`), ...added.map((l) => `+${l}`)].join("\n") + "\n";
+  const body = [...lines, ...removed.map((l) => `-${l}`), ...added.map((l) => `+${l}`)];
+  return `${body.join("\n")}\n`;
 }
 
 test("a token on an added line is reported by its file and line, never by its value", () => {

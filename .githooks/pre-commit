@@ -1,4 +1,4 @@
 #!/bin/sh
-# The gate's commit tier (tools/gate.ts). Turn the hooks on once per clone:
-#   git config core.hooksPath .githooks
-exec bun tools/gate.ts commit
+# The gate's commit tier (tools/gate.ts), with the tools mise pins. `mise run setup` turns the
+# hooks on, once per clone.
+exec mise exec -- bun tools/gate.ts commit

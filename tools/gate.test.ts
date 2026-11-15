@@ -4,10 +4,12 @@ import { expect, test } from "bun:test";
 import { plan } from "./gate";
 
 const names = (tier: string) => plan(tier).map((step) => step.name);
+const step = (tier: string, name: string) => plan(tier).find((s) => s.name === name);
 
 test("the commit tier runs the fast checks first and clippy last", () => {
   expect(names("commit")).toEqual([
     "fmt",
+    "biome",
     "file-size",
     "secrets",
     "provenance",
@@ -16,15 +18,18 @@ test("the commit tier runs the fast checks first and clippy last", () => {
   ]);
 });
 
-test("the full tier adds the workspace tests and the tool tests", () => {
+test("the full tier adds the workspace tests, the type check and the tool tests", () => {
   expect(names("full")).toEqual([
     "fmt",
+    "biome",
     "file-size",
     "secrets",
     "provenance",
     "layering",
     "clippy",
-    "cargo-test",
+    "nextest",
+    "doc-test",
+    "tsc",
     "tools-test",
   ]);
 });
@@ -33,24 +38,51 @@ test("an unknown tier is refused", () => {
   expect(() => plan("nightly")).toThrow(/unknown tier "nightly"/);
 });
 
-test("cargo steps build into target/dev, at low priority, on four jobs", () => {
-  const cargoSteps = plan("full").filter((s) => s.name === "clippy" || s.name.startsWith("cargo"));
-  for (const step of cargoSteps) {
-    expect(step.env).toEqual({ CARGO_TARGET_DIR: "target/dev" });
-    expect(step.argv.slice(0, 4)).toEqual(["nice", "-n", "15", "ionice"]);
-    expect(step.argv).toContain("-j4");
+test("cargo builds into target/dev, at low priority, on four jobs", () => {
+  const lowPriority = ["nice", "-n", "15", "ionice", "-c3", "cargo"];
+  expect(step("full", "clippy")?.argv).toEqual([
+    ...lowPriority,
+    ...["clippy", "--workspace", "--all-targets", "-j4", "--", "-D", "warnings"],
+  ]);
+  expect(step("full", "doc-test")?.argv).toEqual([
+    ...lowPriority,
+    "test",
+    "--workspace",
+    "--doc",
+    "-j4",
+  ]);
+  // nextest's own -j is its test threads, so the build jobs take their long flag.
+  expect(step("full", "nextest")?.argv).toEqual([
+    ...lowPriority,
+    ...[
+      "nextest",
+      "run",
+      "--workspace",
+      "--no-tests=warn",
+      "--build-jobs",
+      "4",
+      "--test-threads",
+      "4",
+    ],
+  ]);
+  for (const name of ["clippy", "nextest", "doc-test"]) {
+    expect(step("full", name)?.env).toEqual({ CARGO_TARGET_DIR: "target/dev" });
   }
 });
 
 test("the tool checks run with the Bun that runs the gate", () => {
-  const argv = (name: string) => plan("commit").find((step) => step.name === name)?.argv;
-  expect(argv("file-size")).toEqual([process.execPath, "tools/file-size.ts"]);
-  expect(argv("secrets")).toEqual([process.execPath, "tools/secrets.ts"]);
-  expect(argv("provenance")).toEqual([process.execPath, "tools/provenance.ts"]);
-  expect(argv("layering")).toEqual([process.execPath, "tools/layering.ts"]);
+  expect(step("commit", "file-size")?.argv).toEqual([process.execPath, "tools/file-size.ts"]);
+  expect(step("commit", "secrets")?.argv).toEqual([process.execPath, "tools/secrets.ts"]);
+  expect(step("commit", "provenance")?.argv).toEqual([process.execPath, "tools/provenance.ts"]);
+  expect(step("commit", "layering")?.argv).toEqual([process.execPath, "tools/layering.ts"]);
+  expect(step("full", "tools-test")?.argv).toEqual([process.execPath, "test", "tools"]);
 });
 
-test("fmt checks the formatting without building", () => {
-  const fmt = { name: "fmt", argv: ["cargo", "fmt", "--all", "--check"], env: {} };
-  expect(plan("commit")[0]).toEqual(fmt);
+test("fmt, biome and tsc check without building or writing", () => {
+  const checks = ["fmt", "biome", "tsc"].map((name) => step("full", name));
+  expect(checks).toEqual([
+    { name: "fmt", argv: ["cargo", "fmt", "--all", "--check"], env: {} },
+    { name: "biome", argv: ["biome", "check", "tools"], env: {} },
+    { name: "tsc", argv: ["tools/node_modules/.bin/tsc", "-p", "tools"], env: {} },
+  ]);
 });
