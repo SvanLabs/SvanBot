@@ -34,6 +34,11 @@ dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 
+# Line tables are enough for a backtrace with file and line, and they cut the debug info that fills
+# target/ (tools/disk.ts reports its budget). Tests inherit this profile.
+[profile.dev]
+debug = "line-tables-only"
+
 # The third-party crates a pure layer (core, sim, strategy, learn) may take, each with its reason.
 # `tools/layering.ts` rejects any other. A crate earns a place here only if it does no I/O, reads no
 # clock and keeps results the same for the same inputs.

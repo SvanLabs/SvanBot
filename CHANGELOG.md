@@ -24,3 +24,5 @@ V11-00.
 - CI: `.github/workflows/check.yml` runs the commit tier, the test tier and cargo-deny side by side
   on every pull request into `v11`, with the tools mise pins and our own crates cached. Every
   action is pinned to a commit.
+- Disk: the dev profile keeps line tables only, and the full tier ends by reporting `target/`
+  against a 9 GiB budget, failing over it.

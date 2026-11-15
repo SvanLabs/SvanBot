@@ -18,7 +18,7 @@ test("the commit tier runs the fast checks first and clippy last", () => {
   ]);
 });
 
-test("the full tier adds the workspace tests, the type check and the tool tests", () => {
+test("the full tier adds the tests and the type check, then reports the disk budget", () => {
   expect(names("full")).toEqual([
     "fmt",
     "biome",
@@ -31,7 +31,9 @@ test("the full tier adds the workspace tests, the type check and the tool tests"
     "doc-test",
     "tsc",
     "tools-test",
+    "disk",
   ]);
+  expect(step("full", "disk")?.argv).toEqual([process.execPath, "tools/disk.ts"]);
 });
 
 test("the test tier is the full tier's tests alone, so CI can run it beside the commit tier", () => {
