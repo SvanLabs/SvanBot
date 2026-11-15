@@ -75,6 +75,19 @@ pub fn lane_inputs(store: &Store, lane: &Lane) -> (Params, ModelStore, Option<Ar
     (sc.champion, sc.models, nn)
 }
 
+/// What a ledger entry was measured against: the frozen stack fixture and the live response net the
+/// villains were priced with. A different net prices them differently, so a measurement taken
+/// under another one is not evidence about this one (#1014). The net is read at each use, not frozen
+/// with the run, because a promotion of the response model can land between two steps.
+pub(super) fn evaluation(store: &Store, run: &SearchRun) -> String {
+    let net = store.get_kv(NN_KEY).ok().flatten().and_then(|j| serde_json::from_str::<StoredNet>(&j).ok());
+    let live = neural::active_response_net(net).map(|n| serde_json::to_string(&*n).unwrap_or_default());
+    match live {
+        Some(json) => format!("{}+net-{}", run.stacks.digest, run::digest(&json)),
+        None => run.stacks.digest.clone(),
+    }
+}
+
 /// Everything a stage needs within one step.
 struct Env<'a> {
     ctx: &'a Ctx<'a>,

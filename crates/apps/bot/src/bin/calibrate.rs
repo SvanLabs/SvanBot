@@ -32,14 +32,13 @@ fn main() -> Result<()> {
                 .filter(|(_, h)| h.board.len() == 5 && !h.shown.is_empty()),
         );
     }
-    for bot in &fleet {
-        for row in store.recent_fit_hands(bot, 1_000_000)? {
-            if let Ok(h) = serde_json::from_str::<HandSummary>(&row.summary)
-                && h.board.len() == 5
-                && !h.shown.is_empty()
-            {
-                hands.push((row.ended_at, h));
-            }
+    // Each hand once: two of our seats at a table store the same hand_id.
+    for row in store.recent_fit_hands_of(&fleet, 1_000_000)? {
+        if let Ok(h) = serde_json::from_str::<HandSummary>(&row.summary)
+            && h.board.len() == 5
+            && !h.shown.is_empty()
+        {
+            hands.push((row.ended_at, h));
         }
     }
     hands.sort_by(|a, b| a.0.cmp(&b.0));
