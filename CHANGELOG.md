@@ -14,3 +14,5 @@ V11-00.
 - Workspace: six layers, `core` → `sim` → `strategy` → `learn` → `runtime` → `apps`, one crate per
   layer (ADR 0003). `clippy.toml` keeps I/O and the clock out of the pure layers, and
   `tools/layering.ts` checks the edges and the third-party crates.
+- Gate: `bun tools/gate.ts commit` runs the layering check and clippy, and `bun tools/gate.ts full`
+  adds the workspace tests and the tool tests. Both build into `target/dev` at low priority.
