@@ -474,7 +474,7 @@ pub fn aggressive_likelihood(sit: &Situation, prof: &Profile, to: i64, range: &R
             0 => prof.open_raise * position_open_factor(pos),
             1 => prof.three_bet,
             _ => (prof.four_bet * prof.three_bet * 4.0).max(0.02),
-        };
+        } * rp.raise_width;
         // Shoves and oversized raises come from a tighter range.
         let normal = match raises {
             0 => 2.5 * bb,

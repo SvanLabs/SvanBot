@@ -193,16 +193,20 @@ fn bar_order(a: f32, b: f32) -> std::cmp::Ordering {
 }
 
 /// Fraction of hands (top-x) an opponent attributes to hero raising preflop to `to`.
-pub fn preflop_raise_fraction(sit: &Situation, prof: &Profile, to: i64) -> f32 {
+pub fn preflop_raise_fraction(sit: &Situation, prof: &Profile, to: i64, rp: &RangeParams) -> f32 {
     let cur = sit.current_bet();
     let raises = sit.history.iter().filter(|r| r.street == Street::Preflop && aggressive(r)).count();
     let pos = sit.position_of(sit.hero_seat);
     let bb = sit.bb as f64;
+    // The same fitted raise width the replay removes hands from a raiser's range with
+    // (`replay_ranges`): a profile rate is what this player raises with in a *full* range, and
+    // what the range says is the width of that raising part. Reading one and not the other makes
+    // the perception disagree with itself the moment the fit moves off 1.0 (1011).
     let mut frac = match raises {
         0 => prof.open_raise * position_open_factor(pos),
         1 => prof.three_bet,
         _ => (prof.four_bet * prof.three_bet * 4.0).max(0.02),
-    };
+    } * rp.raise_width;
     let normal = match raises {
         0 => 2.5 * bb,
         1 => cur as f64 * 3.3,

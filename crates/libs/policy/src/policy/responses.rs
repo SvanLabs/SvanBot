@@ -181,7 +181,7 @@ impl<'a> ResponsePricing<'a> {
         let (model_continue, mut continue_range) = if self.sit.street == Street::Preflop {
             villain_continue_preflop(
                 responder.range,
-                preflop_raise_fraction(self.sit, &self.hero_view, to),
+                preflop_raise_fraction(self.sit, &self.hero_view, to, &self.params.range),
                 need,
                 (1.0 - profile_fold) as f32,
             )
