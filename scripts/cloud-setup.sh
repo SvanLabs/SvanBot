@@ -12,21 +12,38 @@ log() { echo "cloud-setup: $*" >&2; }
 ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit 2>/dev/null || log "could not link the pre-commit hook"
 mkdir -p artifacts/logs artifacts/backups
 
-if ! command -v cargo-deny >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; then
-  if [ "$(uname -m)" != x86_64 ]; then
-    cargo install --locked cargo-deny || log "cargo-deny source install failed"
-  else
-  tag=$(curl -fsSL https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/latest 2>/dev/null |
-    sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
-  if [ -n "$tag" ]; then
-    name="cargo-deny-${tag}-x86_64-unknown-linux-musl"
-    mkdir -p "$HOME/.cargo/bin"
-    curl -fsSL "https://github.com/EmbarkStudios/cargo-deny/releases/download/${tag}/${name}.tar.gz" |
-      tar -xz -C "$HOME/.cargo/bin" --strip-components=1 "${name}/cargo-deny" 2>/dev/null ||
-      log "cargo-deny download failed; install with: cargo install --locked cargo-deny"
-  else
-    log "cargo-deny release lookup failed; install with: cargo install --locked cargo-deny"
+# The gate cannot run without cargo-deny. A failed download used to be logged and the run carried
+# on, so the setup step went green and the gate failed later with a bare `no such command: deny`
+# (2026-11-13, PR #992). Fall back to building it, then refuse to finish without it.
+if ! command -v cargo-deny >/dev/null 2>&1; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    log "cargo-deny and cargo are both missing: the gate cannot run"
+    exit 1
   fi
+  installed=0
+  if [ "$(uname -m)" = x86_64 ]; then
+    tag=$(curl -fsSL https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/latest 2>/dev/null |
+      sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+    if [ -n "$tag" ]; then
+      name="cargo-deny-${tag}-x86_64-unknown-linux-musl"
+      mkdir -p "$HOME/.cargo/bin"
+      if curl -fsSL "https://github.com/EmbarkStudios/cargo-deny/releases/download/${tag}/${name}.tar.gz" |
+        tar -xz -C "$HOME/.cargo/bin" --strip-components=1 "${name}/cargo-deny"; then
+        installed=1
+      else
+        log "cargo-deny download failed; falling back to cargo install"
+      fi
+    else
+      log "cargo-deny release lookup failed; falling back to cargo install"
+    fi
+  fi
+  if [ "$installed" -eq 0 ]; then
+    log "building cargo-deny from source (a few minutes)"
+    cargo install --locked cargo-deny || true
+  fi
+  if ! command -v cargo-deny >/dev/null 2>&1; then
+    log "cargo-deny is still missing: the gate cannot run"
+    exit 1
   fi
 fi
 
