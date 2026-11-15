@@ -74,6 +74,9 @@ commit tier, the test tier and cargo-deny, side by side. A PR merges only when a
   built in or edited.
 - Run one build at a time at low priority, with
   `nice -n 15 ionice -c3 cargo … -j4`. Concurrent builds have OOM-killed the fleet.
+- The box runs v11 as systemd user units from `deploy/`, one `svanbot@<name>` per bot, and
+  `deploy/README.md` is their runbook. Never start one with a fleet bot's key while v10 plays: the
+  new connection takes over that bot's live session.
 - The repo is public. Keys, `.env` contents, opponent data and store contents stay out of it: out
   of code, logs, issues and PRs alike.
 
