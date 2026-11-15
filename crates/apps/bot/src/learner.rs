@@ -84,6 +84,10 @@ pub fn status(store: &Store, mut v: Value) {
 pub fn push_experiment(store: &Store, e: Value) {
     if let Err(e) = store.update_kv(crate::LEARNER_EXPERIMENTS_KEY, |old| {
         let mut list: Vec<Value> = old.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
+        // A step the learner re-runs after a kill writes the same card again: one id, one card.
+        if let Some(id) = e.get("id").and_then(Value::as_str) {
+            list.retain(|c| c.get("id").and_then(Value::as_str) != Some(id));
+        }
         list.insert(0, e);
         list.truncate(40);
         Ok(serde_json::to_string(&list)?)
@@ -128,6 +132,17 @@ pub fn log_step(what: &str, took: std::time::Duration) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn an_experiment_card_pushed_again_replaces_itself() {
+        let shared = crate::live::Shared::for_test("push-again", &["A"]);
+        push_experiment(&shared.store, json!({"id": "c1-open_bb-0.5", "status": "rejected"}));
+        push_experiment(&shared.store, json!({"id": "c1-fold_scale-0.7", "status": "rejected"}));
+        push_experiment(&shared.store, json!({"id": "c1-open_bb-0.5", "status": "rejected"}));
+        let list: Vec<Value> = serde_json::from_str(&shared.store.get_kv(crate::LEARNER_EXPERIMENTS_KEY).unwrap().unwrap()).unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0]["id"], "c1-open_bb-0.5");
+    }
 
     #[test]
     fn concurrent_rollups_keep_every_count_and_experiment() {

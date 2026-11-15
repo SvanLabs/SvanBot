@@ -254,3 +254,30 @@ fn the_stack_fixture_is_frozen_at_the_evidence_epoch_not_at_the_search_start() {
     assert_eq!(super::stack_cutoff(1_600, 1_500), 1_500, "a new epoch is a new fixture");
     assert_eq!(super::stack_cutoff(300, 0), 300, "nothing is behind the first boundary yet");
 }
+
+#[test]
+fn a_new_live_response_net_retires_what_the_ledger_measured_against_the_old_one() {
+    let (dir, store) = store("ledger-net");
+    let ctx = ctx(&dir, &store);
+    let run = begin(&ctx, Lane::default(), 0, 0.0, 0).unwrap().unwrap();
+    let none = super::evaluation(&store, &run);
+    let live = crate::StoredNet {
+        net: sv10_core::nn::Mlp::new(crate::neural::SHAPE, 3),
+        active: true,
+        training_contract: crate::neural::RESPONSE_TRAINING_CONTRACT.into(),
+        paired_poker_approved: true,
+        val_loss: 0.5,
+        baseline_loss: 0.6,
+        train_samples: 2_000,
+        val_samples: 300,
+        trained_at: 1.0,
+    };
+    store.put_kv(crate::NN_KEY, &serde_json::to_string(&live).unwrap()).unwrap();
+    let first = super::evaluation(&store, &run);
+    assert_ne!(first, none, "an installed net is part of what was measured");
+    assert_eq!(first, super::evaluation(&store, &run), "the same net names the same evaluation");
+    let other = crate::StoredNet { net: sv10_core::nn::Mlp::new(crate::neural::SHAPE, 4), ..live };
+    store.put_kv(crate::NN_KEY, &serde_json::to_string(&other).unwrap()).unwrap();
+    assert_ne!(first, super::evaluation(&store, &run), "another net retires the measurements");
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -62,6 +62,11 @@ pub struct Bucket {
 pub struct Funnel {
     /// Hour index (`unix seconds / 3600`) to its bucket.
     pub buckets: BTreeMap<i64, Bucket>,
+    /// Tokens of the outcomes already counted through [`note_once`], with the hour each was counted
+    /// in, so a step that runs again after a kill does not count its candidates twice. Dropped with
+    /// the buckets they belong to.
+    #[serde(default)]
+    pub seen: BTreeMap<String, i64>,
 }
 
 impl Funnel {
@@ -84,6 +89,7 @@ impl Funnel {
     pub fn trim(&mut self, now: f64) {
         let oldest = hour(now) - KEEP_HOURS + 1;
         self.buckets.retain(|h, _| *h >= oldest);
+        self.seen.retain(|_, h| *h >= oldest);
     }
 
     /// The last [`WINDOW_HOURS`], ranked: `total` is every outcome counted, `outcomes` and `knobs`
@@ -130,6 +136,24 @@ pub fn note(store: &Store, key: &str, knob: Option<&str>, count: u32) {
     }
 }
 
+/// [`note`] once per `token`: a learner step killed after it counted and before its progress was
+/// saved runs again, and the second run must not count the same candidate a second time.
+pub fn note_once(store: &Store, token: &str, key: &str, knob: Option<&str>) {
+    let stored = store.update_kv(FUNNEL_KEY, |old| {
+        let mut funnel: Funnel = old.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
+        let ts = now();
+        if funnel.seen.contains_key(token) {
+            return Ok(serde_json::to_string(&funnel)?);
+        }
+        funnel.record(ts, key, knob, 1);
+        funnel.seen.insert(token.to_string(), hour(ts));
+        Ok(serde_json::to_string(&funnel)?)
+    });
+    if let Err(e) = stored {
+        tracing::warn!("search funnel not recorded ({e})");
+    }
+}
+
 /// The rollup as `training.search_funnel` for the dashboard.
 pub fn dashboard(store: &Store) -> Value {
     load(store).summary(now())
@@ -152,6 +176,16 @@ mod tests {
         assert_eq!(f.buckets[&100].knobs["open_bb"], 2);
         assert_eq!(f.buckets[&101].outcomes[BELOW_BAR], 3);
         assert!(f.buckets[&101].knobs.is_empty());
+    }
+
+    #[test]
+    fn an_outcome_noted_twice_under_one_token_counts_once() {
+        let shared = crate::live::Shared::for_test("funnel-once", &["A"]);
+        note_once(&shared.store, "c1:r0:open_bb:0.5", NO_EFFECT, Some("open_bb"));
+        note_once(&shared.store, "c1:r0:open_bb:0.5", NO_EFFECT, Some("open_bb"));
+        note_once(&shared.store, "c1:r0:fold_scale:0.7", NO_EFFECT, Some("fold_scale"));
+        let f = load(&shared.store);
+        assert_eq!(f.buckets.values().map(|b| b.outcomes[NO_EFFECT]).sum::<u32>(), 2);
     }
 
     #[test]

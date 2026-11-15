@@ -237,8 +237,7 @@ mod tests {
         b.bot = "B".into();
         s.insert_hand_tagged(&b, None).unwrap();
         s.insert_hand_tagged(&hand("h2", 5), None).unwrap();
-        let ids: Vec<String> =
-            s.recent_fit_hands_of(&["A".into(), "B".into()], 10).unwrap().into_iter().map(|h| h.hand_id).collect();
+        let ids: Vec<String> = s.recent_fit_hands_of(&["A".into(), "B".into()], 10).unwrap().into_iter().map(|h| h.hand_id).collect();
         assert_eq!(ids.iter().filter(|i| *i == "h1").count(), 1, "{ids:?}");
         assert_eq!(ids.len(), 2, "{ids:?}");
     }
