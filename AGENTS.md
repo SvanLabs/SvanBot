@@ -66,7 +66,7 @@ commit tier, the test tier and cargo-deny, side by side. A PR merges only when a
 - **Only legal actions reach the venue,** echoing the venue's hand and turn ids, inside the action
   clock.
 - **Fair play is absolute:** two stablemates never share a table. A shared hand is an incident.
-  Each bot's reads are its own.
+  Each bot's reads are its own, from its own store (`docs/adr/0004-reads-are-per-bot.md`).
 
 ## On this box
 

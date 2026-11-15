@@ -32,7 +32,7 @@ fn hand(id: &str) -> Hand {
 #[test]
 fn a_hand_is_kept_with_its_frames_once_and_survives_a_reopen() {
     let path = scratch("reopen").join("SurSvan.db");
-    let store = Store::open(&path).unwrap();
+    let store = Store::open(&path, "SurSvan").unwrap();
     assert!(
         store
             .append_hand(&hand("h-1"), Source::Live, 1_000)
@@ -48,7 +48,7 @@ fn a_hand_is_kept_with_its_frames_once_and_survives_a_reopen() {
         .append_hand(&hand("h-2"), Source::Live, 3_000)
         .unwrap();
     drop(store);
-    let store = Store::open(&path).unwrap();
+    let store = Store::open(&path, "SurSvan").unwrap();
     let hands = store.hands().unwrap();
     assert_eq!(hands, [hand("h-1"), hand("h-2")]);
     assert_eq!(store.journal_mode().unwrap(), "wal");
@@ -57,7 +57,7 @@ fn a_hand_is_kept_with_its_frames_once_and_survives_a_reopen() {
 #[test]
 fn a_hand_or_an_incident_cannot_be_changed_or_deleted() {
     let path = scratch("append-only").join("SurSvan.db");
-    let store = Store::open(&path).unwrap();
+    let store = Store::open(&path, "SurSvan").unwrap();
     store
         .append_hand(&hand("h-1"), Source::Live, 1_000)
         .unwrap();
@@ -84,7 +84,7 @@ fn a_hand_or_an_incident_cannot_be_changed_or_deleted() {
 
 #[test]
 fn every_incident_is_kept_in_order() {
-    let store = Store::open(&scratch("incidents").join("SurSvan.db")).unwrap();
+    let store = Store::open(&scratch("incidents").join("SurSvan.db"), "SurSvan").unwrap();
     let shared_table = Incident::SharedTable {
         table_id: "t-1".into(),
         stablemate: "Svanar".into(),
@@ -156,4 +156,17 @@ fn a_hand_that_ended_while_away_is_closed_by_the_resync_that_replays_its_result(
     .to_string();
     let hand = recorder.record(&resync, &parse_frame(&resync).unwrap());
     assert_eq!(hand.map(|hand| hand.frames.len()), Some(2));
+}
+
+#[test]
+fn a_store_belongs_to_one_bot_and_refuses_any_other() {
+    let path = scratch("one-bot").join("SurSvan.db");
+    drop(Store::open(&path, "SurSvan").unwrap());
+    // Two units pointed at one file would pool the bots' reads. The second is refused.
+    let refused = Store::open(&path, "Svanar").unwrap_err().to_string();
+    assert!(refused.contains("SurSvan"), "{refused}");
+    assert!(Store::open(&path, "SurSvan").is_ok());
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    let changed = raw.execute("UPDATE meta SET value = 'Svanar' WHERE key = 'bot'", []);
+    assert!(changed.unwrap_err().to_string().contains("append-only"));
 }
