@@ -1,0 +1,68 @@
+# The gate on GitHub (V11-03): the same tiers as on the box, with the tools mise pins. The commit
+# and test tiers run side by side, and cargo-deny runs beside them. Each action is pinned to a
+# commit, with its release named beside it.
+name: check
+
+on:
+  pull_request:
+    branches: [v11]
+  push:
+    branches: [v11]
+  # Advisories arrive with no change of ours. GitHub runs a schedule only from the default branch,
+  # so this starts when v11 becomes it.
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  commit:
+    name: commit tier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # provenance reads every commit since origin/v11
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+      - run: bun install --cwd tools --frozen-lockfile
+      # Our own crates are cached too, keyed by the lockfile and toolchain, and saved only from v11.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ". -> target/dev"
+          cache-workspace-crates: true
+          save-if: ${{ github.ref == 'refs/heads/v11' }}
+      - run: bun tools/gate.ts commit
+
+  test:
+    name: test tier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+      - run: bun install --cwd tools --frozen-lockfile
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ". -> target/dev"
+          cache-workspace-crates: true
+          save-if: ${{ github.ref == 'refs/heads/v11' }}
+      - run: bun tools/gate.ts test
+
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+      - run: bun tools/gate.ts ci
