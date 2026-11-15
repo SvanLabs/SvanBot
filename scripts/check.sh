@@ -174,6 +174,7 @@ case "$mode" in
     run_suite "release/rollback tests (run bash scripts/tests/release-rollback.sh)" bash scripts/tests/release-rollback.sh
     run_suite "keepalive tests (run bash scripts/tests/keepalive.sh)" bash scripts/tests/keepalive.sh
     run_suite "partial fleet recovery tests (run bash scripts/tests/partial-fleet.sh)" bash scripts/tests/partial-fleet.sh
+    run_suite "ops-script regression tests (run bash scripts/tests/ops-scripts.sh)" bash scripts/tests/ops-scripts.sh
     run_suite "start-only tests (run bash scripts/tests/start-only.sh)" bash scripts/tests/start-only.sh
     run_suite "reap-worktrees tests (run bash scripts/tests/reap-worktrees.sh)" bash scripts/tests/reap-worktrees.sh
     run_suite "restart-bot tests (run bash scripts/tests/restart-bot.sh)" bash scripts/tests/restart-bot.sh
