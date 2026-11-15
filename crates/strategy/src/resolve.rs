@@ -5,16 +5,18 @@
 //! the strategy found is balanced across our whole range, and only then read for our own cards.
 //! The tree ([`tree`]) is solved by Discounted CFR (α 1.5, β 0, γ 2: Brown and Sandholm, 2019) over
 //! whole ranges at once. A river ends in a showdown. On the flop and the turn the street's end is
-//! valued as a showdown on the cards so far, a first leaf the continuation leaves of ABD or
-//! Pluribus will replace.
+//! valued as a showdown over sampled run-outs of the board ([`runout`]), so a draw is worth the
+//! cards to come.
 //!
 //! The work is an iteration count passed in, larger for larger pots ([`iterations_for`]): the
 //! layer never reads a clock (ADR 0001, ADR 0003). The pricer stays the way to decide in pots of
 //! three or more, and before the flop.
 
+mod runout;
 mod showdown;
 mod tree;
 
+pub use runout::RUNOUTS;
 pub use tree::{Abstract, MAX_BETS};
 
 use svanbot_core::card::CardSet;
@@ -70,7 +72,11 @@ pub fn resolve(
     };
     let call = spot.legal.call.unwrap_or(0);
     let tree = Tree::new(spot.pot.saturating_sub(call), call, spot.stack);
-    let mut solver = Solver::new(&tree, Showdown::new(&pairs, spot.board), pairs.len());
+    let ends = runout::runouts(spot.board, &mut Rng::stream(seed, 1))
+        .into_iter()
+        .map(|full| Showdown::new(&pairs, full))
+        .collect();
+    let mut solver = Solver::new(&tree, Showdown::new(&pairs, spot.board), ends, pairs.len());
     let reach = [vec![1.0; pairs.len()], villain];
     for t in 1..=iterations.max(1) {
         solver.iterate(&reach, t);
@@ -116,12 +122,22 @@ fn to_action(action: Abstract, spot: &Spot) -> Action {
 struct Solver<'a> {
     tree: &'a Tree,
     showdown: Showdown,
+    /// The run-outs the street's end is valued on, and for each pair one over the number of
+    /// them it can be held on.
+    ends: Vec<Showdown>,
+    scale: Vec<f64>,
     regrets: Vec<Vec<Vec<f64>>>,
     sums: Vec<Vec<Vec<f64>>>,
 }
 
 impl<'a> Solver<'a> {
-    fn new(tree: &'a Tree, showdown: Showdown, pairs: usize) -> Self {
+    fn new(tree: &'a Tree, showdown: Showdown, ends: Vec<Showdown>, pairs: usize) -> Self {
+        let scale = (0..pairs)
+            .map(|h| {
+                let held = ends.iter().filter(|end| end.live()[h]).count();
+                1.0 / held.max(1) as f64
+            })
+            .collect();
         let shape: Vec<Vec<Vec<f64>>> = tree
             .nodes
             .iter()
@@ -133,6 +149,8 @@ impl<'a> Solver<'a> {
         Self {
             tree,
             showdown,
+            ends,
+            scale,
             regrets: shape.clone(),
             sums: shape,
         }
@@ -178,12 +196,15 @@ impl<'a> Solver<'a> {
             }
             Node::Leaf { added } => {
                 let pot = f64::from(self.tree.base + added[0] + added[1]);
-                let (share, compatible) = self.showdown.against(theirs);
-                share
-                    .iter()
-                    .zip(&compatible)
-                    .map(|(s, c)| pot * s - f64::from(added[player]) * c)
-                    .collect()
+                let paid = f64::from(added[player]);
+                let mut value = vec![0.0; theirs.len()];
+                for end in &self.ends {
+                    let (share, compatible) = end.against(theirs);
+                    for (h, total) in value.iter_mut().enumerate() {
+                        *total += self.scale[h] * (pot * share[h] - paid * compatible[h]);
+                    }
+                }
+                value
             }
             Node::Act {
                 player: actor,

@@ -12,7 +12,7 @@
 //!   and every fair-play incident is kept there, so the bot will not start without it.
 //!
 //! `svanbot download` instead downloads the bot's season hand history into its store, and exits
-//! ([`download`]).
+//! ([`download`]). `svanbot paired` runs a paired sim of the policy against the pricer ([`paired`]).
 //!
 //! An app does I/O, so it turns off the `clippy.toml` bans here, once (ADR 0003).
 #![allow(
@@ -22,6 +22,7 @@
 )]
 
 mod download;
+mod paired;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -42,6 +43,10 @@ const MAX_BACKOFF: Duration = Duration::from_secs(60);
 fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("download") {
         return download::run();
+    }
+    if std::env::args().nth(1).as_deref() == Some("paired") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return paired::run(&args);
     }
     let config = match config_from_env() {
         Ok(config) => config,

@@ -2,8 +2,8 @@
 //!
 //! It fits the action model on every hand and gates it on held-out hands ([`fit`]), fits the
 //! population priors ([`prior`]), watches the ranges for drift ([`drift`]), classifies how each
-//! opponent adapts ([`adapt`]), and gates reads on what they could cost ([`exploit`]). It will also
-//! propose challengers, run paired sims, score the Arena, and give probe verdicts and the harm
+//! opponent adapts ([`adapt`]), and gates reads on what they could cost ([`exploit`]), and runs paired sims ([`paired`]). It will also
+//! propose challengers, score the Arena, and give probe verdicts and the harm
 //! guard. It takes hands as values and returns its results. Reading and writing the store is
 //! `runtime`'s job.
 //!
@@ -14,4 +14,5 @@ pub mod adapt;
 pub mod drift;
 pub mod exploit;
 pub mod fit;
+pub mod paired;
 pub mod prior;

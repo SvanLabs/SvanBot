@@ -10,8 +10,11 @@ use svanbot_core::eval::{Strength, strength};
 pub struct Showdown {
     /// Each pair's two cards, as 0..52.
     cards: Vec<[usize; 2]>,
-    /// Pair indices grouped by equal strength, weakest group first.
+    /// Pair indices grouped by equal strength, weakest group first. A pair that shares a card
+    /// with the board is in no group: it cannot be held.
     groups: Vec<Vec<usize>>,
+    /// Whether each pair can be held on the board.
+    live: Vec<bool>,
 }
 
 /// A card's number, 0..52.
@@ -20,8 +23,10 @@ pub fn index(card: svanbot_core::card::Card) -> usize {
 }
 
 impl Showdown {
-    /// Ranks `pairs` on `board` (three to five cards).
+    /// Ranks `pairs` on `board` (three to five cards). A pair that shares a card with the board
+    /// is dead there: it has no reach and no value.
     pub fn new(pairs: &[CardSet], board: CardSet) -> Self {
+        let live: Vec<bool> = pairs.iter().map(|pair| pair.is_disjoint(board)).collect();
         let cards: Vec<[usize; 2]> = pairs
             .iter()
             .map(|pair| {
@@ -32,6 +37,7 @@ impl Showdown {
         let mut ranked: Vec<(Strength, usize)> = pairs
             .iter()
             .enumerate()
+            .filter(|&(at, _)| live[at])
             .map(|(at, &pair)| (strength(pair | board), at))
             .collect();
         ranked.sort_unstable();
@@ -45,7 +51,11 @@ impl Showdown {
                 last = Some(value);
             }
         }
-        Self { cards, groups }
+        Self {
+            cards,
+            groups,
+            live,
+        }
     }
 
     /// For each pair, against the other side's `reach` over the same pairs: the reach it beats
@@ -80,11 +90,19 @@ impl Showdown {
         (share, compatible)
     }
 
+    /// Whether each pair can be held on the board.
+    pub fn live(&self) -> &[bool] {
+        &self.live
+    }
+
     /// For each pair, the reach on the other side that shares no card with it.
     pub fn compatible(&self, reach: &[f64]) -> Vec<f64> {
         let mut total = 0.0;
         let mut per_card = [0.0; 52];
         for (at, &[a, b]) in self.cards.iter().enumerate() {
+            if !self.live[at] {
+                continue;
+            }
             total += reach[at];
             per_card[a] += reach[at];
             per_card[b] += reach[at];
@@ -92,7 +110,10 @@ impl Showdown {
         self.cards
             .iter()
             .enumerate()
-            .map(|(at, &[a, b])| total - per_card[a] - per_card[b] + reach[at])
+            .map(|(at, &[a, b])| match self.live[at] {
+                true => total - per_card[a] - per_card[b] + reach[at],
+                false => 0.0,
+            })
             .collect()
     }
 }

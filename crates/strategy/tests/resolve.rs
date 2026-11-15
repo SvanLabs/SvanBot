@@ -197,3 +197,17 @@ fn top_pair_folds_more_to_a_player_who_bets_big_only_when_strong() {
     assert!(any_two < 0.2, "against any two cards: {any_two}");
     assert!(strong > 0.8, "against the strong range: {strong}");
 }
+
+#[test]
+fn a_flush_draw_on_the_turn_is_worth_the_cards_to_come() {
+    // Three high facing a fifth of the pot: the call needs one win in seven. With two hearts on
+    // a board with two, nine of the 46 rivers make a flush. Without the draw there is no hand.
+    let non_fold = |hole| {
+        let turn = spot(hole, "Kh9h4c7s", 240, facing(40, Some((80, 2000))));
+        let resolved = resolve(&turn, None, 60, SEED).unwrap();
+        1.0 - frequency(&resolved, |a| a == Abstract::Fold)
+    };
+    let (draw, nothing) = (non_fold("3h2h"), non_fold("3c2d"));
+    assert!(draw > 0.7, "the draw continues {draw}");
+    assert!(nothing < draw - 0.3, "no draw continues {nothing}");
+}

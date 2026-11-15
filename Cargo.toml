@@ -51,6 +51,10 @@ unimplemented = "deny"
 [profile.dev]
 debug = "line-tables-only"
 
+# The re-solve is a numeric loop: unoptimised, its tests take minutes.
+[profile.dev.package.svanbot-strategy]
+opt-level = 3
+
 # The third-party crates a pure layer (core, sim, strategy, learn) may take, each with its reason.
 # `tools/layering.ts` rejects any other. A crate earns a place here only if it does no I/O, reads no
 # clock and keeps results the same for the same inputs.
