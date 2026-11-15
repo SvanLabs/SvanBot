@@ -32,6 +32,33 @@ fn recent_reports_95_percent_intervals_from_stored_results() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// #1015: a hand with no recorded net is not a zero-chip hand; it must not take a slot in the window.
+#[test]
+fn recent_skips_hands_with_no_net_instead_of_counting_them_as_zero() {
+    use sv10_store::store::HandRow;
+    let dir = std::env::temp_dir().join(format!("sv10-recent-nullnet-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let store = Store::open(&dir.join("hands.db")).unwrap();
+    for (i, net) in [Some(-20), Some(20), None].into_iter().enumerate() {
+        store
+            .insert_hand(&HandRow {
+                bot: "A".into(),
+                hand_id: format!("h{i}"),
+                ended_at: format!("2026-09-29T00:00:0{i}Z"),
+                net,
+                summary: r#"{"bb":20}"#.into(),
+                ..Default::default()
+            })
+            .unwrap();
+    }
+    let report = recent(&store, "A", 2).unwrap();
+    assert!(report.contains("the last 2 hands"), "{report}");
+    assert!(report.contains("net +0.0 bb/100"), "{report}");
+    assert!(report.contains("from 2026-09-29T00:00:00Z to 2026-09-29T00:00:01Z"), "{report}");
+    drop(store);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 fn graded(version: Option<u32>, gap: f64) -> Graded {
     (
         "2026-09-27T00:00:00Z".into(),
