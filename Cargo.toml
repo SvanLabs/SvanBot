@@ -23,6 +23,7 @@ publish = false
 # `x.workspace = true`. An entry lands with its first use: cargo warns on an unused one.
 [workspace.dependencies]
 svanbot-core = { path = "crates/core" }
+svanbot-sim = { path = "crates/sim" }
 serde_json = "1.0.154"
 
 [workspace.lints.rust]

@@ -199,6 +199,16 @@ impl std::ops::BitOr for CardSet {
     }
 }
 
+impl FromIterator<Card> for CardSet {
+    fn from_iter<I: IntoIterator<Item = Card>>(cards: I) -> Self {
+        let mut set = Self::EMPTY;
+        for card in cards {
+            set.insert(card);
+        }
+        set
+    }
+}
+
 impl std::ops::BitOrAssign for CardSet {
     fn bitor_assign(&mut self, other: Self) {
         self.0 |= other.0;

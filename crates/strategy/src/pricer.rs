@@ -1,0 +1,83 @@
+//! The pricer: the fallback way to decide. It prices the legal actions by the bot's equity against
+//! the opponents' ranges, and takes the best. Until the action model (V11-06) gives real ranges,
+//! every opponent's range is uniform: all 1,326 pairs of hole cards, equally likely.
+//!
+//! - It raises for value when its equity is well above its fair share of the pot.
+//! - It calls when its equity covers the price of the call.
+//! - It checks when the check is free, and it never folds then.
+
+use svanbot_core::card::{Card, CardSet, Rank, Suit};
+use svanbot_core::rules::Action;
+use svanbot_core::spot::Spot;
+use svanbot_sim::equity::sampled;
+
+/// The work a decision may do, passed in so the decision never reads the clock: how many deals
+/// to sample, and the seed they are drawn from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Budget {
+    pub samples: u64,
+    pub seed: u64,
+}
+
+/// The action the pricer chose, and the equity it chose it on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Decision {
+    pub action: Action,
+    pub equity: f64,
+}
+
+/// How far from its fair share to the whole pot the equity must be before the pricer raises.
+const VALUE_MARGIN: f64 = 0.4;
+
+/// A raise adds this share of the pot to the smallest raise.
+const RAISE_SHARE_OF_POT: f64 = 0.75;
+
+/// The pricer's decision at `spot`.
+pub fn decide(spot: &Spot, budget: Budget) -> Decision {
+    let uniform = uniform_range(spot.hole | spot.board);
+    let ranges: Vec<&[(CardSet, f64)]> = vec![&uniform; spot.opponents.max(1)];
+    let equity = sampled(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
+    Decision {
+        action: choose(spot, equity),
+        equity,
+    }
+}
+
+fn choose(spot: &Spot, equity: f64) -> Action {
+    let fair = 1.0 / (spot.opponents.max(1) + 1) as f64;
+    if let Some(range) = spot.legal.raise
+        && equity > fair + (1.0 - fair) * VALUE_MARGIN
+    {
+        let size = range
+            .min
+            .saturating_add((f64::from(spot.pot) * RAISE_SHARE_OF_POT) as u32);
+        return Action::RaiseTo(size.clamp(range.min, range.max));
+    }
+    match spot.legal.call {
+        None => Action::Check,
+        Some(call) => {
+            let price = f64::from(call) / f64::from(spot.pot + call);
+            if equity >= price {
+                Action::Call
+            } else {
+                Action::Fold
+            }
+        }
+    }
+}
+
+/// Every pair of hole cards that avoids the `dead` cards, each with weight 1.
+fn uniform_range(dead: CardSet) -> Vec<(CardSet, f64)> {
+    let deck: Vec<Card> = Rank::ALL
+        .into_iter()
+        .flat_map(|rank| Suit::ALL.map(|suit| Card::new(rank, suit)))
+        .filter(|&card| !dead.contains(card))
+        .collect();
+    let mut range = Vec::with_capacity(deck.len() * (deck.len() - 1) / 2);
+    for (i, &first) in deck.iter().enumerate() {
+        for &second in &deck[i + 1..] {
+            range.push(([first, second].into_iter().collect(), 1.0));
+        }
+    }
+    range
+}
