@@ -14,6 +14,7 @@
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::eval::{Strength, strength};
 use svanbot_core::rules::Street;
+use svanbot_core::spot::{Act, ActKind};
 
 /// Strength buckets per situation.
 pub const BUCKETS: usize = 8;
@@ -113,6 +114,27 @@ pub struct Seen {
     pub board: CardSet,
     pub situation: Situation,
     pub mv: Move,
+}
+
+impl Seen {
+    /// An action the table saw, as the model counts it.
+    pub fn of(act: &Act) -> Self {
+        let mv = match act.kind {
+            ActKind::Fold => Move::Fold,
+            ActKind::Check => Move::Check,
+            ActKind::Call => Move::Call,
+            ActKind::Bet { added, pot } => Move::bet(added, pot),
+        };
+        let situation = Situation {
+            street: act.street,
+            facing: act.facing,
+        };
+        Self {
+            board: act.board,
+            situation,
+            mv: situation.counted(mv),
+        }
+    }
 }
 
 /// Expected move counts per situation and bucket, which a fit adds up.

@@ -18,6 +18,8 @@
 
 mod resync;
 
+use crate::lines::Lines;
+
 use std::collections::BTreeMap;
 
 use svanbot_core::card::CardSet;
@@ -96,6 +98,8 @@ pub struct Session {
     played_token: Option<String>,
     /// The last action sent, until the venue acknowledges it.
     unacked: Option<Outbound>,
+    /// Every seat's line in the current hand.
+    lines: Lines,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -122,6 +126,7 @@ impl Session {
             actions_sent: 0,
             played_token: None,
             unacked: None,
+            lines: Lines::default(),
         }
     }
 
@@ -177,6 +182,7 @@ impl Session {
 
     /// Applies one frame that is not an authority to act.
     fn apply(&mut self, frame: Inbound) -> Step {
+        self.lines.on(&frame);
         match frame {
             Inbound::TableJoined {
                 table_id,
@@ -347,13 +353,14 @@ impl Session {
             .players
             .iter()
             .find(|player| player.name.to_lowercase() == me);
-        let opponents = turn
+        let lines: Vec<_> = turn
             .players
             .iter()
             .filter(|player| {
                 player.name.to_lowercase() != me && !hand.folded.contains(&player.seat)
             })
-            .count();
+            .map(|player| self.lines.of(player.seat).to_vec())
+            .collect();
         let raise = turn.offer.raise.or(turn
             .offer
             .all_in
@@ -366,8 +373,9 @@ impl Session {
                 call: turn.offer.call,
                 raise,
             },
-            opponents,
+            opponents: lines.len(),
             stack: mine.map_or(0, |player| player.stack),
+            lines,
         }
     }
 }

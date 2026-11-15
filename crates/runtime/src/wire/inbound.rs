@@ -3,7 +3,7 @@
 use std::fmt;
 
 use serde_json::Value;
-use svanbot_core::card::Card;
+use svanbot_core::card::{Card, CardSet};
 use svanbot_core::rules::RaiseRange;
 
 use super::snapshot::{Resync, Snapshot, resync, snapshot};
@@ -59,6 +59,17 @@ impl From<Inbound> for Frame {
     }
 }
 
+/// The optional fields of a `player_action`, when the venue sends them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Detail {
+    /// `contribution_delta`: the chips the action put in.
+    pub added: Option<u32>,
+    /// `pot_before`.
+    pub pot_before: Option<u32>,
+    /// `to_call_before`, 0 when nothing was to call.
+    pub to_call: Option<u32>,
+}
+
 /// One frame from the venue.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Inbound {
@@ -99,13 +110,16 @@ pub enum Inbound {
         action: String,
         amount: u32,
         stack: u32,
+        detail: Detail,
     },
     CommunityCards {
         cards: Vec<Card>,
     },
-    /// Each seat's stack once the pot is paid, lowest seat first.
+    /// Each seat's stack once the pot is paid, lowest seat first, and the pairs shown at the
+    /// showdown. A mucked pair is not shown.
     HandResult {
         final_stacks: Vec<(usize, u32)>,
+        shown: Vec<(usize, CardSet)>,
     },
     PlayerJoined(Player),
     PlayerLeft {
@@ -207,12 +221,23 @@ fn inbound(frame: &Value) -> Read<Inbound> {
                 Some(_) => chips_at(frame, "amount")?,
             },
             stack: chips_at(frame, "stack")?,
+            detail: Detail {
+                added: optional_chips(frame, "contribution_delta"),
+                pot_before: optional_chips(frame, "pot_before"),
+                // `null` when nothing was to call.
+                to_call: match frame.get("to_call_before") {
+                    None => None,
+                    Some(Value::Null) => Some(0),
+                    Some(_) => optional_chips(frame, "to_call_before"),
+                },
+            },
         },
         "community_cards" => Inbound::CommunityCards {
             cards: cards_at(frame, "cards")?,
         },
         "hand_result" => Inbound::HandResult {
             final_stacks: final_stacks(frame)?,
+            shown: shown_cards(frame)?,
         },
         "player_joined" => Inbound::PlayerJoined(player(frame)?),
         "player_left" => Inbound::PlayerLeft {
@@ -225,6 +250,34 @@ fn inbound(frame: &Value) -> Read<Inbound> {
         "resync_response" => Inbound::Resync(resync(frame)?),
         _ => Inbound::Other { kind },
     })
+}
+
+fn optional_chips(frame: &Value, key: &str) -> Option<u32> {
+    frame
+        .get(key)
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+}
+
+/// `shown_cards`, by seat: present only at a showdown, and never with a mucked pair.
+fn shown_cards(frame: &Value) -> Read<Vec<(usize, CardSet)>> {
+    let Some(shown) = frame.get("shown_cards").and_then(Value::as_object) else {
+        return Ok(Vec::new());
+    };
+    let mut seats = shown
+        .keys()
+        .map(|seat| {
+            let at: usize = seat
+                .parse()
+                .map_err(|_| WireError(format!("seat {seat:?}")))?;
+            Ok((
+                at,
+                cards_at(&frame["shown_cards"], seat)?.into_iter().collect(),
+            ))
+        })
+        .collect::<Read<Vec<_>>>()?;
+    seats.sort_unstable_by_key(|&(seat, _)| seat);
+    Ok(seats)
 }
 
 pub(super) fn optional_text(frame: &Value, key: &str) -> Option<String> {

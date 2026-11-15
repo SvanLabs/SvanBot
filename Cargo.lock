@@ -418,6 +418,8 @@ dependencies = [
  "rustls",
  "serde_json",
  "svanbot-core",
+ "svanbot-learn",
+ "svanbot-strategy",
  "tungstenite",
  "ureq",
 ]

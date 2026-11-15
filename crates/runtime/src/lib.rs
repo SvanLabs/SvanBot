@@ -16,7 +16,9 @@
 )]
 
 pub mod client;
+pub mod history;
 pub mod limit;
+pub mod lines;
 pub mod record;
 pub mod rest;
 pub mod session;
