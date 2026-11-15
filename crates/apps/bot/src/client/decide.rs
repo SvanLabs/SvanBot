@@ -108,6 +108,78 @@ pub(crate) fn spawn_locked_write_retry(
     });
 }
 
+/// A row the decision leaves in the store once its action is on the wire.
+pub(crate) enum Row {
+    Replay {
+        hand: String,
+        record: String,
+        net: Option<(String, String)>,
+    },
+    Audit {
+        hand: String,
+        record: String,
+        net: Option<(String, String)>,
+    },
+    Decision {
+        hand: String,
+        street: String,
+        action: String,
+        amount: Option<i64>,
+        equity: Option<f64>,
+        pot: i64,
+        to_call: i64,
+        latency: f64,
+        detail: String,
+    },
+}
+
+impl Row {
+    fn write(&self, shared: &Shared, bot: &str) -> anyhow::Result<()> {
+        fn net_ref(net: &Option<(String, String)>) -> Option<(&str, &str)> {
+            net.as_ref().map(|(d, j)| (d.as_str(), j.as_str()))
+        }
+        match self {
+            Row::Replay { hand, record, net } => shared.store.insert_replay(bot, hand, record, net_ref(net)),
+            Row::Audit { hand, record, net } => shared.store.insert_audit(bot, hand, record, net_ref(net)),
+            Row::Decision { hand, street, action, amount, equity, pot, to_call, latency, detail } => {
+                shared.store.insert_decision(bot, hand, street, action, *amount, *equity, *pot, *to_call, *latency, detail)
+            }
+        }
+    }
+
+    /// What the log says when the first attempt fails, and what the retry calls the row.
+    fn lost(&self) -> (&'static str, &'static str) {
+        match self {
+            Row::Replay { .. } => ("replay record not stored", "the replay record"),
+            Row::Audit { .. } => ("decision not queued for the analyst", "the analyst audit"),
+            Row::Decision { .. } => ("decision record not stored", "the decision record"),
+        }
+    }
+}
+
+/// Write the rows off the read loop (1013): a write waits up to the store's 10 s busy budget for
+/// a peer's lock, and the loop that reads the next `your_turn` must not sit in that wait. A row
+/// that still fails goes to the locked-write retry, as it did when the write ran inline.
+pub(crate) fn queue_rows(shared: &Arc<Shared>, bot: &str, rows: Vec<Row>) {
+    if rows.is_empty() {
+        return;
+    }
+    let (shared, bot) = (shared.clone(), bot.to_string());
+    tokio::spawn(async move {
+        let (s, b) = (shared.clone(), bot.clone());
+        let failed = crate::jobs::blocking("decision rows", move || {
+            rows.into_iter().filter_map(|row| row.write(&s, &b).err().map(|e| (row, e))).collect::<Vec<_>>()
+        })
+        .await;
+        for (row, e) in failed.unwrap_or_default() {
+            let (warn, what) = row.lost();
+            shared.log(&bot, "warn", format!("{warn}: {e}"));
+            let (shared2, bot2) = (shared.clone(), bot.clone());
+            spawn_locked_write_retry(&shared, &bot, what, move || row.write(&shared2, &bot2));
+        }
+    });
+}
+
 // These are the session's existing borrows; bundling them would only rename the same state.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn act(
@@ -250,53 +322,29 @@ pub(super) async fn act(
     if sent && missing_state {
         recover::resync_missing_state(authority, tracker, conn, &hand_id);
     }
+    let mut rows = Vec::new();
     if sent
         && let Some((record, net, big)) = replay
         && !record.is_empty()
     {
-        let net_ref = net.as_ref().map(|(digest, json)| (digest.as_str(), json.as_str()));
-        if big && let Err(e) = shared.store.insert_replay(&bot.name, &hand_id, &record, net_ref) {
-            shared.log(&bot.name, "warn", format!("replay record not stored: {e}"));
-            let (name, hand, rec) = (bot.name.clone(), hand_id.clone(), record.clone());
-            let net_owned = net_ref.map(|(digest, json)| (digest.to_string(), json.to_string()));
-            let shared2 = shared.clone();
-            spawn_locked_write_retry(shared, &bot.name, "the replay record", move || {
-                shared2.store.insert_replay(&name, &hand, &rec, net_owned.as_ref().map(|(d, j)| (d.as_str(), j.as_str())))
-            });
+        if big {
+            rows.push(Row::Replay { hand: hand_id.clone(), record: record.clone(), net: net.clone() });
         }
-        if let Err(e) = shared.store.insert_audit(&bot.name, &hand_id, &record, net_ref) {
-            shared.log(&bot.name, "warn", format!("decision not queued for the analyst: {e}"));
-            let (name, hand, rec) = (bot.name.clone(), hand_id.clone(), record.clone());
-            let net_owned = net_ref.map(|(digest, json)| (digest.to_string(), json.to_string()));
-            let shared2 = shared.clone();
-            spawn_locked_write_retry(shared, &bot.name, "the analyst audit", move || {
-                shared2.store.insert_audit(&name, &hand, &rec, net_owned.as_ref().map(|(d, j)| (d.as_str(), j.as_str())))
-            });
-        }
+        rows.push(Row::Audit { hand: hand_id.clone(), record, net });
     }
     if let Some(v) = view.filter(|_| sent) {
         let detail = json!({"reason": v.reason, "candidates": v.candidates, "hole": v.hole, "board": v.board, "opponents": v.opponents, "pot_odds": v.pot_odds, "version": v.version, "fold_shift": v.fold_shift, "preflop_fold_shift": v.preflop_fold_shift, "fold_offsets": v.fold_offsets, "experiment": v.experiment});
-        if let Err(e) = shared.store.insert_decision(
-            &bot.name,
-            &v.hand_id,
-            &v.street,
-            &v.action,
-            v.amount,
-            v.equity,
-            v.pot,
-            v.to_call,
-            v.latency_ms,
-            &detail.to_string(),
-        ) {
-            shared.log(&bot.name, "warn", format!("decision record not stored: {e}"));
-            let (name, hand, street, action, detail) =
-                (bot.name.clone(), v.hand_id.clone(), v.street.clone(), v.action.clone(), detail.to_string());
-            let (amount, equity, pot, to_call, latency) = (v.amount, v.equity, v.pot, v.to_call, v.latency_ms);
-            let shared2 = shared.clone();
-            spawn_locked_write_retry(shared, &bot.name, "the decision record", move || {
-                shared2.store.insert_decision(&name, &hand, &street, &action, amount, equity, pot, to_call, latency, &detail)
-            });
-        }
+        rows.push(Row::Decision {
+            hand: v.hand_id.clone(),
+            street: v.street.clone(),
+            action: v.action.clone(),
+            amount: v.amount,
+            equity: v.equity,
+            pot: v.pot,
+            to_call: v.to_call,
+            latency: v.latency_ms,
+            detail: detail.to_string(),
+        });
         let latency = v.latency_ms;
         shared.emit("decision", json!({"slot": slot, "bot": bot.name, "action": v.action, "amount": v.amount, "equity": v.equity, "street": v.street, "latency_ms": v.latency_ms}));
         shared.update(slot, |b| {
@@ -309,6 +357,7 @@ pub(super) async fn act(
             b.last_situation = sit_for_view.map(Arc::new);
         });
     }
+    queue_rows(shared, &bot.name, rows);
 }
 
 #[cfg(test)]
@@ -352,9 +401,9 @@ mod tests {
         assert!(lost.to_string().contains("database is locked"), "{lost}");
     }
 
-    /// 0322 wiring: both rows that are otherwise lost for good hand the failed write to the retry
-    /// (the loop above is tested; a real `database is locked` costs the 10 s busy timeout before it
-    /// fails, too slow for the gate).
+    /// 0322 wiring: every row that is otherwise lost for good is handed to the retry when its
+    /// first write fails (the loop above is tested; a real `database is locked` costs the 10 s busy
+    /// timeout before it fails, too slow for the gate).
     #[test]
     fn a_locked_decision_record_or_audit_is_handed_to_the_retry() {
         let source = include_str!("decide.rs");
@@ -364,10 +413,43 @@ mod tests {
             ("decision record not stored", "the decision record"),
             ("replay record not stored", "the replay record"),
         ] {
-            let at = body.find(lost).unwrap_or_else(|| panic!("{lost} must be logged"));
-            let branch = &body[at..body.len().min(at + 800)];
-            assert!(branch.contains(&format!("spawn_locked_write_retry(shared, &bot.name, \"{what}\"")), "{lost} must be retried");
+            assert!(body.contains(&format!("(\"{lost}\", \"{what}\")")), "{lost} must be logged and retried as {what}");
         }
+        assert!(body.contains("spawn_locked_write_retry(&shared, &bot, what"), "a failed row must be retried");
+    }
+
+    /// 1013: a write that waits on a peer's lock must not hold the read loop. The rows are queued
+    /// at once and land when the peer lets go.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_decision_row_waits_for_a_locked_store_off_the_read_loop() {
+        let shared = Shared::for_test("rows-locked", &["A"]);
+        let db = std::env::temp_dir().join(format!("sv10-shared-rows-locked-{}", std::process::id())).join("svanbot10.db");
+        let peer = rusqlite::Connection::open(&db).unwrap();
+        peer.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let row = Row::Decision {
+            hand: "h1".into(),
+            street: "preflop".into(),
+            action: "call".into(),
+            amount: None,
+            equity: Some(0.5),
+            pot: 30,
+            to_call: 10,
+            latency: 5.0,
+            detail: "{}".into(),
+        };
+        let started = std::time::Instant::now();
+        queue_rows(&shared, "A", vec![row]);
+        assert!(started.elapsed() < Duration::from_millis(100), "queueing must not wait for the lock: {:?}", started.elapsed());
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(shared.store.decisions_for_hand("A", "h1").unwrap().is_empty(), "the peer still holds the lock");
+        peer.execute_batch("COMMIT").unwrap();
+        for _ in 0..100 {
+            if !shared.store.decisions_for_hand("A", "h1").unwrap().is_empty() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("the decision row never landed after the peer released the lock");
     }
 
     fn legal(check: bool, call: Option<i64>, raise: Option<(i64, i64)>, all_in: Option<i64>) -> LegalActions {
