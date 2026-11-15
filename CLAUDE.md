@@ -84,7 +84,8 @@ GitHub issues via `gh`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-The five canonical roles map 1:1 to same-named labels. See `docs/agents/triage-labels.md`.
+Not a 1:1 mapping: the skills' `ready-for-agent` is this repo's `agent-friendly`, and
+`ready-for-human` has no equivalent. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
