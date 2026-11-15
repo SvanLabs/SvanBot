@@ -1,6 +1,7 @@
 //! The pricer: the fallback way to decide. It prices the legal actions by the bot's equity against
-//! the opponents' ranges, and takes the best. Until the action model (V11-06) gives real ranges,
-//! every opponent's range is uniform: all 1,326 pairs of hole cards, equally likely.
+//! the opponents' ranges, and takes the best. Given an action model that has passed the gate
+//! (`learn::fit::gate`), each opponent's range follows from what they did in the hand. Without
+//! one, every range is uniform: all 1,326 pairs of hole cards, equally likely.
 //!
 //! - It raises for value when its equity is well above its fair share of the pot.
 //! - It calls when its equity covers the price of the call.
@@ -10,6 +11,8 @@ use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
 use svanbot_sim::equity::sampled;
+
+use crate::action::{ActionModel, Seen, range};
 
 /// The work a decision may do, passed in so the decision never reads the clock: how many deals
 /// to sample, and the seed they are drawn from.
@@ -32,10 +35,24 @@ const VALUE_MARGIN: f64 = 0.4;
 /// A raise adds this share of the pot to the smallest raise.
 const RAISE_SHARE_OF_POT: f64 = 0.75;
 
-/// The pricer's decision at `spot`.
-pub fn decide(spot: &Spot, budget: Budget) -> Decision {
+/// The pricer's decision at `spot`, with each opponent's range from `model` and their line, or
+/// uniform when there is no model or no line.
+pub fn decide(spot: &Spot, model: Option<&ActionModel>, budget: Budget) -> Decision {
     let uniform = uniform_range(spot.hole | spot.board);
-    let ranges: Vec<&[(CardSet, f64)]> = vec![&uniform; spot.opponents.max(1)];
+    let read: Vec<Vec<(CardSet, f64)>> = match model {
+        Some(model) => spot
+            .lines
+            .iter()
+            .take(spot.opponents.max(1))
+            .map(|line| {
+                let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
+                range(model, &seen, spot.hole | spot.board)
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    let mut ranges: Vec<&[(CardSet, f64)]> = read.iter().map(Vec::as_slice).collect();
+    ranges.resize(spot.opponents.max(1), &uniform);
     let equity = sampled(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
     Decision {
         action: choose(spot, equity),

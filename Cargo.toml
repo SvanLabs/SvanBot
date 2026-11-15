@@ -23,6 +23,7 @@ publish = false
 # `x.workspace = true`. An entry lands with its first use: cargo warns on an unused one.
 [workspace.dependencies]
 svanbot-core = { path = "crates/core" }
+svanbot-learn = { path = "crates/learn" }
 svanbot-sim = { path = "crates/sim" }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 # SQLite compiled in, so the box needs no system library and every machine runs the same one.

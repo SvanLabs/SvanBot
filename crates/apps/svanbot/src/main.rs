@@ -59,7 +59,8 @@ fn main() -> ExitCode {
                     samples: SAMPLES,
                     seed: fresh_seed(),
                 };
-                decide(spot, budget).action
+                // No fitted action model yet: one is used only after it passes the gate.
+                decide(spot, None, budget).action
             },
             |event| keep(&store, event),
         );

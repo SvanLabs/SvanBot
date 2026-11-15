@@ -10,6 +10,6 @@ mod inbound;
 mod outbound;
 mod snapshot;
 
-pub use inbound::{Frame, Inbound, Offer, Player, Turn, WireError, parse, parse_frame};
+pub use inbound::{Detail, Frame, Inbound, Offer, Player, Turn, WireError, parse, parse_frame};
 pub use outbound::{Outbound, VenueAction};
 pub use snapshot::{Hero, Resync, Seat, Snapshot};

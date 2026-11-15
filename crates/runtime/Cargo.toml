@@ -13,6 +13,8 @@ rusqlite.workspace = true
 rustls.workspace = true
 serde_json.workspace = true
 svanbot-core.workspace = true
+svanbot-learn.workspace = true
+svanbot-strategy.workspace = true
 tungstenite.workspace = true
 ureq.workspace = true
 

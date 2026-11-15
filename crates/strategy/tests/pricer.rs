@@ -20,6 +20,7 @@ fn spot(hole: &str, board: &str, pot: u32, legal: Legal, opponents: usize) -> Sp
         legal,
         opponents,
         stack: 2000,
+        lines: vec![],
     }
 }
 
@@ -34,6 +35,7 @@ fn facing(call: u32, raise: Option<(u32, u32)>) -> Legal {
 fn aces_raise_preflop() {
     let decision = decide(
         &spot("AhAs", "", 30, facing(20, Some((40, 2000))), 1),
+        None,
         BUDGET,
     );
     assert!(
@@ -47,6 +49,7 @@ fn a_weak_hand_folds_to_a_big_bet() {
     // 7-2 offsuit on a board it missed, facing a pot-sized bet: it needs a third of the pot.
     let decision = decide(
         &spot("7c2d", "AhKsQh", 400, facing(200, Some((400, 1800))), 1),
+        None,
         BUDGET,
     );
     assert_eq!(decision.action, Action::Fold, "{decision:?}");
@@ -58,7 +61,7 @@ fn a_free_look_is_never_folded() {
         call: None,
         raise: Some(RaiseRange { min: 20, max: 2000 }),
     };
-    let decision = decide(&spot("7c2d", "AhKsQh", 40, free, 2), BUDGET);
+    let decision = decide(&spot("7c2d", "AhKsQh", 40, free, 2), None, BUDGET);
     assert_eq!(decision.action, Action::Check, "{decision:?}");
 }
 
@@ -68,7 +71,7 @@ fn the_nuts_on_the_river_bet_for_value() {
         call: None,
         raise: Some(RaiseRange { min: 20, max: 1500 }),
     };
-    let decision = decide(&spot("AhKh", "QhJhTh2c3d", 300, free, 1), BUDGET);
+    let decision = decide(&spot("AhKh", "QhJhTh2c3d", 300, free, 1), None, BUDGET);
     assert!(
         matches!(decision.action, Action::RaiseTo(_)),
         "{decision:?}"
@@ -110,12 +113,13 @@ fn every_decision_is_legal_and_the_same_seed_repeats_it() {
             legal,
             opponents: 1 + rng.below(5) as usize,
             stack: 2000,
+            lines: vec![],
         };
         let budget = Budget {
             samples: 640,
             seed: rng.next_u64(),
         };
-        let decision = decide(&spot, budget);
+        let decision = decide(&spot, None, budget);
         let legal_now = match decision.action {
             Action::Fold => to_call > 0,
             Action::Check => to_call == 0,
@@ -123,6 +127,42 @@ fn every_decision_is_legal_and_the_same_seed_repeats_it() {
             Action::RaiseTo(to) => raise.is_some_and(|r| (r.min..=r.max).contains(&to)),
         };
         assert!(legal_now, "{decision:?} at {spot:?}");
-        assert_eq!(decide(&spot, budget), decision);
+        assert_eq!(decide(&spot, None, budget), decision);
     }
+}
+
+#[test]
+fn a_big_river_bet_from_a_player_who_bets_big_only_when_strong_folds_top_pair() {
+    use svanbot_core::rules::Street;
+    use svanbot_core::spot::{Act, ActKind};
+    use svanbot_strategy::action::{ActionModel, BUCKETS, Counts, Move, Situation};
+    // The bettor bets the pot on the river only with the top eighth of their range.
+    let mut counts = Counts::default();
+    let open = Situation {
+        street: Street::River,
+        facing: false,
+    };
+    for bucket in 0..BUCKETS {
+        let mv = if bucket == BUCKETS - 1 {
+            Move::Large
+        } else {
+            Move::Check
+        };
+        counts.add(open, bucket, mv, 200.0);
+    }
+    let polar = ActionModel::from_counts(&counts, 1.0);
+    let board = "Ks9d4c7h2s";
+    let mut spot = spot("KcJd", board, 200, facing(100, None), 1);
+    spot.lines = vec![vec![Act {
+        street: Street::River,
+        board: board.parse().unwrap(),
+        facing: false,
+        kind: ActKind::Bet {
+            added: 100,
+            pot: 100,
+        },
+    }]];
+    // Against any two cards, top pair calls a third of the pot. Against this line it folds.
+    assert_eq!(decide(&spot, None, BUDGET).action, Action::Call);
+    assert_eq!(decide(&spot, Some(&polar), BUDGET).action, Action::Fold);
 }

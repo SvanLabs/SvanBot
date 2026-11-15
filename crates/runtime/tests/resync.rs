@@ -143,6 +143,7 @@ fn the_actor_replays_then_acts_on_the_snapshots_token_once() {
                 action: "fold".into(),
                 amount: 0,
                 stack: 1940,
+                detail: Default::default(),
             },
         )],
         snapshot: Some(acting(vec![

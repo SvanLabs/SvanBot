@@ -132,7 +132,8 @@ fn a_check_or_fold_has_a_null_amount_which_reads_as_zero() {
             seat: 0,
             action: "fold".into(),
             amount: 0,
-            stack: 1960
+            stack: 1960,
+            detail: Default::default()
         }
     );
 }
@@ -147,7 +148,8 @@ fn a_hand_result_gives_the_final_stacks() {
     assert_eq!(
         result,
         Inbound::HandResult {
-            final_stacks: vec![(0, 1960), (2, 2060)]
+            final_stacks: vec![(0, 1960), (2, 2060)],
+            shown: vec![]
         }
     );
 }
