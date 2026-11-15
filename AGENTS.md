@@ -16,6 +16,20 @@ write the v11 version fresh, test-first.
 `--base v11`. Name branches `v11-<nn>-<slug>` after the ticket, for example `v11-02-foundation`: git
 cannot hold a `v11/…` branch beside the `v11` branch.
 
+**The venue's docs come first.** <https://docs.openpoker.ai/llms-full.txt> is the most important
+document in this project. The venue client, fair play, the export and the game rules are all
+written against it. Read it, and check its revision line, before you touch any of them. Where it
+disagrees with v10, it wins.
+
+## The crate graph
+
+`core` → `sim` → `strategy` → `learn` → `runtime` → `apps`, with one crate per layer under
+`crates/<layer>/` (`docs/adr/0003-crate-graph.md`). A crate depends only on its own layer or lower
+ones, and the four layers below `runtime` are pure. Two checks enforce it, and you run both before
+you push:
+- `cargo clippy --workspace --all-targets -- -D warnings`: `clippy.toml` bans I/O and the clock
+- `bun tools/layering.ts`: the edges and the third-party crates
+
 ## The loop
 
 1. **Claim the ticket:** assign yourself and add `agent-claimed`.
@@ -29,6 +43,7 @@ cannot hold a `v11/…` branch beside the `v11` branch.
 
 - **Poker logic is pure.** Only `runtime` and `apps` touch the network, the store or the clock.
   Everything below them is deterministic given its inputs, which is what keeps the sims reproducible.
+  When work has a time limit, the caller passes the limit in as an input.
 - **Decisions stay in-process** (`docs/adr/0001-decision-path-stays-in-process.md`).
 - **Only legal actions reach the venue,** echoing the venue's hand and turn ids, inside the action
   clock.

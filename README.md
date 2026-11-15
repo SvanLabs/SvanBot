@@ -5,7 +5,7 @@ Mass-ReWorkStructure". The plan is the GitHub issue **V11-00**. This README is w
 once the code it describes exists.
 
 - Words: `GLOSSARY.md`
-- Decisions: `docs/adr/`
+- Decisions: `docs/adr/`, with the crate graph in `docs/adr/0003-crate-graph.md`
 - Research behind the plan: `docs/research/2026-11/`
 - Working here, for people and agents: `AGENTS.md`
 
