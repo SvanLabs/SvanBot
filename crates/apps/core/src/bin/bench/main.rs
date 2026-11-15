@@ -62,8 +62,16 @@ struct Fixture {
     live_deal_chunks: usize,
 }
 
-fn fixture(path: &str) -> Fixture {
-    let parsed: Option<Value> = std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok());
+/// The frozen workload at `path`. A fixture that was named (`--fixture`) and cannot be read stops the run:
+/// benchmarking the defaults under the fixture's name would report numbers for the wrong workload.
+/// The default path is optional, and a missing default file means the defaults.
+fn fixture(path: &str, named: bool) -> Fixture {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => Some(text),
+        Err(e) if named => die(&format!("--fixture {path}: {e}")),
+        Err(_) => None,
+    };
+    let parsed: Option<Value> = text.map(|t| serde_json::from_str(&t).unwrap_or_else(|e| die(&format!("{path} is not JSON: {e}"))));
     match parsed {
         Some(v) => Fixture {
             source: path.to_string(),
@@ -364,7 +372,7 @@ fn main() {
     if let Some(t) = flag("--threads").and_then(|v| v.parse().ok()) {
         rayon::ThreadPoolBuilder::new().num_threads(t).build_global().expect("thread pool");
     }
-    let fx = fixture(&fixture_path);
+    let fx = fixture(&fixture_path, flag("--fixture").is_some());
     let clones = live_pool(&fx.models, 30.0, 16, 7_001);
     let archetypes: Vec<(Archetype, f64)> = sv10_core::bench::FROZEN_POOL.iter().map(|k| (archetype(k), 1.0)).collect();
     eprintln!(

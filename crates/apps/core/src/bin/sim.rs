@@ -12,6 +12,14 @@ use sv10_rng::SeedableRng;
 use sv10_rng::rngs::SmallRng;
 use sv10_rng::seq::SliceRandom;
 
+/// A number from the environment variable `key`; exits 2 naming it when it is set but is not one.
+fn env_num<T: std::str::FromStr>(key: &str, default: T) -> T {
+    inputs::parse_num(key, std::env::var(key).ok().as_deref(), default).unwrap_or_else(|why| {
+        eprintln!("sim: {why}");
+        std::process::exit(2)
+    })
+}
+
 fn paired(args: &[String]) {
     let tables = inputs::count("tables", args.get(2), 16);
     let hands = inputs::count("hands", args.get(3), 1500);
@@ -20,8 +28,7 @@ fn paired(args: &[String]) {
     let (a, b) = (parse("SIM_A"), parse("SIM_B"));
     // SIM_MODELS=<ModelStore JSON>: play profile clones of the 16 most-observed live opponents, with
     // the policy using those models (the learner's population, 0099). SIM_STACK_BB sets stack depth.
-    let stack_bb: i64 = std::env::var("SIM_STACK_BB").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
-    let seed: u64 = std::env::var("SIM_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(4242);
+    let (stack_bb, seed) = (env_num("SIM_STACK_BB", 100), env_num("SIM_SEED", 4242));
     let t0 = std::time::Instant::now();
     // SIM_NEURAL=<nn.response.v1 JSON>: the stored response network the policy prices its responses with (#908).
     let nn = std::env::var("SIM_NEURAL").ok().map(|path| std::sync::Arc::new(load_net(&path)));
@@ -60,8 +67,7 @@ fn variance(args: &[String]) {
     let salts = inputs::count("salts", args.get(4), 4).max(2);
     let parse = inputs::params;
     let (a, b) = (parse("SIM_A"), parse("SIM_B"));
-    let stack_bb: i64 = std::env::var("SIM_STACK_BB").ok().and_then(|v| v.parse().ok()).unwrap_or(100);
-    let seed: u64 = std::env::var("SIM_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(4242);
+    let (stack_bb, seed) = (env_num("SIM_STACK_BB", 100), env_num("SIM_SEED", 4242));
     // SIM_SALT_SEATS=hero|opponents|all: whose decision randomness varies between salts.
     let seats = match std::env::var("SIM_SALT_SEATS").as_deref() {
         Ok("hero") => 1,
@@ -149,6 +155,7 @@ fn main() {
         "tough" => vec!["tag", "lag", "nit", "tag", "lag", "rock"],
         _ => ARCHETYPES.to_vec(),
     };
+    let params = inputs::params("SIM_PARAMS");
     let t0 = std::time::Instant::now();
     let results: Vec<(HashMap<String, Tally>, ModelStore)> = (0..tables)
         .into_par_iter()
@@ -159,7 +166,7 @@ fn main() {
             let mut agents: Vec<Box<dyn Agent>> = vec![Box::new(PolicyAgent {
                 label: "svanbot10".into(),
                 models: ModelStore::default(),
-                params: std::env::var("SIM_PARAMS").ok().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default(),
+                params: params.clone(),
                 learn: true,
                 nn: None,
             })];

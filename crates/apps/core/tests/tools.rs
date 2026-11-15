@@ -56,3 +56,26 @@ fn a_zero_sized_run_is_refused_not_reported_as_a_precise_zero() {
     sim_refuses(&["0", "1"], &[], "hands must be at least 1");
     sim_refuses(&["1", "0"], &[], "tables must be at least 1");
 }
+
+#[test]
+fn a_mistyped_measurement_input_stops_sim_rather_than_measuring_the_default() {
+    sim_refuses(&["1", "1"], &[("SIM_PARAMS", "{\"call_margin\":")], "SIM_PARAMS is not Params JSON");
+    sim_refuses(&["paired", "1", "1"], &[("SIM_STACK_BB", "deep")], "SIM_STACK_BB");
+    sim_refuses(&["paired", "1", "1"], &[("SIM_SEED", "-1")], "SIM_SEED");
+    sim_refuses(&["variance", "1", "1"], &[("SIM_STACK_BB", "")], "SIM_STACK_BB");
+    sim_refuses(&["paired", "many", "1"], &[], "tables");
+}
+
+#[test]
+fn an_explicit_bench_fixture_that_cannot_be_read_stops_the_run() {
+    let bench = || Command::new(env!("CARGO_BIN_EXE_bench"));
+    let missing = bench().args(["micro", "--fixture", "/nonexistent/fixture.json"]).output().unwrap();
+    assert_eq!(missing.status.code(), Some(2), "{}", String::from_utf8_lossy(&missing.stderr));
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("/nonexistent/fixture.json"));
+    let bad = std::env::temp_dir().join(format!("sv10-fixture-{}.json", std::process::id()));
+    std::fs::write(&bad, "{not json").unwrap();
+    let garbled = bench().args(["micro", "--fixture"]).arg(&bad).output().unwrap();
+    std::fs::remove_file(&bad).ok();
+    assert_eq!(garbled.status.code(), Some(2), "{}", String::from_utf8_lossy(&garbled.stderr));
+    assert!(String::from_utf8_lossy(&garbled.stderr).contains("not JSON"));
+}
