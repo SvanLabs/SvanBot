@@ -32,10 +32,14 @@ tier runs both:
 
 ## The gate
 
-- `bun tools/gate.ts commit` runs the fast checks. Run it before every commit.
+- `bun tools/gate.ts commit` runs the fast checks: fmt, the 500-line limit on Rust files, the
+  secret scan of staged changes, provenance, the layering check and clippy. The pre-commit hook
+  runs it.
 - `bun tools/gate.ts full` adds the workspace tests and the tool tests. Run it before you push.
 
-Both build into `target/dev` at low priority, on four jobs.
+Turn the hooks on once per clone with `git config core.hooksPath .githooks`. The commit-msg hook
+refuses a message without a `Generated-by:` line. Cargo builds into `target/dev` at low priority,
+on four jobs.
 
 ## The loop
 
@@ -70,4 +74,4 @@ Both build into `target/dev` at low priority, on four jobs.
 ## Provenance
 
 Every commit carries `Generated-by: <tool>/<model>` in its trailers. Every issue and PR body carries
-the same line.
+the same line. `tools/provenance.ts` checks the commits, and being authored by a bot exempts none.
