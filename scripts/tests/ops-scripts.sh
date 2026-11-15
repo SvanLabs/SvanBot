@@ -43,3 +43,8 @@ kill -0 "$cpid" 2>/dev/null && fail "container-start.sh ignored SIGTERM during s
 for p in $(pgrep -x tail); do
   [ "$(readlink "/proc/$p/cwd" 2>/dev/null)" != "$c" ] || kill "$p" 2>/dev/null || true
 done
+
+# 5. The fleet unit's stop budget is the 180 s the keepalive unit's comment counts on (#1028): a
+# stop.sh that saves every bot must not be killed by systemd half way.
+stop_budget=$(sed -n 's/^TimeoutStopSec=//p' "$repo/scripts/svanbot10.service")
+[ "$stop_budget" = 180 ] || fail "svanbot10.service TimeoutStopSec=$stop_budget, keepalive.service budgets 180"
