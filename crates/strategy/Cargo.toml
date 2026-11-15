@@ -8,5 +8,9 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dependencies]
+svanbot-core.workspace = true
+svanbot-sim.workspace = true
+
 [lints]
 workspace = true

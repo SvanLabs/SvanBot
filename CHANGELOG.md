@@ -48,3 +48,7 @@ V11-00.
   actions, hands, cards, seat lists, results, errors) into typed values, keeps frames it does not
   act on as `Other`, and writes actions that echo the hand and the turn token. Each case is the
   venue docs' own example (rev 2026-09-02).
+- Pricer: the fallback decision in `svanbot-strategy`. It samples the bot's equity against each
+  opponent's range (uniform until the action model arrives), raises for value well above its fair
+  share, calls when the equity covers the price, and never folds a free check. Its work is a sample
+  budget and a seed passed in, never the clock. `core::spot::Spot` is what it decides on.
