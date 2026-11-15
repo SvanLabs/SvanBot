@@ -18,6 +18,7 @@
 pub mod client;
 pub mod limit;
 pub mod record;
+pub mod rest;
 pub mod session;
 pub mod store;
 pub mod wire;
