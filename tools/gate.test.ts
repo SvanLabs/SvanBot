@@ -34,8 +34,18 @@ test("the full tier adds the workspace tests, the type check and the tool tests"
   ]);
 });
 
-test("an unknown tier is refused", () => {
-  expect(() => plan("nightly")).toThrow(/unknown tier "nightly"/);
+test("the test tier is the full tier's tests alone, so CI can run it beside the commit tier", () => {
+  expect(names("test")).toEqual(["nextest", "doc-test", "tsc", "tools-test"]);
+});
+
+test("the ci tier runs cargo-deny against the lockfile", () => {
+  expect(plan("ci")).toEqual([
+    { name: "deny", argv: ["cargo", "deny", "--locked", "check"], env: {} },
+  ]);
+});
+
+test("an unknown tier is refused, naming the ones there are", () => {
+  expect(() => plan("nightly")).toThrow('unknown tier "nightly": use commit, full, test or ci');
 });
 
 test("cargo builds into target/dev, at low priority, on four jobs", () => {

@@ -6,6 +6,7 @@ rust = { version = "1.100.0", profile = "minimal", components = "rustfmt,clippy"
 bun = "1.4.4"
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.152"
 biome = "2.6.7"
+"aqua:EmbarkStudios/cargo-deny" = "0.20.2"
 
 [tasks.setup]
 description = "Install the pinned tools and the TypeScript packages, and turn the git hooks on"
@@ -22,3 +23,7 @@ run = "bun tools/gate.ts commit"
 [tasks.full]
 description = "The gate's full tier: run it before a push"
 run = "bun tools/gate.ts full"
+
+[tasks.ci]
+description = "The CI-only tier: cargo-deny on the dependency graph"
+run = "bun tools/gate.ts ci"

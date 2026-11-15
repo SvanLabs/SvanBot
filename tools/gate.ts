@@ -4,15 +4,20 @@
 //   bun tools/gate.ts commit   fmt, biome, the 500-line limit, the secret scan, provenance, the
 //                              layering check and clippy
 //   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc and the tool tests
+//   bun tools/gate.ts test     the full tier's tests alone: CI runs it beside the commit tier
+//   bun tools/gate.ts ci       cargo-deny, run in CI on every pull request and once a week
 import { join } from "node:path";
 
 export type Step = { name: string; argv: string[]; env: Record<string, string> };
 
 // Fast checks first, so a typo fails in a second rather than after a build.
 const COMMIT = ["fmt", "biome", "file-size", "secrets", "provenance", "layering", "clippy"];
+const TEST = ["nextest", "doc-test", "tsc", "tools-test"];
 const TIERS: Record<string, string[]> = {
   commit: COMMIT,
-  full: [...COMMIT, "nextest", "doc-test", "tsc", "tools-test"],
+  full: [...COMMIT, ...TEST],
+  test: TEST,
+  ci: ["deny"],
 };
 
 const ROOT = join(import.meta.dir, "..");
@@ -57,6 +62,8 @@ function stepFor(name: string): Step {
       return { name, argv: cargo(["test", "--workspace", "--doc"]), env: TARGET };
     case "tsc":
       return { name, argv: ["tools/node_modules/.bin/tsc", "-p", "tools"], env: {} };
+    case "deny":
+      return { name, argv: ["cargo", "deny", "--locked", "check"], env: {} };
     case "tools-test":
       return { name, argv: [process.execPath, "test", "tools"], env: {} };
     default:
@@ -65,19 +72,30 @@ function stepFor(name: string): Step {
 }
 
 export function plan(tier: string): Step[] {
-  if (!Object.hasOwn(TIERS, tier)) throw new Error(`unknown tier "${tier}": use commit or full`);
+  if (!Object.hasOwn(TIERS, tier)) {
+    const known = Object.keys(TIERS);
+    throw new Error(
+      `unknown tier "${tier}": use ${known.slice(0, -1).join(", ")} or ${known.at(-1)}`,
+    );
+  }
   return (TIERS[tier] ?? []).map(stepFor);
 }
 
 function run(step: Step): number {
-  const result = Bun.spawnSync({
-    cmd: step.argv,
-    cwd: ROOT,
-    env: { ...process.env, ...step.env },
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  return result.exitCode;
+  try {
+    const result = Bun.spawnSync({
+      cmd: step.argv,
+      cwd: ROOT,
+      env: { ...process.env, ...step.env },
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    return result.exitCode;
+  } catch {
+    // The tool is not installed: the spawn itself failed.
+    console.error(`gate: cannot run ${step.argv[0]}. Run \`mise run setup\` once in this clone.`);
+    return 127;
+  }
 }
 
 if (import.meta.main) {
@@ -97,5 +115,7 @@ if (import.meta.main) {
       process.exit(code);
     }
   }
-  console.log(`gate ${tier}: all ${steps.length} steps passed`);
+  console.log(
+    `gate ${tier}: ${steps.length === 1 ? "the step" : `all ${steps.length} steps`} passed`,
+  );
 }

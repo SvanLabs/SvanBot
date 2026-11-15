@@ -38,9 +38,13 @@ tier runs both:
 - `mise run commit` runs the fast checks: fmt, Biome, the 500-line limit on Rust files, the secret
   scan of staged changes, provenance, the layering check and clippy. The pre-commit hook runs it.
 - `mise run full` adds nextest, the doc tests, `tsc` and the tool tests. Run it before you push.
+- `mise run ci` runs cargo-deny (`deny.toml`).
 
 The commit-msg hook refuses a message without a `Generated-by:` line. Cargo builds into
 `target/dev` at low priority, on four jobs.
+
+CI (`.github/workflows/check.yml`) runs the same tiers on every pull request into `v11`: the
+commit tier, the test tier and cargo-deny, side by side. A PR merges only when all three are green.
 
 ## The loop
 

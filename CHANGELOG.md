@@ -21,3 +21,6 @@ V11-00.
 - Tools: `mise.toml` pins Rust 1.100.0, Bun 1.4.4, nextest 0.9.152 and Biome 2.6.7, and
   `tools/package.json` pins TypeScript 7.0.2 and `@types/bun` 1.4.4, each the latest stable
   release on 2026-11-15. `mise run setup` installs them all.
+- CI: `.github/workflows/check.yml` runs the commit tier, the test tier and cargo-deny side by side
+  on every pull request into `v11`, with the tools mise pins and our own crates cached. Every
+  action is pinned to a commit.
