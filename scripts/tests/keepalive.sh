@@ -20,7 +20,7 @@ decide() { KEEPALIVE_DRY=1 "$root/scripts/keepalive.sh"; }
 [ "$(decide)" = "fleet down, restarting" ] || fail "a down fleet with no hold was not restarted"
 grep -q "restarting svanbot10.service" "$root/artifacts/logs/keepalive.log" || fail "restart decision not logged"
 
-sleep 60 & sleeper=$!
+(cd "$root" && exec sleep 60) & sleeper=$!  # supervisors run from the checkout (#1028)
 for file in supervisor.pid learner-supervisor.pid analyst-supervisor.pid monitor-supervisor.pid logrotate.pid; do
   echo "$sleeper" > "$root/artifacts/$file"
 done
@@ -81,7 +81,7 @@ exit 17
 SH
 chmod +x "$root/scripts/release.sh"
 rm -f "$root/artifacts/supervisor.pid"
-sleep 60 & sleeper=$!
+(cd "$root" && exec sleep 60) & sleeper=$!
 for pidfile in supervisor.pid head-supervisor.pid worker-bot1-supervisor.pid; do
   echo "$sleeper" > "$root/artifacts/$pidfile"
   "$root/scripts/start.sh" > "$root/start-output" 2>&1 || fail "start did not detect $pidfile"

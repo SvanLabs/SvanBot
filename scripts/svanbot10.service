@@ -18,7 +18,7 @@ ExecStop="@SVANBOT_ROOT@/scripts/stop.sh" --hold forever
 # start.sh backgrounds its supervisors (they stay in this unit's cgroup); on stop, stop.sh ends
 # them cleanly first and systemd only cleans up whatever is left.
 KillMode=mixed
-TimeoutStopSec=60
+TimeoutStopSec=180
 TimeoutStartSec=900
 
 [Install]

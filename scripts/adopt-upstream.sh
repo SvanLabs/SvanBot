@@ -107,6 +107,10 @@ for f in repo.bundle worktree.tar.gz; do
   [ -s "$backup/$f" ] || die "the backup did not produce $backup/$f; nothing was changed"
 done
 
+# The backup is only a backup once it is on disk: sync it before anything below discards a byte of the
+# original (#1028).
+sync "$backup" "$backup"/*
+
 # 3. Make the tracked tree match its head, so the fast-forward has nothing to refuse. The untracked
 # files stay: the merge only refuses when one of them sits where the branch has a file, and it names
 # that file rather than discarding it.
