@@ -20,13 +20,12 @@ fn samples(store: &Store) -> anyhow::Result<Vec<sv10_core::calibrate::ShowdownSa
     let fleet = store.bot_names()?;
     let mut hands: Vec<(String, HandSummary)> = Vec::new();
     let mut unreadable = 0usize;
-    for bot in &fleet {
-        for row in store.recent_fit_hands(bot, MAX_HANDS)? {
-            match serde_json::from_str::<HandSummary>(&row.summary) {
-                Ok(h) if h.board.len() == 5 && !h.shown.is_empty() => hands.push((row.ended_at, h)),
-                Ok(_) => {}
-                Err(_) => unreadable += 1,
-            }
+    // Each hand once: two of our seats at a table store the same hand_id.
+    for row in store.recent_fit_hands_of(&fleet, MAX_HANDS)? {
+        match serde_json::from_str::<HandSummary>(&row.summary) {
+            Ok(h) if h.board.len() == 5 && !h.shown.is_empty() => hands.push((row.ended_at, h)),
+            Ok(_) => {}
+            Err(_) => unreadable += 1,
         }
     }
     if unreadable > 0 {
