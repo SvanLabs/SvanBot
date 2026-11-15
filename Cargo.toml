@@ -22,6 +22,7 @@ publish = false
 # One source for every internal path and every third-party version. A crate names them with
 # `x.workspace = true`. An entry lands with its first use: cargo warns on an unused one.
 [workspace.dependencies]
+svanbot-core = { path = "crates/core" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -40,3 +40,7 @@ V11-00.
   legal actions with raise-to ranges, short all-ins that reopen the betting only once they add up
   to a full raise, side pots, odd chips to the first winner left of the button, and uncalled chips
   returned. Checked by worked examples and 3,000 seeded random hands that must keep every chip.
+- Equity: `svanbot-sim` enumerates every runout or samples seeded deals against weighted ranges,
+  on 64 fixed blocks with a stream each. Shares count in whole sixtieths, so the same seed gives
+  the same bits on any machine. Checked by counted outs, suit relabelling, and about 82% for aces
+  against kings.

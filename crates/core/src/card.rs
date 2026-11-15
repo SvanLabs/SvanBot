@@ -172,6 +172,11 @@ impl CardSet {
         self.0 == 0
     }
 
+    /// Whether the two sets share no card.
+    pub const fn is_disjoint(self, other: Self) -> bool {
+        self.0 & other.0 == 0
+    }
+
     /// The cards in the set, lowest first: by rank, then by suit.
     pub fn iter(self) -> impl Iterator<Item = Card> {
         let mut bits = self.0;
@@ -182,6 +187,21 @@ impl CardSet {
                 Card(index as u8)
             })
         })
+    }
+}
+
+impl std::ops::BitOr for CardSet {
+    type Output = Self;
+
+    /// The cards in either set.
+    fn bitor(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+
+impl std::ops::BitOrAssign for CardSet {
+    fn bitor_assign(&mut self, other: Self) {
+        self.0 |= other.0;
     }
 }
 
