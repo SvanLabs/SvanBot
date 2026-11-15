@@ -3,7 +3,8 @@
 // Run it under mise (`mise run commit`, `mise run full`), so every tool is the pinned one.
 //   bun tools/gate.ts commit   fmt, biome, the 500-line limit, the secret scan, provenance, the
 //                              layering check and clippy
-//   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc and the tool tests
+//   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc and the tool tests,
+//                              and last the disk budget of this clone's target/
 //   bun tools/gate.ts test     the full tier's tests alone: CI runs it beside the commit tier
 //   bun tools/gate.ts ci       cargo-deny, run in CI on every pull request and once a week
 import { join } from "node:path";
@@ -15,7 +16,9 @@ const COMMIT = ["fmt", "biome", "file-size", "secrets", "provenance", "layering"
 const TEST = ["nextest", "doc-test", "tsc", "tools-test"];
 const TIERS: Record<string, string[]> = {
   commit: COMMIT,
-  full: [...COMMIT, ...TEST],
+  // The disk budget runs last, after the tests have built what they build. CI's disk is
+  // thrown away after every run, so the test tier leaves it out.
+  full: [...COMMIT, ...TEST, "disk"],
   test: TEST,
   ci: ["deny"],
 };
@@ -41,6 +44,7 @@ function stepFor(name: string): Step {
     case "secrets":
     case "provenance":
     case "layering":
+    case "disk":
       return { name, argv: [process.execPath, `tools/${name}.ts`], env: {} };
     case "clippy":
       return {
