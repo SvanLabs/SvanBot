@@ -190,3 +190,24 @@ fn live_check_finishes_while_the_writer_is_held() {
     drop(held);
     std::fs::remove_dir_all(&d).unwrap();
 }
+
+/// A database the process cannot open is not a damaged one: `SQLITE_CANTOPEN` says nothing about the
+/// contents, so the file stays where it is instead of being quarantined behind an older backup (1012).
+#[test]
+fn an_unreadable_database_is_not_quarantined() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = dir("unreadable");
+    let db = d.join("svanbot10.db");
+    Store::open(&db).unwrap().insert_hand(&hand("h1")).unwrap();
+    std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = std::fs::File::open(&db).is_ok();
+    if !readable {
+        assert!(matches!(check_within(&db, std::time::Duration::from_millis(50)), Err(Unchecked::Unreadable(_))));
+        assert!(ensure_healthy(&db, &d.join("backups")).is_err(), "no verdict, so the caller is told it could not check");
+        assert!(db.exists() && !d.join("quarantine").exists(), "the file must stay where it is");
+    }
+    // Running as root, mode 000 does not stop the open: nothing to prove here.
+    std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(ensure_healthy(&db, &d.join("backups")).unwrap(), Health::Healthy);
+    std::fs::remove_dir_all(&d).unwrap();
+}

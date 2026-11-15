@@ -11,7 +11,7 @@ use sv10_digest::Sha256;
 /// `PRAGMA quick_check` on a read-only connection: Ok, or the first problems SQLite reports.
 pub fn quick_check(path: &Path) -> std::result::Result<(), String> {
     inspect(path).map_err(|e| match e {
-        Unchecked::Damaged(why) | Unchecked::Busy(why) => why,
+        Unchecked::Damaged(why) | Unchecked::Busy(why) | Unchecked::Unreadable(why) => why,
     })
 }
 
@@ -22,6 +22,23 @@ pub enum Unchecked {
     Damaged(String),
     /// Another connection held the file for the whole wait: nothing was learned about its contents.
     Busy(String),
+    /// SQLite could not open or read the file for a reason that says nothing about its contents (no
+    /// permission, an I/O error, a path it cannot reach): no verdict either, and never a reason to
+    /// move the file aside (1012).
+    Unreadable(String),
+}
+
+/// Sort a SQLite error into a verdict. Only an error that says the *contents* are not a database
+/// is damage; busy, locked and everything else (`SQLITE_CANTOPEN` for a file the bot user cannot
+/// open, `SQLITE_IOERR`, ...) leaves the file where it is.
+fn sort(what: &str, e: &rusqlite::Error) -> Unchecked {
+    use rusqlite::ErrorCode::{DatabaseBusy, DatabaseCorrupt, DatabaseLocked, NotADatabase};
+    let why = format!("{what} failed: {e}");
+    match e.sqlite_error_code() {
+        Some(DatabaseBusy | DatabaseLocked) => Unchecked::Busy(why),
+        Some(NotADatabase | DatabaseCorrupt) => Unchecked::Damaged(why),
+        _ => Unchecked::Unreadable(why),
+    }
 }
 
 /// How long a check waits for a peer holding the file (recovering the WAL, or migrating at a
@@ -33,18 +50,13 @@ fn inspect(path: &Path) -> std::result::Result<(), Unchecked> {
 }
 
 fn check_within(path: &Path, wait: std::time::Duration) -> std::result::Result<(), Unchecked> {
-    use rusqlite::ErrorCode::{DatabaseBusy, DatabaseLocked};
-    let sort = |what: &str, e: rusqlite::Error| match e.sqlite_error_code() {
-        Some(DatabaseBusy | DatabaseLocked) => Unchecked::Busy(format!("{what} failed: {e}")),
-        _ => Unchecked::Damaged(format!("{what} failed: {e}")),
-    };
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
-        .map_err(|e| sort("open", e))?;
-    conn.busy_timeout(wait).map_err(|e| sort("open", e))?;
+        .map_err(|e| sort("open", &e))?;
+    conn.busy_timeout(wait).map_err(|e| sort("open", &e))?;
     let rows: Vec<String> = conn
         .prepare("PRAGMA quick_check(5)")
         .and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect())
-        .map_err(|e| sort("check", e))?;
+        .map_err(|e| sort("check", &e))?;
     if rows.len() == 1 && rows[0] == "ok" { Ok(()) } else { Err(Unchecked::Damaged(rows.join("; "))) }
 }
 
@@ -60,14 +72,10 @@ pub fn check_connection(conn: &Connection) -> std::result::Result<(), String> {
 /// `PRAGMA quick_check(5)` on an open connection, with a busy or locked result kept apart from
 /// damage: a check that waited out its busy timeout has learned nothing about the file (#918).
 pub fn check_reader(conn: &Connection) -> std::result::Result<(), Unchecked> {
-    use rusqlite::ErrorCode::{DatabaseBusy, DatabaseLocked};
     let rows: Vec<String> = conn
         .prepare("PRAGMA quick_check(5)")
         .and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect())
-        .map_err(|e| match e.sqlite_error_code() {
-        Some(DatabaseBusy | DatabaseLocked) => Unchecked::Busy(format!("check failed: {e}")),
-        _ => Unchecked::Damaged(format!("check failed: {e}")),
-    })?;
+        .map_err(|e| sort("check", &e))?;
     if rows.len() == 1 && rows[0] == "ok" { Ok(()) } else { Err(Unchecked::Damaged(rows.join("; "))) }
 }
 
@@ -152,7 +160,9 @@ pub fn ensure_healthy(db: &Path, backups: &Path) -> Result<Health> {
         Ok(()) => return Ok(Health::Healthy),
         // A locked file is not a damaged one: moving it aside would take a healthy database out from
         // under the peers that hold it and put an older backup in its place.
-        Err(Unchecked::Busy(why)) => anyhow::bail!("could not check {}: {why}; it is left where it is", db.display()),
+        Err(Unchecked::Busy(why) | Unchecked::Unreadable(why)) => {
+            anyhow::bail!("could not check {}: {why}; it is left where it is", db.display())
+        }
         Err(Unchecked::Damaged(why)) => why,
     };
     tracing::error!("database {} is damaged: {problem}", db.display());

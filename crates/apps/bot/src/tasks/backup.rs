@@ -27,11 +27,11 @@ fn verify_live_database(shared: &Shared) -> Option<(i64, i64)> {
     // supervisor's restart run the startup check, which restores the newest verified backup.
     let problem = match shared.store.quick_check() {
         Ok(()) => None,
-        // Busy is no verdict about the file: skip this backup and check again on the next one, and
-        // never ask for a restore on it (#918).
-        Err(sv10_store::integrity::Unchecked::Busy(why)) => {
-            tracing::warn!("skipping database backup: integrity check waited on a busy database ({why})");
-            shared.log("fleet", "warn", format!("backup skipped: integrity check waited on a busy database ({why})"));
+        // Busy, or a file the check could not open or read, is no verdict about the contents: skip
+        // this backup and check again on the next one, and never ask for a restore on it (#918, 1012).
+        Err(sv10_store::integrity::Unchecked::Busy(why) | sv10_store::integrity::Unchecked::Unreadable(why)) => {
+            tracing::warn!("skipping database backup: integrity check could not look at the database ({why})");
+            shared.log("fleet", "warn", format!("backup skipped: integrity check could not look at the database ({why})"));
             return None;
         }
         Err(sv10_store::integrity::Unchecked::Damaged(why)) => Some(why),
