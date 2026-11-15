@@ -33,3 +33,6 @@ V11-00.
   into a key by addition, so a board's key is made once and each player's two cards cost two adds
   and one table read. The tables are built in-process on first use. Checked against the published
   five-card counts (7,462 distinct strengths) and against a best-of-21 reference.
+- Seeded generator: xoshiro256++ seeded through SplitMix64, written in `core`, with a stream per
+  block index so the same seed gives the same draws on any machine and any thread count, and an
+  unbiased `below(n)`. Checked against the reference implementation's published outputs.
