@@ -14,3 +14,5 @@
     clippy::disallowed_types,
     clippy::disallowed_macros
 )]
+
+pub mod wire;
