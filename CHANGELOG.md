@@ -11,3 +11,6 @@ V11-00.
   is a local archive that never goes to GitHub.
 - Foundation: `GLOSSARY.md`, ADRs 0001–0002, the research notes behind the plan, the agent brief, and
   the Matt Pocock skills pinned to the repo.
+- Workspace: six layers, `core` → `sim` → `strategy` → `learn` → `runtime` → `apps`, one crate per
+  layer (ADR 0003). `clippy.toml` keeps I/O and the clock out of the pure layers, and
+  `tools/layering.ts` checks the edges and the third-party crates.

@@ -1,0 +1,12 @@
+[package]
+name = "svanbot-core"
+description = "The rules of the game and the values every layer shares"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

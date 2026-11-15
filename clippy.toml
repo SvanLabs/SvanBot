@@ -1,0 +1,48 @@
+# The pure layers (core, sim, strategy, learn) never touch the network, the store or the clock, and
+# give the same result for the same inputs (docs/adr/0003-crate-graph.md). These bans hold in every
+# crate. runtime and apps turn them off once, at their crate root, which is how a crate declares
+# that it does I/O. `tools/layering.ts` rejects that opt-out in a pure layer's library code.
+
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "pure layer: take a budget or a stop check as an input" },
+    { path = "std::time::SystemTime::now", reason = "pure layer: take the time as an input" },
+    { path = "std::thread::sleep", reason = "pure layer: waiting belongs in runtime" },
+    { path = "std::env::var", reason = "pure layer: take configuration as an input" },
+    { path = "std::env::var_os", reason = "pure layer: take configuration as an input" },
+    { path = "std::env::vars", reason = "pure layer: take configuration as an input" },
+    { path = "std::env::args", reason = "pure layer: arguments belong to apps" },
+    { path = "std::env::args_os", reason = "pure layer: arguments belong to apps" },
+    { path = "std::env::current_dir", reason = "pure layer: take paths as inputs, or better, contents" },
+    { path = "std::fs::read", reason = "pure layer: take the contents as an input" },
+    { path = "std::fs::read_to_string", reason = "pure layer: take the contents as an input" },
+    { path = "std::fs::read_dir", reason = "pure layer: files belong in runtime" },
+    { path = "std::fs::write", reason = "pure layer: return the value; runtime writes it" },
+    { path = "std::fs::create_dir_all", reason = "pure layer: files belong in runtime" },
+    { path = "std::fs::remove_file", reason = "pure layer: files belong in runtime" },
+    { path = "std::fs::rename", reason = "pure layer: files belong in runtime" },
+    { path = "std::io::stdin", reason = "pure layer: the terminal belongs to apps" },
+    { path = "std::io::stdout", reason = "pure layer: the terminal belongs to apps" },
+    { path = "std::io::stderr", reason = "pure layer: the terminal belongs to apps" },
+    { path = "std::process::exit", reason = "pure layer: return an error; apps decide to exit" },
+]
+
+disallowed-types = [
+    { path = "std::net::TcpStream", reason = "pure layer: the network belongs in runtime" },
+    { path = "std::net::TcpListener", reason = "pure layer: the network belongs in runtime" },
+    { path = "std::net::UdpSocket", reason = "pure layer: the network belongs in runtime" },
+    { path = "std::os::unix::net::UnixStream", reason = "pure layer: the network belongs in runtime" },
+    { path = "std::os::unix::net::UnixListener", reason = "pure layer: the network belongs in runtime" },
+    { path = "std::fs::File", reason = "pure layer: files belong in runtime" },
+    { path = "std::fs::OpenOptions", reason = "pure layer: files belong in runtime" },
+    { path = "std::process::Command", reason = "pure layer: processes belong in runtime" },
+    { path = "std::collections::HashMap", reason = "pure layer: iteration order changes per process; use BTreeMap or a Vec by index" },
+    { path = "std::collections::HashSet", reason = "pure layer: iteration order changes per process; use BTreeSet or a Vec by index" },
+    { path = "std::hash::RandomState", reason = "pure layer: seeded per process, so results change run to run" },
+]
+
+disallowed-macros = [
+    { path = "std::print", reason = "pure layer: return the value; apps print it" },
+    { path = "std::println", reason = "pure layer: return the value; apps print it" },
+    { path = "std::eprint", reason = "pure layer: return an error; apps report it" },
+    { path = "std::eprintln", reason = "pure layer: return an error; apps report it" },
+]

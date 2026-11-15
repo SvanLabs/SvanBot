@@ -1,0 +1,40 @@
+[workspace]
+resolver = "3"
+# The layers, lowest first (docs/adr/0003-crate-graph.md). A crate depends only on its own layer or
+# lower ones, and only runtime and apps touch the network, the store or the clock. The apps glob
+# joins this list with the first binary: cargo rejects a glob that matches nothing.
+members = [
+    "crates/core",
+    "crates/sim",
+    "crates/strategy",
+    "crates/learn",
+    "crates/runtime",
+]
+
+[workspace.package]
+version = "11.0.0-dev"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/SvanLabs/SvanBot"
+publish = false
+
+# One source for every internal path and every third-party version. A crate names them with
+# `x.workspace = true`. An entry lands with its first use: cargo warns on an unused one.
+[workspace.dependencies]
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# No placeholder code ships.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+# The third-party crates a pure layer (core, sim, strategy, learn) may take, each with its reason.
+# `tools/layering.ts` rejects any other. A crate earns a place here only if it does no I/O, reads no
+# clock and keeps results the same for the same inputs.
+[workspace.metadata.layering.pure-third-party]
