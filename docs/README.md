@@ -21,7 +21,7 @@ to read them all: find what you are about to do, and read that path in order.
 2. [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — the processes, the crates and the full decision path.
 3. [`docs/GUIDE.md`](GUIDE.md), sections 3 to 6 — the decision, opponent modelling, the neural
    model and the learner, explained for a reader rather than an implementer.
-4. [`docs/CONTEXT.md`](CONTEXT.md) — the vocabulary, when a word means something specific here.
+4. [`docs/GLOSSARY.md`](GLOSSARY.md) — the vocabulary, when a word means something specific here.
 
 ### 🔥 Everything has gone to hell
 
@@ -56,7 +56,7 @@ otherwise cost the first hour.
 | [`AGENTS.md`](../AGENTS.md) | What must an agent know before changing anything? | before any change |
 | [`CLAUDE.md`](../CLAUDE.md) | Which three mistakes bite hardest here? | you are Claude Code |
 | [`docs/CONTRIBUTING.md`](CONTRIBUTING.md) | How do I get a change merged, and what standard is it held to? | before your first pull request |
-| [`docs/CONTEXT.md`](CONTEXT.md) | What does *flagship bot*, *fleet* or *season record* mean here? | a word seems to mean more than usual |
+| [`docs/GLOSSARY.md`](GLOSSARY.md) | What does *flagship bot*, *fleet* or *season record* mean here? | a word seems to mean more than usual |
 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Which processes run, how the crates layer, how one decision is made | you need the whole picture |
 | [`docs/adr/0001-decision-path-stays-in-process.md`](adr/0001-decision-path-stays-in-process.md) | Why decisions run in-process, and the gate a process split must pass | you are about to split or pin a process |
 | [`docs/adr/0002-five-lineages-one-gate.md`](adr/0002-five-lineages-one-gate.md) | Why every bot can have its own lineage, and what retires experiment mode | you touch the learner's lanes or experiment mode |
