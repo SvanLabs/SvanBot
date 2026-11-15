@@ -1,0 +1,3 @@
+#!/bin/sh
+# Every commit names the system that produced it (tools/provenance.ts).
+exec bun tools/provenance.ts --message "$1"

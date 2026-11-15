@@ -1,14 +1,17 @@
 // The gate: the checks a change passes, in tiers (V11-03). The commit tier is the fast one, run
-// before every commit. The full tier runs before a push and adds the workspace and tool tests.
-//   bun tools/gate.ts commit   the fast tier
-//   bun tools/gate.ts full     every tier-one check, plus the tests
+// by the pre-commit hook. The full tier runs before a push and adds the workspace and tool tests.
+//   bun tools/gate.ts commit   fmt, the 500-line limit, the secret scan, provenance, the layering
+//                              check and clippy
+//   bun tools/gate.ts full     the commit tier, plus the tests
 import { join } from "node:path";
 
 export type Step = { name: string; argv: string[]; env: Record<string, string> };
 
+// Fast checks first, so a typo fails in a second rather than after a build.
+const COMMIT = ["fmt", "file-size", "secrets", "provenance", "layering", "clippy"];
 const TIERS: Record<string, string[]> = {
-  commit: ["layering", "clippy"],
-  full: ["layering", "clippy", "cargo-test", "tools-test"],
+  commit: COMMIT,
+  full: [...COMMIT, "cargo-test", "tools-test"],
 };
 
 const ROOT = join(import.meta.dir, "..");
@@ -24,8 +27,13 @@ function cargo(args: string[]): string[] {
 
 function stepFor(name: string): Step {
   switch (name) {
+    case "fmt":
+      return { name, argv: ["cargo", "fmt", "--all", "--check"], env: {} };
+    case "file-size":
+    case "secrets":
+    case "provenance":
     case "layering":
-      return { name, argv: [process.execPath, "tools/layering.ts"], env: {} };
+      return { name, argv: [process.execPath, `tools/${name}.ts`], env: {} };
     case "clippy":
       return {
         name,

@@ -5,12 +5,28 @@ import { plan } from "./gate";
 
 const names = (tier: string) => plan(tier).map((step) => step.name);
 
-test("the commit tier runs the layering check and clippy", () => {
-  expect(names("commit")).toEqual(["layering", "clippy"]);
+test("the commit tier runs the fast checks first and clippy last", () => {
+  expect(names("commit")).toEqual([
+    "fmt",
+    "file-size",
+    "secrets",
+    "provenance",
+    "layering",
+    "clippy",
+  ]);
 });
 
 test("the full tier adds the workspace tests and the tool tests", () => {
-  expect(names("full")).toEqual(["layering", "clippy", "cargo-test", "tools-test"]);
+  expect(names("full")).toEqual([
+    "fmt",
+    "file-size",
+    "secrets",
+    "provenance",
+    "layering",
+    "clippy",
+    "cargo-test",
+    "tools-test",
+  ]);
 });
 
 test("an unknown tier is refused", () => {
@@ -26,6 +42,15 @@ test("cargo steps build into target/dev, at low priority, on four jobs", () => {
   }
 });
 
-test("the layering step runs the checker with the Bun that runs the gate", () => {
-  expect(plan("commit")[0]?.argv).toEqual([process.execPath, "tools/layering.ts"]);
+test("the tool checks run with the Bun that runs the gate", () => {
+  const argv = (name: string) => plan("commit").find((step) => step.name === name)?.argv;
+  expect(argv("file-size")).toEqual([process.execPath, "tools/file-size.ts"]);
+  expect(argv("secrets")).toEqual([process.execPath, "tools/secrets.ts"]);
+  expect(argv("provenance")).toEqual([process.execPath, "tools/provenance.ts"]);
+  expect(argv("layering")).toEqual([process.execPath, "tools/layering.ts"]);
+});
+
+test("fmt checks the formatting without building", () => {
+  const fmt = { name: "fmt", argv: ["cargo", "fmt", "--all", "--check"], env: {} };
+  expect(plan("commit")[0]).toEqual(fmt);
 });
