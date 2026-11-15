@@ -36,3 +36,7 @@ V11-00.
 - Seeded generator: xoshiro256++ seeded through SplitMix64, written in `core`, with a stream per
   block index so the same seed gives the same draws on any machine and any thread count, and an
   unbiased `below(n)`. Checked against the reference implementation's published outputs.
+- Rules of a hand: the blinds (heads-up the button posts the small blind), whose turn it is, the
+  legal actions with raise-to ranges, short all-ins that reopen the betting only once they add up
+  to a full raise, side pots, odd chips to the first winner left of the button, and uncalled chips
+  returned. Checked by worked examples and 3,000 seeded random hands that must keep every chip.
