@@ -98,6 +98,16 @@ pub struct Report {
     pub same: usize,
     /// Rows replayed.
     pub total: usize,
+    /// Records that could not be read at all (#1015).
+    pub unreadable: usize,
+}
+
+impl Report {
+    /// Whether the run exits 1: a record that cannot be read is a failure whatever the basis, and a
+    /// recorded-parameter run fails unless every record replayed bit-identically.
+    pub fn failed(&self) -> bool {
+        self.unreadable > 0 || (!self.current && self.same < self.total)
+    }
 }
 
 /// Build the report for `args`; `json` prints one object instead of the text rows.
@@ -112,7 +122,7 @@ pub fn report(store: &Store, args: &[String], json: bool) -> Result<Report> {
     // What the footer names: one `Params` built the same way as every row's, since the words do not
     // depend on the record (a test holds `label` to that).
     let what = source.label(&Params::default(), &source.params(&Params::default(), live.as_ref()));
-    let (mut same, mut moved, mut total) = (0, 0, 0);
+    let (mut same, mut moved, mut total, mut unreadable) = (0, 0, 0, 0);
     let mut out = String::new();
     let mut rows: Vec<serde_json::Value> = Vec::new();
     for row in store.replays(n, id)? {
@@ -120,6 +130,7 @@ pub fn report(store: &Store, args: &[String], json: bool) -> Result<Report> {
         let rec: ReplayRecord = match serde_json::from_str(&record) {
             Ok(r) => r,
             Err(e) => {
+                unreadable += 1;
                 // stdout is exactly one JSON object in JSON mode, so the note goes to stderr; in text
                 // mode it stays in the buffer, in position among the rows (it is a row that could not
                 // be read).
@@ -183,20 +194,23 @@ pub fn report(store: &Store, args: &[String], json: bool) -> Result<Report> {
     if json {
         // The footer's numbers and the rows above them, one object.
         out = serde_json::json!({
-            "basis": what, "current": current, "total": total, "identical": same, "moved": moved, "rows": rows,
+            "basis": what, "current": current, "total": total, "identical": same, "moved": moved, "unreadable": unreadable, "rows": rows,
         })
         .to_string();
     } else {
         let _ = writeln!(out, "{total} replayed ({what}): {same} bit-identical, {moved} with a different action");
+        if unreadable > 0 {
+            let _ = writeln!(out, "{unreadable} unreadable");
+        }
     }
-    Ok(Report { out, current, same, total })
+    Ok(Report { out, current, same, total, unreadable })
 }
 
 pub fn replay(store: &Store, args: &[String]) -> Result<()> {
     let json = args.iter().any(|a| a == "--json");
     let r = report(store, args, json)?;
     print!("{}", r.out);
-    if !r.current && r.same < r.total {
+    if r.failed() {
         std::process::exit(1);
     }
     Ok(())
@@ -358,6 +372,10 @@ mod tests {
         let foot = text.out.find("1 replayed").expect("the footer");
         assert!(row < note && note < foot, "the note stays in position among the rows: {}", text.out);
         assert!(text.total == 1 && text.same == 1, "one readable row, replayed exactly");
+        // #1015: the unreadable record is counted and fails the run, as docs/OPERATIONS.md promises.
+        assert_eq!(text.unreadable, 1);
+        assert!(text.failed(), "an unreadable record exits 1 even when every readable one replayed exactly");
+        assert!(text.out.contains("1 unreadable"), "{}", text.out);
 
         let json: serde_json::Value = serde_json::from_str(&report(&store, &["--json".into()], true).unwrap().out).unwrap();
         assert_eq!((json["total"].as_u64(), json["identical"].as_u64(), json["moved"].as_u64()), (Some(1), Some(1), Some(0)));
@@ -366,7 +384,8 @@ mod tests {
         assert_eq!((rows[0]["id"].as_i64(), rows[0]["bot"].as_str(), rows[0]["hand"].as_str()), (Some(2), Some("A"), Some("h2")));
         assert_eq!(rows[0]["status"], "identical");
         assert_eq!(rows[0]["identical"], true);
-        assert!(!json.to_string().contains("unreadable"), "the note is not part of the object: {json}");
+        assert_eq!(json["unreadable"], 1, "the count is part of the object");
+        assert!(!json.to_string().contains("#1 unreadable"), "the note is not part of the object: {json}");
         // Equal outputs cannot prove identity when an active input was never captured.
         let mut legacy = small_replay();
         legacy.params.hero_image = 0.25;
