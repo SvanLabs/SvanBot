@@ -88,6 +88,8 @@ pub struct Session {
     actions_sent: u64,
     /// The last turn token played: a token is good for one action only.
     played_token: Option<String>,
+    /// The last action sent, until the venue acknowledges it.
+    unacked: Option<Outbound>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -111,6 +113,7 @@ impl Session {
             hand: None,
             actions_sent: 0,
             played_token: None,
+            unacked: None,
         }
     }
 
@@ -180,6 +183,7 @@ impl Session {
                 Step::default()
             }
             Inbound::HandStart { hand_id, .. } => {
+                self.unacked = None;
                 self.hand = Some(HandSeen {
                     hand_id,
                     ..HandSeen::default()
@@ -216,6 +220,23 @@ impl Session {
                 self.forget_table();
                 Step::send(Outbound::JoinLobby { buy_in: BUY_IN })
             }
+            Inbound::ActionAck { client_action_id } => {
+                if let Some(Outbound::Action {
+                    client_action_id: sent,
+                    ..
+                }) = &self.unacked
+                    && *sent == client_action_id
+                {
+                    self.unacked = None;
+                }
+                Step::default()
+            }
+            // The venue dropped a message. If it was our action, the same id and payload again is a
+            // safe retry: the venue answers a duplicate from its cache.
+            Inbound::Error { code, .. } if code == "rate_limited" => match &self.unacked {
+                Some(action) => Step::send(action.clone()),
+                None => Step::default(),
+            },
             Inbound::Error { code, table_id } => self.error(&code, table_id),
             _ => Step::default(),
         }
@@ -280,6 +301,7 @@ impl Session {
             client_action_id: format!("{hand_id}-{}", self.actions_sent),
             turn_token: turn.turn_token,
         };
+        self.unacked = Some(action.clone());
         let mut send = vec![action];
         send.extend(shared.send);
         let incidents = shared

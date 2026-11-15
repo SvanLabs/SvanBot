@@ -16,5 +16,6 @@
 )]
 
 pub mod client;
+pub mod limit;
 pub mod session;
 pub mod wire;

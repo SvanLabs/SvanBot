@@ -14,6 +14,7 @@ use tungstenite::http::HeaderValue;
 use tungstenite::http::header::AUTHORIZATION;
 use tungstenite::{Message, WebSocket};
 
+use crate::limit::Limiter;
 use crate::session::{Incident, Session};
 use crate::wire::{self, Inbound, Outbound};
 
@@ -89,6 +90,7 @@ pub fn play(
         .map_err(|_| ClientError::BadConfig("the key is not a valid header value".into()))?;
     request.headers_mut().insert(AUTHORIZATION, bearer);
     let (mut socket, _) = tungstenite::connect(request)?;
+    let mut limiter = Limiter::venue();
     loop {
         let text = match socket.read() {
             Ok(Message::Text(text)) => text,
@@ -120,15 +122,21 @@ pub fn play(
                 step.send
             }
         };
-        send_all(&mut socket, &outbound)?;
+        send_all(&mut socket, &mut limiter, &outbound)?;
     }
 }
 
+/// Sends each message in turn, waiting where the venue's rate limit asks for it.
 fn send_all<S: std::io::Read + std::io::Write>(
     socket: &mut WebSocket<S>,
+    limiter: &mut Limiter,
     messages: &[Outbound],
 ) -> Result<(), ClientError> {
     for message in messages {
+        let wait = limiter.admit(std::time::Instant::now());
+        if !wait.is_zero() {
+            std::thread::sleep(wait);
+        }
         socket.send(Message::text(message.to_json()))?;
     }
     Ok(())
