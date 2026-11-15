@@ -423,10 +423,14 @@ const PROFILE_HINT: Record<string, string> = { quiet: 'leave the PC free', balan
 /** Compute profile picker (0187): how much of this machine the fleet spends. Compute only; the
  * live budget never drops below the one the learner measured the policy at. */
 function ProfilePicker({ state }: { state?: ProfileState }) {
-  const [saved, setSaved] = useState<ProfileState>();
+  // What a save returned, with the poll it was saved against. The response stands in for the poll
+  // only until the poll reports something other than that baseline: an older answer already in
+  // flight still equals it, and any later answer is the server's word and wins.
+  const [saved, setSaved] = useState<{ value: ProfileState; baseline: string }>();
   const [custom, setCustom] = useState<ComputeProfile>();
   const [message, setMessage] = useState<{ text: string; error: boolean }>();
-  const current = saved ?? state;
+  const polled = JSON.stringify(state ?? null);
+  const current = saved && polled === saved.baseline ? saved.value : state;
   if (!current) return null;
   const n = current.logical_cores;
   const draft = custom ?? { ...current.active, name: 'custom' };
@@ -436,7 +440,7 @@ function ProfilePicker({ state }: { state?: ProfileState }) {
       const r = await fetch('/api/compute/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const v = await r.json();
       if (!r.ok) throw new Error(v.detail || `Request failed (${r.status})`);
-      setSaved(v); setCustom(undefined);
+      setSaved({ value: v, baseline: polled }); setCustom(undefined);
       setMessage({ text: `${v.active.name}: live bots now, learner and analyst restart with the new threads within a minute or so`, error: false });
     } catch (e) {
       setMessage({ text: e instanceof Error ? e.message : 'Could not save', error: true });
