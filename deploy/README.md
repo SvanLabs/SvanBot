@@ -45,7 +45,14 @@ systemctl --user stop svanbot@<name>
 A crash restarts the bot after 10 s, at most five times in five minutes, so a crash loop cannot
 spend the venue's ten connections a minute per IP. Exit 1 (the venue refused the key) and exit 2
 (setup missing) never restart: fix the env file, then `systemctl --user reset-failed` and start it
-again. A fair-play incident is logged as `FAIR-PLAY INCIDENT` and kept in the bot's store.
+again.
+
+A fair-play incident is logged at priority crit as `FAIR-PLAY INCIDENT` and kept in the bot's
+store, in its append-only `incidents` table. To list every incident on the box:
+
+```sh
+journalctl --user -p crit -u 'svanbot@*'
+```
 
 ## The clean timer
 

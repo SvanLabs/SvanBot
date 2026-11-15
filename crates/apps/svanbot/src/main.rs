@@ -84,7 +84,9 @@ fn main() -> ExitCode {
 fn keep(store: &Store, event: Event<'_>) {
     let kept = match event {
         Event::Incident(incident) => {
-            eprintln!("svanbot: FAIR-PLAY INCIDENT: {incident:?}");
+            // `<2>` is journald's priority prefix for crit, so `journalctl -p crit` lists every
+            // incident and nothing else.
+            eprintln!("<2>svanbot: FAIR-PLAY INCIDENT: {incident:?}");
             store.append_incident(incident, now_ms())
         }
         Event::Hand(hand) => store.append_hand(&hand, Source::Live, now_ms()).map(|_| ()),

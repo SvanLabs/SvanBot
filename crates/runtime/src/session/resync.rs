@@ -23,6 +23,8 @@ impl Session {
                 })
             }
             _ if self.resyncing => self.back_to_the_lobby(),
+            // After a fair-play leave this is the clean exit the docs describe.
+            ("not_at_table", _) if self.leaving => self.rejoin(),
             _ => Step::default(),
         }
     }
@@ -91,6 +93,9 @@ impl Session {
                     _ => {}
                 }
             }
+        }
+        if let Some(hero) = &snapshot.hero {
+            self.seat = Some(hero.seat);
         }
         self.players.clear();
         let players: Vec<Player> = snapshot.seats.into_iter().map(|seat| seat.player).collect();
