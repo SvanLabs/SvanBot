@@ -15,5 +15,6 @@
     clippy::disallowed_macros
 )]
 
+pub mod client;
 pub mod session;
 pub mod wire;
