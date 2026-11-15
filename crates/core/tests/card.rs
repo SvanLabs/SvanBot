@@ -70,3 +70,12 @@ fn adding_a_card_the_set_holds_changes_nothing() {
     assert!(!set.insert(card("7d")));
     assert_eq!(set.len(), 1);
 }
+
+#[test]
+fn two_sets_join_into_the_cards_of_both() {
+    let hole: CardSet = "AhKh".parse().unwrap();
+    let board: CardSet = "Qh7h3s".parse().unwrap();
+    assert!(hole.is_disjoint(board));
+    assert_eq!(hole | board, "AhKhQh7h3s".parse().unwrap());
+    assert!(!(hole | board).is_disjoint(hole));
+}

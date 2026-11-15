@@ -17,6 +17,9 @@ version = "11.0.0-dev"
 [[package]]
 name = "svanbot-sim"
 version = "11.0.0-dev"
+dependencies = [
+ "svanbot-core",
+]
 
 [[package]]
 name = "svanbot-strategy"
