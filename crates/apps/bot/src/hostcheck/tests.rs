@@ -194,6 +194,7 @@ fn filesystem_damage_on_a_healthy_disk_is_a_repair_not_a_replacement() {
             last_errcode: Some(last),
             first_errcode: Some(first),
             disk: disk.map(|d| ("sdb".to_string(), d)),
+            ..Default::default()
         }],
         now: 1_600,
         ..Default::default()
@@ -247,27 +248,65 @@ fn udisks_smart_output_and_partition_names_are_read() {
 /// on a cool machine.
 #[test]
 fn a_cpu_at_its_thermal_limit_is_named_and_a_cool_one_is_not() {
-    let hot = Sources { heat: Some(Heat { max_c: 90.0, throttled_ms: 25_289_300, uptime_s: 996_000 }), ..Default::default() };
+    let hot = Sources { heat: Some(Heat { max_c: 90.0, throttled_ms: Some(25_289_300), uptime_s: 996_000 }), ..Default::default() };
     let hot_checks = checks(&hot);
     let row = get(&hot_checks, "heat");
     assert_eq!(row.status, Status::Warn);
     assert_eq!(row.value, "90 °C now; thermal throttling 7.0 h since boot (2.5% of uptime)");
     let advice = row.advice.clone().unwrap();
     assert!(advice.contains("cooler") && advice.contains("balanced"), "{advice}");
-    let cool = Sources { heat: Some(Heat { max_c: 55.0, throttled_ms: 0, uptime_s: 996_000 }), ..Default::default() };
+    let cool = Sources { heat: Some(Heat { max_c: 55.0, throttled_ms: Some(0), uptime_s: 996_000 }), ..Default::default() };
     assert_eq!(get(&checks(&cool), "heat").status, Status::Ok);
     // Hot right now but never throttled, or throttled a lot while cool now: either is worth a look.
     assert_eq!(
-        get(&checks(&Sources { heat: Some(Heat { max_c: 92.0, throttled_ms: 0, uptime_s: 1_000 }), ..Default::default() }), "heat").status,
+        get(&checks(&Sources { heat: Some(Heat { max_c: 92.0, throttled_ms: Some(0), uptime_s: 1_000 }), ..Default::default() }), "heat")
+            .status,
         Status::Warn
     );
     assert_eq!(
         get(
-            &checks(&Sources { heat: Some(Heat { max_c: 50.0, throttled_ms: 20_000_000, uptime_s: 996_000 }), ..Default::default() }),
+            &checks(&Sources { heat: Some(Heat { max_c: 50.0, throttled_ms: Some(20_000_000), uptime_s: 996_000 }), ..Default::default() }),
             "heat"
         )
         .status,
         Status::Warn
     );
     assert!(checks(&Sources::default()).iter().all(|c| c.key != "heat"), "no sensors: no row");
+}
+
+fn scratch(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("sv10-hostcheck-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// #1015: a throttle counter the kernel does not expose is not "never throttled".
+#[test]
+fn a_missing_throttle_counter_reads_as_unreadable_not_as_healthy() {
+    let dir = scratch("heat");
+    let sensor = dir.join("hwmon/hwmon0");
+    std::fs::create_dir_all(&sensor).unwrap();
+    std::fs::write(sensor.join("name"), "coretemp\n").unwrap();
+    std::fs::write(sensor.join("temp1_input"), "55000\n").unwrap();
+    let heat = thermal::read_from(&dir.join("hwmon"), &dir.join("no-such-counter"));
+    let c = checks(&Sources { heat, ..Default::default() });
+    let row = get(&c, "heat");
+    assert!(row.value.contains("unreadable"), "{}", row.value);
+    assert_ne!(row.status, Status::Ok, "an unreadable counter is not a healthy one");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// #1015: an ext4 filesystem whose error count cannot be read must not vanish from the check, and
+/// must not read as "none".
+#[test]
+fn an_unreadable_ext4_error_count_is_reported_not_dropped() {
+    let dir = scratch("ext4");
+    std::fs::create_dir_all(dir.join("sdb1")).unwrap();
+    let filesystems = disks::read_filesystems_from(&dir, "");
+    let c = checks(&Sources { filesystems, ..Default::default() });
+    let row = get(&c, "filesystems");
+    assert_eq!(row.status, Status::Warn, "{row:?}");
+    assert!(row.value.contains("sdb1") && row.value.contains("unreadable"), "{}", row.value);
+    std::fs::remove_dir_all(dir).unwrap();
 }
