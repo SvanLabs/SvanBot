@@ -1,5 +1,7 @@
 /target/
 /artifacts/
+# Agent worktrees are separate checkouts, not files of this one.
+/.claude/worktrees/
 .env
 .env.*
 !.env.example

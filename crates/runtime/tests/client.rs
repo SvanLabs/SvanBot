@@ -4,11 +4,13 @@
 #![allow(clippy::disallowed_types, clippy::result_large_err)]
 
 use std::net::TcpListener;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 use serde_json::{Value, json};
 use svanbot_core::rules::Action;
-use svanbot_runtime::client::{Bot, Config, Event, play};
+use svanbot_runtime::client::{Bot, Config, Event, PlayOutcome, play, play_with_stop};
 use tungstenite::Message;
 use tungstenite::handshake::server::{Request, Response};
 
@@ -99,6 +101,91 @@ fn it_authenticates_joins_and_answers_its_turn() {
             &action["amount"]
         ),
         (&json!("h-1"), &json!("tok-1"), &json!("raise"), &json!(60))
+    );
+}
+
+#[test]
+fn a_stop_between_hands_keeps_the_finished_hand_and_ends_the_connection() {
+    // The venue deals one hand and then goes quiet: after its result, nothing arrives. The updater
+    // sets the stop once that hand is kept, and `play` must leave the read it is blocked in, say
+    // why, and have kept the hand.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("ws://{}/ws", listener.local_addr().unwrap());
+    let venue = thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut socket = tungstenite::accept(stream).unwrap();
+        for frame in [
+            json!({"type": "connected", "agent_id": "a-1", "name": "SurSvan"}),
+            json!({"type": "table_joined", "table_id": "t-1", "seat": 2, "players": [
+                {"seat": 0, "name": "alpha_bot", "stack": 2000},
+                {"seat": 2, "name": "SurSvan", "stack": 2000}]}),
+            json!({"type": "hand_start", "hand_id": "h-1", "seat": 2, "dealer_seat": 0,
+                "blinds": {"small_blind": 10, "big_blind": 20}}),
+            json!({"type": "hand_result", "hand_id": "h-1", "final_stacks": {"0": 1970, "2": 2030}}),
+        ] {
+            send(&mut socket, frame);
+        }
+        // Never close: the client is left blocked in a read, as it is between hands.
+        let _ = socket.read();
+    });
+    let config = Config {
+        url,
+        key: "test-key".into(),
+        me: "SurSvan".into(),
+        roster: vec!["SurSvan".into()],
+    };
+    let mut bot = Bot::new(&config);
+    let stop = Arc::new(AtomicBool::new(false));
+    let setter = Arc::clone(&stop);
+    let handed = Arc::new(AtomicBool::new(false));
+    let seen = Arc::clone(&handed);
+    let ended = play_with_stop(
+        &config,
+        &mut bot,
+        |_| Action::Fold,
+        |event| {
+            if let Event::Hand(hand) = event {
+                assert_eq!(hand.hand_id, "h-1");
+                seen.store(true, Ordering::SeqCst);
+                setter.store(true, Ordering::SeqCst);
+            }
+        },
+        &move || stop.load(Ordering::SeqCst),
+    );
+    venue.join().unwrap();
+    assert!(
+        handed.load(Ordering::SeqCst),
+        "the finished hand was not kept"
+    );
+    assert!(
+        matches!(ended, Ok(PlayOutcome::Stopped)),
+        "a stop between hands must end the connection: {ended:?}"
+    );
+}
+
+#[test]
+fn play_without_a_stop_never_stops_itself() {
+    let ended = play_with_stop(
+        &Config {
+            url: "ws://127.0.0.1:1/ws".into(),
+            key: "k".into(),
+            me: "SurSvan".into(),
+            roster: vec!["SurSvan".into()],
+        },
+        &mut Bot::new(&Config {
+            url: "ws://127.0.0.1:1/ws".into(),
+            key: "k".into(),
+            me: "SurSvan".into(),
+            roster: vec!["SurSvan".into()],
+        }),
+        |_| Action::Fold,
+        |_| {},
+        &|| false,
+    );
+    // The stub venue is not there: the connection fails, and the failure is not a stop.
+    assert!(
+        !matches!(ended, Ok(PlayOutcome::Stopped)),
+        "no stop was asked for, yet play stopped: {ended:?}"
     );
 }
 

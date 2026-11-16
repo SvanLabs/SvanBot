@@ -1,0 +1,19 @@
+[package]
+name = "svanbot-updater"
+description = "The updater: verifies a staged release, swaps the slot between hands, and rolls back"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "svanbot-release"
+path = "src/main.rs"
+
+[dependencies]
+svanbot-runtime.workspace = true
+
+[lints]
+workspace = true
