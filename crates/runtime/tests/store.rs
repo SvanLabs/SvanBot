@@ -9,7 +9,7 @@ use svanbot_learn::probe::Arm;
 use svanbot_runtime::ledger::Played;
 use svanbot_runtime::record::{Hand, Recorder};
 use svanbot_runtime::session::Incident;
-use svanbot_runtime::store::{Source, Store};
+use svanbot_runtime::store::{Source, Store, Totals};
 use svanbot_runtime::wire::parse_frame;
 use svanbot_strategy::params::Params;
 
@@ -55,6 +55,36 @@ fn a_hand_is_kept_with_its_frames_once_and_survives_a_reopen() {
     let hands = store.hands().unwrap();
     assert_eq!(hands, [hand("h-1"), hand("h-2")]);
     assert_eq!(store.journal_mode().unwrap(), "wal");
+}
+
+#[test]
+fn the_store_counts_what_it_holds() {
+    let path = scratch("totals").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    assert_eq!(store.totals().unwrap(), Totals::default());
+    store
+        .append_hand(&hand("h-1"), Source::Live, 1_000)
+        .unwrap();
+    store
+        .append_hand(&hand("h-2"), Source::Live, 2_500)
+        .unwrap();
+    store
+        .append_incident(
+            &Incident::SharedTable {
+                table_id: "t-1".into(),
+                stablemate: "Svanar".into(),
+            },
+            3_000,
+        )
+        .unwrap();
+    assert_eq!(
+        store.totals().unwrap(),
+        Totals {
+            hands: 2,
+            incidents: 1,
+            last_hand_ms: Some(2_500),
+        }
+    );
 }
 
 #[test]

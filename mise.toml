@@ -13,6 +13,7 @@ description = "Install the pinned tools and the TypeScript packages, and turn th
 run = [
   "mise install",
   "mise exec -- bun install --cwd tools --frozen-lockfile",
+  "mise exec -- bun install --cwd web --frozen-lockfile",
   "git config core.hooksPath .githooks",
 ]
 
