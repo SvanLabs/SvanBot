@@ -155,6 +155,9 @@ impl Counts {
     }
 }
 
+/// The first line of a model written as text.
+const TEXT_HEADER: &str = "svanbot action model 1";
+
 /// The action model: a probability for each move open at each situation and bucket.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ActionModel {
@@ -244,6 +247,51 @@ impl ActionModel {
             }
         }
         Self { probs }
+    }
+
+    /// The model as text: a first line naming the format, then one line of six numbers for each
+    /// situation and bucket. Every number reads back to the same bits.
+    pub fn to_text(&self) -> String {
+        let mut text = String::from(TEXT_HEADER);
+        for row in &self.probs {
+            text.push('\n');
+            let numbers: Vec<String> = row.iter().map(|p| format!("{p:?}")).collect();
+            text.push_str(&numbers.join(" "));
+        }
+        text.push('\n');
+        text
+    }
+
+    /// The model `text` holds, or `None` unless it is whole: the header, every row, and in
+    /// every row a distribution over the moves open there.
+    pub fn from_text(text: &str) -> Option<Self> {
+        let mut lines = text.lines();
+        if lines.next()? != TEXT_HEADER {
+            return None;
+        }
+        let mut probs = Vec::with_capacity(Situation::COUNT * BUCKETS);
+        for line in lines {
+            let numbers: Vec<f64> = line
+                .split_whitespace()
+                .map(|number| number.parse().ok())
+                .collect::<Option<_>>()?;
+            probs.push(<[f64; 6]>::try_from(numbers).ok()?);
+        }
+        if probs.len() != Situation::COUNT * BUCKETS {
+            return None;
+        }
+        for situation in Situation::all() {
+            for bucket in 0..BUCKETS {
+                let row = &probs[situation.index() * BUCKETS + bucket];
+                let open: f64 = situation.moves().iter().map(|mv| row[mv.index()]).sum();
+                let all: f64 = row.iter().sum();
+                let sound = row.iter().all(|p| (0.0..=1.0).contains(p));
+                if !sound || (open - 1.0).abs() > 1e-9 || (all - 1.0).abs() > 1e-9 {
+                    return None;
+                }
+            }
+        }
+        Some(Self { probs })
     }
 
     /// The chance of `mv` at `situation` from a player whose bucket is not known: the mean over

@@ -2,14 +2,15 @@
 //!
 //! It fits the action model on every hand and gates it on held-out hands ([`fit`]), fits the
 //! population priors ([`prior`]), watches the ranges for drift ([`drift`]), classifies how each
-//! opponent adapts ([`adapt`]), and gates reads on what they could cost ([`exploit`]), runs paired sims ([`paired`]), and gives probe verdicts and the harm guard ([`probe`]). It
-//! will also propose challengers and score the Arena. It takes hands as values and returns its results. Reading and writing the store is
+//! opponent adapts ([`adapt`]), and gates reads on what they could cost ([`exploit`]), runs paired sims ([`paired`]), and gives probe verdicts and the harm guard ([`probe`]), and scores the Arena ([`arena`]). It will
+//! also propose challengers. It takes hands as values and returns its results. Reading and writing the store is
 //! `runtime`'s job.
 //!
 //! `learn` sits on `strategy`, `sim` and `core` (`docs/adr/0003-crate-graph.md`) and is pure: no
 //! network, no store, no clock, and the same result for the same inputs.
 
 pub mod adapt;
+pub mod arena;
 pub mod drift;
 pub mod exploit;
 pub mod fit;
