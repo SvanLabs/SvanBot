@@ -1,11 +1,21 @@
 //! The binary refuses to start without what fair play and the venue need.
 #![allow(clippy::disallowed_types, clippy::disallowed_methods)]
 
+use std::path::PathBuf;
 use std::process::Command;
+
+/// A health directory outside the repo, so a bot that starts without a store — which it does on
+/// purpose, so the updater sees it come up — records that start somewhere other than the clone.
+fn health_dir() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("svanbot-start-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
 
 fn run(env: &[(&str, &str)]) -> (Option<i32>, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
         .env_clear()
+        .env("SVANBOT_HEALTH", health_dir())
         .envs(env.iter().copied())
         .output()
         .unwrap();
@@ -58,6 +68,7 @@ fn the_download_needs_the_bot_s_own_key() {
     let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
         .arg("download")
         .env_clear()
+        .env("SVANBOT_HEALTH", health_dir())
         .env("SVANBOT_NAME", "SurSvan")
         .output()
         .unwrap();

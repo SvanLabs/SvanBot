@@ -1,0 +1,84 @@
+# The release (V11-10): on a `v*` tag, CI builds the one binary the fleet runs, packages it for the
+# box, and publishes a checksummed bundle on the GitHub release. The fleet never builds: the updater
+# installs only what this built, verified and named, and never while the fleet plays.
+#
+# One build, one bundle. The program's instruction level is the runner's (x86-64-v3), because a
+# compiler emits baseline code only when it is built on baseline — building v1 or v2 needs a runner
+# or a container of that level, which is a second build the release does not have and does not need:
+# the box here is v3. The bundle names the level it was built for, and the installer refuses
+# anything else.
+#
+# The job is a release build and `tools/release.ts`, and nothing else: the gate that guards this
+# tag already ran on the pull request. RUSTFLAGS="" drops the box's target-cpu=native so the bundle
+# is a fixed instruction level, and only dependencies are cached (`cache-workspace-crates: false`),
+# so the released bytes are the tag's own sources, rebuilt.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v11.0.0"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # The box's target-cpu=native comes from .cargo/config.toml, which a release must not take: the
+  # bundle is a fixed instruction level, built portably.
+  RUSTFLAGS: ""
+  # The tag being released: the pushed tag, or the one `workflow_dispatch` names.
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  bundle:
+    name: build and publish the bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+      - run: bun install --cwd tools --frozen-lockfile
+      # Dependencies are cached; our own crates are rebuilt, so the released bytes are the tag's.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ". -> target/dev"
+          cache-workspace-crates: false
+      # The tag is the version: the workspace says `11.0.0-dev` between releases, and the release
+      # says what it is called. `v11.0.0` names the release `11.0.0`.
+      - name: read the version from the tag
+        id: version
+        run: |
+          version="${TAG#v}"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "release: tag $TAG is not v<major>.<minor>.<patch>" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release: building $version from $TAG"
+      - run: nice -n 15 ionice -c3 cargo build --release --locked -j4 --bins
+      - name: package the bundle
+        run: bun tools/release.ts --version "${{ steps.version.outputs.version }}" --cpu x86-64-v3
+      # The checksum is what the updater verifies before it installs, and what the box cross-checks
+      # against the release; publishing it beside the archive is the whole point of the bundle.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: target/dist/*.tar.gz
+      - name: publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag \
+            --title "v$version" --notes "v$version, built by CI from $TAG. Verify with the \`.sha256\` beside it before installing."
+          gh release upload "$TAG" target/dist/*.tar.gz target/dist/*.tar.gz.sha256 --clobber
+          gh release view "$TAG" --json assets --jq '.assets[].name'

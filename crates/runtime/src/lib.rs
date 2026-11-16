@@ -17,11 +17,15 @@
 
 pub mod client;
 pub mod download;
+pub mod health;
 pub mod history;
 pub mod limit;
 pub mod lines;
 pub mod record;
+pub mod release;
 pub mod rest;
 pub mod session;
+pub mod slot;
 pub mod store;
+pub mod update;
 pub mod wire;
