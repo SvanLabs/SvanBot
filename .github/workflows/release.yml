@@ -54,12 +54,15 @@ jobs:
           workspaces: ". -> target/dev"
           cache-workspace-crates: false
       # The tag is the version: the workspace says `11.0.0-dev` between releases, and the release
-      # says what it is called. `v11.0.0` names the release `11.0.0`.
+      # says what it is called. `v11.0.0` names the release `11.0.0`. The check is strict digits and
+      # dots on purpose: a tag may contain `/` (`v1.2.3/../../tmp/x` is a legal tag), and the
+      # version becomes the bundle's file name, so anything but `N.N.N` is a path this must refuse.
       - name: read the version from the tag
         id: version
         run: |
           version="${TAG#v}"
           case "$version" in
+            *[!0-9.]*) echo "release: tag $TAG is not v<major>.<minor>.<patch>" >&2; exit 1 ;;
             [0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "release: tag $TAG is not v<major>.<minor>.<patch>" >&2; exit 1 ;;
           esac

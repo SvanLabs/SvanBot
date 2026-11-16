@@ -28,7 +28,7 @@ function fakeClone(): string {
 }
 
 test("the archive holds the staged release the updater verifies, and the files a fresh box needs", () => {
-  const files = release.collect(fakeClone(), "2026.11.16-1", "x86-64-v3");
+  const files = release.collect(fakeClone(), "2026.11.16", "x86-64-v3");
   expect([...files.keys()].sort()).toEqual([
     "UPGRADE/install.sh",
     "UPGRADE/svanbot-release",
@@ -40,7 +40,7 @@ test("the archive holds the staged release the updater verifies, and the files a
 });
 
 test("the updater travels outside the slot, so nothing execs it as a build", () => {
-  const files = release.collect(fakeClone(), "2026.11.16-1", "x86-64-v3");
+  const files = release.collect(fakeClone(), "2026.11.16", "x86-64-v3");
   expect(files.get("UPGRADE/svanbot-release")?.equals(UPDATER)).toBe(true);
   expect(files.has("release/svanbot-release")).toBe(false);
 });
@@ -48,17 +48,17 @@ test("the updater travels outside the slot, so nothing execs it as a build", () 
 test("a clone without the operator's tool is refused before anything is packed", () => {
   const dir = fakeClone();
   rmSync(join(dir, "target/dev/release", release.UPDATER));
-  expect(() => release.collect(dir, "2026.11.16-1", "x86-64-v3")).toThrow(
+  expect(() => release.collect(dir, "2026.11.16", "x86-64-v3")).toThrow(
     /no .*target\/dev\/release\/svanbot-release: build the release first/,
   );
 });
 
 test("the manifest and the published checksum agree, and it is the program's own hash", () => {
-  const files = release.collect(fakeClone(), "2026.11.16-1", "x86-64-v3");
+  const files = release.collect(fakeClone(), "2026.11.16", "x86-64-v3");
   const digest = release.sha256(PROGRAM);
   expect(files.get("release/sha256")?.toString()).toBe(`${digest}  svanbot\n`);
   const manifest = files.get("release/version")?.toString() ?? "";
-  expect(manifest).toContain("version\t2026.11.16-1\n");
+  expect(manifest).toContain("version\t2026.11.16\n");
   expect(manifest).toContain(`sha256\t${digest}\n`);
   // The instruction level is recorded, not guessed: the box that installs this reads it.
   expect(manifest).toContain("cpu\tx86-64-v3\n");
@@ -66,7 +66,7 @@ test("the manifest and the published checksum agree, and it is the program's own
 
 test("the packed archive is a tar the system reads, with the program executable", () => {
   const archive = join(root, "bundle.tar.gz");
-  writeFileSync(archive, release.pack(release.collect(fakeClone(), "2026.11.16-1", "x86-64-v3")));
+  writeFileSync(archive, release.pack(release.collect(fakeClone(), "2026.11.16", "x86-64-v3")));
   const out = mkdtempSync(join(root, "unpacked-"));
   expect(Bun.spawnSync(["tar", "-xzf", archive, "-C", out]).exitCode).toBe(0);
   // The program's mode survives the round trip: the updater refuses a program it cannot exec, and
@@ -103,22 +103,29 @@ test("the version comes from the workspace manifest unless the tag overrides it"
 test("packing a clone that was never built says so, naming the missing build", () => {
   const dir = mkdtempSync(join(root, "unbuilt-"));
   mkdirSync(join(dir, "deploy"), { recursive: true });
-  expect(() => release.collect(dir, "2026.11.16-1", "x86-64-v3")).toThrow(
+  expect(() => release.collect(dir, "2026.11.16", "x86-64-v3")).toThrow(
     /no .*target\/dev\/release\/svanbot: build the release first/,
   );
+});
+
+test("a version that is a path, not a version, is refused before it names a file", () => {
+  // A git tag may contain `/`; the version becomes the bundle's file name, so it must be `N.N.N`.
+  expect(() => release.safe("1.2.3/../../tmp/evil")).toThrow(/not <major>.<minor>.<patch>/);
+  expect(() => release.safe("1.2.3-rc1")).toThrow(/not <major>.<minor>.<patch>/);
+  expect(release.safe("2026.11.16")).toBe("2026.11.16");
 });
 
 test("a bundle writes the archive and its checksum beside it, named for the version and the cpu", () => {
   const out = join(root, "dist");
   const built = release.build({
     root: fakeClone(),
-    version: "2026.11.16-1",
+    version: "2026.11.16",
     cpu: "x86-64-v2",
     out,
   });
-  expect(built.archive.endsWith("svanbot-2026.11.16-1-x86-64-v2.tar.gz")).toBe(true);
+  expect(built.archive.endsWith("svanbot-2026.11.16-x86-64-v2.tar.gz")).toBe(true);
   expect(readFileSync(`${built.archive}.sha256`, "utf8")).toBe(
-    `${built.sha256}  svanbot-2026.11.16-1-x86-64-v2.tar.gz\n`,
+    `${built.sha256}  svanbot-2026.11.16-x86-64-v2.tar.gz\n`,
   );
   expect(release.sha256(readFileSync(built.archive))).toBe(built.sha256);
 });

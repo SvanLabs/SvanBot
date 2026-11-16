@@ -151,13 +151,27 @@ function checksum(block: Buffer): string {
   return `${sum.toString(8).padStart(6, "0")}\0 `;
 }
 
+/**
+ * A version that is safe to name a file with: digits and dots, and the shape `N.N.N`. A git tag
+ * may contain `/` and other characters a file name may not, and the version becomes the bundle's
+ * name, so this is refused here as well as in the workflow — the check is what stops a tag like
+ * `v1.2.3/../../x` from writing outside the output directory.
+ */
+export function safe(version: string): string {
+  if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)) {
+    throw new Error(`version ${version} is not <major>.<minor>.<patch>`);
+  }
+  return version;
+}
+
 /** Packs a bundle and writes it, with its `.sha256`, under `out`. */
 export function build(options: { root: string; version: string; cpu: string; out: string }): {
   archive: string;
   sha256: string;
 } {
-  const bytes = pack(collect(options.root, options.version, options.cpu));
-  const name = `${PROGRAM}-${options.version}-${options.cpu}.tar.gz`;
+  const version = safe(options.version);
+  const bytes = pack(collect(options.root, version, options.cpu));
+  const name = `${PROGRAM}-${version}-${options.cpu}.tar.gz`;
   mkdirSync(options.out, { recursive: true });
   const archive = join(options.out, name);
   writeFileSync(archive, bytes);

@@ -84,7 +84,7 @@ on the box knows a canary has been watched long enough — and it swaps one bot 
 
 ```sh
 # the canary first
-SVANBOT_CANARY=SurSvan SVANBOT_NAME=SurSvan svanbot-release update 2026.11.16-1
+SVANBOT_CANARY=SurSvan SVANBOT_NAME=SurSvan svanbot-release update 2026.11.16
 # ... watch the canary for its window, then the fleet, one bot at a time
 SVANBOT_CANARY=SurSvan SVANBOT_NAME=<name> svanbot-release update --fleet
 ```
@@ -96,11 +96,11 @@ new build is worse, the harm guard trips and `svanbot-release rollback` is the s
 ### A release, start to end
 
 ```sh
-gh release download v2026.11.16-1 --repo SvanLabs/SvanBot   # the bundle and its .sha256
-deploy/install.sh svanbot-2026.11.16-1-x86-64-v3.tar.gz      # verifies and stages it
+gh release download v2026.11.16 --repo SvanLabs/SvanBot   # the bundle and its .sha256
+deploy/install.sh svanbot-2026.11.16-x86-64-v3.tar.gz      # verifies and stages it
 svanbot-release install ~/.local/lib/svanbot/staged
 svanbot-release status                                       # the build is installed, no slot has moved
-SVANBOT_CANARY=SurSvan svanbot-release update 2026.11.16-1   # the canary takes it first
+SVANBOT_CANARY=SurSvan svanbot-release update 2026.11.16   # the canary takes it first
 ```
 
 ## The season download
