@@ -6,6 +6,7 @@ under the home of the user the fleet runs as.
 | File | What it is |
 |------|------------|
 | `svanbot@.service` | One bot at the venue. One instance per bot: `svanbot@<name>`. |
+| `svanbot-dashboard.service` | The loopback-only fleet dashboard: `svanbot dashboard`. |
 | `svanbot-clean.service`, `svanbot-clean.timer` | Daily `cargo sweep` of the dev clone's `target/dev`. |
 | `journald-svanbot.conf` | The journal's 1 GiB cap. Root installs it: the operator's step. |
 
@@ -53,6 +54,36 @@ store, in its append-only `incidents` table. To list every incident on the box:
 ```sh
 journalctl --user -p crit -u 'svanbot@*'
 ```
+
+## The dashboard
+
+`svanbot dashboard` serves one page on loopback and pushes the fleet to it over one event stream.
+Each bot writes `<name>.status.json` beside its store, mode 600, every five seconds; the dashboard
+calls a status older than fifteen seconds stale, and keeps the last one on screen if the stream
+drops. The page names opponents and shows their stacks, so it is never the public TV.
+
+```sh
+install -m 644 deploy/svanbot-dashboard.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now svanbot-dashboard
+ssh -N -L 8080:127.0.0.1:8080 <box>   # then open http://127.0.0.1:8080
+```
+
+The service reads three variables, with the defaults the unit sets:
+
+| Variable | Default | What it is |
+|----------|---------|------------|
+| `SVANBOT_DATA` | `~/.local/share/svanbot` | Every bot's store and status file. |
+| `SVANBOT_WEB` | `~/.local/lib/svanbot/current/web` | The exported page. |
+| `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:8080` | Where it listens. Keep it on loopback. |
+
+The page is a static export, built by `bun run --cwd web build` into `web/out`; no Node process runs
+on the box. The release must install that directory as `web` in the slot (V11-10); without it the
+dashboard answers 503 and says the export is missing.
+
+A stopped bot keeps its last status file, so its card says `No recent status` rather than
+disappearing. That is the intended reading: the dashboard shows what was last known, not only what
+is live.
 
 ## The season download
 

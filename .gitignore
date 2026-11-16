@@ -6,3 +6,6 @@
 node_modules/
 .DS_Store
 /package-lock.json
+/web/.next/
+/web/out/
+/web/tsconfig.tsbuildinfo

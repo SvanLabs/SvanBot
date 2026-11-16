@@ -23,5 +23,6 @@ pub mod lines;
 pub mod record;
 pub mod rest;
 pub mod session;
+pub mod status;
 pub mod store;
 pub mod wire;

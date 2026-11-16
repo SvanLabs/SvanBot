@@ -19,11 +19,12 @@
 mod resync;
 
 use crate::lines::Lines;
+use crate::status::{Seat, Table};
 
 use std::collections::BTreeMap;
 
 use svanbot_core::card::CardSet;
-use svanbot_core::rules::{Action, Legal, RaiseRange};
+use svanbot_core::rules::{Action, Legal, RaiseRange, Street};
 use svanbot_core::spot::Spot;
 
 use crate::wire::{Frame, Inbound, Offer, Outbound, Player, Turn, VenueAction};
@@ -41,6 +42,16 @@ pub enum Incident {
     },
     /// A hand was dealt with a stablemate in it.
     SharedHand { hand_id: String, stablemate: String },
+}
+
+/// The venue's name for a street, as the dashboard shows it.
+fn street_name(street: Street) -> &'static str {
+    match street {
+        Street::Preflop => "preflop",
+        Street::Flop => "flop",
+        Street::Turn => "turn",
+        Street::River => "river",
+    }
 }
 
 /// What the session does in answer to one frame.
@@ -141,6 +152,49 @@ impl Session {
             table_id: self.table_id.clone(),
             last_table_seq: self.table_seq,
         }]
+    }
+
+    /// The table as the dashboard sees it: our seat, the hand in progress and every seated
+    /// player, or `None` when the bot sits at none. The hole cards stay out of it.
+    pub fn table(&self) -> Option<Table> {
+        if self.table_id.is_empty() {
+            return None;
+        }
+        let in_hand = self.hand.is_some();
+        Some(Table {
+            id: self.table_id.clone(),
+            seat: self.seat,
+            hand_id: self.hand.as_ref().map(|hand| hand.hand_id.clone()),
+            street: if in_hand {
+                self.lines
+                    .street()
+                    .map(|street| street_name(street).to_owned())
+            } else {
+                None
+            },
+            board: if in_hand {
+                self.lines
+                    .board_order()
+                    .iter()
+                    .map(|card| card.to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            },
+            pot: if in_hand { self.lines.pot() } else { 0 },
+            big_blind: if in_hand { self.lines.big_blind() } else { 0 },
+            dealer: if in_hand { self.lines.dealer() } else { 0 },
+            players: self
+                .players
+                .values()
+                .map(|player| Seat {
+                    seat: player.seat,
+                    name: player.name.clone(),
+                    stack: player.stack,
+                    folded: in_hand && self.lines.folded(player.seat),
+                })
+                .collect(),
+        })
     }
 
     /// Forgets the table: the venue frees a seat 120 s after a disconnect, so after a longer gap

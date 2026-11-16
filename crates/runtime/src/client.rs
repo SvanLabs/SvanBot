@@ -18,6 +18,7 @@ use tungstenite::{Message, WebSocket};
 use crate::limit::Limiter;
 use crate::record::{Hand, Recorder};
 use crate::session::{Incident, Session};
+use crate::status::Table;
 use crate::wire::{self, Inbound, Outbound};
 
 /// The venue's WebSocket endpoint.
@@ -78,6 +79,10 @@ impl From<tungstenite::Error> for ClientError {
 /// What a connection tells its caller, besides the moves it plays.
 #[derive(Debug)]
 pub enum Event<'a> {
+    /// The venue connection opened.
+    Connected,
+    /// The table the bot sits at changed, or it left one. `None` means it sits at none.
+    Table(Option<Table>),
     /// A fair-play incident the session raised.
     Incident(&'a Incident),
     /// A hand the recorder finished.
@@ -118,6 +123,12 @@ pub fn play(
         .map_err(|_| ClientError::BadConfig("the key is not a valid header value".into()))?;
     request.headers_mut().insert(AUTHORIZATION, bearer);
     let (mut socket, _) = tungstenite::connect(request)?;
+    on_event(Event::Connected);
+    // A session outlives its connection, so a reconnect may already know the table.
+    let mut last_table = bot.session.table();
+    if let Some(table) = last_table.clone() {
+        on_event(Event::Table(Some(table)));
+    }
     let mut limiter = Limiter::venue();
     loop {
         let text = match socket.read() {
@@ -155,6 +166,11 @@ pub fn play(
                 step.send
             }
         };
+        let table = bot.session.table();
+        if table != last_table {
+            on_event(Event::Table(table.clone()));
+            last_table = table;
+        }
         send_all(&mut socket, &mut limiter, &outbound)?;
     }
 }
