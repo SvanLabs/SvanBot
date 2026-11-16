@@ -75,3 +75,22 @@ fn the_download_needs_the_bot_s_own_key() {
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("SVANBOT_API_KEY"));
 }
+
+#[test]
+fn a_proposal_of_a_number_the_policy_does_not_have_is_refused_and_writes_nothing() {
+    let fleet = health_dir().join("fleet-refused");
+    let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
+        .args(["propose", "bluff_more=1"])
+        .env_clear()
+        .env("SVANBOT_HEALTH", health_dir())
+        .env("SVANBOT_FLEET", &fleet)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("exploit, value_margin, raise_share"),
+        "{stderr}"
+    );
+    assert!(!fleet.join("proposal.json").exists());
+}

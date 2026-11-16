@@ -8,8 +8,10 @@
 
 use std::process::ExitCode;
 
+use svanbot_core::rules::Action;
 use svanbot_core::rules::Blinds;
-use svanbot_learn::paired::{Match, duel, verdict};
+use svanbot_core::spot::Spot;
+use svanbot_learn::paired::{Match, Verdict, duel, verdict};
 use svanbot_strategy::params::Params;
 use svanbot_strategy::policy;
 use svanbot_strategy::pricer::{self, Budget};
@@ -36,7 +38,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         stack: 2000,
         seed: seed.unwrap_or(1),
     };
-    let challenger = |spot: &svanbot_core::spot::Spot, seed: u64| {
+    let challenger = |spot: &Spot, seed: u64| {
         let iterations = match fixed {
             Some(fixed) => u32::try_from(fixed).unwrap_or(u32::MAX),
             None => iterations_for(spot.pot, spot.big_blind, spot.board.len()),
@@ -47,24 +49,42 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         };
         policy::decide(spot, None, &Params::DEFAULT, budget, iterations)
     };
-    let champion = |spot: &svanbot_core::spot::Spot, seed: u64| {
+    let champion = |spot: &Spot, seed: u64| {
         let budget = Budget {
             samples: SAMPLES,
             seed,
         };
         pricer::decide(spot, None, budget).action
     };
+    let found = sim(&game, deals, &challenger, &champion);
+    println!(
+        "policy against pricer, heads up: {:+.0} mbb/100, 95% CI ±{:.0}, over {} deals (seed {})",
+        found.mbb_per_100, found.ci95, found.deals, game.seed
+    );
+    if found.below_zero() {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// Plays `deals` deals of `game` between two policies and returns the challenger's verdict.
+pub(crate) fn sim(
+    game: &Match,
+    deals: u64,
+    challenger: &(impl Fn(&Spot, u64) -> Action + Sync),
+    champion: &(impl Fn(&Spot, u64) -> Action + Sync),
+) -> Verdict {
     // Thread `k` plays deals k, k + THREADS, …; put back in order, the sum is the same on any
     // number of threads.
     let mut results = vec![0.0; deals as usize];
     let played: Vec<Vec<(u64, f64)>> = std::thread::scope(|scope| {
         let workers: Vec<_> = (0..THREADS)
             .map(|k| {
-                let (challenger, champion) = (&challenger, &champion);
                 scope.spawn(move || {
                     (k..deals)
                         .step_by(THREADS as usize)
-                        .map(|deal| (deal, duel(&game, deal, challenger, champion)))
+                        .map(|deal| (deal, duel(game, deal, challenger, champion)))
                         .collect()
                 })
             })
@@ -77,14 +97,5 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     for (deal, result) in played.into_iter().flatten() {
         results[deal as usize] = result;
     }
-    let found = verdict(&results);
-    println!(
-        "policy against pricer, heads up: {:+.0} mbb/100, 95% CI ±{:.0}, over {} deals (seed {})",
-        found.mbb_per_100, found.ci95, found.deals, game.seed
-    );
-    if found.below_zero() {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
-    }
+    verdict(&results)
 }

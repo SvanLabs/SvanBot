@@ -22,10 +22,52 @@ pub fn decide(
     budget: Budget,
     iterations: u32,
 ) -> Action {
+    decide_drawn(spot, model, params, budget, iterations).action
+}
+
+/// A decision, and what it was drawn from when it was drawn.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Decision {
+    pub action: Action,
+    /// The re-solve's draw. The pricer draws nothing: it takes its best action every time.
+    pub drawn: Option<Drawn>,
+}
+
+/// A draw among actions: the chance each had, what each was valued at in chips, and the one
+/// taken. The luck correction of a hand reads it (`learn::probe::corrected`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Drawn {
+    pub strategy: Vec<f64>,
+    pub values: Vec<f64>,
+    pub taken: usize,
+}
+
+/// [`decide`], with the draw behind the action.
+pub fn decide_drawn(
+    spot: &Spot,
+    model: Option<&ActionModel>,
+    params: &Params,
+    budget: Budget,
+    iterations: u32,
+) -> Decision {
     // Until a fit passes the gate, the baseline reads the opponents' lines.
     let baseline = ActionModel::baseline();
     match resolve(spot, model, params.exploit, iterations, budget.seed) {
-        Some(resolved) => resolved.action,
-        None => pricer::price(spot, Some(model.unwrap_or(&baseline)), budget, params).action,
+        Some(resolved) => Decision {
+            action: resolved.action,
+            drawn: Some(Drawn {
+                strategy: resolved
+                    .strategy
+                    .iter()
+                    .map(|&(_, chance)| chance)
+                    .collect(),
+                values: resolved.values,
+                taken: resolved.taken,
+            }),
+        },
+        None => Decision {
+            action: pricer::price(spot, Some(model.unwrap_or(&baseline)), budget, params).action,
+            drawn: None,
+        },
     }
 }

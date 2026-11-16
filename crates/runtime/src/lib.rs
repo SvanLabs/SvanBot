@@ -17,10 +17,13 @@
 
 pub mod client;
 pub mod download;
+pub mod fleet;
 pub mod health;
 pub mod history;
+pub mod ledger;
 pub mod limit;
 pub mod lines;
+pub mod probing;
 pub mod record;
 pub mod release;
 pub mod rest;

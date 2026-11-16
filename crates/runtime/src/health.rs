@@ -202,7 +202,7 @@ fn parse_start(line: &str) -> Option<Start> {
 
 /// Writes `bytes` to `path` by writing beside it and renaming over it, so a reader sees the old
 /// file or the new one, never a half-written one.
-fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), HealthError> {
+pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), HealthError> {
     let temporary = path.with_extension("new");
     {
         let mut file = fs::File::create(&temporary)?;

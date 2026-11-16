@@ -5,10 +5,13 @@
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
+use svanbot_learn::probe::Arm;
+use svanbot_runtime::ledger::Played;
 use svanbot_runtime::record::{Hand, Recorder};
 use svanbot_runtime::session::Incident;
 use svanbot_runtime::store::{Source, Store};
 use svanbot_runtime::wire::parse_frame;
+use svanbot_strategy::params::Params;
 
 /// A fresh, empty directory for one test.
 fn scratch(name: &str) -> PathBuf {
@@ -169,4 +172,67 @@ fn a_store_belongs_to_one_bot_and_refuses_any_other() {
     let raw = rusqlite::Connection::open(&path).unwrap();
     let changed = raw.execute("UPDATE meta SET value = 'Svanar' WHERE key = 'bot'", []);
     assert!(changed.unwrap_err().to_string().contains("append-only"));
+}
+
+fn played(id: &str, net: i64, orbit: Option<(u64, u64, Arm)>) -> Played {
+    Played {
+        hand_id: id.into(),
+        table_id: "t-1".into(),
+        digest: Params::DEFAULT.digest(),
+        net,
+        luck: 10.0,
+        big_blind: 20,
+        orbit,
+    }
+}
+
+#[test]
+fn a_played_hand_is_kept_once_and_a_probes_orbits_add_up_from_its_hands() {
+    let path = scratch("played").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    // A probe id above i64::MAX, as a hash can be.
+    let probe = u64::MAX - 5;
+    let hands = [
+        played("h-1", 50, None),
+        played("h-2", 110, Some((probe, 0, Arm::Challenger))),
+        played("h-3", -30, Some((probe, 0, Arm::Challenger))),
+        played("h-4", 10, Some((probe, 1, Arm::Champion))),
+        played("h-5", 70, Some((7, 0, Arm::Champion))),
+    ];
+    for hand in &hands {
+        assert!(store.append_played(hand, 1_000).unwrap());
+    }
+    assert!(!store.append_played(&hands[0], 2_000).unwrap());
+    assert_eq!(store.played().unwrap(), hands);
+    // Orbit 0: (110 - 10 - 30 - 10) chips at a big blind of 20 is 3 big blinds over two hands.
+    assert_eq!(
+        store.orbits(probe).unwrap(),
+        vec![(0, Arm::Challenger, 3.0, 2), (1, Arm::Champion, 0.0, 1)]
+    );
+}
+
+#[test]
+fn the_open_probe_is_the_one_started_and_not_yet_ended() {
+    let path = scratch("probes").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    assert_eq!(store.open_probe().unwrap(), None);
+    store
+        .append_probe(11, "started", r#"{"n":1}"#, 1_000)
+        .unwrap();
+    assert_eq!(
+        store.open_probe().unwrap(),
+        Some((11, r#"{"n":1}"#.to_owned()))
+    );
+    store.append_probe(11, "harmful", "{}", 2_000).unwrap();
+    assert_eq!(store.open_probe().unwrap(), None);
+    store
+        .append_probe(12, "started", r#"{"n":2}"#, 3_000)
+        .unwrap();
+    // It survives a reopen: a restarted canary takes its probe up again.
+    drop(store);
+    let store = Store::open(&path, "SurSvan").unwrap();
+    assert_eq!(
+        store.open_probe().unwrap(),
+        Some((12, r#"{"n":2}"#.to_owned()))
+    );
 }

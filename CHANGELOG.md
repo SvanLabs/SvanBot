@@ -61,3 +61,12 @@ V11-00.
   with ring), plays every turn by the pricer, reports fair-play incidents, and reconnects with a
   backoff. It reads its key, name and roster from the environment, never prints the key, and will
   not start without the roster.
+- The Probe, live: every bot keeps a ledger of what each hand won (the stack's gain since the
+  hand before, with the luck of the re-solve's own draws beside it) and plays by the fleet's
+  champion parameter set. `svanbot propose` plays a challenger against the champion in a paired
+  sim and, when the whole 95% interval is above 0, proposes it as a promotion. The canary
+  (`SVANBOT_CANARY`, named by the operator) takes the proposal up between hands, plays one arm
+  an orbit by a logged coin, and reads its verdict from a confidence sequence. A promotion runs
+  a 3,000-hand harm guard on the canary first: cleared, the canary writes the fleet's champion
+  and the other bots adopt it between hands; harmful, the champion stays. A restarted canary
+  takes its probe up from its store.
