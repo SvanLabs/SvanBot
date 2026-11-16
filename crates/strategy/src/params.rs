@@ -26,15 +26,32 @@ impl Params {
         raise_share: 0.75,
     };
 
-    /// The digest that names this parameter set.
-    pub fn digest(&self) -> Digest {
-        let named = [
+    /// Each number with its name.
+    pub fn named(&self) -> [(&'static str, f64); 3] {
+        [
             ("exploit", self.exploit),
             ("value_margin", self.value_margin),
             ("raise_share", self.raise_share),
-        ];
+        ]
+    }
+
+    /// This parameter set with the number called `name` set to `value`, or `None` for a name no
+    /// number has.
+    #[must_use]
+    pub fn with(mut self, name: &str, value: f64) -> Option<Self> {
+        match name {
+            "exploit" => self.exploit = value,
+            "value_margin" => self.value_margin = value,
+            "raise_share" => self.raise_share = value,
+            _ => return None,
+        }
+        Some(self)
+    }
+
+    /// The digest that names this parameter set.
+    pub fn digest(&self) -> Digest {
         let mut hash = FNV_OFFSET;
-        for (name, value) in named {
+        for (name, value) in self.named() {
             let bytes = name.bytes().chain([0]).chain(value.to_bits().to_le_bytes());
             for byte in bytes {
                 hash = (hash ^ u64::from(byte)).wrapping_mul(FNV_PRIME);

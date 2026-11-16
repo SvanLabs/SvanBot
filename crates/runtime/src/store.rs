@@ -9,8 +9,11 @@
 use std::fmt;
 use std::path::Path;
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
+use svanbot_learn::probe::Arm;
+
+use crate::ledger::Played;
 use crate::record::Hand;
 use crate::session::Incident;
 
@@ -56,6 +59,37 @@ CREATE TRIGGER IF NOT EXISTS incidents_no_update BEFORE UPDATE ON incidents
     BEGIN SELECT RAISE(ABORT, 'incidents are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS incidents_no_delete BEFORE DELETE ON incidents
     BEGIN SELECT RAISE(ABORT, 'incidents are append-only'); END;
+CREATE TABLE IF NOT EXISTS played (
+    hand_id     TEXT PRIMARY KEY,
+    table_id    TEXT NOT NULL,
+    recorded_ms INTEGER NOT NULL,
+    -- The parameter set the hand was played by.
+    digest      TEXT NOT NULL,
+    -- The chips won, and the chips of that which were the luck of our own draws.
+    net         INTEGER NOT NULL,
+    luck        REAL NOT NULL,
+    big_blind   INTEGER NOT NULL CHECK (big_blind > 0),
+    -- The probe the hand counted in, as 16 hex digits, its orbit there and the arm played.
+    probe       TEXT,
+    orbit       INTEGER,
+    arm         TEXT CHECK (arm IN ('champion', 'challenger'))
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS played_no_update BEFORE UPDATE ON played
+    BEGIN SELECT RAISE(ABORT, 'played hands are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS played_no_delete BEFORE DELETE ON played
+    BEGIN SELECT RAISE(ABORT, 'played hands are append-only'); END;
+CREATE TABLE IF NOT EXISTS probes (
+    id          INTEGER PRIMARY KEY,
+    recorded_ms INTEGER NOT NULL,
+    probe       TEXT NOT NULL,
+    -- 'started', or the verdict the probe ended on.
+    event       TEXT NOT NULL,
+    detail      TEXT NOT NULL CHECK (json_valid(detail))
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS probes_no_update BEFORE UPDATE ON probes
+    BEGIN SELECT RAISE(ABORT, 'probes are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS probes_no_delete BEFORE DELETE ON probes
+    BEGIN SELECT RAISE(ABORT, 'probes are append-only'); END;
 PRAGMA user_version = 1;
 ";
 
@@ -244,5 +278,136 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Keeps what a hand won. Returns false if it is kept already: the first copy stands.
+    pub fn append_played(&self, played: &Played, recorded_ms: i64) -> Result<bool, StoreError> {
+        let (probe, orbit, arm) = match played.orbit {
+            Some((probe, orbit, arm)) => (
+                Some(format!("{probe:016x}")),
+                Some(i64::try_from(orbit).map_err(|e| StoreError(e.to_string()))?),
+                Some(arm_name(arm)),
+            ),
+            None => (None, None, None),
+        };
+        let added = self.db.execute(
+            "INSERT INTO played
+                (hand_id, table_id, recorded_ms, digest, net, luck, big_blind, probe, orbit, arm)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) ON CONFLICT (hand_id) DO NOTHING",
+            params![
+                played.hand_id,
+                played.table_id,
+                recorded_ms,
+                played.digest.to_string(),
+                played.net,
+                played.luck,
+                played.big_blind,
+                probe,
+                orbit,
+                arm
+            ],
+        )?;
+        Ok(added == 1)
+    }
+
+    /// Every hand's winnings, in the order they were kept.
+    pub fn played(&self) -> Result<Vec<Played>, StoreError> {
+        let mut query = self.db.prepare(
+            "SELECT hand_id, table_id, digest, net, luck, big_blind, probe, orbit, arm
+             FROM played ORDER BY rowid",
+        )?;
+        let rows = query.query_map([], |row| {
+            let digest: String = row.get(2)?;
+            let probe: Option<String> = row.get(6)?;
+            let orbit: Option<i64> = row.get(7)?;
+            let arm: Option<String> = row.get(8)?;
+            Ok(Played {
+                hand_id: row.get(0)?,
+                table_id: row.get(1)?,
+                digest: digest.parse().map_err(|_| rusqlite::Error::InvalidQuery)?,
+                net: row.get(3)?,
+                luck: row.get(4)?,
+                big_blind: row.get(5)?,
+                orbit: match (probe, orbit, arm) {
+                    (Some(probe), Some(orbit), Some(arm)) => Some((
+                        u64::from_str_radix(&probe, 16).unwrap_or(0),
+                        u64::try_from(orbit).unwrap_or(0),
+                        arm_named(&arm),
+                    )),
+                    _ => None,
+                },
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// The orbits of `probe`, oldest first: each one's number, its arm, the big blinds it won
+    /// with the luck taken out, and its hands.
+    pub fn orbits(&self, probe: u64) -> Result<Vec<(u64, Arm, f64, u32)>, StoreError> {
+        let mut query = self.db.prepare(
+            "SELECT orbit, arm, SUM((net - luck) / big_blind), COUNT(*)
+             FROM played WHERE probe = ?1 GROUP BY orbit ORDER BY orbit",
+        )?;
+        let rows = query.query_map([format!("{probe:016x}")], |row| {
+            let orbit: i64 = row.get(0)?;
+            let arm: String = row.get(1)?;
+            Ok((
+                u64::try_from(orbit).unwrap_or(0),
+                arm_named(&arm),
+                row.get(2)?,
+                row.get(3)?,
+            ))
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Records that `probe` started, or the verdict it ended on, with `detail` as JSON.
+    pub fn append_probe(
+        &self,
+        probe: u64,
+        event: &str,
+        detail: &str,
+        recorded_ms: i64,
+    ) -> Result<(), StoreError> {
+        self.db.execute(
+            "INSERT INTO probes (recorded_ms, probe, event, detail) VALUES (?1, ?2, ?3, ?4)",
+            params![recorded_ms, format!("{probe:016x}"), event, detail],
+        )?;
+        Ok(())
+    }
+
+    /// The probe that started last, with the detail it started with, unless it has ended.
+    pub fn open_probe(&self) -> Result<Option<(u64, String)>, StoreError> {
+        let last = self
+            .db
+            .query_row(
+                "SELECT probe, event, detail FROM probes ORDER BY id DESC LIMIT 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        Ok(last
+            .filter(|(_, event, _)| event == "started")
+            .map(|(probe, _, detail)| (u64::from_str_radix(&probe, 16).unwrap_or(0), detail)))
+    }
+}
+
+fn arm_name(arm: Arm) -> &'static str {
+    match arm {
+        Arm::Champion => "champion",
+        Arm::Challenger => "challenger",
+    }
+}
+
+fn arm_named(name: &str) -> Arm {
+    match name {
+        "challenger" => Arm::Challenger,
+        _ => Arm::Champion,
     }
 }

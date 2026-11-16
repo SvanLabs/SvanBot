@@ -14,8 +14,18 @@
 //!   the store unless set (V11-10). The bot records each start there, so a crash loop is visible
 //!   from outside the process, and reads the updater's request to stop between hands.
 //!
+//! - `SVANBOT_CANARY`: the name of the canary, the one bot that runs probes and takes each
+//!   promotion first. The operator names it; no rank does.
+//! - `SVANBOT_FLEET`: where the fleet's champion and proposal files are, the `fleet` directory
+//!   beside the store unless set.
+//!
+//! The bot plays by the fleet's champion parameter set and keeps what every hand won. The canary
+//! also takes up a proposal, plays its probe, and promotes a challenger whose harm guard clears
+//! (`svanbot_runtime::probing`).
+//!
 //! `svanbot download` instead downloads the bot's season hand history into its store, and exits
 //! ([`download`]). `svanbot paired` runs a paired sim of the policy against the pricer ([`paired`]).
+//! `svanbot propose` puts a challenger forward for the canary ([`propose`]).
 //!
 //! An app does I/O, so it turns off the `clippy.toml` bans here, once (ADR 0003).
 #![allow(
@@ -26,18 +36,22 @@
 
 mod download;
 mod paired;
+mod propose;
 
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use svanbot_learn::probe::Decided;
 use svanbot_runtime::client::{
     Bot, ClientError, Config, Event, PlayOutcome, VENUE, fresh_seed, play_with_stop,
 };
+use svanbot_runtime::fleet::{self, Fleet};
 use svanbot_runtime::health::{self, Health};
+use svanbot_runtime::probing::Probing;
 use svanbot_runtime::store::{Source, Store};
-use svanbot_strategy::params::Params;
-use svanbot_strategy::policy::decide;
+use svanbot_strategy::policy::decide_drawn;
 use svanbot_strategy::pricer::Budget;
 use svanbot_strategy::resolve::iterations_for;
 
@@ -61,6 +75,10 @@ fn main() -> ExitCode {
         let args: Vec<String> = std::env::args().skip(2).collect();
         return paired::run(&args);
     }
+    if std::env::args().nth(1).as_deref() == Some("propose") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return propose::run(&args);
+    }
     let config = match config_from_env() {
         Ok(config) => config,
         Err(why) => {
@@ -78,6 +96,18 @@ fn main() -> ExitCode {
     // The updater's request to stop between hands, and the answer this bot gives it.
     let health = open_health(&config.me);
     eprintln!("svanbot: {} connects to {}", config.me, config.url);
+    let canary = std::env::var("SVANBOT_CANARY").is_ok_and(|name| name == config.me);
+    let (probing, notes) = Probing::open(&store, Fleet::in_dir(fleet_dir()), canary, now_ms());
+    for note in notes {
+        eprintln!("svanbot: {note}");
+    }
+    eprintln!(
+        "svanbot: plays by champion {}{}",
+        probing.params().digest(),
+        if canary { ", as the canary" } else { "" }
+    );
+    // The decision and the hand's end both reach the ledger, one after the other.
+    let probing = RefCell::new(probing);
     let mut bot = Bot::new(&config);
     let stop = || health.update_requested();
     let mut backoff = Duration::from_secs(1);
@@ -92,10 +122,20 @@ fn main() -> ExitCode {
                 };
                 // The compute budget: a bigger pot buys the re-solve more iterations.
                 let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
+                // The parameter set of the hand in play: the champion's, or a probe's arm.
+                let params = probing.borrow().params();
                 // No fitted action model yet: one is used only after it passes the gate.
-                decide(spot, None, &Params::DEFAULT, budget, iterations)
+                let decision = decide_drawn(spot, None, &params, budget, iterations);
+                if let Some(drawn) = decision.drawn {
+                    probing.borrow_mut().decided(Decided {
+                        strategy: drawn.strategy,
+                        values: drawn.values,
+                        taken: drawn.taken,
+                    });
+                }
+                decision.action
             },
-            |event| keep(&store, event),
+            |event| keep(&store, &probing, event),
             &stop,
         );
         match ended {
@@ -125,7 +165,7 @@ fn main() -> ExitCode {
 
 /// Keeps a finished hand or an incident. A store failure is reported and play goes on: the next
 /// decision does not wait on the disk.
-fn keep(store: &Store, event: Event<'_>) {
+fn keep(store: &Store, probing: &RefCell<Probing<'_>>, event: Event<'_>) {
     let kept = match event {
         Event::Incident(incident) => {
             // `<2>` is journald's priority prefix for crit, so `journalctl -p crit` lists every
@@ -133,7 +173,12 @@ fn keep(store: &Store, event: Event<'_>) {
             eprintln!("<2>svanbot: FAIR-PLAY INCIDENT: {incident:?}");
             store.append_incident(incident, now_ms())
         }
-        Event::Hand(hand) => store.append_hand(&hand, Source::Live, now_ms()).map(|_| ()),
+        Event::Hand(hand) => {
+            for note in probing.borrow_mut().on_hand(&hand, now_ms()) {
+                eprintln!("svanbot: {note}");
+            }
+            store.append_hand(&hand, Source::Live, now_ms()).map(|_| ())
+        }
     };
     if let Err(error) = kept {
         eprintln!("svanbot: NOT KEPT: {error}");
@@ -165,6 +210,17 @@ fn running_version() -> String {
                 .map(|name| name.to_string_lossy().into_owned())
         })
         .unwrap_or_default()
+}
+
+/// Where the fleet's champion and proposal files are: `SVANBOT_FLEET`, or the `fleet` directory
+/// beside the stores.
+pub(crate) fn fleet_dir() -> PathBuf {
+    match std::env::var_os("SVANBOT_FLEET") {
+        Some(path) => PathBuf::from(path),
+        None => store_path("svanbot")
+            .map(fleet::beside_store)
+            .unwrap_or_else(|_| PathBuf::from("fleet")),
+    }
 }
 
 pub(crate) fn now_ms() -> i64 {

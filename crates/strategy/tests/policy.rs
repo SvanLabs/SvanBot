@@ -3,9 +3,39 @@
 use svanbot_core::rules::{Action, Legal, RaiseRange};
 use svanbot_core::spot::Spot;
 use svanbot_strategy::params::Params;
-use svanbot_strategy::policy::decide;
+use svanbot_strategy::policy::{decide, decide_drawn};
 use svanbot_strategy::pricer::{self, Budget};
-use svanbot_strategy::resolve::resolve;
+use svanbot_strategy::resolve::{Abstract, resolve};
+
+#[test]
+fn a_re_solved_decision_says_what_it_drew_from() {
+    // The nuts facing a river bet of 200 into 200: folding is worth nothing more, and calling
+    // wins the 400 in the middle whatever the villain holds.
+    let river = spot("AhKh", "QhJhTh2c3d", 400, 200, 1);
+    let decision = decide_drawn(&river, None, &Params::DEFAULT, BUDGET, 60);
+    let drawn = decision.drawn.expect("a re-solve mixes");
+    assert!((drawn.strategy.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+    assert_eq!(drawn.strategy.len(), drawn.values.len());
+    let resolved = resolve(&river, None, 0.0, 60, BUDGET.seed).unwrap();
+    let at = |action| {
+        resolved
+            .strategy
+            .iter()
+            .position(|&(a, _)| a == action)
+            .unwrap()
+    };
+    assert!(drawn.values[at(Abstract::Fold)].abs() < 1e-9);
+    assert!((drawn.values[at(Abstract::Call)] - 400.0).abs() < 1e-6);
+    assert_eq!(drawn.taken, resolved.taken);
+    assert_eq!(decision.action, resolved.action);
+}
+
+#[test]
+fn the_pricer_draws_nothing() {
+    let preflop = spot("AhAs", "", 30, 20, 1);
+    let decision = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);
+    assert_eq!(decision.drawn, None);
+}
 
 const BUDGET: Budget = Budget {
     samples: 3_200,

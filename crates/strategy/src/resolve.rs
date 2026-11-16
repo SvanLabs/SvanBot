@@ -45,11 +45,14 @@ pub fn iterations_for(pot: u32, big_blind: u32, cards: usize) -> u32 {
     if cards < 5 { river / DEEP_COST } else { river }
 }
 
-/// A re-solved decision: the action, and the strategy our cards play at the root.
+/// A re-solved decision: the action, the strategy our cards play at the root, what the last
+/// iteration valued each of its actions at for our cards, in chips, and which one was drawn.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Resolved {
     pub action: Action,
     pub strategy: Vec<(Abstract, f64)>,
+    pub values: Vec<f64>,
+    pub taken: usize,
 }
 
 /// Re-solves `spot`, or `None` when it is not heads up after the flop, or our cards are unknown.
@@ -129,17 +132,32 @@ pub fn resolve(
     let mut rng = Rng::seeded(seed);
     let roll = rng.below(1 << 30) as f64 / f64::from(1u32 << 30);
     let mut sum = 0.0;
-    let chosen = strategy
+    let taken = strategy
         .iter()
-        .find(|(_, p)| {
+        .position(|(_, p)| {
             sum += p;
             roll < sum
         })
-        .or(strategy.last())
-        .map(|&(action, _)| action)?;
+        .unwrap_or(strategy.len().checked_sub(1)?);
+    // A counterfactual value is weighted by the villain's reach around our cards: divided by
+    // it, the value is in chips.
+    let around = solver.showdown.compatible(&reach[1])[me];
+    let values = solver
+        .root
+        .iter()
+        .map(|value| {
+            if around > 0.0 {
+                value[me] / around
+            } else {
+                0.0
+            }
+        })
+        .collect();
     Some(Resolved {
-        action: to_action(chosen, spot),
+        action: to_action(strategy[taken].0, spot),
         strategy,
+        values,
+        taken,
     })
 }
 
@@ -169,6 +187,8 @@ struct Solver<'a> {
     choices: Vec<Choice>,
     regrets: Vec<Vec<Vec<f64>>>,
     sums: Vec<Vec<Vec<f64>>>,
+    /// The root's value per action and pair, for its actor, as of the last iteration.
+    root: Vec<Vec<f64>>,
 }
 
 impl<'a> Solver<'a> {
@@ -189,6 +209,7 @@ impl<'a> Solver<'a> {
             choices: vec![Choice::default(); tree.nodes.len()],
             regrets: shape.clone(),
             sums: shape,
+            root: Vec::new(),
         }
     }
 
@@ -271,6 +292,9 @@ impl<'a> Solver<'a> {
                             let s = &mut self.sums[node][a][h];
                             *s = *s * weight + mine[h] * strategy[a][h];
                         }
+                    }
+                    if node == 0 {
+                        self.root = values;
                     }
                     total
                 } else {

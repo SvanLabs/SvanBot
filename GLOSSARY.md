@@ -215,6 +215,19 @@ _Avoid_: experiment pair, trial, A/B test
 One of the two parameter sets in a probe.
 _Avoid_: variant, side
 
+**Orbit**:
+Six counted hands at one table, once round the seats. A probe plays one arm for a whole orbit, and
+the orbit is the unit its verdict counts.
+_Avoid_: round, block, batch
+
+**Proposal**:
+A challenger the learner puts forward for the canary, as a probe or as a promotion.
+_Avoid_: candidate, request, queue entry
+
+**Ledger**:
+A bot's own record of what each hand won, with the luck of its own draws set beside it.
+_Avoid_: results, bankroll, tracker
+
 **Verdict**:
 A probe's conclusion: the challenger wins, loses, or cannot be told apart. A verdict holds at any
 moment it is read, not only at a planned end.
@@ -225,8 +238,8 @@ The check that stops a probe or a rollout as soon as the challenger is clearly l
 _Avoid_: circuit breaker, kill switch
 
 **Promotion**:
-A challenger becoming the champion after a winning verdict, the canary's harm guard, and then the
-rest of the fleet.
+A challenger becoming the champion: a paired sim puts it above the champion, the canary's harm
+guard clears it, and then the rest of the fleet adopts it.
 _Avoid_: rollout, upgrade, merge
 
 **Ship bar**:

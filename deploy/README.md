@@ -32,6 +32,9 @@ SVANBOT_NAME=<name>
 SVANBOT_ROSTER=<name>,<name>,...
 ```
 
+Add `SVANBOT_CANARY=SurSvan` to every bot's file: the bot it names runs the probes and takes each
+promotion first, and the others wait for its harm guard (see "Probes and promotions" below).
+
 The unit adds `SVANBOT_STORE=~/.local/share/svanbot/<name>.db`, one store per bot. It runs
 `~/.local/lib/svanbot/current/svanbot`, the slot the updater points `current` at (V11-10).
 
@@ -92,6 +95,27 @@ SVANBOT_NAME=<name> svanbot-release update --fleet
 One update runs at a time: a second `update` or `rollback` says an update is already in flight and
 stops, because a window is short and a person is watching. If the canary's live evidence says the
 new build is worse, the harm guard trips and `svanbot-release rollback` is the same move by hand.
+
+### Probes and promotions
+
+The fleet plays by one champion parameter set, `~/.local/share/svanbot/fleet/champion.json`
+(`SVANBOT_FLEET` moves the directory). Until a promotion writes it, the champion is the built-in
+default.
+
+```sh
+# The learner: a paired sim of a challenger against the champion. Above the champion, it is
+# proposed as a promotion; `--probe` proposes it as evidence only, whatever the sim said.
+svanbot propose --deals 2000 value_margin=0.35
+svanbot propose --deals 2000                    # the search: each number a step down and up
+journalctl --user -u svanbot@SurSvan | grep probe   # started, ended, promoted
+```
+
+The canary takes the proposal up between hands and plays the challenger in about half its orbits.
+A promotion's harm guard is 3,000 hands. If it clears, the canary writes the champion file and
+every other bot adopts it between hands, with no restart. If the challenger is clearly losing, the
+probe ends harmful and the champion stays. To take a promotion back by hand, remove
+`champion.json` (the default returns) or put the earlier file back; the bots follow between hands.
+Run `svanbot propose` at low priority: a sim is CPU the live fleet shares.
 
 ### A release, start to end
 
