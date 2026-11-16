@@ -1,0 +1,56 @@
+# SvanBot v11
+
+> SvanBot plays 6-max no-limit hold'em on openpoker.ai with five bots under one owner. v11 is a
+> Rust workspace written from scratch on the branch `v11`: six layers, pure poker logic below a
+> runtime that owns the venue, the store and the clock. `main` is v10, which the live fleet runs.
+
+Read these in this order. Paths are relative to the repository root on the branch `v11`.
+
+## Start here
+
+- [AGENTS.md](AGENTS.md): the brief. Where v11 stands, the crate graph, the gate, the loop from a
+  ticket to a merged PR, the hard invariants, and the rules of the box.
+- [GLOSSARY.md](GLOSSARY.md): the project's words, each with the words to avoid. Name things the
+  way it does.
+- [The venue's docs](https://docs.openpoker.ai/llms-full.txt): the protocol, the rules and fair
+  play. They come before anything this repository says about the venue.
+
+## Decisions
+
+- [ADR 0001](docs/adr/0001-decision-path-stays-in-process.md): a decision is made in the bot's
+  own process.
+- [ADR 0002](docs/adr/0002-v11-from-scratch.md): v11 is new code, not a refactor of v10.
+- [ADR 0003](docs/adr/0003-crate-graph.md): `core` → `sim` → `strategy` → `learn` → `runtime` →
+  `apps`, and what keeps the lower four pure.
+- [ADR 0004](docs/adr/0004-reads-are-per-bot.md): a store belongs to one bot, and so do its reads.
+
+## Code, by layer
+
+- [crates/core](crates/core/src/lib.rs): cards, the evaluator, the seeded generator, the rules
+  of a hand, the spot a decision sees.
+- [crates/sim](crates/sim/src/lib.rs): equity, and a table that plays hands with the luck of the
+  cards taken out.
+- [crates/strategy](crates/strategy/src/lib.rs): the action model, reads, the pricer, the
+  re-solve, the policy and parameter sets.
+- [crates/learn](crates/learn/src/lib.rs): fitting and its gate, drift, the paired sim, the Probe.
+- [crates/runtime](crates/runtime/src/lib.rs): the venue client, the session and its fair-play
+  seam, the store, the ledger, the fleet's files, updates and slots.
+- [crates/apps/svanbot](crates/apps/svanbot/src/main.rs): the bot and its subcommands.
+- [crates/apps/updater](crates/apps/updater/src/main.rs): `svanbot-release`.
+
+Each module opens with a comment that says what it is for. Each `tests/` file names the
+behaviour it holds, one sentence a test.
+
+## Running and changing it
+
+- [deploy/README.md](deploy/README.md): the units, a bot's setup, updates, probes and
+  promotions, the dashboard.
+- [tools/gate.ts](tools/gate.ts): the checks a change passes, in tiers.
+- [tools/hook.ts](tools/hook.ts): what an agent session is refused, and why.
+- [CHANGELOG.md](CHANGELOG.md): what v11 holds so far.
+
+## Optional
+
+- [docs/research/2026-11](docs/research/2026-11/README.md): the eight notes behind the plan.
+  They describe v10 as it was.
+- [docs/agents](docs/agents/issue-tracker.md): how the tickets are worked on GitHub.

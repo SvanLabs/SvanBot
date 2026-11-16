@@ -37,8 +37,8 @@ tier runs both:
 
 - `mise run commit` runs the fast checks: fmt, Biome, the 500-line limit on Rust files, the secret
   scan of staged changes, provenance, the layering check and clippy. The pre-commit hook runs it.
-- `mise run full` adds nextest, the doc tests, `tsc` and the tool tests, then reports `target/`
-  against its disk budget (`tools/disk.ts`). Run it before you push.
+- `mise run full` adds nextest, the doc tests, `tsc`, the tool tests and the dashboard page's
+  checks, then reports `target/` against its disk budget (`tools/disk.ts`). Run it before you push.
 - `mise run ci` runs cargo-deny (`deny.toml`).
 
 The commit-msg hook refuses a message without a `Generated-by:` line. Cargo builds into
@@ -46,6 +46,18 @@ The commit-msg hook refuses a message without a `Generated-by:` line. Cargo buil
 
 CI (`.github/workflows/check.yml`) runs the same tiers on every pull request into `v11`: the
 commit tier, the test tier and cargo-deny, side by side. A PR merges only when all three are green.
+
+## Hooks and rules
+
+Some rules below are held by a machine, in any Claude Code session (`.claude/settings.json`,
+`tools/hook.ts`):
+- Before a shell command, the hook refuses a push to `main`, a forced push, a build outside
+  `target/dev`, a release build, and starting, stopping or swapping a bot.
+- After an edit of a `Cargo.toml`, it runs the layering check.
+- Before the agent stops, a changed tree must pass the gate's commit tier.
+
+A refusal comes with its reason. Do what the reason says: do not look for a way round it.
+`.claude/rules/` holds the rules of one part of the tree, loaded when you work there.
 
 ## The loop
 
@@ -67,6 +79,14 @@ commit tier, the test tier and cargo-deny, side by side. A PR merges only when a
   clock.
 - **Fair play is absolute:** two stablemates never share a table. A shared hand is an incident.
   Each bot's reads are its own, from its own store (`docs/adr/0004-reads-are-per-bot.md`).
+
+## Our own code
+
+v11 is the operator's own work, built from scratch (operator, 2026-11-16). Add no third-party
+crate, npm package or premade framework: write what the work needs, in the layer that needs it.
+A ticket that names one (proptest, cargo-fuzz, Next.js) is done with our own code. The crates
+`runtime` had before the rule (rustls, tungstenite, ureq, rusqlite, serde_json, sha2) stay, since
+a home-made TLS would be a risk: ask the operator before you add to that list or replace one.
 
 ## On this box
 
