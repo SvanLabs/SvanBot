@@ -7,6 +7,7 @@ under the home of the user the fleet runs as.
 |------|------------|
 | `svanbot@.service` | One bot at the venue. One instance per bot: `svanbot@<name>`. |
 | `install.sh` | Stages and verifies a release bundle on a box with no toolchain. |
+| `svanbot-dashboard.service` | The loopback-only fleet dashboard: `svanbot dashboard`. |
 | `svanbot-clean.service`, `svanbot-clean.timer` | Daily `cargo sweep` of the dev clone's `target/dev`. |
 | `journald-svanbot.conf` | The journal's 1 GiB cap. Root installs it: the operator's step. |
 
@@ -126,6 +127,36 @@ svanbot-release install ~/.local/lib/svanbot/staged
 svanbot-release status                                       # the build is installed, no slot has moved
 SVANBOT_CANARY=SurSvan svanbot-release update 2026.11.16   # the canary takes it first
 ```
+## The dashboard
+
+`svanbot dashboard` serves one page on loopback and pushes the fleet to it over one event stream.
+Each bot writes `<name>.status.json` beside its store, mode 600, every five seconds; the dashboard
+calls a status older than fifteen seconds stale, and keeps the last one on screen if the stream
+drops. The page names opponents and shows their stacks, so it is never the public TV.
+
+```sh
+install -m 644 deploy/svanbot-dashboard.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now svanbot-dashboard
+ssh -N -L 8080:127.0.0.1:8080 <box>   # then open http://127.0.0.1:8080
+```
+
+The service reads three variables, with the defaults the unit sets:
+
+| Variable | Default | What it is |
+|----------|---------|------------|
+| `SVANBOT_DATA` | `~/.local/share/svanbot` | Every bot's store and status file. |
+| `SVANBOT_LIB` | `~/.local/lib/svanbot` | The install tree, whose slots the Release page shows. |
+| `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:8080` | Where it listens. Keep it on loopback. |
+
+The page is three hand-written files compiled into the `svanbot` binary, and the server is our
+own, on the standard library: nothing else is installed, built or run on the box for it. The
+pages are the fleet (`/`), one bot (`/bot/<name>`) and the release (`/release`): what is
+installed, where `current` and `previous` point, and the build and champion each bot runs.
+
+A stopped bot keeps its last status file, so its card says `No recent status` rather than
+disappearing. That is the intended reading: the dashboard shows what was last known, not only what
+is live.
 
 ## The season download
 

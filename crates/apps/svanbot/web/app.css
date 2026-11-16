@@ -1,0 +1,268 @@
+/* The dashboard's one tokens file and its layout (V11-11). Four type steps, tokens that follow
+   the OS light or dark setting, and a sticky strip that keeps the fleet's state on screen.
+   Contrast: every text token is at least 4.5:1 on its background, and the chart's line and the
+   tone borders at least 3:1, in both schemes. */
+
+:root {
+  --step-small: 0.8125rem;
+  --step-body: 1rem;
+  --step-lead: 1.375rem;
+  --step-title: 2rem;
+
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --ink: #161b22;
+  --muted: #4b5565;
+  --line: #d8dde5;
+  --mark: #1f5fbf;
+  --ok-ink: #0f5132;
+  --ok-bg: #e6f4ec;
+  --warn-ink: #6b4a00;
+  --warn-bg: #fff3cd;
+  --bad-ink: #8a1c12;
+  --bad-bg: #fde8e6;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216;
+    --panel: #171c22;
+    --ink: #e8edf3;
+    --muted: #aab4c0;
+    --line: #2b333d;
+    --mark: #7fb0ff;
+    --ok-ink: #8fe0b0;
+    --ok-bg: #123526;
+    --warn-ink: #ffd670;
+    --warn-bg: #3a2f0d;
+    --bad-ink: #ffb4aa;
+    --bad-bg: #421d19;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  font-size: var(--step-body);
+  line-height: 1.45;
+}
+
+a {
+  color: var(--mark);
+}
+
+a:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--mark);
+  outline-offset: 2px;
+}
+
+code,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--step-small);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* The sticky strip: brand, pages, count, freshness, worst problem. */
+.strip {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1rem;
+  padding: 0.7rem 1.25rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-size: var(--step-lead);
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.strip nav {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.worst {
+  flex-basis: 100%;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: var(--step-small);
+  font-weight: 600;
+}
+
+.ok {
+  color: var(--ok-ink);
+  background: var(--ok-bg);
+}
+
+.warn {
+  color: var(--warn-ink);
+  background: var(--warn-bg);
+}
+
+.bad {
+  color: var(--bad-ink);
+  background: var(--bad-bg);
+}
+
+.worst.ok,
+.worst.warn,
+.worst.bad {
+  background: none;
+}
+
+main {
+  padding: 1.25rem;
+  max-width: 78rem;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: var(--step-title);
+  margin: 0 0 1rem;
+}
+
+h2 {
+  font-size: var(--step-lead);
+  margin: 0 0 0.5rem;
+}
+
+/* One card per bot, and the panels of a drill-down page: the same grid. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  min-width: 0;
+}
+
+.card > :last-child {
+  margin-bottom: 0;
+}
+
+.card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.problems {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.problems li {
+  padding: 0.4rem 0.75rem;
+  border-left: 4px solid currentColor;
+  margin-bottom: 0.35rem;
+  border-radius: 0.25rem;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 1rem;
+  margin: 0.5rem 0;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--step-small);
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.25rem 0.5rem 0.25rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+td.number,
+th.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+tr.folded td {
+  color: var(--muted);
+}
+
+/* The chart: a line on a zero rule. Its numbers are in the table under it. */
+.chart {
+  display: block;
+  width: 100%;
+  height: 6rem;
+  margin: 0.5rem 0;
+}
+
+.chart polyline {
+  fill: none;
+  stroke: var(--mark);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart line {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+details {
+  margin-top: 0.5rem;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--step-small);
+}
+
+.scroll {
+  max-height: 14rem;
+  overflow: auto;
+}

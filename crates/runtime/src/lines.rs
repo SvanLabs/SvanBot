@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use svanbot_core::card::CardSet;
+use svanbot_core::card::{Card, CardSet};
 use svanbot_core::rules::Street;
 use svanbot_core::spot::{Act, ActKind};
 
@@ -17,6 +17,8 @@ use crate::wire::Inbound;
 #[derive(Clone, Debug, Default)]
 pub struct Lines {
     board: CardSet,
+    /// The board in the order it was dealt, for display; `board` is the set for equity.
+    board_order: Vec<Card>,
     street: Option<Street>,
     pot: u32,
     /// Whether a bet stands on this street. The blinds are one preflop.
@@ -49,6 +51,12 @@ impl Lines {
                 };
             }
             Inbound::CommunityCards { cards } => {
+                for card in cards {
+                    // A replayed frame must not deal the same card twice.
+                    if !self.board.contains(*card) {
+                        self.board_order.push(*card);
+                    }
+                }
                 self.board |= cards.iter().copied().collect();
                 self.street = Some(match self.board.len() {
                     0..=3 => Street::Flop,
@@ -141,5 +149,25 @@ impl Lines {
     /// The community cards so far.
     pub fn board(&self) -> CardSet {
         self.board
+    }
+
+    /// The community cards in the order they were dealt.
+    pub fn board_order(&self) -> &[Card] {
+        &self.board_order
+    }
+
+    /// The street the hand is on, while one is in progress.
+    pub fn street(&self) -> Option<Street> {
+        self.street
+    }
+
+    /// The pot as the actions have counted it.
+    pub fn pot(&self) -> u32 {
+        self.pot
+    }
+
+    /// The dealer's seat.
+    pub fn dealer(&self) -> usize {
+        self.dealer
     }
 }

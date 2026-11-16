@@ -25,7 +25,11 @@
 //!
 //! `svanbot download` instead downloads the bot's season hand history into its store, and exits
 //! ([`download`]). `svanbot paired` runs a paired sim of the policy against the pricer ([`paired`]).
-//! `svanbot propose` puts a challenger forward for the canary ([`propose`]).
+//! `svanbot propose` puts a challenger forward for the canary ([`propose`]). `svanbot dashboard`
+//! serves the fleet's dashboard on loopback ([`svanbot::dashboard`]).
+//!
+//! While it plays, the bot keeps its status file current beside its store, for the dashboard
+//! ([`svanbot::live`]).
 //!
 //! An app does I/O, so it turns off the `clippy.toml` bans here, once (ADR 0003).
 #![allow(
@@ -41,8 +45,11 @@ mod propose;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::time::Duration;
 
+use svanbot::live::{self, Live};
+use svanbot::now_ms;
 use svanbot_learn::probe::Decided;
 use svanbot_runtime::client::{
     Bot, ClientError, Config, Event, PlayOutcome, VENUE, fresh_seed, play_with_stop,
@@ -50,6 +57,7 @@ use svanbot_runtime::client::{
 use svanbot_runtime::fleet::{self, Fleet};
 use svanbot_runtime::health::{self, Health};
 use svanbot_runtime::probing::Probing;
+use svanbot_runtime::status::{Play, Status, status_path};
 use svanbot_runtime::store::{Source, Store};
 use svanbot_strategy::policy::decide_drawn;
 use svanbot_strategy::pricer::Budget;
@@ -62,6 +70,10 @@ const SAMPLES: u64 = 20_000;
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
 
 fn main() -> ExitCode {
+    // The dashboard is not a bot: it records no start.
+    if std::env::args().nth(1).as_deref() == Some("dashboard") {
+        return svanbot::dashboard::run();
+    }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.
     let me = std::env::var("SVANBOT_NAME").unwrap_or_else(|_| "svanbot".into());
@@ -106,6 +118,14 @@ fn main() -> ExitCode {
         probing.params().digest(),
         if canary { ", as the canary" } else { "" }
     );
+    let live = match start_status(&config.me, &store, &probing) {
+        Ok(live) => Arc::new(live),
+        Err(why) => {
+            eprintln!("svanbot: status: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    let _heartbeat = Live::spawn_heartbeat(&live, live::HEARTBEAT);
     // The decision and the hand's end both reach the ledger, one after the other.
     let probing = RefCell::new(probing);
     let mut bot = Bot::new(&config);
@@ -135,12 +155,13 @@ fn main() -> ExitCode {
                 }
                 decision.action
             },
-            |event| keep(&store, &probing, event),
+            |event| keep(&store, &probing, &live, event),
             &stop,
         );
         match ended {
             Ok(PlayOutcome::Closed) => {
                 eprintln!("svanbot: the venue closed the connection");
+                live.disconnected(None);
                 backoff = Duration::from_secs(1);
             }
             Ok(PlayOutcome::Stopped) => {
@@ -154,35 +175,80 @@ fn main() -> ExitCode {
             }
             Err(ClientError::AuthFailed) => {
                 eprintln!("svanbot: the venue refused the key; not retrying");
+                live.disconnected(Some("the venue refused the key".into()));
                 return ExitCode::from(1);
             }
-            Err(error) => eprintln!("svanbot: {error}"),
+            Err(error) => {
+                let text = error.to_string();
+                eprintln!("svanbot: {text}");
+                live.disconnected(Some(text));
+            }
         }
         std::thread::sleep(backoff);
         backoff = (backoff * 2).min(MAX_BACKOFF);
     }
 }
 
-/// Keeps a finished hand or an incident. A store failure is reported and play goes on: the next
-/// decision does not wait on the disk.
-fn keep(store: &Store, probing: &RefCell<Probing<'_>>, event: Event<'_>) {
-    let kept = match event {
+/// Keeps a finished hand or an incident, and moves the status with it. A store or status failure
+/// is reported and play goes on: the next decision does not wait on the disk.
+fn keep(store: &Store, probing: &RefCell<Probing<'_>>, live: &Live, event: Event<'_>) {
+    match event {
+        Event::Connected => live.connected(),
+        Event::Table(table) => live.table(table),
         Event::Incident(incident) => {
             // `<2>` is journald's priority prefix for crit, so `journalctl -p crit` lists every
             // incident and nothing else.
             eprintln!("<2>svanbot: FAIR-PLAY INCIDENT: {incident:?}");
-            store.append_incident(incident, now_ms())
+            match store.append_incident(incident, now_ms()) {
+                Ok(()) => live.incident(),
+                Err(error) => eprintln!("svanbot: NOT KEPT: {error}"),
+            }
         }
         Event::Hand(hand) => {
-            for note in probing.borrow_mut().on_hand(&hand, now_ms()) {
+            let at_ms = now_ms();
+            let kept = probing.borrow_mut().on_hand(&hand, at_ms);
+            for note in &kept.notes {
                 eprintln!("svanbot: {note}");
             }
-            store.append_hand(&hand, Source::Live, now_ms()).map(|_| ())
+            live.played(
+                kept.played.as_ref().map(live::mbb),
+                probing.borrow().describe(),
+                probing.borrow().champion().digest().to_string(),
+            );
+            match store.append_hand(&hand, Source::Live, at_ms) {
+                Ok(kept) => live.hand(kept, at_ms),
+                Err(error) => eprintln!("svanbot: NOT KEPT: {error}"),
+            }
         }
-    };
-    if let Err(error) = kept {
-        eprintln!("svanbot: NOT KEPT: {error}");
     }
+}
+
+/// Writes the bot's first status: what its store already holds, and what it plays by.
+fn start_status(me: &str, store: &Store, probing: &Probing<'_>) -> Result<Live, String> {
+    let totals = store.totals().map_err(|e| e.to_string())?;
+    let mut play = Play {
+        champion: probing.champion().digest().to_string(),
+        probe: probing.describe(),
+        ..Play::default()
+    };
+    for played in store.played().map_err(|e| e.to_string())? {
+        play.count(live::mbb(&played));
+    }
+    let status = Status {
+        bot: me.to_owned(),
+        pid: std::process::id(),
+        version: running_version(),
+        started_ms: now_ms(),
+        updated_ms: now_ms(),
+        connected: false,
+        table: None,
+        hands: totals.hands,
+        incidents: totals.incidents,
+        last_hand_ms: totals.last_hand_ms,
+        last_error: None,
+        play,
+    };
+    Live::start(status_path(&store_path(me)?), status).map_err(|e| e.to_string())
 }
 
 /// The store's directory is also where the bot's health files live, one `health` subdirectory
@@ -221,14 +287,6 @@ pub(crate) fn fleet_dir() -> PathBuf {
             .map(fleet::beside_store)
             .unwrap_or_else(|_| PathBuf::from("fleet")),
     }
-}
-
-pub(crate) fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| {
-            i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
-        })
 }
 
 /// The bot's store: `SVANBOT_STORE`, or `~/.local/share/svanbot/<name>.db`.

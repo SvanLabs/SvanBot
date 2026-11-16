@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+serde_json.workspace = true
 svanbot-core.workspace = true
 svanbot-learn.workspace = true
 svanbot-runtime.workspace = true

@@ -60,6 +60,20 @@ fn frames() -> Vec<String> {
 }
 
 #[test]
+fn a_repeated_community_cards_frame_keeps_the_board_in_deal_order_once() {
+    let mut lines = Lines::default();
+    let flop = parse(r#"{"type":"community_cards","cards":["Ah","Kd","7c"]}"#).unwrap();
+    lines.on(&flop);
+    lines.on(&flop);
+    let shown: Vec<String> = lines
+        .board_order()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(shown, ["Ah", "Kd", "7c"]);
+}
+
+#[test]
 fn each_seat_s_line_has_its_street_board_facing_and_size() {
     let mut lines = Lines::default();
     for text in frames() {
@@ -80,6 +94,12 @@ fn each_seat_s_line_has_its_street_board_facing_and_size() {
     assert_eq!(raiser[1].board, cards("Ks9d4c"));
     assert!(!raiser[1].facing);
     assert_eq!(raiser[3].board, cards("Ks9d4c7h2s"));
+    let dealt: Vec<String> = lines
+        .board_order()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(dealt, ["Ks", "9d", "4c", "7h", "2s"]);
     assert_eq!(
         raiser[3].kind,
         ActKind::Bet {
