@@ -22,6 +22,9 @@ pub struct Spot {
     pub committed: u32,
     /// The hand's big blind, the unit a pot is sized in.
     pub big_blind: u32,
+    /// Whether the bot acts last on the streets after the flop: of the seats still in, it is the
+    /// last one round the table from the button's left.
+    pub in_position: bool,
     /// What each opponent still in the hand has done in it so far, one line per opponent. Empty
     /// when the caller did not follow the hand.
     pub lines: Vec<Vec<Act>>,

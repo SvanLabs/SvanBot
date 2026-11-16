@@ -5,6 +5,8 @@
 use svanbot_core::card::CardSet;
 use svanbot_core::eval::{Strength, strength};
 
+use crate::action::BUCKETS;
+
 /// The pairs of a range and how they rank on a board.
 #[derive(Clone, Debug)]
 pub struct Showdown {
@@ -15,6 +17,8 @@ pub struct Showdown {
     groups: Vec<Vec<usize>>,
     /// Whether each pair can be held on the board.
     live: Vec<bool>,
+    /// Each live pair's strength bucket on the board, as the action model cuts them.
+    bucket: Vec<u8>,
 }
 
 /// A card's number, 0..52.
@@ -51,10 +55,23 @@ impl Showdown {
                 last = Some(value);
             }
         }
+        let total: usize = groups.iter().map(Vec::len).sum();
+        let mut bucket = vec![0; pairs.len()];
+        let mut start = 0;
+        for group in &groups {
+            // Equal strengths share a bucket, from the middle of their run.
+            let share = (2 * start + group.len()) as f64 / 2.0 / total.max(1) as f64;
+            let at = ((share * BUCKETS as f64) as usize).min(BUCKETS - 1);
+            for &pair in group {
+                bucket[pair] = at as u8;
+            }
+            start += group.len();
+        }
         Self {
             cards,
             groups,
             live,
+            bucket,
         }
     }
 
@@ -85,6 +102,56 @@ impl Showdown {
             below += tied;
             for (sum, add) in below_card.iter_mut().zip(tied_card) {
                 *sum += add;
+            }
+        }
+        (share, compatible)
+    }
+
+    /// Each pair's strength bucket on the board. A dead pair has none, and reads 0.
+    pub fn bucket(&self) -> &[u8] {
+        &self.bucket
+    }
+
+    /// [`Showdown::against`] for `M` reaches at once, one per column, in one sweep.
+    pub fn against_wide<const M: usize>(
+        &self,
+        reach: &[[f64; M]],
+    ) -> (Vec<[f64; M]>, Vec<[f64; M]>) {
+        let mut share = vec![[0.0; M]; self.cards.len()];
+        let mut compatible = vec![[0.0; M]; self.cards.len()];
+        let mut below = [0.0; M];
+        let mut below_card = [[0.0; M]; 52];
+        for group in &self.groups {
+            // The reach strictly below the group, before the group is added.
+            for &at in group {
+                let [a, b] = self.cards[at];
+                for m in 0..M {
+                    share[at][m] = below[m] - below_card[a][m] - below_card[b][m];
+                }
+            }
+            for &at in group {
+                let [a, b] = self.cards[at];
+                for m in 0..M {
+                    below[m] += reach[at][m];
+                    below_card[a][m] += reach[at][m];
+                    below_card[b][m] += reach[at][m];
+                }
+            }
+            // With the group added the same sum takes in the ties: half of them is the share.
+            for &at in group {
+                let [a, b] = self.cards[at];
+                for m in 0..M {
+                    let tied_in = below[m] - below_card[a][m] - below_card[b][m] + reach[at][m];
+                    share[at][m] = 0.5 * (share[at][m] + tied_in);
+                }
+            }
+        }
+        for (at, &[a, b]) in self.cards.iter().enumerate() {
+            if self.live[at] {
+                for m in 0..M {
+                    compatible[at][m] =
+                        below[m] - below_card[a][m] - below_card[b][m] + reach[at][m];
+                }
             }
         }
         (share, compatible)

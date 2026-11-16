@@ -38,13 +38,13 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     let challenger = |spot: &svanbot_core::spot::Spot, seed: u64| {
         let iterations = match fixed {
             Some(fixed) => u32::try_from(fixed).unwrap_or(u32::MAX),
-            None => iterations_for(spot.pot, spot.big_blind),
+            None => iterations_for(spot.pot, spot.big_blind, spot.board.len()),
         };
         let budget = Budget {
             samples: SAMPLES,
             seed,
         };
-        policy::decide(spot, None, budget, iterations)
+        policy::decide(spot, None, 0.0, budget, iterations)
     };
     let champion = |spot: &svanbot_core::spot::Spot, seed: u64| {
         let budget = Budget {

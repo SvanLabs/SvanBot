@@ -87,6 +87,13 @@ fn each_decision_sees_its_own_cards_the_board_so_far_and_the_other_seat_s_line()
         (170, Some(50), 1, 1940)
     );
     assert_eq!((spot.committed, spot.big_blind), (0, 20));
+    // Heads up the button acts last after the flop.
+    assert!(!spot.in_position);
+    assert!(
+        spots
+            .iter()
+            .all(|(seat, spot)| spot.in_position == (*seat == 0))
+    );
     let line = &spot.lines[0];
     assert_eq!(line.len(), 2);
     assert_eq!(

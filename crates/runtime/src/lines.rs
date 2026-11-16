@@ -26,6 +26,7 @@ pub struct Lines {
     /// Each seat's chips in on this street.
     committed: BTreeMap<usize, u32>,
     big_blind: u32,
+    dealer: usize,
 }
 
 impl Lines {
@@ -35,6 +36,7 @@ impl Lines {
             Inbound::HandStart {
                 small_blind,
                 big_blind,
+                dealer_seat,
                 ..
             } => {
                 *self = Self {
@@ -42,6 +44,7 @@ impl Lines {
                     pot: small_blind + big_blind,
                     bet: true,
                     big_blind: *big_blind,
+                    dealer: *dealer_seat,
                     ..Self::default()
                 };
             }
@@ -117,6 +120,12 @@ impl Lines {
     /// The seat's chips in on this street, from its actions. Preflop blinds are not counted.
     pub fn committed(&self, seat: usize) -> u32 {
         self.committed.get(&seat).copied().unwrap_or(0)
+    }
+
+    /// How late `seat` acts after the flop: the button's left is 0, and the button is last.
+    /// The venue seats six at most.
+    pub fn turn_order(&self, seat: usize) -> usize {
+        (seat + 6 - self.dealer % 6 - 1) % 6
     }
 
     /// The hand's big blind.

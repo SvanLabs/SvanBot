@@ -75,9 +75,9 @@ fn main() -> ExitCode {
                     seed: fresh_seed(),
                 };
                 // The compute budget: a bigger pot buys the re-solve more iterations.
-                let iterations = iterations_for(spot.pot, spot.big_blind);
+                let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
                 // No fitted action model yet: one is used only after it passes the gate.
-                decide(spot, None, budget, iterations)
+                decide(spot, None, 0.0, budget, iterations)
             },
             |event| keep(&store, event),
         );

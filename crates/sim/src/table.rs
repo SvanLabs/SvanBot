@@ -157,6 +157,8 @@ fn bet(
     let mut lines: Vec<Vec<Act>> = vec![Vec::new(); seats];
     let mut committed = vec![0; seats];
     let mut street = hand.street();
+    // How late a seat acts after the flop: the button's left is first, and the button is last.
+    let late = |seat: usize| (seat + seats - button - 1) % seats;
     while let (Some(seat), Some(legal)) = (hand.to_act(), hand.legal()) {
         if hand.street() != street {
             street = hand.street();
@@ -174,6 +176,9 @@ fn bet(
             stack: hand.stacks()[seat],
             committed: committed[seat],
             big_blind: blinds.big,
+            in_position: (0..seats)
+                .filter(|&other| !folded[other])
+                .all(|other| late(other) <= late(seat)),
             lines: (0..seats)
                 .filter(|&other| other != seat && !folded[other])
                 .map(|other| lines[other].clone())

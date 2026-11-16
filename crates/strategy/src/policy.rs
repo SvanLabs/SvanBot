@@ -13,13 +13,19 @@ use crate::resolve::resolve;
 
 /// The action to play at `spot`: the re-solve's after `iterations` when it covers the spot, and
 /// the pricer's otherwise. Both read the opponents' ranges from their lines, by `model` or, with
-/// none, by the baseline model.
-pub fn decide(spot: &Spot, model: Option<&ActionModel>, budget: Budget, iterations: u32) -> Action {
+/// none, by the baseline model. `exploit` is the exploit budget, 0 to 1: how far the re-solve
+/// holds the villain to `model` past its depth limit.
+pub fn decide(
+    spot: &Spot,
+    model: Option<&ActionModel>,
+    exploit: f64,
+    budget: Budget,
+    iterations: u32,
+) -> Action {
     // Until a fit passes the gate, the baseline reads the opponents' lines.
     let baseline = ActionModel::baseline();
-    let model = Some(model.unwrap_or(&baseline));
-    match resolve(spot, model, iterations, budget.seed) {
+    match resolve(spot, model, exploit, iterations, budget.seed) {
         Some(resolved) => resolved.action,
-        None => pricer::decide(spot, model, budget).action,
+        None => pricer::decide(spot, Some(model.unwrap_or(&baseline)), budget).action,
     }
 }

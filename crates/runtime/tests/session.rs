@@ -104,6 +104,8 @@ fn at_its_turn_it_decides_on_the_spot_and_echoes_the_hand_and_token() {
         (30, Some(20), 1, 1990)
     );
     assert_eq!((spot.committed, spot.big_blind), (0, 20));
+    // The other seat has the button, so it acts last after the flop.
+    assert!(!spot.in_position);
     let [
         Outbound::Action {
             hand_id,
