@@ -30,6 +30,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use svanbot_runtime::client::{Bot, ClientError, Config, Event, VENUE, fresh_seed, play};
 use svanbot_runtime::store::{Source, Store};
+use svanbot_strategy::params::Params;
 use svanbot_strategy::policy::decide;
 use svanbot_strategy::pricer::Budget;
 use svanbot_strategy::resolve::iterations_for;
@@ -77,7 +78,7 @@ fn main() -> ExitCode {
                 // The compute budget: a bigger pot buys the re-solve more iterations.
                 let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
                 // No fitted action model yet: one is used only after it passes the gate.
-                decide(spot, None, 0.0, budget, iterations)
+                decide(spot, None, &Params::DEFAULT, budget, iterations)
             },
             |event| keep(&store, event),
         );

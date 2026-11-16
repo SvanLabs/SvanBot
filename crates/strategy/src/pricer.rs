@@ -13,6 +13,7 @@ use svanbot_core::spot::Spot;
 use svanbot_sim::equity::sampled;
 
 use crate::action::{ActionModel, Seen, range};
+use crate::params::Params;
 
 /// The work a decision may do, passed in so the decision never reads the clock: how many deals
 /// to sample, and the seed they are drawn from.
@@ -29,15 +30,19 @@ pub struct Decision {
     pub equity: f64,
 }
 
-/// How far from its fair share to the whole pot the equity must be before the pricer raises.
-const VALUE_MARGIN: f64 = 0.4;
-
-/// A raise adds this share of the pot to the smallest raise.
-const RAISE_SHARE_OF_POT: f64 = 0.75;
-
 /// The pricer's decision at `spot`, with each opponent's range from `model` and their line, or
 /// uniform when there is no model or no line.
 pub fn decide(spot: &Spot, model: Option<&ActionModel>, budget: Budget) -> Decision {
+    price(spot, model, budget, &Params::DEFAULT)
+}
+
+/// [`decide`] by the margins of `params`.
+pub fn price(
+    spot: &Spot,
+    model: Option<&ActionModel>,
+    budget: Budget,
+    params: &Params,
+) -> Decision {
     let uniform = uniform_range(spot.hole | spot.board);
     let read: Vec<Vec<(CardSet, f64)>> = match model {
         Some(model) => spot
@@ -55,19 +60,19 @@ pub fn decide(spot: &Spot, model: Option<&ActionModel>, budget: Budget) -> Decis
     ranges.resize(spot.opponents.max(1), &uniform);
     let equity = sampled(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
     Decision {
-        action: choose(spot, equity),
+        action: choose(spot, equity, params),
         equity,
     }
 }
 
-fn choose(spot: &Spot, equity: f64) -> Action {
+fn choose(spot: &Spot, equity: f64, params: &Params) -> Action {
     let fair = 1.0 / (spot.opponents.max(1) + 1) as f64;
     if let Some(range) = spot.legal.raise
-        && equity > fair + (1.0 - fair) * VALUE_MARGIN
+        && equity > fair + (1.0 - fair) * params.value_margin
     {
         let size = range
             .min
-            .saturating_add((f64::from(spot.pot) * RAISE_SHARE_OF_POT) as u32);
+            .saturating_add((f64::from(spot.pot) * params.raise_share) as u32);
         return Action::RaiseTo(size.clamp(range.min, range.max));
     }
     match spot.legal.call {

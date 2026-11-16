@@ -10,6 +10,7 @@
 //! network, no store, no clock, and the same result for the same inputs.
 
 pub mod action;
+pub mod params;
 pub mod policy;
 pub mod pricer;
 pub mod read;

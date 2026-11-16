@@ -10,6 +10,7 @@ use std::process::ExitCode;
 
 use svanbot_core::rules::Blinds;
 use svanbot_learn::paired::{Match, duel, verdict};
+use svanbot_strategy::params::Params;
 use svanbot_strategy::policy;
 use svanbot_strategy::pricer::{self, Budget};
 use svanbot_strategy::resolve::iterations_for;
@@ -44,7 +45,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             samples: SAMPLES,
             seed,
         };
-        policy::decide(spot, None, 0.0, budget, iterations)
+        policy::decide(spot, None, &Params::DEFAULT, budget, iterations)
     };
     let champion = |spot: &svanbot_core::spot::Spot, seed: u64| {
         let budget = Budget {
