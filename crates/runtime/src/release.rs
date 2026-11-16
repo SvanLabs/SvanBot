@@ -159,6 +159,84 @@ pub fn digest(bytes: &[u8]) -> String {
     hash.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// Orders two versions the way a release is versioned, not the way a name is spelled.
+///
+/// A version read as text is wrong the moment a segment's digit count differs: `1.9.0` sorts after
+/// `1.10.0`, and `2026.11.9` after `2026.11.16`. Either one makes `update` pick a build that is
+/// older than the one it meant to take — a downgrade no crash loop catches, because the build it
+/// lands on works. So the numbers are compared as numbers, segment by segment, and a segment is
+/// only compared as text when a number cannot be read from it, which a release tag never is (the
+/// workflow refuses anything but `N.N.N`) but a hand-made build directory can be.
+pub fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (mut left, mut right) = (segments(a), segments(b));
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return Ordering::Equal,
+            // A version with segments left is the newer one: `1.0.0.1` came after `1.0.0`.
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) => {
+                let ordering = x.cmp(&y);
+                if ordering != Ordering::Equal {
+                    return ordering;
+                }
+            }
+        }
+    }
+}
+
+/// The newest of `versions`, or `None` for an empty set: the build a window with no version named
+/// should take.
+pub fn newest<I, S>(versions: I) -> Option<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    versions
+        .into_iter()
+        .max_by(|a, b| version_cmp(a.as_ref(), b.as_ref()))
+        .map(|version| version.as_ref().to_owned())
+}
+
+/// One version as the things to compare: each dot-separated part is a number where it is all
+/// digits and text where it is not, and a part that is text sorts below any number.
+fn segments(version: &str) -> impl Iterator<Item = Segment> {
+    version.split('.').map(|part| match part.parse::<u64>() {
+        Ok(number) => Segment::Number(number),
+        Err(_) => Segment::Text(part.to_owned()),
+    })
+}
+
+/// One dot-separated part of a version: a number where it reads as one, its own text where not.
+#[derive(Debug, PartialEq, Eq)]
+enum Segment {
+    /// An all-digits part, compared as the number it is.
+    Number(u64),
+    /// A part that is not all digits, compared as text.
+    Text(String),
+}
+
+impl PartialOrd for Segment {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Segment {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        match (self, other) {
+            (Self::Number(a), Self::Number(b)) => a.cmp(b),
+            (Self::Text(a), Self::Text(b)) => a.cmp(b),
+            // A numbered part is a release's own shape, so it outranks a part that is not one:
+            // `1.0.0` is a version and `nightly` is not, and the release is what a window wants.
+            (Self::Number(_), Self::Text(_)) => Ordering::Greater,
+            (Self::Text(_), Self::Number(_)) => Ordering::Less,
+        }
+    }
+}
+
 /// The value of a `key\tvalue` line in the version manifest.
 fn manifest_line(manifest: &str, key: &str) -> Option<String> {
     manifest

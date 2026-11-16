@@ -77,16 +77,16 @@ is the window: it asks the bot to stop between hands, waits for it, stops it und
 (three starts in five minutes). The whole tree is one path, `SVANBOT_LIB` or
 `~/.local/lib/svanbot`; which bot a window runs for is `SVANBOT_NAME`.
 
-The **canary** (SurSvan) takes every update first. `SVANBOT_CANARY` names it; `update` runs its
-window unless `--fleet` says the canary's window is over. `--fleet` is the operator's word — nothing
-on the box knows a canary has been watched long enough — and it swaps one bot at a time, so
-`SVANBOT_NAME` still names which.
+The **canary** (SurSvan) takes every update first. `SVANBOT_CANARY` names it, and `update` without
+`--fleet` runs the canary's window: the canary is the bot it swaps. `--fleet` is the operator's word
+that the canary's window is over — nothing on the box knows it has been watched long enough — so it
+needs no canary named, only the bot it swaps, `SVANBOT_NAME`. It swaps one bot at a time.
 
 ```sh
 # the canary first
 SVANBOT_CANARY=SurSvan SVANBOT_NAME=SurSvan svanbot-release update 2026.11.16
 # ... watch the canary for its window, then the fleet, one bot at a time
-SVANBOT_CANARY=SurSvan SVANBOT_NAME=<name> svanbot-release update --fleet
+SVANBOT_NAME=<name> svanbot-release update --fleet
 ```
 
 One update runs at a time: a second `update` or `rollback` says an update is already in flight and

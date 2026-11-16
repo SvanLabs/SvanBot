@@ -46,13 +46,24 @@ fn stage(dir: &Path, version: &str) -> PathBuf {
 
 /// Runs `svanbot-release` with `args`, a cleared environment, and the install tree at `tree`.
 fn run(tree: &Path, args: &[&str]) -> (Option<i32>, String, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_svanbot-release"))
+    run_with(tree, args, &[])
+}
+
+/// Runs `svanbot-release` as [`run`], with `env` set on top of the cleared environment.
+fn run_with(tree: &Path, args: &[&str], env: &[(&str, &str)]) -> (Option<i32>, String, String) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_svanbot-release"));
+    command
         .args(args)
         .env_clear()
         .env("SVANBOT_LIB", tree)
-        .env("HOME", tree)
-        .output()
-        .unwrap();
+        // The bot's health files live under the tree, so a window's waits against a bot that is not
+        // there end where the test's own deadline says rather than in the real `~/.local/share`.
+        .env("SVANBOT_HEALTH", tree.join("health"))
+        .env("HOME", tree);
+    for (name, value) in env {
+        command.env(name, value);
+    }
+    let output = command.output().unwrap();
     (
         output.status.code(),
         String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -212,6 +223,91 @@ fn an_unknown_subcommand_prints_the_usage() {
     assert_eq!(code, Some(1), "{err}");
     assert!(err.contains("unknown subcommand `frobnicate`"), "{err}");
     assert!(err.contains("usage: svanbot-release"), "{err}");
+}
+
+#[test]
+fn fleet_is_a_flag_and_never_the_version() {
+    // The documented fleet rollout is `update --fleet` with no version. Reading the flag as the
+    // version made that exact command fail with "`--fleet` is not installed in …", so the flag is
+    // recognised as a flag and the version that stands beside it is the only version.
+    let tree = scratch("fleetflag");
+    let staged = stage(&tree.join("staged"), "2026.11.16-1");
+    let (code, _out, err) = run(&tree, &["install", staged.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{err}");
+    // The canary is what `--fleet` steps past, so no SVANBOT_CANARY is set: the run must get past
+    // argument parsing and the canary rule and fail on the bot, never on "`--fleet` is not
+    // installed" and never on a missing canary.
+    let (code, _out, err) = run(&tree, &["update", "--fleet"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(!err.contains("--fleet is not installed"), "{err}");
+    assert!(!err.contains("SVANBOT_CANARY"), "{err}");
+}
+
+#[test]
+fn fleet_without_a_bot_named_says_which_one_it_needs() {
+    // `--fleet` steps past the canary, so the bot is named out loud: SVANBOT_NAME. Refusing before
+    // that is the operator's own word, and the message names it rather than guessing a bot.
+    let tree = scratch("fleetnobot");
+    let staged = stage(&tree.join("staged"), "2026.11.16-1");
+    let (code, _out, err) = run(&tree, &["install", staged.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{err}");
+    let (code, _out, err) = run_with(
+        &tree,
+        &["update", "--fleet"],
+        &[("SVANBOT_CANARY", "SurSvan")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("SVANBOT_NAME"), "{err}");
+}
+
+#[test]
+fn a_flag_nobody_recognises_is_refused_by_its_own_name() {
+    // A mistyped flag used to be taken as a version and answered with "not installed", which sends
+    // an operator looking for a build instead of a typo.
+    let tree = scratch("typo");
+    let staged = stage(&tree.join("staged"), "2026.11.16-1");
+    let (code, _out, err) = run(&tree, &["install", staged.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{err}");
+    let (code, _out, err) = run(&tree, &["update", "--fleetty"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("--fleetty"), "{err}");
+    assert!(!err.contains("is not installed"), "{err}");
+}
+
+#[test]
+fn a_version_standing_beside_the_fleet_flag_is_the_one_used() {
+    // The flag and the version are independent: the version still names the build.
+    let tree = scratch("fleetversion");
+    let staged = stage(&tree.join("staged"), "2026.11.16-1");
+    let (code, _out, err) = run(&tree, &["install", staged.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{err}");
+    let (code, _out, err) = run(&tree, &["update", "2026.11.17-1", "--fleet"]);
+    assert_eq!(code, Some(1), "{err}");
+    // The named version is looked for, and it is the one reported missing.
+    assert!(err.contains("2026.11.17-1 is not installed"), "{err}");
+    assert!(!err.contains("--fleet is not installed"), "{err}");
+}
+
+#[test]
+fn update_with_no_version_picks_the_newest_build() {
+    // Two builds installed and no version named: the newest is what the window swaps to. A name
+    // read as text picks the older of these, which is a downgrade nothing else would catch.
+    let tree = scratch("newestpick");
+    for version in ["1.9.0", "1.10.0"] {
+        let staged = stage(&tree.join("staged"), version);
+        let (code, _out, err) = run(&tree, &["install", staged.to_str().unwrap()]);
+        assert_eq!(code, Some(0), "{err}");
+        fs::remove_dir_all(tree.join("staged")).unwrap();
+    }
+    // No canary set and no bot named: the run fails on the canary, which is after the build was
+    // chosen. What is asserted is that the newer one was chosen, which is what it names next.
+    let (code, _out, err) = run(&tree, &["update"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("SVANBOT_CANARY"), "{err}");
+    // The panel lists the builds in version order, newest last: the same order `update` reads.
+    let (code, out, _err) = run(&tree, &["status"]);
+    assert_eq!(code, Some(0));
+    assert!(out.contains("installed 1.9.0, 1.10.0"), "{out}");
 }
 
 #[test]

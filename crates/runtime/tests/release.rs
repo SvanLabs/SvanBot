@@ -11,7 +11,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use svanbot_runtime::release::{Release, ReleaseError, digest};
+use svanbot_runtime::release::{Release, ReleaseError, digest, newest, version_cmp};
 
 /// A fresh, empty directory for one test.
 fn scratch(name: &str) -> PathBuf {
@@ -159,4 +159,70 @@ fn a_version_in_the_shape_ci_publishes_is_accepted() {
         let staged = stage(&root.join(good), good, b"a program");
         assert_eq!(Release::at(&staged).unwrap().version(), good);
     }
+}
+
+#[test]
+fn versions_order_by_their_numbers_and_not_as_text() {
+    use std::cmp::Ordering::*;
+    // Choosing a build means choosing the newest, and a name read as text gets that wrong the
+    // moment a segment's digit count differs: `1.9.0` sorts after `1.10.0`, and `2026.11.9` after
+    // `2026.11.16`. Either is a silent downgrade, so the comparison is by number.
+    for (older, newer) in [
+        ("1.9.0", "1.10.0"),
+        ("2026.11.9", "2026.11.16"),
+        ("11.0.0", "11.0.1"),
+        ("11.0.0", "11.1.0"),
+        ("11.0.0", "12.0.0"),
+        ("9.9.9", "10.0.0"),
+    ] {
+        assert_eq!(
+            version_cmp(older, newer),
+            Less,
+            "{older} is older than {newer}"
+        );
+        assert_eq!(
+            version_cmp(newer, older),
+            Greater,
+            "{newer} is newer than {older}"
+        );
+    }
+    assert_eq!(version_cmp("11.0.0", "11.0.0"), Equal);
+}
+
+#[test]
+fn a_version_a_number_cannot_rank_is_still_ordered_and_never_dropped() {
+    // Releases are `N.N.N` — the workflow refuses anything else — but a build directory is named
+    // however it was made. One a number cannot rank is ordered by its text rather than ignored,
+    // and a rankable name outranks it, so `update` still lands on a release when one is installed.
+    use std::cmp::Ordering::*;
+    assert_eq!(version_cmp("nightly", "nightly"), Equal);
+    assert_eq!(version_cmp("nightly", "1.0.0"), Less);
+    assert_eq!(version_cmp("2.0.0", "nightly"), Greater);
+}
+
+#[test]
+fn sorting_by_the_version_comparator_puts_the_newest_last() {
+    // The order `update` reads to pick the build it swaps to, and `status` reads to list what is
+    // installed: both sort by version, so the newest is the last of the list rather than whatever
+    // a text sort put there.
+    let mut versions = vec!["2026.11.9", "1.9.0", "2026.11.16", "1.10.0"];
+    versions.sort_by(|a, b| version_cmp(a, b));
+    assert_eq!(versions, ["1.9.0", "1.10.0", "2026.11.9", "2026.11.16"]);
+}
+
+#[test]
+fn the_newest_of_a_set_of_versions_is_the_one_a_window_should_take() {
+    // What `update` with no version points `current` at. Picking wrong is a downgrade no crash
+    // loop catches, because the build it lands on is a good build — just an older one.
+    assert_eq!(newest(["1.10.0", "1.9.0"]).as_deref(), Some("1.10.0"));
+    assert_eq!(newest(["1.9.0", "1.10.0"]).as_deref(), Some("1.10.0"));
+    assert_eq!(
+        newest(["2026.11.16", "2026.11.9"]).as_deref(),
+        Some("2026.11.16")
+    );
+}
+
+#[test]
+fn a_set_of_versions_with_nothing_in_it_has_no_newest() {
+    assert_eq!(newest(std::iter::empty::<&str>()), None);
 }

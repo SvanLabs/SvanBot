@@ -34,7 +34,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use svanbot_runtime::health::Health;
-use svanbot_runtime::release::Release;
+use svanbot_runtime::release::{self, Release};
 use svanbot_runtime::slot::Slots;
 use svanbot_runtime::update;
 
@@ -66,11 +66,11 @@ fn run(args: &[String]) -> Result<(), String> {
     let subcommand = args.first().map(String::as_str).unwrap_or("status");
     match subcommand {
         "status" => status::print(&tree()?),
-        "install" => install(args.get(1).map(String::as_str)),
-        "update" => update_now(
-            args.get(1).map(String::as_str),
-            args.iter().any(|a| a == "--fleet"),
-        ),
+        "install" => install(positional(args, &[])?),
+        "update" => {
+            let fleet = args.iter().any(|arg| arg == "--fleet");
+            update_now(positional(args, &["--fleet"])?, fleet)
+        }
         "rollback" => rollback(),
         "help" | "-h" | "--help" => {
             print!("{USAGE}");
@@ -78,6 +78,28 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         other => Err(format!("unknown subcommand `{other}`\n\n{USAGE}")),
     }
+}
+
+/// The one argument that is not a flag, for the subcommands that take one.
+///
+/// A flag is never a version: `update --fleet` names no build, and reading `--fleet` as the version
+/// made the documented fleet rollout fail with "`--fleet` is not installed". Anything starting with
+/// `-` that `known` does not name is refused by name rather than taken as a positional, so a
+/// mistyped flag is answered as a typo and not as a missing build.
+fn positional<'a>(args: &'a [String], known: &[&str]) -> Result<Option<&'a str>, String> {
+    let mut positional = None;
+    for arg in args.iter().skip(1) {
+        if arg.starts_with('-') {
+            if !known.contains(&arg.as_str()) {
+                return Err(format!("unknown flag `{arg}`\n\n{USAGE}"));
+            }
+            continue;
+        }
+        if positional.replace(arg.as_str()).is_some() {
+            return Err(format!("unexpected extra argument `{arg}`\n\n{USAGE}"));
+        }
+    }
+    Ok(positional)
 }
 
 const USAGE: &str = "\
@@ -118,14 +140,14 @@ fn update_now(version: Option<&str>, fleet: bool) -> Result<(), String> {
     let slots = Slots::in_dir(&tree);
     let build = installed(&tree, version)?;
     // The canary takes every update first, and the fleet waits for it to be watched. The operator
-    // says the two words that mean the window is over; there is nothing on the box that can.
-    let canary = canary()?;
+    // says the word that means the window is over; there is nothing on the box that can. So the
+    // canary is named only when a canary is what runs: `--fleet` is the operator saying that window
+    // has passed, and demanding a canary there would refuse the command the usage text offers.
     let bot = if fleet {
-        // `--fleet` is the operator: the canary has had its window and the swap now carries the
-        // same build everywhere. Which bot is swapped still has to be named, one at a time.
+        // Which bot is swapped still has to be named, one at a time.
         std::env::var("SVANBOT_NAME").map_err(|_| "set SVANBOT_NAME: --fleet swaps one bot")?
     } else {
-        canary
+        canary()?
     };
     let _lock = Lock::take(&tree)?;
     let health = health_for(&bot)?;
@@ -203,14 +225,16 @@ fn installed(tree: &Path, version: Option<&str>) -> Result<PathBuf, String> {
     newest(tree)
 }
 
-/// The newest installed build: the version-named directory whose name sorts last.
+/// The newest installed build: the one the versions name, not the one a text sort would put last.
+///
+/// `1.9.0` sorts after `1.10.0` as text, and `2026.11.9` after `2026.11.16`, so a text sort makes a
+/// version-less `update` a silent downgrade. The comparison is [`release::version_cmp`]'s.
 fn newest(tree: &Path) -> Result<PathBuf, String> {
-    let mut versions = installs(tree);
-    // Version names sort in version order, so the last one is the newest install.
-    versions.sort();
-    versions
-        .pop()
-        .ok_or_else(|| format!("no build is installed in {}", tree.display()))
+    let builds = installs(tree);
+    let versions = builds.iter().map(|path| version_of(path));
+    let newest = release::newest(versions)
+        .ok_or_else(|| format!("no build is installed in {}", tree.display()))?;
+    Ok(tree.join(newest))
 }
 
 /// The build directories in `tree`, in no particular order.

@@ -13,6 +13,7 @@
 use std::path::{Path, PathBuf};
 
 use svanbot_runtime::health::{Health, WINDOW_MS};
+use svanbot_runtime::release::version_cmp;
 use svanbot_runtime::slot::Slots;
 
 /// The build a slot points at, or `-` when the slot has never been pointed anywhere.
@@ -81,12 +82,13 @@ fn report(health: &Health) {
 }
 
 /// The versions installed in `tree`, in version order. The same rule `update` uses to choose a
-/// build: a slot and a staged release are not builds, so neither is listed.
+/// build: a slot and a staged release are not builds, so neither is listed, and the order is the
+/// version order [`version_cmp`] gives, not the text order a directory listing happens to have.
 fn installed(tree: &Path) -> Vec<String> {
     let mut versions: Vec<String> = super::installs(tree)
         .iter()
         .map(|path| super::version_of(path))
         .collect();
-    versions.sort();
+    versions.sort_by(|a, b| version_cmp(a, b));
     versions
 }
