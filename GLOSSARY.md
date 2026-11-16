@@ -254,8 +254,13 @@ _Avoid_: database, DB, artifacts
 
 **Status**:
 One bot's last known state, written beside its store every five seconds: connection, table, hands,
-incidents and last error. A status older than fifteen seconds is stale.
+incidents (lifetime and this run) and last error. A status older than fifteen seconds is stale.
 _Avoid_: heartbeat, metrics, telemetry
+
+**Status writer**:
+The bot's own writer of its status file: it writes on every change and refreshes on a timer. The
+dashboard only reads statuses; nothing in a bot's play reads them.
+_Avoid_: live feed, telemetry loop, beat
 
 **Dashboard**:
 The loopback-only page and server that read every bot's status and push the fleet live. It shows

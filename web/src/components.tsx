@@ -3,8 +3,6 @@
 // with `renderToStaticMarkup`.
 
 import type { ReactNode } from "react";
-
-import { type Feed, serverNow } from "./feed";
 import {
   type BotStatus,
   botView,
@@ -15,6 +13,7 @@ import {
   type Problem,
   type Tone,
 } from "./fleet";
+import { serverNow, type View } from "./view";
 
 export interface StripFreshness {
   tone: Tone;
@@ -44,7 +43,7 @@ function summary(bots: BotStatus[], nowMs: number): string {
   return parts.join(" · ");
 }
 
-/** The sticky strip: fleet count, feed freshness, and the one problem that matters most. */
+/** The sticky strip: fleet count, view freshness, and the one problem that matters most. */
 export function StatusStrip({
   bots,
   problems,
@@ -128,7 +127,10 @@ export function BotCard({ status, nowMs }: { status: BotStatus; nowMs: number })
       <p className="detail">{view.detail}</p>
       <ul className="stats">
         <li>{status.hands} hands</li>
-        <li>{status.incidents} incidents</li>
+        <li>
+          {status.incidents} incidents
+          {status.run_incidents > 0 ? ` (${status.run_incidents} this run)` : ""}
+        </li>
         <li>
           {status.last_hand_ms === null
             ? "no hand yet"
@@ -157,11 +159,11 @@ export function EmptyFleet() {
 }
 
 /** The whole page: the strip and either one card per bot or the empty state. */
-export function FleetView({ feed, localNow }: { feed: Feed; localNow: number }) {
-  const now = serverNow(feed, localNow) ?? 0;
-  const fleet = feed.fleet ?? { server_ms: 0, bots: [], problems: [] };
-  const fresh = freshness(feed.serverMs, now);
-  const problems = fleetProblems(fleet, now, feed.error);
+export function FleetView({ view, localNow }: { view: View; localNow: number }) {
+  const now = serverNow(view, localNow) ?? 0;
+  const fleet = view.fleet ?? { server_ms: 0, bots: [], problems: [] };
+  const fresh = freshness(view.serverMs, now);
+  const problems = fleetProblems(fleet, now, view.error);
   return (
     <div className="fleet">
       <StatusStrip bots={fleet.bots} problems={problems} fresh={fresh} nowMs={now} />

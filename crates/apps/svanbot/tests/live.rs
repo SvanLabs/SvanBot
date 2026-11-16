@@ -27,6 +27,7 @@ fn status() -> Status {
         table: None,
         hands: 7,
         incidents: 1,
+        run_incidents: 0,
         last_hand_ms: None,
         last_error: None,
     }
@@ -126,10 +127,10 @@ fn the_table_is_written_and_cleared() {
 }
 
 #[test]
-fn a_heartbeat_refreshes_the_document_without_touching_the_state() {
-    let path = scratch("beat");
+fn a_refresh_refreshes_the_document_without_touching_the_state() {
+    let path = scratch("refresh");
     let live = Live::start(path.clone(), status()).unwrap();
-    live.beat();
+    live.refresh();
     let written = Status::read(&path).unwrap();
     assert!(written.updated_ms >= written.started_ms);
     assert_eq!(written.hands, 7);
@@ -137,14 +138,14 @@ fn a_heartbeat_refreshes_the_document_without_touching_the_state() {
 }
 
 #[test]
-fn the_heartbeat_thread_keeps_a_quiet_bot_fresh() {
+fn the_refresh_thread_keeps_a_quiet_bot_fresh() {
     let path = scratch("thread");
     let live = Arc::new(Live::start(path.clone(), status()).unwrap());
     let before = Status::read(&path).unwrap().updated_ms;
-    let beat = Live::spawn_heartbeat(&live, Duration::from_millis(10));
+    let refresh_handle = Live::spawn_refresh(&live, Duration::from_millis(10));
     std::thread::sleep(Duration::from_millis(30));
     live.stop();
-    beat.join().unwrap();
+    refresh_handle.join().unwrap();
     let after = Status::read(&path).unwrap().updated_ms;
     assert!(after > before, "{before} then {after}");
 }

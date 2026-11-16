@@ -21,6 +21,7 @@ function bot(overrides: Partial<BotStatus> = {}): BotStatus {
     table: null,
     hands: 12,
     incidents: 0,
+    run_incidents: 0,
     last_hand_ms: 9_000,
     last_error: null,
     ...overrides,
@@ -103,7 +104,7 @@ describe("fleetProblems", () => {
       fleet([
         bot({ bot: "Alpha", updated_ms: 1_000 }),
         bot({ bot: "Beta", connected: false, last_error: "no key" }),
-        bot({ bot: "Gamma", incidents: 2 }),
+        bot({ bot: "Gamma", run_incidents: 2 }),
       ]),
       30_000,
       "the stream dropped",
@@ -111,9 +112,14 @@ describe("fleetProblems", () => {
     const text = problems.map((problem) => problem.text).join("\n");
     expect(text).toContain("Alpha has not reported");
     expect(text).toContain("Beta is offline: no key");
-    expect(text).toContain("Gamma raised 2 fair-play incidents");
+    expect(text).toContain("Gamma raised 2 fair-play incidents this run");
     expect(text).toContain("the stream dropped");
     expect(problems.filter((problem) => problem.tone === "bad")).toHaveLength(3);
+  });
+
+  test("a bot with a past incident but a clean run is not raised", () => {
+    const problems = fleetProblems(fleet([bot({ incidents: 3, run_incidents: 0 })]), 12_000, null);
+    expect(problems).toEqual([]);
   });
 
   test("an empty fleet says so", () => {

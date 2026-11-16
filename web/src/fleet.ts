@@ -41,6 +41,7 @@ export interface BotStatus {
   table: TableStatus | null;
   hands: number;
   incidents: number;
+  run_incidents: number;
   last_hand_ms: number | null;
   last_error: string | null;
 }
@@ -116,6 +117,7 @@ function isBot(value: unknown): value is BotStatus {
     (value.table === null || isTable(value.table)) &&
     isNumber(value.hands) &&
     isNumber(value.incidents) &&
+    isNumber(value.run_incidents) &&
     (value.last_hand_ms === null || isNumber(value.last_hand_ms)) &&
     (value.last_error === null || isString(value.last_error))
   );
@@ -214,11 +216,12 @@ export function fleetProblems(fleet: Fleet, nowMs: number, streamError: string |
     problems.push({ tone: "warn", text: "No bot has reported yet" });
   }
   for (const status of fleet.bots) {
-    // One line per bot: an incident outranks being offline, which outranks going quiet.
-    if (status.incidents > 0) {
+    // One line per bot: an incident outranks being offline, which outranks going quiet. A run
+    // incident is raised now; the lifetime count belongs to the card, not the strip.
+    if (status.run_incidents > 0) {
       problems.push({
         tone: "bad",
-        text: `${status.bot} raised ${incidents(status.incidents)}`,
+        text: `${status.bot} raised ${incidents(status.run_incidents)} this run`,
       });
     } else if (!status.connected) {
       problems.push({

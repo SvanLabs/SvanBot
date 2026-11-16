@@ -1,6 +1,7 @@
 //! The `svanbot` app's own pieces, kept out of `main` so they can be tested at their seams.
 //!
-//! An app does I/O, so it turns off the `clippy.toml` bans here, once (ADR 0003).
+//! An app does I/O, so it turns off the `clippy.toml` bans here, at this crate root (ADR 0003;
+//! `main.rs` is the binary's own root and does the same there).
 #![allow(
     clippy::disallowed_methods,
     clippy::disallowed_types,

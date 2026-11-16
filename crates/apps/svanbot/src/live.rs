@@ -1,4 +1,4 @@
-//! The bot's status file, kept current while it plays. The dashboard reads it; nothing in the
+//! The status writer: the bot's own writer of its status file, kept current while it plays. The dashboard reads it; nothing in the
 //! bot's play depends on it, so a write failure is reported and play goes on.
 
 use std::io;
@@ -13,7 +13,7 @@ use svanbot_runtime::status::{Status, Table};
 use crate::now_ms;
 
 /// How often a quiet bot refreshes its status. The dashboard calls a bot stale after three.
-pub const HEARTBEAT: Duration = Duration::from_secs(5);
+pub const REFRESH: Duration = Duration::from_secs(5);
 
 struct Inner {
     status: Status,
@@ -21,7 +21,7 @@ struct Inner {
     write_error: Option<String>,
 }
 
-/// One bot's status, written atomically on every change and on every heartbeat.
+/// One bot's status, written atomically on every change and on every refresh.
 pub struct Live {
     path: PathBuf,
     inner: Mutex<Inner>,
@@ -29,8 +29,8 @@ pub struct Live {
 }
 
 impl Live {
-    /// Writes the starting status and returns the writer. The heartbeat is started separately
-    /// with [`Live::spawn_heartbeat`].
+    /// Writes the starting status and returns the writer. The refresh thread is started separately
+    /// with [`Live::spawn_refresh`].
     pub fn start(path: PathBuf, status: Status) -> io::Result<Live> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
@@ -43,7 +43,7 @@ impl Live {
             }),
             stopped: AtomicBool::new(false),
         };
-        live.beat();
+        live.refresh();
         Ok(live)
     }
 
@@ -83,21 +83,24 @@ impl Live {
 
     /// A fair-play incident was raised.
     pub fn incident(&self) {
-        self.update(|status| status.incidents += 1);
+        self.update(|status| {
+            status.incidents += 1;
+            status.run_incidents += 1;
+        });
     }
 
     /// Refreshes `updated_ms` so the dashboard knows the bot is alive.
-    pub fn beat(&self) {
+    pub fn refresh(&self) {
         self.update(|_| {});
     }
 
-    /// Stops the heartbeat thread at its next turn.
+    /// Stops the refresh thread at its next turn.
     pub fn stop(&self) {
         self.stopped.store(true, Ordering::Relaxed);
     }
 
     /// Refreshes the status every `every`, until [`Live::stop`].
-    pub fn spawn_heartbeat(live: &Arc<Live>, every: Duration) -> JoinHandle<()> {
+    pub fn spawn_refresh(live: &Arc<Live>, every: Duration) -> JoinHandle<()> {
         let live = Arc::clone(live);
         thread::spawn(move || {
             while !live.stopped.load(Ordering::Relaxed) {
@@ -105,7 +108,7 @@ impl Live {
                 if live.stopped.load(Ordering::Relaxed) {
                     break;
                 }
-                live.beat();
+                live.refresh();
             }
         })
     }

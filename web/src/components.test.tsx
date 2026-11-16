@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { BotCard, EmptyFleet, FleetView, StatusStrip, type StripFreshness } from "./components";
-import { emptyFeed, receiveFleet } from "./feed";
 import type { BotStatus, Problem, TableStatus } from "./fleet";
+import { emptyView, receiveFleet } from "./view";
 
 function bot(overrides: Partial<BotStatus> = {}): BotStatus {
   return {
@@ -16,6 +16,7 @@ function bot(overrides: Partial<BotStatus> = {}): BotStatus {
     table: null,
     hands: 12,
     incidents: 0,
+    run_incidents: 0,
     last_hand_ms: 9_000,
     last_error: null,
     ...overrides,
@@ -192,14 +193,14 @@ describe("EmptyFleet", () => {
 
 describe("FleetView", () => {
   test("before the first message it is connecting and empty", () => {
-    const html = renderToStaticMarkup(<FleetView feed={emptyFeed} localNow={5_000} />);
+    const html = renderToStaticMarkup(<FleetView view={emptyView} localNow={5_000} />);
     expect(html).toContain("connecting");
     expect(html).toContain("No bot has reported yet");
   });
 
   test("after a fleet message it shows one card per bot", () => {
-    const feed = receiveFleet(
-      emptyFeed,
+    const view = receiveFleet(
+      emptyView,
       JSON.stringify({
         server_ms: 10_000,
         bots: [bot(), bot({ bot: "Beta" })],
@@ -207,31 +208,31 @@ describe("FleetView", () => {
       }),
       11_000,
     );
-    const html = renderToStaticMarkup(<FleetView feed={feed} localNow={12_000} />);
+    const html = renderToStaticMarkup(<FleetView view={view} localNow={12_000} />);
     expect(html).toContain("2 bots");
     expect(html).toContain('data-bot="SurSvan"');
     expect(html).toContain('data-bot="Beta"');
     expect(html).toContain("live");
   });
 
-  test("a dropped stream keeps the cards and marks the feed down", () => {
-    const feed = {
+  test("a dropped stream keeps the cards and marks the view down", () => {
+    const view = {
       ...receiveFleet(
-        emptyFeed,
+        emptyView,
         JSON.stringify({ server_ms: 10_000, bots: [bot()], problems: [] }),
         11_000,
       ),
       error: "the event stream dropped; retrying",
     };
-    const html = renderToStaticMarkup(<FleetView feed={feed} localNow={40_000} />);
+    const html = renderToStaticMarkup(<FleetView view={view} localNow={40_000} />);
     expect(html).toContain('data-bot="SurSvan"');
     expect(html).toContain("the event stream dropped");
     expect(html).toContain("lost");
   });
 
   test("every problem after the worst one is still on the page", () => {
-    const feed = receiveFleet(
-      emptyFeed,
+    const view = receiveFleet(
+      emptyView,
       JSON.stringify({
         server_ms: 10_000,
         bots: [
@@ -242,7 +243,7 @@ describe("FleetView", () => {
       }),
       11_000,
     );
-    const html = renderToStaticMarkup(<FleetView feed={feed} localNow={12_000} />);
+    const html = renderToStaticMarkup(<FleetView view={view} localNow={12_000} />);
     expect(html).toContain("Alpha is offline: no key");
     expect(html).toContain("Beta is offline: a bad seat");
     expect(html).toContain("Broken.status.json: not a status");

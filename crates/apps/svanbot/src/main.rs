@@ -29,7 +29,8 @@
 //! `svanbot propose` puts a challenger forward for the canary ([`propose`]). `svanbot dashboard`
 //! serves the fleet's page on loopback ([`dashboard`]).
 //!
-//! An app does I/O, so it turns off the `clippy.toml` bans here, once (ADR 0003).
+//! An app does I/O, so it turns off the `clippy.toml` bans here, at this crate root (ADR 0003;
+//! `lib.rs` is the library's own root and does the same there).
 #![allow(
     clippy::disallowed_methods,
     clippy::disallowed_types,
@@ -120,6 +121,7 @@ fn main() -> ExitCode {
             table: None,
             hands: totals.hands,
             incidents: totals.incidents,
+            run_incidents: 0,
             last_hand_ms: totals.last_hand_ms,
             last_error: None,
         },
@@ -130,7 +132,7 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let _heartbeat = Live::spawn_heartbeat(&live, live::HEARTBEAT);
+    let _refresh = Live::spawn_refresh(&live, live::REFRESH);
     // The updater's request to stop between hands, and the answer this bot gives it.
     let health = open_health(&config.me);
     eprintln!("svanbot: {} connects to {}", config.me, config.url);

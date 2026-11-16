@@ -6,6 +6,6 @@ import { FleetView } from "../src/components";
 import { useFleet } from "../src/use-fleet";
 
 export default function Page() {
-  const { feed, localNow } = useFleet();
-  return <FleetView feed={feed} localNow={localNow} />;
+  const { view, localNow } = useFleet();
+  return <FleetView view={view} localNow={localNow} />;
 }

@@ -12,7 +12,7 @@ use tiny_http::Request;
 use super::fleet_json;
 
 /// How often the data directory is read for a change.
-const POLL: Duration = Duration::from_millis(500);
+const READ: Duration = Duration::from_millis(500);
 /// How often a tick proves the stream is alive.
 const TICK: Duration = Duration::from_secs(5);
 
@@ -108,7 +108,7 @@ impl Read for Stream {
             if self.fill() {
                 continue;
             }
-            thread::sleep(POLL);
+            thread::sleep(READ);
         }
     }
 }

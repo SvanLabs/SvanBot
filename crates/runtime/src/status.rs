@@ -41,6 +41,10 @@ pub struct Status {
     pub hands: u64,
     /// Fair-play incidents in the store when the process started, plus every one raised since.
     pub incidents: u64,
+    /// Fair-play incidents raised since this process started. The lifetime total is `incidents`:
+    /// the strip raises the ones this run raised, so a bot with a past incident is not forever
+    /// red.
+    pub run_incidents: u64,
     /// When the last hand finished, in Unix milliseconds, if one has.
     pub last_hand_ms: Option<i64>,
     /// The last connection failure, cleared when a connection succeeds.

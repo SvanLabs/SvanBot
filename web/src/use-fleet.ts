@@ -5,19 +5,19 @@
 
 import { useEffect, useState } from "react";
 
-import { emptyFeed, type Feed, receiveFleet, receiveTick, streamFailed } from "./feed";
+import { emptyView, receiveFleet, receiveTick, streamFailed, type View } from "./view";
 
 const CLOCK_MS = 1_000;
 const DROPPED = "the event stream dropped; retrying";
 
-export interface Live {
-  feed: Feed;
+export interface LiveView {
+  view: View;
   /** This browser's clock, updated once a second. */
   localNow: number;
 }
 
-export function useFleet(): Live {
-  const [feed, setFeed] = useState<Feed>(emptyFeed);
+export function useFleet(): LiveView {
+  const [view, setView] = useState<View>(emptyView);
   const [localNow, setLocalNow] = useState(0);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function useFleet(): Live {
       .then((response) => (response.ok ? response.text() : Promise.reject(response.status)))
       .then((body) => {
         if (live) {
-          setFeed((feed) => receiveFleet(feed, body, Date.now()));
+          setView((view) => receiveFleet(view, body, Date.now()));
         }
       })
       .catch(() => {});
@@ -46,13 +46,13 @@ export function useFleet(): Live {
   useEffect(() => {
     const events = new EventSource("/api/events");
     const onFleet = (event: MessageEvent<string>) => {
-      setFeed((feed) => receiveFleet(feed, event.data, Date.now()));
+      setView((view) => receiveFleet(view, event.data, Date.now()));
     };
     const onTick = (event: MessageEvent<string>) => {
-      setFeed((feed) => receiveTick(feed, event.data, Date.now()));
+      setView((view) => receiveTick(view, event.data, Date.now()));
     };
     const onError = () => {
-      setFeed((feed) => streamFailed(feed, DROPPED));
+      setView((view) => streamFailed(view, DROPPED));
     };
     events.addEventListener("fleet", onFleet as EventListener);
     events.addEventListener("tick", onTick as EventListener);
@@ -65,5 +65,5 @@ export function useFleet(): Live {
     };
   }, []);
 
-  return { feed, localNow };
+  return { view, localNow };
 }

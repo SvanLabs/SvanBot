@@ -48,6 +48,7 @@ fn status(bot: &str, updated_ms: i64) -> Status {
         }),
         hands: 42,
         incidents: 0,
+        run_incidents: 0,
         last_hand_ms: Some(900),
         last_error: None,
     }
