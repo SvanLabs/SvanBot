@@ -43,8 +43,6 @@ fn health_for(root: &Path, name: &str) -> Health {
     Health::in_dir(root.join("health"), name)
 }
 
-const MINUTE_MS: i64 = 60_000;
-
 /// A world the test scripts: what systemd answers, whether the bot comes back up, and a log of
 /// every call the window made, in order.
 struct Scripted {
@@ -56,7 +54,9 @@ struct Scripted {
     up: bool,
     /// What the stop poll finds at its deadline.
     stopped: bool,
-    /// Every call the window made: `"stop"`, `"stop_poll"`, `"start"`, `"up_poll"`.
+    /// What the crash-loop watch finds by its deadline.
+    looped: bool,
+    /// Every call the window made: `"stop"`, `"stop_poll"`, `"start"`, `"up_poll"`, `"loop_watch"`.
     calls: Rc<RefCell<Vec<&'static str>>>,
 }
 
@@ -68,7 +68,16 @@ impl Scripted {
             start_ok: true,
             up: true,
             stopped: true,
+            looped: false,
             calls: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+
+    /// A world where the build crashes and comes back up: the watch sees a crash loop.
+    fn crash_loops() -> Self {
+        Self {
+            looped: true,
+            ..Self::ready()
         }
     }
 
@@ -140,6 +149,11 @@ impl Window for Scripted {
     fn restarted(&mut self, _deadline_ms: i64) -> bool {
         self.note("up_poll");
         self.up
+    }
+
+    fn crash_looped(&mut self, _since_ms: i64, _limit: usize, _deadline_ms: i64) -> bool {
+        self.note("loop_watch");
+        self.looped
     }
 }
 
@@ -264,55 +278,66 @@ fn a_build_that_crash_loops_is_rolled_back_to_the_one_that_was_running() {
     let old = build(&root, "2026.11.16-1");
     let new = build(&root, "2026.11.16-2");
     slots.install(&old).unwrap();
-    // The world says the bot came back up, and it did. But the start log says it came up three
-    // times inside the window: the build is not surviving, and the window reads the log rather
-    // than trusting the one start.
-    let mut world = Scripted::ready();
+    // The build comes up and `apply` keeps it; the window then watches it, and the watch sees it
+    // come up three times inside the window. The world answers "looped" where the real one counts
+    // the start log (`in_crash_loop`, tested in `health.rs`); here the window's response is what
+    // is under test.
+    let mut world = Scripted::crash_loops();
     let outcome =
         svanbot_runtime::update::apply(&mut world, &slots, &health, &new, 0, 60_000).unwrap();
     assert_eq!(outcome.rolled_back_to, None);
     assert_eq!(slots.current(), Some(new.clone()));
-    // The bot comes up, crashes, and comes up again: three starts inside the window.
-    for minute in 0..3 {
-        health
-            .note_start(minute * MINUTE_MS, "2026.11.16-2")
-            .unwrap();
-    }
-    let outcome =
-        svanbot_runtime::update::watch(&slots, &health, 2 * MINUTE_MS, WINDOW_MS, 3).unwrap();
+    let outcome = svanbot_runtime::update::watch(&mut world, &slots, 0, WINDOW_MS, 3).unwrap();
     assert_eq!(outcome.rolled_back_to, Some(old.clone()));
     assert_eq!(slots.current(), Some(old));
     // The build that crash-looped is now `previous`, so a later rollback is still possible.
     assert_eq!(slots.previous(), Some(new));
+    // The loop is stopped before the swap and the build rolled back to is started: systemd is
+    // restarting the broken build, so a swap under it would race the start of the old one.
+    assert_eq!(
+        world.log(),
+        [
+            "stop_poll",
+            "stop",
+            "start",
+            "up_poll",
+            "loop_watch",
+            "stop",
+            "start"
+        ]
+    );
 }
 
 #[test]
 fn a_build_that_comes_up_and_stays_up_is_kept() {
     let root = scratch("keep");
     let slots = Slots::in_dir(root.join("lib"));
-    let health = health_for(&root, "SurSVan");
     let new = build(&root, "2026.11.16-2");
     slots.install(build(&root, "2026.11.16-1")).unwrap();
     slots.install(&new).unwrap();
-    // One start, well inside the window: nothing to roll back for.
-    health.note_start(1_000, "2026.11.16-2").unwrap();
-    let outcome = svanbot_runtime::update::watch(&slots, &health, 1_000, 60_000, 3).unwrap();
+    // The watch runs its whole window and finds no loop: the build is kept, and nothing is stopped
+    // or started, because it is already the one running.
+    let mut world = Scripted::ready();
+    let outcome = svanbot_runtime::update::watch(&mut world, &slots, 0, WINDOW_MS, 3).unwrap();
     assert_eq!(outcome.rolled_back_to, None);
     assert_eq!(slots.current(), Some(new));
+    assert_eq!(world.log(), ["loop_watch"]);
 }
 
 #[test]
 fn the_harm_guard_trips_after_the_swap_and_rolls_back() {
     let root = scratch("harm");
     let slots = Slots::in_dir(root.join("lib"));
-    let health = health_for(&root, "SurSVan");
     let old = build(&root, "2026.11.16-1");
     let new = build(&root, "2026.11.16-2");
     slots.install(&old).unwrap();
     slots.install(&new).unwrap();
-    let outcome = svanbot_runtime::update::watch(&slots, &health, 1_000, 60_000, 3).unwrap();
+    // The build comes up and stays up, so the watch keeps it.
+    let mut world = Scripted::ready();
+    let outcome = svanbot_runtime::update::watch(&mut world, &slots, 0, WINDOW_MS, 3).unwrap();
     assert_eq!(outcome.rolled_back_to, None);
-    // The guard trips while the build is running: the same rollback the crash loop gets.
+    // The guard then trips while the build is running: the same rollback the crash loop gets, done
+    // by hand as an operator runs it.
     let tripped = svanbot_runtime::update::roll_back_for_harm(&slots).unwrap();
     assert_eq!(tripped, Some(old.clone()));
     assert_eq!(slots.current(), Some(old));

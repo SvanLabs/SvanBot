@@ -43,6 +43,14 @@ pub trait Window {
 
     /// Whether systemd has the bot running, by `deadline_ms`.
     fn restarted(&mut self, deadline_ms: i64) -> bool;
+
+    /// Whether the build that went live at `since_ms` has come up `limit` times by `deadline_ms` —
+    /// a crash loop.
+    ///
+    /// Polled until it has, or until the deadline passes, and counted over `[since_ms, now]`:
+    /// a crash loop is not visible the moment a build comes up, so it has to be watched for, and
+    /// the count has to start when the build did or the build it replaced is counted as this one.
+    fn crash_looped(&mut self, since_ms: i64, limit: usize, deadline_ms: i64) -> bool;
 }
 
 /// Why an update did not finish.
@@ -181,25 +189,37 @@ fn swap_and_start(
     })
 }
 
-/// Whether the build `current` holds may be kept, once the bot has had its window.
+/// Whether the build `current` holds may be kept, once it has had its window to fail in.
 ///
-/// `limit` starts inside `window_ms` is a crash loop: the build is not surviving, so `current`
-/// goes back to the previous build. Nothing is rolled back when there is nothing to go back to.
+/// The window is watched for its whole length, not read once at the start: the build has only just
+/// come up, and a crash loop needs time to show. `limit` starts inside it is a crash loop, and the
+/// build is not surviving: systemd is sitting there restarting it, so this stops it, points
+/// `current` back at the build it replaced, and starts that. Nothing is rolled back when there is
+/// nothing to go back to: the build stays, and its own restart is the one that runs.
 pub fn watch(
+    world: &mut dyn Window,
     slots: &Slots,
-    health: &Health,
     now_ms: i64,
     window_ms: i64,
     limit: usize,
 ) -> Result<Outcome, WindowError> {
-    if health.in_crash_loop(now_ms, window_ms, limit)? {
+    let deadline = now_ms.saturating_add(window_ms);
+    if !world.crash_looped(now_ms, limit, deadline) {
         return Ok(Outcome {
-            rolled_back_to: roll_back(slots)?,
+            rolled_back_to: None,
         });
     }
-    Ok(Outcome {
-        rolled_back_to: None,
-    })
+    if slots.previous().is_none() {
+        return Ok(Outcome {
+            rolled_back_to: None,
+        });
+    }
+    // Stop the loop before the swap, or systemd restarts the build being retired the moment it
+    // starts the one the rollback lands on. A stop it refuses leaves the build as it was.
+    world.stop().map_err(WindowError::Stop)?;
+    let rolled_back_to = roll_back(slots)?;
+    world.start().map_err(WindowError::Start)?;
+    Ok(Outcome { rolled_back_to })
 }
 
 /// Rolls back when the harm guard trips: the canary's live evidence says the new build is worse

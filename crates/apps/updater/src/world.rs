@@ -10,6 +10,7 @@
 //! it leaves the table), systemd has stopped it, and systemd has it running again. Each poll is
 //! short, so a stop that lands just after one is still seen within one poll of it.
 
+use std::fmt;
 use std::io;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -39,7 +40,14 @@ impl<'a> BotWorld<'a> {
     /// Polls `until` — returning `true`/`false` — every [`POLL`] until it does, or until `deadline`
     /// passes, and returns the last answer. The clock is read here, in an app: this is the one place
     /// the deadline is turned into elapsed time.
-    fn poll(&self, deadline_ms: i64, until: impl Fn(&Self) -> io::Result<bool>) -> bool {
+    ///
+    /// The error is whatever the wait's own reader gives — an `io::Error` from systemd, a
+    /// `HealthError` from a file — and is only reported, so the wait can take either.
+    fn poll<E: fmt::Display>(
+        &self,
+        deadline_ms: i64,
+        until: impl Fn(&Self) -> Result<bool, E>,
+    ) -> bool {
         loop {
             match until(self) {
                 Ok(true) => return true,
@@ -64,7 +72,9 @@ impl Window for BotWorld<'_> {
     fn bot_stopped(&mut self, deadline_ms: i64) -> bool {
         // The bot writes this only once it has left the table between hands, so waiting for it is
         // what keeps the swap from landing under a hand in flight.
-        self.poll(deadline_ms, |world| Ok(world.health.stopped()))
+        self.poll(deadline_ms, |world| {
+            Ok::<_, io::Error>(world.health.stopped())
+        })
     }
 
     fn start(&mut self) -> io::Result<()> {
@@ -73,8 +83,20 @@ impl Window for BotWorld<'_> {
 
     fn restarted(&mut self, deadline_ms: i64) -> bool {
         // Asked of systemd, not of the log: a build systemd cannot `exec` is a build that is not
-        // running, and the crash loop is judged afterwards by `watch`, from the start log.
+        // running, and the crash loop is judged by `crash_looped`, from the start log.
         self.poll(deadline_ms, |world| world.systemd.is_running())
+    }
+
+    fn crash_looped(&mut self, since_ms: i64, limit: usize, deadline_ms: i64) -> bool {
+        // The count is anchored at `since_ms`, when the build went live, so the starts of the build
+        // it replaced are behind the window and cannot be counted as this build looping. The wait
+        // runs to the deadline, which is what gives the loop the time it needs to show.
+        self.poll(deadline_ms, |world| {
+            let now = now_ms();
+            world
+                .health
+                .in_crash_loop(now, now.saturating_sub(since_ms), limit)
+        })
     }
 }
 

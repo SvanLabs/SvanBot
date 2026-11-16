@@ -145,11 +145,11 @@ fn update_now(version: Option<&str>, fleet: bool) -> Result<(), String> {
             Ok(())
         }
         None => {
-            // The swap is done; whether the build stays is `watch`'s question, asked from the start
-            // log. A crash loop read here rolls straight back, and the fact is reported either way.
+            // The swap is done; whether the build stays is `watch`'s question, asked by watching its
+            // start log for the whole window. A crash loop rolls back and is restarted there.
             let watched = update::watch(
+                &mut world,
                 &slots,
-                &health,
                 now_ms(),
                 svanbot_runtime::health::WINDOW_MS,
                 CRASH_STARTS,
