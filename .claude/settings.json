@@ -3,6 +3,7 @@
   "enabledPlugins": {
     "mattpocock-skills@claude-plugins-official": true
   },
+  "cleanupPeriodDays": 14,
   "permissions": {
     "allow": [
       "Bash(git status:*)",
@@ -19,6 +20,41 @@
     "deny": [
       "Bash(git push origin main:*)",
       "Bash(git push --force:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/tools/hook.ts\"; [ -f \"$f\" ] || exit 0; exec mise exec -- bun \"$f\" pre-bash"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/tools/hook.ts\"; [ -f \"$f\" ] || exit 0; exec mise exec -- bun \"$f\" post-edit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/tools/hook.ts\"; [ -f \"$f\" ] || exit 0; exec mise exec -- bun \"$f\" stop",
+            "timeout": 120
+          }
+        ]
+      }
     ]
   }
 }

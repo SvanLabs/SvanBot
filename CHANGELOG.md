@@ -61,6 +61,27 @@ V11-00.
   with ring), plays every turn by the pricer, reports fair-play incidents, and reconnects with a
   backoff. It reads its key, name and roster from the environment, never prints the key, and will
   not start without the roster.
+- Action model: a probability for every move (fold, check, call, three bet sizes) by street,
+  by whether a bet is faced and by strength bucket, with each opponent's range read from their
+  line by Bayes. `learn` fits it on every stored hand, keeping a mucked hand as one that lost,
+  and uses it only once it beats the baseline on held-out hands. Priors are fitted across
+  opponents, and a drift monitor says when a model stops describing the play.
+- Reads: one opponent's read tilts the population model by its evidence, inside the exploit
+  budget. An opponent is classed as fixed, switching or learning, and a read is used only past
+  the exploit gate.
+- The re-solve: heads up after the flop, the rest of the street is solved by Discounted CFR over
+  whole ranges, with one more round of betting past it played by continuation strategies. The
+  policy re-solves where it can and prices everywhere else. Iterations are sized by the pot.
+- The paired sim: `svanbot paired` plays two policies over the same deals from mirrored seats,
+  with the luck of every card taken out, and gives the win rate with its 95% interval.
+- The store and the season download: one append-only SQLite file per bot, which refuses any
+  other bot. `svanbot download` pages a bot's own hand history into it, inside the venue's
+  rate limits, and takes up where it stopped.
+- The updater: CI builds and checksums a bundle on a `v*` tag. `svanbot-release` verifies and
+  installs it, swaps the `current` and `previous` slots between hands, the canary first, and
+  rolls back by itself when the new build starts three times in five minutes.
+- The dashboard: each bot writes its status beside its store, and `svanbot dashboard` serves the
+  fleet on loopback over one event stream, with one freshness indicator.
 - The Probe, live: every bot keeps a ledger of what each hand won (the stack's gain since the
   hand before, with the luck of the re-solve's own draws beside it) and plays by the fleet's
   champion parameter set. `svanbot propose` plays a challenger against the champion in a paired
@@ -70,3 +91,8 @@ V11-00.
   a 3,000-hand harm guard on the canary first: cleared, the canary writes the fleet's champion
   and the other bots adopt it between hands; harmful, the champion stays. A restarted canary
   takes its probe up from its store.
+- Agent workflow: `tools/hook.ts` holds an agent session to the rules a machine can check. It
+  refuses a push to `main`, a forced push, a build outside `target/dev`, a release build and
+  any start, stop or swap of a bot; it runs the layering check after an edit of a `Cargo.toml`;
+  and it keeps a changed tree from being left failing the commit tier. `.claude/rules/` holds
+  the rules of each part of the tree. `README.md` and `llms.txt` are written from the code.

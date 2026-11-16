@@ -1,12 +1,76 @@
 # SvanBot v11
 
-A no-limit hold'em bot fleet for openpoker.ai, being rewritten from scratch as v11.0.0 "The Deep
-Mass-ReWorkStructure". The plan is the GitHub issue **V11-00**. This README is written in full
-once the code it describes exists.
+SvanBot plays 6-max no-limit hold'em on [openpoker.ai](https://openpoker.ai) with five bots under
+one owner. It learns from every hand they play, and it changes how it plays only on evidence.
+v11.0.0, "The Deep Mass-ReWorkStructure", is written from scratch: this branch shares no code
+with v10, which is kept at the tag `archive/v10/final`.
 
-- Words: `GLOSSARY.md`
-- Decisions: `docs/adr/`, with the crate graph in `docs/adr/0003-crate-graph.md`
-- Research behind the plan: `docs/research/2026-11/`
-- Working here, for people and agents: `AGENTS.md`
+v11 has not played a live hand yet. The fleet runs v10 from `main` until v11 meets its ship bar:
+a paired sim of a million hands above the v10 champion, no loss to any sparring opponent, a
+canary run of 20,000 live hands, and the operator's approval (the map, issue **V11-00**).
+
+## How a bot decides
+
+```text
+the venue's frames ─▶ session ─▶ spot ─▶ policy ─▶ the nearest legal action ─▶ the venue
+                        │                  │
+                        │                  ├─ heads up after the flop: the re-solve
+                        │                  │    Discounted CFR over whole ranges, the villain's
+                        │                  │    range from their action model and their line
+                        │                  └─ before the flop, or three or more in the pot: the pricer
+                        │
+                        ├─ every seat list ─▶ the fair-play guard: no table with a stablemate
+                        └─ every finished hand ─▶ the bot's own store, and its ledger
+```
+
+- **Ranges** come from an action model: a probability for every move by street, by whether a bet
+  is faced, and by strength. It is fitted on every stored hand and used only once it beats the
+  baseline on hands it has not seen.
+- **Reads** of one opponent tilt the model by how much evidence there is, inside an exploit
+  budget, and only against an opponent whose play holds still.
+- **The work is an input.** A decision is given iterations, samples and a seed, never a clock, so
+  the same spot and seed give the same action on any machine.
+
+## How it changes
+
+A parameter set is named by its digest. The fleet plays by one, the champion. `svanbot propose`
+plays a challenger against it in a paired sim, the same deals from mirrored seats, and proposes
+it only when the whole 95% interval is above zero. The canary, SurSvan, then runs a 3,000-hand
+harm guard on live hands, one arm an orbit, with the luck of its own draws taken out. Cleared,
+the other four bots adopt the challenger between hands. Harmful, nobody else ever plays it.
+
+## The tree
+
+| Path | What it is |
+|---|---|
+| `crates/core` | Cards, the hand evaluator, the seeded generator, the rules of a hand, the spot |
+| `crates/sim` | Equity by enumeration and by seeded sampling; a table that plays hands out |
+| `crates/strategy` | The action model, reads, the pricer, the re-solve, the policy, parameter sets |
+| `crates/learn` | The fit and its gate, priors, drift, the adaptivity class, the paired sim, the Probe |
+| `crates/runtime` | The venue client, the session, the store, the ledger, updates and slots |
+| `crates/apps/svanbot` | The bot, and `download`, `paired`, `propose` and `dashboard` |
+| `crates/apps/updater` | `svanbot-release`: `status`, `install`, `update`, `rollback` |
+| `web/` | The dashboard's page |
+| `tools/` | The gate, the release packer and the agent hooks, as Bun scripts |
+| `deploy/` | The systemd user units and their runbook |
+
+A crate depends only on its own layer or a lower one, and the four layers below `runtime` do no
+I/O and read no clock (`docs/adr/0003-crate-graph.md`). Two checks hold that on every commit.
+
+## Working here
+
+```sh
+mise run setup    # the pinned tools, the TypeScript packages, the git hooks: once per clone
+mise run commit   # the fast checks; the pre-commit hook runs them
+mise run full     # adds the tests; run it before a push
+```
+
+- Words: `GLOSSARY.md`. Decisions: `docs/adr/`. The research behind the plan: `docs/research/2026-11/`.
+- For people and agents alike: `AGENTS.md`. For a model reading the repo cold: `llms.txt`.
+- Running it on the box: `deploy/README.md`.
+- What changed: `CHANGELOG.md`.
+
+The venue's own documentation, <https://docs.openpoker.ai/llms-full.txt>, comes before anything
+written here about the venue.
 
 Dual-licensed under MIT or Apache-2.0.
