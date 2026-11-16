@@ -394,6 +394,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "svanbot"
 version = "11.0.0-dev"
 dependencies = [
+ "svanbot-core",
+ "svanbot-learn",
  "svanbot-runtime",
  "svanbot-strategy",
 ]
@@ -407,6 +409,7 @@ name = "svanbot-learn"
 version = "11.0.0-dev"
 dependencies = [
  "svanbot-core",
+ "svanbot-sim",
  "svanbot-strategy",
 ]
 

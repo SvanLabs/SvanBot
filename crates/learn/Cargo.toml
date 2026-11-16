@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 svanbot-core.workspace = true
+svanbot-sim.workspace = true
 svanbot-strategy.workspace = true
 
 [lints]

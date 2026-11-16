@@ -359,8 +359,13 @@ impl Session {
             .filter(|player| {
                 player.name.to_lowercase() != me && !hand.folded.contains(&player.seat)
             })
-            .map(|player| self.lines.of(player.seat).to_vec())
+            .map(|player| (player.seat, self.lines.of(player.seat).to_vec()))
             .collect();
+        let ours = self.seat.map_or(0, |seat| self.lines.turn_order(seat));
+        let in_position = lines
+            .iter()
+            .all(|(seat, _)| self.lines.turn_order(*seat) < ours);
+        let lines: Vec<_> = lines.into_iter().map(|(_, line)| line).collect();
         let raise = turn.offer.raise.or(turn
             .offer
             .all_in
@@ -375,6 +380,9 @@ impl Session {
             },
             opponents: lines.len(),
             stack: mine.map_or(0, |player| player.stack),
+            committed: self.seat.map_or(0, |seat| self.lines.committed(seat)),
+            big_blind: self.lines.big_blind(),
+            in_position,
             lines,
         }
     }
