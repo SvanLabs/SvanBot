@@ -252,6 +252,21 @@ _Avoid_: release criteria, gate (the gate is for changes, the ship bar for relea
 SvanBot's own record of hands, decisions, fits and incidents.
 _Avoid_: database, DB, artifacts
 
+**Status**:
+One bot's last known state, written beside its store every five seconds: connection, table, hands,
+incidents and last error. A status older than fifteen seconds is stale.
+_Avoid_: heartbeat, metrics, telemetry
+
+**Dashboard**:
+The loopback-only page and server that read every bot's status and push the fleet live. It shows
+the fleet; it never plays.
+_Avoid_: UI, control panel, admin console
+
+**Event stream**:
+The dashboard's one server-sent stream: a fleet event whenever a status changes, and a tick every
+five seconds so the page can tell a quiet fleet from a dead connection.
+_Avoid_: websocket, feed, poll
+
 **Export**:
 The venue's hand-history download for one bot and one season.
 _Avoid_: dump, scrape, sync

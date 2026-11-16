@@ -129,6 +129,16 @@ impl From<rusqlite::Error> for StoreError {
     }
 }
 
+/// What a store holds, in one read: the dashboard's starting point for a bot that has just
+/// started, before the process has counted anything itself.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Totals {
+    pub hands: u64,
+    pub incidents: u64,
+    /// When the newest hand was written, in Unix milliseconds.
+    pub last_hand_ms: Option<i64>,
+}
+
 /// One bot's store.
 #[derive(Debug)]
 pub struct Store {
@@ -168,6 +178,28 @@ impl Store {
         Ok(self
             .db
             .query_row("PRAGMA journal_mode", [], |row| row.get(0))?)
+    }
+
+    /// How many hands and incidents the store holds, and when the newest hand was written.
+    pub fn totals(&self) -> Result<Totals, StoreError> {
+        let (hands, incidents, last_hand_ms) = self.db.query_row(
+            "SELECT (SELECT COUNT(*) FROM hands),
+                    (SELECT COUNT(*) FROM incidents),
+                    (SELECT MAX(recorded_ms) FROM hands)",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            },
+        )?;
+        Ok(Totals {
+            hands: u64::try_from(hands).map_err(|error| StoreError(error.to_string()))?,
+            incidents: u64::try_from(incidents).map_err(|error| StoreError(error.to_string()))?,
+            last_hand_ms,
+        })
     }
 
     /// Keeps a hand. Returns false if it is kept already: the first copy stands.

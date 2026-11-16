@@ -29,6 +29,7 @@ pub mod release;
 pub mod rest;
 pub mod session;
 pub mod slot;
+pub mod status;
 pub mod store;
 pub mod update;
 pub mod wire;
