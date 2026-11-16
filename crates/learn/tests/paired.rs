@@ -43,10 +43,8 @@ fn shoving_into_a_seat_that_always_folds_wins_both_blinds_over_the_pair_of_hands
 #[test]
 fn a_policy_against_itself_breaks_even_on_every_deal() {
     for deal in 0..50 {
-        assert_eq!(
-            duel(&MATCH, deal, &calls_good_cards, &calls_good_cards),
-            0.0
-        );
+        // Up to the rounding of the corrected results.
+        assert!(duel(&MATCH, deal, &calls_good_cards, &calls_good_cards).abs() < 1e-9);
     }
 }
 

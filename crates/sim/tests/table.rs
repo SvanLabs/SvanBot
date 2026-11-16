@@ -162,8 +162,9 @@ fn an_all_in_before_the_river_pays_each_seat_its_share_of_the_run_outs() {
         [-2000, 2000]
     );
     let fair = play_corrected(&cards, &[2000, 2000], 0, BLINDS, 1, all_in_on_the_turn);
+    // The flop and the turn card are corrected too, while only the 40 of the blinds is in.
     let share = 15.0 / 44.0 * 4000.0 - 2000.0;
-    assert!((fair[0] - share).abs() < 1e-6, "{fair:?}");
+    assert!((fair[0] - share).abs() < 40.0, "{fair:?}");
     assert!((fair[0] + fair[1]).abs() < 1e-6, "{fair:?}");
 }
 
@@ -180,8 +181,46 @@ fn an_all_in_before_the_flop_is_paid_close_to_its_equity_and_a_hand_bet_to_the_r
         fair,
         play_corrected(&cards, &[2000, 2000], 0, BLINDS, 1, |_, spot| shove(spot))
     );
+    // Checked down, kings flop a set and win as dealt. Corrected, the aces are paid their share
+    // of the 40 in the pot before any card came: no card's luck is left in the result.
     let checked = play_corrected(&cards, &[2000, 2000], 0, BLINDS, 1, |_, spot| {
         check_or_call(spot)
     });
-    assert_eq!(checked, [-20.0, 20.0]);
+    assert!(
+        (checked[0] - (0.82 * 40.0 - 20.0)).abs() < 2.0,
+        "{checked:?}"
+    );
+    assert!((checked[0] + checked[1]).abs() < 1e-6, "{checked:?}");
+}
+
+#[test]
+fn the_correction_keeps_the_mean_and_cuts_the_spread() {
+    // A pot-sized bet on each street, called down: big pots that the cards decide. Over many
+    // deals the corrected results average what the dealt ones do, and swing less. They still
+    // swing: chips bet after a lucky card are counted as play, not as luck.
+    let (mut dealt, mut fair) = (Vec::new(), Vec::new());
+    for seed in 0..400 {
+        let cards = deal(2, &mut Rng::seeded(seed));
+        let bets = |_: usize, spot: &Spot| match (spot.legal.call, spot.legal.raise) {
+            (None, Some(range)) if spot.board.len() >= 3 => {
+                Action::RaiseTo(spot.pot.clamp(range.min, range.max))
+            }
+            _ => check_or_call(spot),
+        };
+        dealt.push(play(&cards, &[2000, 2000], 0, BLINDS, bets)[0] as f64);
+        fair.push(play_corrected(&cards, &[2000, 2000], 0, BLINDS, seed, bets)[0]);
+    }
+    let mean = |of: &[f64]| of.iter().sum::<f64>() / of.len() as f64;
+    let spread = |of: &[f64]| {
+        let m = mean(of);
+        (of.iter().map(|x| (x - m).powi(2)).sum::<f64>() / of.len() as f64).sqrt()
+    };
+    assert!(
+        spread(&fair) < 0.9 * spread(&dealt),
+        "{} vs {}",
+        spread(&fair),
+        spread(&dealt)
+    );
+    let error = spread(&dealt) / (dealt.len() as f64).sqrt();
+    assert!((mean(&fair) - mean(&dealt)).abs() < 3.0 * error);
 }
