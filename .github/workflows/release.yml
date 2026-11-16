@@ -5,8 +5,8 @@
 # One build, one bundle. The program's instruction level is the runner's (x86-64-v3), because a
 # compiler emits baseline code only when it is built on baseline — building v1 or v2 needs a runner
 # or a container of that level, which is a second build the release does not have and does not need:
-# the box here is v3. The bundle names the level it was built for, and the installer refuses
-# anything else.
+# the box here is v3. The bundle's file name carries that level, and nothing checks it back: there
+# is one runner and one box, so the level is a fact of the build, not a thing the install verifies.
 #
 # The job is a release build and `tools/release.ts`, and nothing else: the gate that guards this
 # tag already ran on the pull request. RUSTFLAGS="" drops the box's target-cpu=native so the bundle

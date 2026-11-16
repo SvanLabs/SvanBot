@@ -4,9 +4,10 @@
 // Writes <out>/svanbot-<version>-<cpu>.tar.gz and the tarball's `.sha256` beside it.
 //
 // The program is built by the workflow, not here: this runs after `cargo build --release` and only
-// packages what is already in `target/dev/release`. `--cpu` records the instruction level the
-// release is for and never selects one — a compiler cannot be told to emit a level it is not
-// running at, and CI's runner is x86-64-v3, so v1 and v2 are packaged from the same build.
+// packages what is already in `target/dev/release`. `--cpu` names the instruction level in the
+// bundle's file name; it never selects one — a compiler cannot be told to emit a level it is not
+// running at, and CI's runner is x86-64-v3. Nothing downstream reads the level back: there is one
+// box and one runner, so the level is fixed by the build rather than checked at the install.
 //
 // The archive's shape is the contract with two readers: `release/` is the staged release the
 // updater's `install` verifies (`crates/runtime/src/release.rs` — the program, its `sha256` and the
@@ -55,16 +56,13 @@ export function version(root: string): string {
  * checksum is computed here and written both as `release/sha256` and into the version manifest, so
  * the two readers of the release cannot disagree about which bytes were released.
  */
-export function collect(root: string, version: string, cpu: string): Files {
+export function collect(root: string, version: string): Files {
   const program = built(root, PROGRAM);
   const digest = sha256(program);
   const files: Files = new Map();
   files.set(`${RELEASE}/${PROGRAM}`, program);
   files.set(`${RELEASE}/sha256`, Buffer.from(`${digest}  ${PROGRAM}\n`));
-  files.set(
-    `${RELEASE}/${MANIFEST}`,
-    Buffer.from(`version\t${version}\nsha256\t${digest}\ncpu\t${cpu}\n`),
-  );
+  files.set(`${RELEASE}/${MANIFEST}`, Buffer.from(`version\t${version}\nsha256\t${digest}\n`));
   for (const [member, path] of upgrade(root)) {
     if (!existsSync(path)) throw new Error(`no ${path}: build the release first`);
     files.set(`${UPGRADE}/${member}`, readFileSync(path));
@@ -170,7 +168,7 @@ export function build(options: { root: string; version: string; cpu: string; out
   sha256: string;
 } {
   const version = safe(options.version);
-  const bytes = pack(collect(options.root, version, options.cpu));
+  const bytes = pack(collect(options.root, version));
   const name = `${PROGRAM}-${version}-${options.cpu}.tar.gz`;
   mkdirSync(options.out, { recursive: true });
   const archive = join(options.out, name);
