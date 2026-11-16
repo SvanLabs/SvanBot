@@ -19,9 +19,17 @@ use svanbot_learn::probe::{Decided, Verdict};
 use svanbot_strategy::params::Params;
 
 use crate::fleet::{Fleet, Proposal, params_from, params_json};
-use crate::ledger::Ledger;
+use crate::ledger::{Ledger, Played};
 use crate::record::Hand;
 use crate::store::Store;
+
+/// What a finished hand came to: the hand as the ledger counted it, if it could be, and notes
+/// for the operator.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Kept {
+    pub played: Option<Played>,
+    pub notes: Vec<String>,
+}
 
 /// One bot's ledger, its store and the fleet's files.
 #[derive(Debug)]
@@ -67,17 +75,33 @@ impl<'a> Probing<'a> {
         *self.ledger.params()
     }
 
+    /// The champion's parameter set.
+    pub fn champion(&self) -> Params {
+        *self.ledger.champion()
+    }
+
     /// Notes one draw of the re-solve in the hand in play.
     pub fn decided(&mut self, drawn: Decided) {
         self.ledger.decided(drawn);
     }
 
+    /// The running probe in one line, for the status.
+    pub fn describe(&self) -> Option<String> {
+        let (_, proposal) = self.running?;
+        let (edge, radius) = self.ledger.estimate()?;
+        Some(format!(
+            "{} against {}: {edge:+.1} bb/100, 95% ±{radius:.1}",
+            proposal.challenger.digest(),
+            self.ledger.champion().digest()
+        ))
+    }
+
     /// Takes a finished hand at `now_ms`: keeps what it won, then does what falls between hands.
-    /// Returns notes for the operator.
-    pub fn on_hand(&mut self, hand: &Hand, now_ms: i64) -> Vec<String> {
+    pub fn on_hand(&mut self, hand: &Hand, now_ms: i64) -> Kept {
         let mut notes = Vec::new();
-        if let Some(played) = self.ledger.on_hand(hand)
-            && let Err(error) = self.store.append_played(&played, now_ms)
+        let played = self.ledger.on_hand(hand);
+        if let Some(played) = &played
+            && let Err(error) = self.store.append_played(played, now_ms)
         {
             notes.push(format!("NOT KEPT: {error}"));
         }
@@ -90,7 +114,7 @@ impl<'a> Probing<'a> {
             Ok(note) => notes.extend(note),
             Err(why) => notes.push(why),
         }
-        notes
+        Kept { played, notes }
     }
 
     /// Adopts the fleet's champion, when it is not the one this bot plays by already.

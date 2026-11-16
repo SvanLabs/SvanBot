@@ -31,24 +31,14 @@ test("the full tier adds the tests and the type check, then reports the disk bud
     "doc-test",
     "tsc",
     "tools-test",
-    "web-tsc",
-    "web-test",
-    "web-build",
+    "page-test",
     "disk",
   ]);
   expect(step("full", "disk")?.argv).toEqual([process.execPath, "tools/disk.ts"]);
 });
 
 test("the test tier is the full tier's tests alone, so CI can run it beside the commit tier", () => {
-  expect(names("test")).toEqual([
-    "nextest",
-    "doc-test",
-    "tsc",
-    "tools-test",
-    "web-tsc",
-    "web-test",
-    "web-build",
-  ]);
+  expect(names("test")).toEqual(["nextest", "doc-test", "tsc", "tools-test", "page-test"]);
 });
 
 test("the ci tier runs cargo-deny against the lockfile", () => {
@@ -99,30 +89,18 @@ test("the tool checks run with the Bun that runs the gate", () => {
   expect(step("commit", "provenance")?.argv).toEqual([process.execPath, "tools/provenance.ts"]);
   expect(step("commit", "layering")?.argv).toEqual([process.execPath, "tools/layering.ts"]);
   expect(step("full", "tools-test")?.argv).toEqual([process.execPath, "test", "tools"]);
+  expect(step("full", "page-test")?.argv).toEqual([
+    process.execPath,
+    "test",
+    "crates/apps/svanbot/web",
+  ]);
 });
 
 test("fmt, biome and tsc check without building or writing", () => {
   const checks = ["fmt", "biome", "tsc"].map((name) => step("full", name));
   expect(checks).toEqual([
     { name: "fmt", argv: ["cargo", "fmt", "--all", "--check"], env: {} },
-    { name: "biome", argv: ["biome", "check", "tools", "web"], env: {} },
+    { name: "biome", argv: ["biome", "check", "tools", "crates/apps/svanbot/web"], env: {} },
     { name: "tsc", argv: ["tools/node_modules/.bin/tsc", "-p", "tools"], env: {} },
-  ]);
-});
-
-test("the dashboard page is type-checked, tested and built", () => {
-  expect(step("full", "web-tsc")?.argv).toEqual(["web/node_modules/.bin/tsc", "-p", "web"]);
-  expect(step("full", "web-test")?.argv).toEqual([process.execPath, "test", "web"]);
-  expect(step("full", "web-build")?.argv).toEqual([
-    "nice",
-    "-n",
-    "15",
-    "ionice",
-    "-c3",
-    process.execPath,
-    "run",
-    "--cwd",
-    "web",
-    "build",
   ]);
 });

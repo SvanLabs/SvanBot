@@ -1,6 +1,6 @@
 # The dashboard: `systemctl --user enable --now svanbot-dashboard`. It listens on loopback only,
-# reach it through an SSH tunnel (deploy/README.md), and it needs no venue key. The page is a
-# static export the release installs beside the binary; the status files are written by the bots.
+# reach it through an SSH tunnel (deploy/README.md), and it needs no venue key. The page is
+# compiled into the binary; the status files are written by the bots.
 [Unit]
 Description=SvanBot fleet dashboard
 After=network-online.target
@@ -9,7 +9,7 @@ Wants=network-online.target
 [Service]
 Type=exec
 Environment=SVANBOT_DATA=%h/.local/share/svanbot
-Environment=SVANBOT_WEB=%h/.local/lib/svanbot/current/web
+Environment=SVANBOT_LIB=%h/.local/lib/svanbot
 Environment=SVANBOT_DASHBOARD_ADDR=127.0.0.1:8080
 ExecStart=%h/.local/lib/svanbot/current/svanbot dashboard
 Restart=on-failure

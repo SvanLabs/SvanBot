@@ -264,7 +264,8 @@ _Avoid_: live feed, telemetry loop, beat
 
 **Dashboard**:
 The loopback-only page and server that read every bot's status and push the fleet live. It shows
-the fleet; it never plays.
+the fleet; it never plays. Both are our own code, and the page is compiled into the `svanbot`
+binary.
 _Avoid_: UI, control panel, admin console
 
 **Event stream**:

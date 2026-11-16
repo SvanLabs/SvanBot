@@ -3,8 +3,9 @@
 // Run it under mise (`mise run commit`, `mise run full`), so every tool is the pinned one.
 //   bun tools/gate.ts commit   fmt, biome, the 500-line limit, the secret scan, provenance, the
 //                              layering check and clippy
-//   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc, the tool tests,
-//                              the dashboard page's checks, and last the disk budget
+//   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc, the tool tests and
+//                              the dashboard page's tests,
+//                              and last the disk budget of this clone's target/
 //   bun tools/gate.ts test     the full tier's tests alone: CI runs it beside the commit tier
 //   bun tools/gate.ts ci       cargo-deny, run in CI on every pull request and once a week
 import { join } from "node:path";
@@ -13,7 +14,7 @@ export type Step = { name: string; argv: string[]; env: Record<string, string> }
 
 // Fast checks first, so a typo fails in a second rather than after a build.
 const COMMIT = ["fmt", "biome", "file-size", "secrets", "provenance", "layering", "clippy"];
-const TEST = ["nextest", "doc-test", "tsc", "tools-test", "web-tsc", "web-test", "web-build"];
+const TEST = ["nextest", "doc-test", "tsc", "tools-test", "page-test"];
 const TIERS: Record<string, string[]> = {
   commit: COMMIT,
   // The disk budget runs last, after the tests have built what they build. CI's disk is
@@ -39,7 +40,7 @@ function stepFor(name: string): Step {
     case "fmt":
       return { name, argv: ["cargo", "fmt", "--all", "--check"], env: {} };
     case "biome":
-      return { name, argv: ["biome", "check", "tools", "web"], env: {} };
+      return { name, argv: ["biome", "check", "tools", "crates/apps/svanbot/web"], env: {} };
     case "file-size":
     case "secrets":
     case "provenance":
@@ -66,30 +67,11 @@ function stepFor(name: string): Step {
       return { name, argv: cargo(["test", "--workspace", "--doc"]), env: TARGET };
     case "tsc":
       return { name, argv: ["tools/node_modules/.bin/tsc", "-p", "tools"], env: {} };
-    case "web-tsc":
-      return { name, argv: ["web/node_modules/.bin/tsc", "-p", "web"], env: {} };
-    case "web-test":
-      return { name, argv: [process.execPath, "test", "web"], env: {} };
-    case "web-build":
-      // The page is a build artifact: if `next build` fails, the dashboard has nothing to serve.
-      return {
-        name,
-        argv: [
-          "nice",
-          "-n",
-          "15",
-          "ionice",
-          "-c3",
-          process.execPath,
-          "run",
-          "--cwd",
-          "web",
-          "build",
-        ],
-        env: {},
-      };
     case "deny":
       return { name, argv: ["cargo", "deny", "--locked", "check"], env: {} };
+    case "page-test":
+      // The dashboard page's logic, tested without a browser.
+      return { name, argv: [process.execPath, "test", "crates/apps/svanbot/web"], env: {} };
     case "tools-test":
       return { name, argv: [process.execPath, "test", "tools"], env: {} };
     default:

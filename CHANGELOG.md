@@ -81,7 +81,11 @@ V11-00.
   installs it, swaps the `current` and `previous` slots between hands, the canary first, and
   rolls back by itself when the new build starts three times in five minutes.
 - The dashboard: each bot writes its status beside its store, and `svanbot dashboard` serves the
-  fleet on loopback over one event stream, with one freshness indicator.
+  fleet on loopback over one event stream, with one freshness indicator. The server is our own,
+  on the standard library, and the page is hand-written and compiled into the binary: the fleet
+  with one card a bot, one bot's page (its table, its ledger as a line chart with a table under
+  it, what it plays by), and the release page (the slots, the builds installed, what each bot
+  runs). It follows the OS light or dark setting.
 - The Probe, live: every bot keeps a ledger of what each hand won (the stack's gain since the
   hand before, with the luck of the re-solve's own draws beside it) and plays by the fleet's
   champion parameter set. `svanbot propose` plays a challenger against the champion in a paired
