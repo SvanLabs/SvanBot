@@ -2,7 +2,7 @@
 
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
-use svanbot_learn::arena::{Row, SESSION, json, scoreboard, session};
+use svanbot_learn::arena::{BOUT, Row, bout, json, scoreboard};
 use svanbot_learn::paired::{Match, Verdict};
 use svanbot_sim::sparring::Archetype;
 
@@ -26,8 +26,8 @@ fn check_or_call(spot: &Spot, _: u64) -> Action {
 #[test]
 fn a_seat_that_always_folds_breaks_even_with_the_nit() {
     // The nit folds its small blind and we fold ours: 10 each way on every deal.
-    let results = session(&MATCH, Archetype::Nit, 0, &folds);
-    assert_eq!(results.len() as u64, SESSION);
+    let results = bout(&MATCH, Archetype::Nit, 0, &folds);
+    assert_eq!(results.len() as u64, BOUT);
     assert!(
         results.iter().all(|result| result.abs() < 1e-9),
         "{results:?}"
@@ -35,16 +35,10 @@ fn a_seat_that_always_folds_breaks_even_with_the_nit() {
 }
 
 #[test]
-fn a_session_repeats_for_its_seed_and_differs_by_its_number() {
-    let first = session(&MATCH, Archetype::Learning, 3, &check_or_call);
-    assert_eq!(
-        first,
-        session(&MATCH, Archetype::Learning, 3, &check_or_call)
-    );
-    assert_ne!(
-        first,
-        session(&MATCH, Archetype::Learning, 4, &check_or_call)
-    );
+fn a_bout_repeats_for_its_seed_and_differs_by_its_number() {
+    let first = bout(&MATCH, Archetype::Learning, 3, &check_or_call);
+    assert_eq!(first, bout(&MATCH, Archetype::Learning, 3, &check_or_call));
+    assert_ne!(first, bout(&MATCH, Archetype::Learning, 4, &check_or_call));
 }
 
 #[test]

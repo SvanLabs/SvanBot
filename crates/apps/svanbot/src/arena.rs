@@ -11,7 +11,7 @@ use std::process::ExitCode;
 
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
-use svanbot_learn::arena::{Row, SESSION, json, scoreboard, session};
+use svanbot_learn::arena::{BOUT, Row, bout, json, scoreboard};
 use svanbot_learn::paired::{Match, duel, verdict};
 use svanbot_sim::sparring::Archetype;
 use svanbot_strategy::params::Params;
@@ -75,10 +75,8 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
                             .step_by(THREADS as usize)
                             .map(|number| {
                                 let results = match opponent {
-                                    Some(archetype) => {
-                                        session(&game, archetype, number, challenger)
-                                    }
-                                    None => (number * SESSION..(number + 1) * SESSION)
+                                    Some(archetype) => bout(&game, archetype, number, challenger),
+                                    None => (number * BOUT..(number + 1) * BOUT)
                                         .map(|deal| duel(&game, deal, challenger, pricer))
                                         .collect(),
                                 };

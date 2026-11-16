@@ -3,9 +3,10 @@
 //! each in mbb/100 with a 95% interval. A run is recorded with its commit and its seed, so every
 //! number on the board can be played again.
 //!
-//! The deals come in **sessions** of [`SESSION`]. One sparring opponent plays a session's hands
-//! in order, so the learning archetype learns across them. Sessions do not share anything, so
-//! they can run in any order on any number of threads.
+//! The deals come in **bouts** of [`BOUT`] (`GLOSSARY.md`). One sparring opponent plays a bout's
+//! hands in order, so the learning archetype learns across them. Bouts do not share anything, so
+//! they can run in any order on any number of threads. *A bout is not a session*: a session is a
+//! bot's stay at a table (`GLOSSARY.md`), and only live play has those.
 
 use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
@@ -13,19 +14,19 @@ use svanbot_sim::sparring::{Archetype, Sparring};
 
 use crate::paired::{Match, Verdict, duel};
 
-/// Deals in a session.
-pub const SESSION: u64 = 50;
+/// Deals in a bout.
+pub const BOUT: u64 = 50;
 
-/// Plays session `number` against `archetype`: its deals, each from mirrored seats, in order.
+/// Plays bout `number` against `archetype`: its deals, each from mirrored seats, in order.
 /// Returns what the challenger won on each deal, in big blinds a hand.
-pub fn session(
+pub fn bout(
     game: &Match,
     archetype: Archetype,
     number: u64,
     challenger: &impl Fn(&Spot, u64) -> Action,
 ) -> Vec<f64> {
     let opponent = Sparring::new(archetype);
-    (number * SESSION..(number + 1) * SESSION)
+    (number * BOUT..(number + 1) * BOUT)
         .map(|deal| {
             duel(game, deal, challenger, &|spot, seed| {
                 opponent.decide(spot, seed, deal)
