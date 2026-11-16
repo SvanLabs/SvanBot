@@ -48,9 +48,8 @@ the other four bots adopt the challenger between hands. Harmful, nobody else eve
 | `crates/strategy` | The action model, reads, the pricer, the re-solve, the policy, parameter sets |
 | `crates/learn` | The fit and its gate, priors, drift, the adaptivity class, the paired sim, the Probe |
 | `crates/runtime` | The venue client, the session, the store, the ledger, updates and slots |
-| `crates/apps/svanbot` | The bot, and `download`, `paired`, `propose` and `dashboard` |
+| `crates/apps/svanbot` | The bot, and `download`, `paired`, `propose` and `dashboard`, with the dashboard's page in `web/` |
 | `crates/apps/updater` | `svanbot-release`: `status`, `install`, `update`, `rollback` |
-| `web/` | The dashboard's page |
 | `tools/` | The gate, the release packer and the agent hooks, as Bun scripts |
 | `deploy/` | The systemd user units and their runbook |
 

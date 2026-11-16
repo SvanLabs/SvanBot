@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use svanbot_runtime::status::{Fleet, Seat, Status, Table, status_path};
+use svanbot_runtime::status::{Fleet, Play, Seat, Status, Table, status_path};
 
 /// A fresh, empty directory for one test.
 fn scratch(name: &str) -> PathBuf {
@@ -51,6 +51,7 @@ fn status(bot: &str, updated_ms: i64) -> Status {
         run_incidents: 0,
         last_hand_ms: Some(900),
         last_error: None,
+        play: Play::default(),
     }
 }
 

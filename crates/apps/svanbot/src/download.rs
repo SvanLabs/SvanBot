@@ -22,7 +22,7 @@ pub(crate) fn run() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let (_, store) = match open_store(&me) {
+    let store = match open_store(&me) {
         Ok(store) => store,
         Err(why) => {
             eprintln!("svanbot download: {why}");

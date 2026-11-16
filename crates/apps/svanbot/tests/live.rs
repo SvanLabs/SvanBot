@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use svanbot::live::Live;
-use svanbot_runtime::status::{Seat, Status, Table};
+use svanbot_runtime::status::{Play, Seat, Status, Table};
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("svanbot-live-{}-{name}", std::process::id()));
@@ -30,6 +30,7 @@ fn status() -> Status {
         run_incidents: 0,
         last_hand_ms: None,
         last_error: None,
+        play: Play::default(),
     }
 }
 
@@ -112,6 +113,7 @@ fn an_incident_counts_and_keeps_its_time() {
     live.incident();
     let written = Status::read(&path).unwrap();
     assert_eq!(written.incidents, 2);
+    assert_eq!(written.run_incidents, 1);
     live.stop();
 }
 
@@ -128,7 +130,7 @@ fn the_table_is_written_and_cleared() {
 
 #[test]
 fn a_refresh_refreshes_the_document_without_touching_the_state() {
-    let path = scratch("refresh");
+    let path = scratch("beat");
     let live = Live::start(path.clone(), status()).unwrap();
     live.refresh();
     let written = Status::read(&path).unwrap();
@@ -142,10 +144,23 @@ fn the_refresh_thread_keeps_a_quiet_bot_fresh() {
     let path = scratch("thread");
     let live = Arc::new(Live::start(path.clone(), status()).unwrap());
     let before = Status::read(&path).unwrap().updated_ms;
-    let refresh_handle = Live::spawn_refresh(&live, Duration::from_millis(10));
+    let refresh = Live::spawn_refresh(&live, Duration::from_millis(10));
     std::thread::sleep(Duration::from_millis(30));
     live.stop();
-    refresh_handle.join().unwrap();
+    refresh.join().unwrap();
     let after = Status::read(&path).unwrap().updated_ms;
     assert!(after > before, "{before} then {after}");
+}
+
+#[test]
+fn a_counted_hand_adds_to_the_play_and_the_probe_follows() {
+    let path = scratch("played");
+    let live = Live::start(path.clone(), status()).unwrap();
+    live.played(Some(1_500), Some("a probe".into()), "aa".into());
+    live.played(None, None, "aa".into());
+    live.played(Some(-500), None, "bb".into());
+    let play = Status::read(&path).unwrap().play;
+    assert_eq!((play.counted, play.won_mbb), (2, 1_000));
+    assert_eq!(play.recent, vec![1_500, -500]);
+    assert_eq!((play.probe, play.champion.as_str()), (None, "bb"));
 }

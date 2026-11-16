@@ -8,12 +8,18 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use svanbot_runtime::ledger::Played;
 use svanbot_runtime::status::{Status, Table};
 
 use crate::now_ms;
 
 /// How often a quiet bot refreshes its status. The dashboard calls a bot stale after three.
 pub const REFRESH: Duration = Duration::from_secs(5);
+
+/// What a counted hand won, in thousandths of a big blind, with the luck of our draws taken out.
+pub fn mbb(played: &Played) -> i64 {
+    ((played.net as f64 - played.luck) / f64::from(played.big_blind.max(1)) * 1000.0).round() as i64
+}
 
 struct Inner {
     status: Status,
@@ -78,6 +84,18 @@ impl Live {
                 status.hands += 1;
             }
             status.last_hand_ms = Some(at_ms);
+        });
+    }
+
+    /// The ledger took a hand: what it won, if it was counted, the probe as it now stands, and
+    /// the champion's digest.
+    pub fn played(&self, mbb: Option<i64>, probe: Option<String>, champion: String) {
+        self.update(|status| {
+            if let Some(mbb) = mbb {
+                status.play.count(mbb);
+            }
+            status.play.probe = probe;
+            status.play.champion = champion;
         });
     }
 

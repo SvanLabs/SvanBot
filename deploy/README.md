@@ -127,7 +127,6 @@ svanbot-release install ~/.local/lib/svanbot/staged
 svanbot-release status                                       # the build is installed, no slot has moved
 SVANBOT_CANARY=SurSvan svanbot-release update 2026.11.16   # the canary takes it first
 ```
-
 ## The dashboard
 
 `svanbot dashboard` serves one page on loopback and pushes the fleet to it over one event stream.
@@ -147,12 +146,13 @@ The service reads three variables, with the defaults the unit sets:
 | Variable | Default | What it is |
 |----------|---------|------------|
 | `SVANBOT_DATA` | `~/.local/share/svanbot` | Every bot's store and status file. |
-| `SVANBOT_WEB` | `~/.local/lib/svanbot/current/web` | The exported page. |
+| `SVANBOT_LIB` | `~/.local/lib/svanbot` | The install tree, whose slots the Release page shows. |
 | `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:8080` | Where it listens. Keep it on loopback. |
 
-The page is a static export, built by `bun run --cwd web build` into `web/out`; no Node process runs
-on the box. The release must install that directory as `web` in the slot (V11-10); without it the
-dashboard answers 503 and says the export is missing.
+The page is three hand-written files compiled into the `svanbot` binary, and the server is our
+own, on the standard library: nothing else is installed, built or run on the box for it. The
+pages are the fleet (`/`), one bot (`/bot/<name>`) and the release (`/release`): what is
+installed, where `current` and `previous` point, and the build and champion each bot runs.
 
 A stopped bot keeps its last status file, so its card says `No recent status` rather than
 disappearing. That is the intended reading: the dashboard shows what was last known, not only what

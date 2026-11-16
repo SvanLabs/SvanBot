@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>SvanBot</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="strip" aria-live="polite">
+      <a class="brand" href="/">SvanBot</a>
+      <nav aria-label="Pages">
+        <a href="/">Fleet</a>
+        <a href="/release">Release</a>
+      </nav>
+      <span id="count" class="muted"></span>
+      <span id="fresh" class="pill warn">connecting</span>
+      <strong id="worst" class="worst"></strong>
+    </header>
+    <main id="view">
+      <p class="muted">Waiting for the fleet…</p>
+    </main>
+    <noscript><p>The dashboard needs JavaScript to follow the event stream.</p></noscript>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

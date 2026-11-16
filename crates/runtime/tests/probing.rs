@@ -106,7 +106,7 @@ fn a_guard_that_clears_promotes_the_challenger_and_the_fleet_adopts_it() {
     assert_eq!(fleet.champion(), Ok(Params::DEFAULT));
 
     let notes = (next..next + 80)
-        .flat_map(|number| canary.on_hand(&hand(number, 1_000_000), 2_000))
+        .flat_map(|number| canary.on_hand(&hand(number, 1_000_000), 2_000).notes)
         .collect::<Vec<_>>();
     assert!(
         notes.iter().any(|note| note.contains("cleared")),
