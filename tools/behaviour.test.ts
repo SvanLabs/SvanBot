@@ -34,9 +34,10 @@ test("a Windows path is read as its repo path", () => {
   expect(behaviourPaths(["crates\\learn\\src\\fit.rs"])).toEqual(["crates/learn/src/fit.rs"]);
 });
 
-test("the tool reads a diff one path a line, and answers with an exit code", async () => {
+test("the tool reads a diff one path a line, and a skip is not a failure", async () => {
   // The workflow pipes `git diff --name-only` in, so a diff is never split into batches. A pure
-  // path runs the Arena; an impure one alone does not; an empty diff is no change to play.
+  // path runs the Arena; an impure one alone does not; an empty diff is no change to play. The
+  // exit code is 0 either way, so the caller's `set -e` cannot mistake a skip for an error.
   const run = async (stdin: string) => {
     const child = Bun.spawn(["bun", "tools/behaviour.ts"], {
       cwd: join(import.meta.dir, ".."),
@@ -50,6 +51,6 @@ test("the tool reads a diff one path a line, and answers with an exit code", asy
     code: 0,
     out: "crates/learn/src/arena.rs\n",
   });
-  expect((await run("README.md\n")).code).toBe(1);
-  expect((await run("\n")).code).toBe(1);
+  expect(await run("README.md\n")).toEqual({ code: 0, out: "" });
+  expect(await run("\n")).toEqual({ code: 0, out: "" });
 });
