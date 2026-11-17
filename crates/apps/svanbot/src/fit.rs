@@ -30,10 +30,14 @@ pub(crate) fn model_path(me: &str) -> Result<PathBuf, String> {
     Ok(store_path(me)?.with_extension("model"))
 }
 
-/// The bot's fitted action model, if one was kept and reads whole.
+/// The bot's fitted action model, if one was kept and reads whole. A half-written or unreadable
+/// file is no model at all: the bot falls back to the baseline rather than guess.
 pub(crate) fn load_model(me: &str) -> Option<ActionModel> {
-    let text = std::fs::read_to_string(model_path(me).ok()?).ok()?;
-    ActionModel::from_text(&text)
+    read_model(&model_path(me).ok()?)
+}
+
+fn read_model(path: &Path) -> Option<ActionModel> {
+    ActionModel::from_text(&std::fs::read_to_string(path).ok()?)
 }
 
 pub(crate) fn run() -> ExitCode {
@@ -91,10 +95,43 @@ pub(crate) fn run() -> ExitCode {
     }
 }
 
-/// Writes `text` to `path` all or not at all: to a file beside it, then renamed over it.
+/// Writes `text` to `path` all or not at all: to a file beside it, then renamed over it, so a
+/// bot reading the model while a fit runs sees the old one whole or the new one whole.
 fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     let partial = path.with_extension("model.partial");
     std::fs::write(&partial, text)
         .and_then(|()| std::fs::rename(&partial, path))
         .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("svanbot-fit-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_kept_model_reads_back_as_it_was_written_and_leaves_no_partial() {
+        let dir = scratch("kept");
+        let path = dir.join("Alpha.model");
+        let text = ActionModel::baseline().to_text();
+        write_whole(&path, &text).unwrap();
+        assert_eq!(read_model(&path), Some(ActionModel::baseline()));
+        // The temporary file is renamed over the target, not left beside it.
+        assert!(!dir.join("Alpha.model.partial").exists());
+    }
+
+    #[test]
+    fn no_model_or_a_broken_one_is_none_rather_than_a_guess() {
+        let dir = scratch("broken");
+        assert_eq!(read_model(&dir.join("missing.model")), None);
+        let path = dir.join("broken.model");
+        std::fs::write(&path, "not a model").unwrap();
+        assert_eq!(read_model(&path), None);
+    }
 }
