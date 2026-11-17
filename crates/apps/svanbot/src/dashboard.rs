@@ -33,6 +33,10 @@ mod stream;
 pub struct Config {
     pub addr: String,
     pub data_dir: PathBuf,
+    /// Where the fleet's files are: the champion, the proposal and the Arena's runs. Passed in
+    /// rather than guessed, so the page reads what `svanbot arena` wrote even when
+    /// `SVANBOT_FLEET` moves it (the binary's `fleet_dir`).
+    pub fleet_dir: PathBuf,
     /// The install tree, whose slots say what is running.
     pub lib_dir: PathBuf,
 }
@@ -167,29 +171,35 @@ fn respond(socket: &mut TcpStream, status: u16, kind: &str, body: &[u8]) -> io::
 
 /// The fleet as it stands, without the clock: what the stream compares to see a change.
 fn fleet_now(config: &Config) -> Value {
-    let fleet = Fleet::read(&config.data_dir).unwrap_or_else(|error| Fleet {
+    let mut fleet = Fleet::read(&config.data_dir).unwrap_or_else(|error| Fleet {
         bots: Vec::new(),
         problems: vec![format!("data directory: {error}")],
     });
+    let (runs, problem) = arena(&config.fleet_dir);
+    if let Some(problem) = problem {
+        fleet.problems.push(problem);
+    }
     json!({
         "bots": fleet.bots.iter().map(|status| status.to_json()).collect::<Vec<_>>(),
         "problems": fleet.problems,
         "release": release(&config.lib_dir),
-        "arena": arena(&config.data_dir),
+        "arena": runs,
     })
 }
 
-/// The Arena's recorded runs, newest first, from the fleet beside the stores (`fleet_dir`). A run
-/// file that cannot be read is a problem the operator has to see, not a scoreboard silently
-/// missing.
-fn arena(data_dir: &Path) -> Value {
-    let fleet = fleet::Fleet::in_dir(data_dir.join("fleet"));
-    match fleet.arena_runs() {
-        Ok(runs) => Value::Array(runs.iter().map(ArenaRun::as_value).collect()),
-        Err(why) => {
-            eprintln!("svanbot dashboard: the arena run was not read: {why}");
-            Value::Array(Vec::new())
-        }
+/// The Arena's recorded runs, newest first, from the fleet. A run file that cannot be read is a
+/// problem the operator has to see, not a scoreboard silently missing: it comes back beside the
+/// empty history, for the strip the status problems already raise.
+fn arena(fleet_dir: &Path) -> (Value, Option<String>) {
+    match fleet::Fleet::in_dir(fleet_dir).arena_runs() {
+        Ok(runs) => (
+            Value::Array(runs.iter().map(ArenaRun::as_value).collect()),
+            None,
+        ),
+        Err(why) => (
+            Value::Array(Vec::new()),
+            Some(format!("the arena run was not read: {why}")),
+        ),
     }
 }
 
@@ -229,8 +239,9 @@ fn release(lib_dir: &Path) -> Value {
     })
 }
 
-/// Runs the subcommand from the environment, for `svanbot dashboard`.
-pub fn run() -> ExitCode {
+/// Runs the subcommand from the environment, for `svanbot dashboard`. `fleet_dir` is the binary's
+/// (`crate::fleet_dir`), which knows how `SVANBOT_FLEET` moves the fleet away from the stores.
+pub fn run(fleet_dir: PathBuf) -> ExitCode {
     let default_dir = |name: &str, fallback: &str| {
         std::env::var_os(name)
             .map(PathBuf::from)
@@ -248,6 +259,7 @@ pub fn run() -> ExitCode {
     let server = match Server::bind(Config {
         addr: addr.clone(),
         data_dir: data_dir.clone(),
+        fleet_dir,
         lib_dir,
     }) {
         Ok(server) => server,

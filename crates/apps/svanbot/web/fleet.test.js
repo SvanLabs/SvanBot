@@ -12,7 +12,6 @@ import {
   rateText,
   route,
   running,
-  trend,
   whisker,
   winRate,
 } from "./fleet.js";
@@ -162,21 +161,6 @@ test("a whisker spans a run's interval in a box, clamped to it, with zero marked
   expect(whisker(19_000, 4_000, span, 100)).toEqual({ from: 75, to: 100, zero: 0, mean: 95 });
   // A span of nothing is the whole box, not a division by zero.
   expect(whisker(0, 0, { low: 0, high: 0 }, 100)).toEqual({ from: 0, to: 0, zero: 0, mean: 0 });
-});
-
-test("the trend is a run's mean against one opponent, oldest first", () => {
-  const runs = [
-    { ...RUN, commit: "new", seed: 1 },
-    { ...RUN, commit: "mid", seed: 2 },
-    { ...RUN, commit: "old", seed: 3 },
-  ];
-  expect(trend(runs, "nit")).toEqual([
-    { commit: "old", mbb_per_100: 12_345.6 },
-    { commit: "mid", mbb_per_100: 12_345.6 },
-    { commit: "new", mbb_per_100: 12_345.6 },
-  ]);
-  // An opponent a run did not play is left out, not drawn as zero.
-  expect(trend(runs, "absent")).toEqual([]);
 });
 
 test("the scoreboard's span reaches every interval it draws, and always zero", () => {

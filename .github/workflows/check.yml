@@ -81,14 +81,19 @@ jobs:
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
       - id: behaviour
         run: |
+          # The range is one revision expression, three-dot included: `HEAD~1 HEAD` as one
+          # argument is not a range, and git would refuse it.
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             range="origin/${{ github.base_ref }}...HEAD"
           else
-            range="HEAD~1 HEAD"
+            range="HEAD~1...HEAD"
           fi
-          # The tool reads paths as arguments, so the diff goes through xargs; no change that can
-          # move a scoreboard line means the Arena is not run.
-          if git diff --name-only "$range" | xargs bun tools/behaviour.ts; then
+          # A diff git cannot take fails the step rather than reading as no change.
+          paths=$(git diff --name-only "$range")
+          # The tool reads the diff one path a line, so a big diff is never split into batches,
+          # where one impure batch could hide a pure. No path that can move a scoreboard line
+          # means the Arena is not run.
+          if printf '%s\n' "$paths" | bun tools/behaviour.ts; then
             echo "run=yes" >> "$GITHUB_OUTPUT"
           else
             echo "run=no" >> "$GITHUB_OUTPUT"

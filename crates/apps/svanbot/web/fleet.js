@@ -203,21 +203,6 @@ export function arenaSpan(rows) {
 }
 
 /**
- * One opponent's mean over the recorded runs, oldest first: the line under the whiskers. A run
- * that did not play the opponent is left out, not drawn as zero.
- */
-export function trend(runs, opponent) {
-  return runs
-    .map((run) => ({
-      commit: run.commit,
-      row: run.rows.find((row) => row.opponent === opponent),
-    }))
-    .filter(({ row }) => row !== undefined)
-    .map(({ commit, row }) => ({ commit, mbb_per_100: row.mbb_per_100 }))
-    .reverse();
-}
-
-/**
  * A run's interval as a whisker in a box `width` wide: where the interval starts and ends, where
  * its middle is, and where zero falls. An interval running past the span is clamped to the box.
  */

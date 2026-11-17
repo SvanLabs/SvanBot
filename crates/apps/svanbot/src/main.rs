@@ -76,7 +76,7 @@ const MAX_BACKOFF: Duration = Duration::from_secs(60);
 fn main() -> ExitCode {
     // The dashboard is not a bot: it records no start.
     if std::env::args().nth(1).as_deref() == Some("dashboard") {
-        return svanbot::dashboard::run();
+        return svanbot::dashboard::run(fleet_dir());
     }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.

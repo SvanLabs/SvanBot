@@ -52,7 +52,8 @@ fn serve(name: &str) -> (SocketAddr, PathBuf) {
     status("Alpha", 2_000)
         .write(&status_path(&data.join("Alpha.db")))
         .unwrap();
-    Fleet::in_dir(fleet::beside_store(data.join("Alpha.db")))
+    let fleet_dir = fleet::beside_store(data.join("Alpha.db"));
+    Fleet::in_dir(&fleet_dir)
         .record_arena(&ArenaRun {
             commit: "abc1234".into(),
             seed: 7,
@@ -67,6 +68,7 @@ fn serve(name: &str) -> (SocketAddr, PathBuf) {
     let server = Server::bind(Config {
         addr: "127.0.0.1:0".into(),
         data_dir: data,
+        fleet_dir,
         lib_dir: lib,
     })
     .unwrap();
@@ -142,12 +144,68 @@ fn the_fleet_carries_the_latest_arena_run_and_a_history_to_compare_it_with() {
 }
 
 #[test]
+fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
+    // `SVANBOT_FLEET` can move the fleet away from `data/fleet` (`crate::fleet_dir`), so the page
+    // must read the directory it is told, or it would show an empty scoreboard for a run that
+    // just played.
+    let dir = scratch("arena-elsewhere");
+    let data = dir.join("data");
+    let lib = dir.join("lib");
+    let elsewhere = dir.join("elsewhere");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::create_dir_all(&lib).unwrap();
+    Fleet::in_dir(&elsewhere)
+        .record_arena(&ArenaRun {
+            commit: "def5678".into(),
+            seed: 3,
+            rows: vec![ArenaRow {
+                opponent: "maniac".into(),
+                deals: 100,
+                mbb_per_100: 50.0,
+                ci95: 10.0,
+            }],
+        })
+        .unwrap();
+    let server = Server::bind(Config {
+        addr: "127.0.0.1:0".into(),
+        data_dir: data,
+        fleet_dir: elsewhere,
+        lib_dir: lib,
+    })
+    .unwrap();
+    let addr = server.addr();
+    thread::spawn(move || server.run());
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(fleet["arena"][0]["commit"], "def5678");
+}
+
+#[test]
 fn with_no_arena_run_the_fleet_carries_an_empty_history() {
     let (addr, dir) = serve("no-arena");
     std::fs::remove_file(dir.join("data/fleet/arena.json")).unwrap();
     let (_, body) = get(addr, "/api/fleet");
     let fleet: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(fleet["arena"], serde_json::json!([]));
+}
+
+#[test]
+fn an_arena_run_that_cannot_be_read_is_a_problem_in_the_fleet() {
+    // A scoreboard that is silently empty for a run that just played is worse than a page that
+    // says the file is broken: the operator has to know the numbers are not there.
+    let (addr, dir) = serve("arena-broken");
+    std::fs::write(dir.join("data/fleet/arena.json"), "{").unwrap();
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(fleet["arena"], serde_json::json!([]));
+    assert!(
+        fleet["problems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|problem| problem.as_str().unwrap().contains("arena")),
+        "{body}"
+    );
 }
 
 #[test]
@@ -214,6 +272,7 @@ fn the_dashboard_refuses_a_public_address() {
     let error = Server::bind(Config {
         addr: "0.0.0.0:0".into(),
         data_dir: dir.clone(),
+        fleet_dir: dir.join("fleet"),
         lib_dir: dir,
     })
     .err()

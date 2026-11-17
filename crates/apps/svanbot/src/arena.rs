@@ -1,7 +1,7 @@
 //! `svanbot arena`: the policy against every sparring archetype and the pricer, heads up, as a
 //! scoreboard, then exit. It touches neither the venue nor a store.
 //!
-//! `svanbot arena <sessions> [seed] [iterations] [out.json]`: each session is 50 deals, each
+//! `svanbot arena <bouts> [seed] [iterations] [out.json]`: each bout is 50 deals, each
 //! played twice from mirrored seats, with the luck of the cards taken out. With `iterations` the
 //! re-solve runs that many on every spot; without, the compute budget sizes them by the pot, as
 //! in live play. The scoreboard is printed, and written as JSON to `out.json` when one is named,
@@ -26,13 +26,13 @@ use svanbot_strategy::resolve::iterations_for;
 /// Deals sampled by the pricer per decision in a sim.
 const SAMPLES: u64 = 2_000;
 
-/// Threads the sessions are spread over. The box is shared with the live fleet.
+/// Threads the bouts are spread over. The box is shared with the live fleet.
 const THREADS: u64 = 4;
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let number = |at: usize| args.get(at).map(|text| text.parse::<u64>());
-    let (Some(Ok(sessions)), seed, fixed) = (number(0), number(1), number(2)) else {
-        eprintln!("svanbot arena: usage: svanbot arena <sessions> [seed] [iterations] [out.json]");
+    let (Some(Ok(bouts)), seed, fixed) = (number(0), number(1), number(2)) else {
+        eprintln!("svanbot arena: usage: svanbot arena <bouts> [seed] [iterations] [out.json]");
         return ExitCode::from(2);
     };
     let (Ok(seed), Ok(fixed)) = (seed.transpose(), fixed.transpose()) else {
@@ -68,14 +68,14 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         .collect();
     let mut rows = Vec::new();
     for opponent in opponents {
-        // Thread `k` plays sessions k, k + THREADS, …; put back in order, the verdict is the
+        // Thread `k` plays bouts k, k + THREADS, …; put back in order, the verdict is the
         // same on any number of threads.
         let played: Vec<Vec<(u64, Vec<f64>)>> = std::thread::scope(|scope| {
             let workers: Vec<_> = (0..THREADS)
                 .map(|k| {
                     let (challenger, pricer) = (&challenger, &pricer);
                     scope.spawn(move || {
-                        (k..sessions)
+                        (k..bouts)
                             .step_by(THREADS as usize)
                             .map(|number| {
                                 let results = match opponent {
@@ -95,9 +95,9 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
                 .map(|worker| worker.join().unwrap_or_default())
                 .collect()
         });
-        let mut by_session: Vec<(u64, Vec<f64>)> = played.into_iter().flatten().collect();
-        by_session.sort_by_key(|(number, _)| *number);
-        let results: Vec<f64> = by_session
+        let mut by_bout: Vec<(u64, Vec<f64>)> = played.into_iter().flatten().collect();
+        by_bout.sort_by_key(|(number, _)| *number);
+        let results: Vec<f64> = by_bout
             .into_iter()
             .flat_map(|(_, results)| results)
             .collect();

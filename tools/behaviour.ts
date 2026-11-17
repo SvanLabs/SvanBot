@@ -3,6 +3,9 @@
 // venue, the store and the clock, and a change there alone cannot move a scoreboard line.
 //   bun tools/behaviour.ts <path>...   exits 0 when the change can change behaviour, 1 when it
 //                                      cannot, so a workflow can gate the Arena run on it.
+//   git diff --name-only | bun tools/behaviour.ts
+//                                      reads the paths from stdin, one a line: a diff is never
+//                                      split into batches, so one impure batch cannot hide a pure.
 const PURE = ["crates/core/", "crates/sim/", "crates/strategy/", "crates/learn/"];
 
 /**
@@ -16,7 +19,11 @@ export function behaviourPaths(paths: string[]): string[] {
 }
 
 if (import.meta.main) {
-  const changed = behaviourPaths(process.argv.slice(2));
+  // Paths as arguments, or one a line on stdin; an empty line is no path, not the root.
+  const args = process.argv.slice(2);
+  const paths =
+    args.length > 0 ? args : (await Bun.stdin.text()).split("\n").filter((line) => line !== "");
+  const changed = behaviourPaths(paths);
   for (const path of changed) console.log(path);
   process.exit(changed.length > 0 ? 0 : 1);
 }
