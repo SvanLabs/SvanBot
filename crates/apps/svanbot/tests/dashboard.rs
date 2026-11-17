@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use svanbot::dashboard::{Config, Server};
+use svanbot_runtime::fleet::{self, ArenaRow, ArenaRun, Fleet};
 use svanbot_runtime::status::{Play, Status, status_path};
 
 fn scratch(name: &str) -> PathBuf {
@@ -37,7 +38,8 @@ fn status(bot: &str, updated_ms: i64) -> Status {
     }
 }
 
-/// A server on an ephemeral port, with `Alpha` already reporting and two builds installed.
+/// A server on an ephemeral port, with `Alpha` already reporting, two builds installed, and one
+/// recorded Arena run in the fleet beside the stores.
 fn serve(name: &str) -> (SocketAddr, PathBuf) {
     let dir = scratch(name);
     let data = dir.join("data");
@@ -49,6 +51,18 @@ fn serve(name: &str) -> (SocketAddr, PathBuf) {
     std::os::unix::fs::symlink(lib.join("1.10.0"), lib.join("current")).unwrap();
     status("Alpha", 2_000)
         .write(&status_path(&data.join("Alpha.db")))
+        .unwrap();
+    Fleet::in_dir(fleet::beside_store(data.join("Alpha.db")))
+        .record_arena(&ArenaRun {
+            commit: "abc1234".into(),
+            seed: 7,
+            rows: vec![ArenaRow {
+                opponent: "nit".into(),
+                deals: 400,
+                mbb_per_100: 12_345.6,
+                ci95: 2_000.4,
+            }],
+        })
         .unwrap();
     let server = Server::bind(Config {
         addr: "127.0.0.1:0".into(),
@@ -114,6 +128,29 @@ fn the_fleet_says_what_is_installed_and_where_the_slots_point() {
 }
 
 #[test]
+fn the_fleet_carries_the_latest_arena_run_and_a_history_to_compare_it_with() {
+    let (addr, _dir) = serve("arena");
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    let run = &fleet["arena"][0];
+    assert_eq!(run["commit"], "abc1234");
+    assert_eq!(run["seed"], 7);
+    assert_eq!(run["rows"][0]["opponent"], "nit");
+    assert_eq!(run["rows"][0]["deals"], 400);
+    assert_eq!(run["rows"][0]["mbb_per_100"], 12_345.6);
+    assert_eq!(run["rows"][0]["ci95"], 2_000.4);
+}
+
+#[test]
+fn with_no_arena_run_the_fleet_carries_an_empty_history() {
+    let (addr, dir) = serve("no-arena");
+    std::fs::remove_file(dir.join("data/fleet/arena.json")).unwrap();
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(fleet["arena"], serde_json::json!([]));
+}
+
+#[test]
 fn a_status_that_cannot_be_read_is_a_problem_in_the_fleet() {
     let (addr, dir) = serve("problem");
     std::fs::write(dir.join("data/Broken.status.json"), "{").unwrap();
@@ -131,7 +168,7 @@ fn a_status_that_cannot_be_read_is_a_problem_in_the_fleet() {
 #[test]
 fn the_page_its_script_and_its_styles_are_served_and_every_view_is_the_page() {
     let (addr, _dir) = serve("static");
-    for path in ["/", "/release", "/bot/SurSvan", "/?x=1"] {
+    for path in ["/", "/release", "/scoreboard", "/bot/SurSvan", "/?x=1"] {
         let (status, body) = get(addr, path);
         assert_eq!(status, 200, "{path}");
         assert!(body.contains("<title>SvanBot</title>"), "{path}: {body}");

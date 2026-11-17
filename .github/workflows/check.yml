@@ -66,3 +66,46 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
       - run: bun tools/gate.ts ci
+
+  # The Arena re-runs on a pull request that can change play (V11-15): a pure layer decides it, so
+  # a change to runtime or apps alone skips the run. The scoreboard goes into the run's summary,
+  # and an artifact keeps the numbers with the commit and seed they were played from.
+  arena:
+    name: Arena
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the diff needs the base to be a commit it can read
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+      - id: behaviour
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            range="origin/${{ github.base_ref }}...HEAD"
+          else
+            range="HEAD~1 HEAD"
+          fi
+          # The tool reads paths as arguments, so the diff goes through xargs; no change that can
+          # move a scoreboard line means the Arena is not run.
+          if git diff --name-only "$range" | xargs bun tools/behaviour.ts; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.behaviour.outputs.run == 'yes'
+        with:
+          workspaces: ". -> target/dev"
+          cache-workspace-crates: true
+      - if: steps.behaviour.outputs.run == 'yes'
+        run: |
+          CARGO_TARGET_DIR=target/dev cargo build -p svanbot -j4
+          SVANBOT_FLEET="$RUNNER_TEMP/fleet" SVANBOT_COMMIT="${GITHUB_SHA:0:7}" \
+            target/dev/debug/svanbot arena 2 17 | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: steps.behaviour.outputs.run == 'yes'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: arena
+          path: ${{ runner.temp }}/fleet/arena.json
+          if-no-files-found: error

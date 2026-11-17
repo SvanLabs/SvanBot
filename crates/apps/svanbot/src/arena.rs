@@ -6,6 +6,9 @@
 //! re-solve runs that many on every spot; without, the compute budget sizes them by the pot, as
 //! in live play. The scoreboard is printed, and written as JSON to `out.json` when one is named,
 //! with the commit in `SVANBOT_COMMIT` and the seed, so the run can be played again.
+//!
+//! Every run is also recorded in the fleet's `arena.json` (`Fleet::record_arena`), so the
+//! dashboard's scoreboard and the release gate read the same numbers this printed.
 
 use std::process::ExitCode;
 
@@ -13,6 +16,7 @@ use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
 use svanbot_learn::arena::{BOUT, Row, bout, json, scoreboard};
 use svanbot_learn::paired::{Match, duel, verdict};
+use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet};
 use svanbot_sim::sparring::Archetype;
 use svanbot_strategy::params::Params;
 use svanbot_strategy::policy;
@@ -105,12 +109,29 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         rows.push(row);
     }
     print!("{}", scoreboard(&rows));
-    if let Some(path) = args.get(3) {
-        let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| "unknown".into());
-        if let Err(error) = std::fs::write(path, json(&rows, &commit, game.seed) + "\n") {
-            eprintln!("svanbot arena: {path} was not written: {error}");
-            return ExitCode::from(1);
-        }
+    let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| "unknown".into());
+    let run = ArenaRun {
+        commit: commit.clone(),
+        seed: game.seed,
+        rows: rows
+            .iter()
+            .map(|row| ArenaRow {
+                opponent: row.opponent.clone(),
+                deals: row.verdict.deals,
+                mbb_per_100: row.verdict.mbb_per_100,
+                ci95: row.verdict.ci95,
+            })
+            .collect(),
+    };
+    if let Err(error) = Fleet::in_dir(crate::fleet_dir()).record_arena(&run) {
+        eprintln!("svanbot arena: the run was not recorded: {error}");
+        return ExitCode::from(1);
+    }
+    if let Some(path) = args.get(3)
+        && let Err(error) = std::fs::write(path, json(&rows, &commit, game.seed) + "\n")
+    {
+        eprintln!("svanbot arena: {path} was not written: {error}");
+        return ExitCode::from(1);
     }
     ExitCode::SUCCESS
 }

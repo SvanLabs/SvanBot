@@ -3,15 +3,19 @@
 // their own name.
 
 import {
+  arenaRun,
+  arenaSpan,
   botView,
   chart,
   duration,
   fleetProblems,
   freshness,
   isFleet,
+  mbbText,
   rateText,
   route,
   running,
+  whisker,
   winRate,
 } from "./fleet.js";
 
@@ -30,7 +34,8 @@ function h(tag, attrs = {}, ...children) {
   // as its own text.
   for (const child of children.flat(Number.POSITIVE_INFINITY)) {
     if (child !== null && child !== undefined) {
-      node.append(child);
+      // A number is text, as it would be in the DOM: `append(7)` makes a text node there too.
+      node.append(typeof child === "object" ? child : String(child));
     }
   }
   return node;
@@ -291,6 +296,121 @@ function releasePage(fleet, nowMs) {
   ];
 }
 
+/** The scoreboard: the Arena's latest run, a whisker an opponent, and each opponent's trend. */
+function scoreboardPage(fleet) {
+  const runs = fleet.arena ?? [];
+  const latest = arenaRun(runs);
+  if (latest === null) {
+    return [
+      h("h1", {}, "Scoreboard"),
+      h(
+        "p",
+        {},
+        "The Arena has not played yet. Record a run with ",
+        h("code", {}, "svanbot arena <bouts>"),
+        ".",
+      ),
+    ];
+  }
+  const span = arenaSpan(latest.rows);
+  const [width, height] = [300, 16];
+  return [
+    h(
+      "h1",
+      {},
+      "Scoreboard ",
+      h("span", { class: "muted mono" }, latest.commit.slice(0, 7), " · seed ", latest.seed),
+    ),
+    h(
+      "div",
+      { class: "grid" },
+      panel(
+        "Latest run",
+        h(
+          "p",
+          { class: "muted" },
+          `Milli-big-blinds a hundred deals, luck of the cards taken out. Each whisker is the ` +
+            `run's interval, its dark mark the mean, and the dashed line zero. The box spans ` +
+            `${mbbText(span.low)} to ${mbbText(span.high)}.`,
+        ),
+        table(
+          "Each opponent, its whisker, its mean and its interval",
+          [
+            ["Opponent", null],
+            ["Interval", null],
+            ["Mean", "number"],
+            ["Deals", "number"],
+          ],
+          latest.rows.map((row) => {
+            const bar = whisker(row.mbb_per_100, row.ci95, span, width);
+            const label = `${row.opponent}: ${mbbText(row.mbb_per_100)} over ${row.deals} deals, between ${mbbText(row.mbb_per_100 - row.ci95)} and ${mbbText(row.mbb_per_100 + row.ci95)}`;
+            return h(
+              "tr",
+              {},
+              h("td", {}, row.opponent),
+              h(
+                "td",
+                {},
+                h(
+                  "svg",
+                  {
+                    class: "whisker",
+                    viewBox: `0 0 ${width} ${height}`,
+                    preserveAspectRatio: "none",
+                    role: "img",
+                    "aria-label": label,
+                  },
+                  h("title", {}, label),
+                  h("line", { x1: bar.zero, x2: bar.zero, y1: 0, y2: height }),
+                  h("line", {
+                    x1: bar.from,
+                    x2: bar.to,
+                    y1: height / 2,
+                    y2: height / 2,
+                    class: "bar",
+                  }),
+                  h("line", {
+                    x1: bar.mean,
+                    x2: bar.mean,
+                    y1: 0,
+                    y2: height,
+                    class: "mean",
+                  }),
+                ),
+              ),
+              h("td", { class: "number" }, mbbText(row.mbb_per_100)),
+              h("td", { class: "number" }, String(row.deals)),
+            );
+          }),
+        ),
+      ),
+      panel(
+        "Trend",
+        h("p", { class: "muted" }, "Each opponent's mean over the recorded runs, newest first."),
+        h(
+          "div",
+          { class: "scroll", tabindex: 0 },
+          table(
+            "Each run's mean against each opponent",
+            [["Commit", null], ...latest.rows.map((row) => [row.opponent, "number"])],
+            runs.map((run) =>
+              h(
+                "tr",
+                {},
+                h("td", { class: "mono" }, run.commit.slice(0, 7)),
+                latest.rows.map((each) => {
+                  const found = run.rows.find((row) => row.opponent === each.opponent);
+                  return h("td", { class: "number" }, found ? mbbText(found.mbb_per_100) : "—");
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ];
+}
+
 const state = { fleet: null, offset: 0, lastMessageMs: null, streamError: null };
 
 function render() {
@@ -321,7 +441,9 @@ function render() {
       ? botPage(state.fleet, at.bot, nowMs)
       : at.view === "release"
         ? releasePage(state.fleet, nowMs)
-        : fleetView(state.fleet, nowMs, problems);
+        : at.view === "scoreboard"
+          ? scoreboardPage(state.fleet)
+          : fleetView(state.fleet, nowMs, problems);
   // Redraw only what changed: a redraw every second would take the focus and the scroll from
   // whoever is reading the table. An open table fallback stays open across a redraw.
   const shown = document.getElementById("view");

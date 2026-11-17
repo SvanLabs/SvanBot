@@ -21,6 +21,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use svanbot_runtime::fleet::{self, ArenaRun};
 use svanbot_runtime::release::version_cmp;
 use svanbot_runtime::slot::Slots;
 use svanbot_runtime::status::Fleet;
@@ -174,7 +175,22 @@ fn fleet_now(config: &Config) -> Value {
         "bots": fleet.bots.iter().map(|status| status.to_json()).collect::<Vec<_>>(),
         "problems": fleet.problems,
         "release": release(&config.lib_dir),
+        "arena": arena(&config.data_dir),
     })
+}
+
+/// The Arena's recorded runs, newest first, from the fleet beside the stores (`fleet_dir`). A run
+/// file that cannot be read is a problem the operator has to see, not a scoreboard silently
+/// missing.
+fn arena(data_dir: &Path) -> Value {
+    let fleet = fleet::Fleet::in_dir(data_dir.join("fleet"));
+    match fleet.arena_runs() {
+        Ok(runs) => Value::Array(runs.iter().map(ArenaRun::as_value).collect()),
+        Err(why) => {
+            eprintln!("svanbot dashboard: the arena run was not read: {why}");
+            Value::Array(Vec::new())
+        }
+    }
 }
 
 /// The fleet document the page reads and the stream pushes: the fleet, and the server's clock.

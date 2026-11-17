@@ -101,6 +101,21 @@ function fleet() {
     server_ms: NOW,
     problems: [],
     release: { current: "11.0.0", previous: "10.9.0", installed: ["10.9.0", "11.0.0"] },
+    arena: [
+      {
+        commit: "abc1234def",
+        seed: 7,
+        rows: [
+          { opponent: "nit", deals: 400, mbb_per_100: 12_345.6, ci95: 2_000.4 },
+          { opponent: "<b>maniac</b>", deals: 400, mbb_per_100: -5_000, ci95: 9_000 },
+        ],
+      },
+      {
+        commit: "older999",
+        seed: 7,
+        rows: [{ opponent: "nit", deals: 400, mbb_per_100: 1_000, ci95: 500 }],
+      },
+    ],
     bots: [
       {
         ...base,
@@ -200,6 +215,41 @@ test("the release page says where the slots point and what each bot runs", () =>
 
 test("a bot that has written no status says so", () => {
   expect(show("/bot/Nobody").textContent).toContain("This bot has written no status.");
+});
+
+test("the scoreboard has a whisker an opponent over the latest run, its numbers as text beside it", () => {
+  const view = show("/scoreboard");
+  expect(view.all("section").map((panel) => panel.querySelector("h2").textContent)).toEqual([
+    "Latest run",
+    "Trend",
+  ]);
+  expect(view.textContent).toContain("abc1234");
+  expect(view.textContent).toContain("seed 7");
+  // The Opponents table: a head row and one a opponent, each whisker drawn and its numbers text.
+  const opponents = view.all("table")[0];
+  const rows = opponents.all("tr");
+  expect(rows.length).toBe(1 + 2);
+  expect(rows[1].textContent).toContain("+12345.6 mbb/100");
+  expect(rows[2].textContent).toContain("−5000.0 mbb/100");
+  expect(rows[1].all("svg").length).toBe(1);
+  // The trend keeps each run, newest first, and a run that did not play an opponent is a dash.
+  const trendRows = view.all("table")[1].all("tr");
+  expect(trendRows.length).toBe(1 + 2);
+  expect(trendRows[1].textContent).toContain("abc1234");
+  expect(trendRows[2].textContent).toContain("older99");
+  expect(trendRows[2].textContent).toContain("—");
+});
+
+test("an opponent's name on the scoreboard is text too", () => {
+  const view = show("/scoreboard");
+  expect(view.all("b").length).toBe(0);
+  expect(view.innerHTML).toContain("&lt;b>maniac&lt;/b>");
+});
+
+test("with no Arena run yet the scoreboard says how to make one", () => {
+  globalThis.location.pathname = "/scoreboard";
+  listeners.fleet({ data: JSON.stringify({ ...fleet(), arena: [] }) });
+  expect(ids.view.textContent).toContain("svanbot arena");
 });
 
 test("a dropped stream keeps the last fleet on screen and says it dropped", () => {

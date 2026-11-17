@@ -41,14 +41,13 @@ pub(crate) fn run() -> ExitCode {
         eprintln!("svanbot fit: set SVANBOT_NAME");
         return ExitCode::from(2);
     };
-    let hands =
-        match open_store(&me).and_then(|(_, store)| store.hands().map_err(|e| e.to_string())) {
-            Ok(hands) => hands,
-            Err(why) => {
-                eprintln!("svanbot fit: {why}");
-                return ExitCode::from(2);
-            }
-        };
+    let hands = match open_store(&me).and_then(|store| store.hands().map_err(|e| e.to_string())) {
+        Ok(hands) => hands,
+        Err(why) => {
+            eprintln!("svanbot fit: {why}");
+            return ExitCode::from(2);
+        }
+    };
     let cut = hands.len() * 4 / 5;
     if hands.len() - cut < MIN_HELD_OUT {
         println!(

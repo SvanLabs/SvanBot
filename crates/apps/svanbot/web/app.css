@@ -252,6 +252,34 @@ tr.folded td {
   vector-effect: non-scaling-stroke;
 }
 
+/* A run's interval in a scoreboard's table: the box, the interval, its mean and zero. */
+.whisker {
+  display: block;
+  width: 12rem;
+  max-width: 100%;
+  height: 1rem;
+}
+
+.whisker line {
+  stroke: var(--muted);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.whisker line:first-of-type {
+  stroke-dasharray: 2 2;
+}
+
+.whisker line.bar {
+  stroke: var(--mark);
+  stroke-width: 2;
+}
+
+.whisker line.mean {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
 details {
   margin-top: 0.5rem;
 }

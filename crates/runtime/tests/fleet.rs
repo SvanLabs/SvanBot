@@ -1,11 +1,12 @@
-//! The fleet's files: the champion every bot plays by, and the proposal the canary takes up.
+//! The fleet's files: the champion every bot plays by, the proposal the canary takes up, and the
+//! Arena's recorded runs.
 // A test fleet is a fresh temporary directory.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use std::path::PathBuf;
 
 use svanbot_learn::probe::Kind;
-use svanbot_runtime::fleet::{Fleet, Proposal};
+use svanbot_runtime::fleet::{ARENA_HISTORY, ArenaRow, ArenaRun, Fleet, Proposal};
 use svanbot_strategy::params::Params;
 
 fn scratch(name: &str) -> PathBuf {
@@ -75,4 +76,63 @@ fn a_proposal_reads_back_from_its_own_text_and_names_its_hypothesis() {
     assert_eq!(hypothesis.challenger, CHALLENGER.digest());
     assert_eq!(hypothesis.kind, Kind::Guard { hands: 3_000 });
     assert!(Proposal::from_json("{}").is_err());
+}
+
+fn run(commit: &str, seed: u64, mbb: f64) -> ArenaRun {
+    ArenaRun {
+        commit: commit.into(),
+        seed,
+        rows: vec![ArenaRow {
+            opponent: "nit".into(),
+            deals: 400,
+            mbb_per_100: mbb,
+            ci95: 250.0,
+        }],
+    }
+}
+
+#[test]
+fn the_arena_keeps_the_latest_run_and_a_short_history_of_the_ones_before() {
+    let fleet = Fleet::in_dir(scratch("arena"));
+    assert_eq!(fleet.arena_runs(), Ok(Vec::new()));
+    for number in 0..(ARENA_HISTORY as u64 + 3) {
+        fleet
+            .record_arena(&run(&format!("c{number}"), number, 1.0))
+            .unwrap();
+    }
+    let recorded = fleet.arena_runs().unwrap();
+    assert_eq!(recorded.len(), ARENA_HISTORY);
+    // Newest first, so the dashboard reads the latest without searching, and the oldest fall off.
+    assert_eq!(recorded[0].commit, format!("c{}", ARENA_HISTORY as u64 + 2));
+    assert_eq!(recorded[ARENA_HISTORY - 1].commit, "c3");
+}
+
+#[test]
+fn a_run_reads_back_from_its_own_file_unchanged_enough_to_report() {
+    let dir = scratch("arena-roundtrip");
+    let fleet = Fleet::in_dir(&dir);
+    let run = run("abc1234", 7, 12_345.6 + 0.1 + 0.2);
+    fleet.record_arena(&run).unwrap();
+    // The last bit of a float is the writer's, not the run's: the run is played again from its
+    // commit and seed, so a scoreboard line has to read back as what it printed, not bit for bit.
+    let [read] = fleet.arena_runs().unwrap().try_into().unwrap();
+    assert_eq!((read.commit, read.seed), (run.commit.clone(), run.seed));
+    assert_eq!(read.rows.len(), 1);
+    assert_eq!(read.rows[0].opponent, "nit");
+    assert_eq!(read.rows[0].deals, 400);
+    assert!((read.rows[0].mbb_per_100 - run.rows[0].mbb_per_100).abs() < 1e-6);
+    assert_eq!(read.rows[0].ci95, 250.0);
+    // The same run recorded twice is the same run: re-running a commit that did not change the
+    // policy replaces its line rather than growing the history.
+    fleet.record_arena(&run).unwrap();
+    assert_eq!(fleet.arena_runs().unwrap().len(), 1);
+}
+
+#[test]
+fn a_run_file_that_does_not_parse_is_refused_rather_than_misread() {
+    let dir = scratch("arena-broken");
+    let fleet = Fleet::in_dir(&dir);
+    fleet.record_arena(&run("bad", 1, 1.0)).unwrap();
+    std::fs::write(dir.join("arena.json"), "{\"runs\":[{\"commit\":\"x\"}]}").unwrap();
+    assert!(fleet.arena_runs().is_err());
 }

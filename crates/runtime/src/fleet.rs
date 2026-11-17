@@ -6,6 +6,9 @@
 //!   champion is [`Params::DEFAULT`].
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running.
+//! - `arena.json`: the Arena's last runs. The newest is the scoreboard the dashboard shows and
+//!   the release gate reads; [`ARENA_HISTORY`] of them are kept, so a trend across commits is a
+//!   read and not a re-run.
 //!
 //! A parameter set is numbers the owner tuned, not a read of an opponent, so sharing it crosses no
 //! bot's reads (`docs/adr/0004-reads-are-per-bot.md`). Each number is written as the text that
@@ -118,12 +121,90 @@ impl Proposal {
     }
 }
 
+/// Runs kept in `arena.json`: the newest, and the ones before it, for the trend.
+pub const ARENA_HISTORY: usize = 12;
+
+/// One line of a recorded run: how the policy did against one opponent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArenaRow {
+    pub opponent: String,
+    pub deals: usize,
+    pub mbb_per_100: f64,
+    pub ci95: f64,
+}
+
+/// A recorded run of the Arena: the commit and seed it can be played again from, and its
+/// scoreboard.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArenaRun {
+    pub commit: String,
+    pub seed: u64,
+    pub rows: Vec<ArenaRow>,
+}
+
+impl ArenaRun {
+    /// The run as the page reads it: every number a JSON number, the way of the fleet document.
+    pub fn as_value(&self) -> Value {
+        json!({
+            "commit": self.commit,
+            "seed": self.seed,
+            "rows": self
+                .rows
+                .iter()
+                .map(|row| json!({
+                    "opponent": row.opponent,
+                    "deals": row.deals,
+                    "mbb_per_100": row.mbb_per_100,
+                    "ci95": row.ci95,
+                }))
+                .collect::<Vec<_>>(),
+        })
+    }
+
+    fn to_json(&self) -> String {
+        self.as_value().to_string()
+    }
+
+    fn from_json(value: &Value) -> Result<Self, String> {
+        let number = |value: &Value, key: &str| -> Result<f64, String> {
+            value[key]
+                .as_f64()
+                .ok_or_else(|| format!("the arena run lacks {key}"))
+        };
+        let rows = value["rows"]
+            .as_array()
+            .ok_or("the arena run lacks rows")?
+            .iter()
+            .map(|row| {
+                Ok(ArenaRow {
+                    opponent: row["opponent"]
+                        .as_str()
+                        .ok_or("an arena row lacks its opponent")?
+                        .to_owned(),
+                    deals: row["deals"].as_u64().ok_or("an arena row lacks deals")? as usize,
+                    mbb_per_100: number(row, "mbb_per_100")?,
+                    ci95: number(row, "ci95")?,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        Ok(Self {
+            commit: value["commit"]
+                .as_str()
+                .ok_or("the arena run lacks its commit")?
+                .to_owned(),
+            seed: value["seed"]
+                .as_u64()
+                .ok_or("the arena run lacks its seed")?,
+            rows,
+        })
+    }
+}
+
 /// The fleet's files in one directory.
 #[derive(Clone, Debug)]
 pub struct Fleet {
     dir: PathBuf,
 }
-
 impl Fleet {
     /// The fleet's files under `dir`, whether or not `dir` exists yet.
     pub fn in_dir(dir: impl Into<PathBuf>) -> Self {
@@ -160,6 +241,32 @@ impl Fleet {
         };
         fs::remove_file(&path).map_err(|e| format!("fleet: {e}"))?;
         Proposal::from_json(&text).map(Some)
+    }
+
+    /// The Arena's recorded runs, newest first. No file yet is no run yet.
+    pub fn arena_runs(&self) -> Result<Vec<ArenaRun>, String> {
+        let Ok(text) = fs::read_to_string(self.dir.join("arena.json")) else {
+            return Ok(Vec::new());
+        };
+        let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+        value["runs"]
+            .as_array()
+            .ok_or("the arena file lacks runs")?
+            .iter()
+            .map(ArenaRun::from_json)
+            .collect()
+    }
+
+    /// Records `run` as the latest, keeping the runs before it up to [`ARENA_HISTORY`]. A run of
+    /// the same commit and seed replaces its old line rather than repeating it.
+    pub fn record_arena(&self, run: &ArenaRun) -> Result<(), String> {
+        let mut runs = self.arena_runs()?;
+        let same = |held: &ArenaRun| held.commit == run.commit && held.seed == run.seed;
+        runs.retain(|held| !same(held));
+        runs.insert(0, run.clone());
+        runs.truncate(ARENA_HISTORY);
+        let runs: Vec<String> = runs.iter().map(ArenaRun::to_json).collect();
+        self.write("arena.json", &format!("{{\"runs\":[{}]}}", runs.join(",")))
     }
 
     fn write(&self, name: &str, text: &str) -> Result<(), String> {
