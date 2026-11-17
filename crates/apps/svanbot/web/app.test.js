@@ -245,6 +245,40 @@ test("the scoreboard has a whisker an opponent over the latest run, its numbers 
   expect(trendRows[2].textContent).toContain("—");
 });
 
+test("the trend keeps an opponent the latest run did not play", () => {
+  // The trend is across commits, so its columns are every opponent any run played. Taking them
+  // from the newest run alone would drop an opponent the newest run skipped from every row.
+  globalThis.location.pathname = "/scoreboard";
+  const dropped = fleet();
+  dropped.arena[0].rows = dropped.arena[0].rows.filter((row) => row.opponent === "nit");
+  dropped.arena[1].rows = [
+    { opponent: "nit", deals: 400, mbb_per_100: 1_000, ci95: 500 },
+    { opponent: "maniac", deals: 400, mbb_per_100: 2_000, ci95: 500 },
+  ];
+  listeners.fleet({ data: JSON.stringify(dropped) });
+  const trend = ids.view.all("table")[1];
+  const head = trend.all("tr")[0].textContent;
+  expect(head).toContain("maniac");
+  // And the older run's line for it is kept, not dashed out.
+  expect(trend.all("tr")[2].textContent).toContain("+2000.0 mbb/100");
+});
+
+test("two runs of one commit under different champions are told apart", () => {
+  // A promotion changes play under one commit, so the commit alone does not name a run: the
+  // trend would show two identical labels for two different bodies of play.
+  globalThis.location.pathname = "/scoreboard";
+  const promoted = fleet();
+  promoted.arena[0].champion = "aaaa1111bbbb2222";
+  promoted.arena[0].commit = promoted.arena[1].commit;
+  listeners.fleet({ data: JSON.stringify(promoted) });
+  const labels = ids.view
+    .all("table")[1]
+    .all("tr")
+    .slice(1)
+    .map((row) => row.all("td")[0].textContent);
+  expect(new Set(labels).size).toBe(2);
+});
+
 test("the scoreboard is a ladder, best win rate first", () => {
   // The spec asks for a win-rate ladder, not the order the run played them in. The fixture's
   // lines are nit then maniac; reversed here so the ranking cannot happen by accident.

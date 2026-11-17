@@ -133,6 +133,20 @@ fn a_run_reads_back_from_its_own_file_unchanged_enough_to_report() {
 }
 
 #[test]
+fn a_local_run_is_not_the_same_run_as_a_local_run_that_measured_otherwise() {
+    // A local run has no commit to be played again from, so two of them under one champion and
+    // seed are not the same run unless every number agrees: otherwise a run of changed code
+    // would replace the run before it, and the scoreboard would show one line where there were two.
+    let fleet = Fleet::in_dir(scratch("arena-local"));
+    fleet.record_arena(&run("local", 7, 1.0)).unwrap();
+    fleet.record_arena(&run("local", 7, 2.0)).unwrap();
+    assert_eq!(fleet.arena_runs().unwrap().len(), 2);
+    // The same local run recorded twice is still one line.
+    fleet.record_arena(&run("local", 7, 2.0)).unwrap();
+    assert_eq!(fleet.arena_runs().unwrap().len(), 2);
+}
+
+#[test]
 fn a_run_written_as_text_is_the_run_read_back() {
     // There is one format for a run: `svanbot arena` writes its `--out` file from this text and
     // records the same run here, so the file an operator keeps and the scoreboard cannot disagree

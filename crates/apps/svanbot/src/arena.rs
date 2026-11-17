@@ -96,9 +96,9 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         rows.push(row);
     }
     print!("{}", scoreboard(&rows));
-    // A local run has no commit. It is still a run of a champion and a seed, and those are what
-    // its record is keyed on beside this: two runs cannot collide unless they are the same run.
-    let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| "local".into());
+    // A local run has no commit, and is kept as such: `record_arena` tells two of them apart by
+    // their own numbers, since there is no commit to play them again from.
+    let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| ArenaRun::LOCAL_COMMIT.into());
     let run = ArenaRun {
         commit: commit.clone(),
         champion: champion.digest().to_string(),

@@ -147,6 +147,10 @@ pub struct ArenaRun {
 }
 
 impl ArenaRun {
+    /// The commit line of a run played from a checkout. There is no commit to play it again from,
+    /// so two such runs are the same run only if every number agrees.
+    pub const LOCAL_COMMIT: &'static str = "local";
+
     /// The run as the page reads it: every number a JSON number, the way of the fleet document.
     pub fn as_value(&self) -> Value {
         json!({
@@ -273,8 +277,14 @@ impl Fleet {
     /// same commit under another champion is a different run, and keeps its own line.
     pub fn record_arena(&self, run: &ArenaRun) -> Result<(), String> {
         let mut runs = self.arena_runs()?;
+        // A run with a commit is played again from it, so commit, champion and seed name it. A
+        // local run has no commit to be played from, so it is the same run only if it measured
+        // the same: two runs of changed code must not replace one another.
         let same = |held: &ArenaRun| {
-            held.commit == run.commit && held.champion == run.champion && held.seed == run.seed
+            held.commit == run.commit
+                && held.champion == run.champion
+                && held.seed == run.seed
+                && (run.commit != ArenaRun::LOCAL_COMMIT || held.rows == run.rows)
         };
         runs.retain(|held| !same(held));
         runs.insert(0, run.clone());

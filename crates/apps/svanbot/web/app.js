@@ -314,6 +314,11 @@ function scoreboardPage(fleet) {
     ];
   }
   const span = arenaSpan(latest.rows);
+  // A trend is across commits, so its columns are every opponent any run played: taking them
+  // from the newest run alone would drop an opponent it skipped from every row.
+  const opponents = [...new Set(runs.flatMap((run) => run.rows.map((row) => row.opponent)))].sort(
+    (a, b) => a.localeCompare(b),
+  );
   const [width, height] = [300, 16];
   return [
     h(
@@ -338,9 +343,11 @@ function scoreboardPage(fleet) {
         h(
           "p",
           { class: "muted" },
-          `Milli-big-blinds a hundred deals, luck of the cards taken out. Each whisker is the ` +
-            `run's interval, its dark mark the mean, and the dashed line zero. The box spans ` +
-            `${mbbText(span.low)} to ${mbbText(span.high)}.`,
+          `Milli-big-blinds a hundred deals, luck of the cards taken out by playing each deal ` +
+            `from both seats. Each whisker is the run's interval, its dark mark the mean, and ` +
+            `the dashed line zero. The box spans ${mbbText(span.low)} to ${mbbText(span.high)}. ` +
+            `Heads up only: the champion against the pricer and the sparring archetypes, not ` +
+            `the wider league.`,
         ),
         table(
           "Each opponent, its whisker, its mean and its interval",
@@ -401,14 +408,20 @@ function scoreboardPage(fleet) {
           { class: "scroll", tabindex: 0 },
           table(
             "Each run's mean against each opponent",
-            [["Commit", null], ...latest.rows.map((row) => [row.opponent, "number"])],
+            [["Commit", null], ...opponents.map((opponent) => [opponent, "number"])],
             runs.map((run) =>
               h(
                 "tr",
                 {},
-                h("td", { class: "mono" }, run.commit.slice(0, 7)),
-                latest.rows.map((each) => {
-                  const found = run.rows.find((row) => row.opponent === each.opponent);
+                // A promotion moves play under one commit, so the commit alone does not name a
+                // run: the champion is what makes two runs of one commit two labels.
+                h(
+                  "td",
+                  { class: "mono" },
+                  `${run.commit.slice(0, 7)} · ${run.champion.slice(0, 8)}`,
+                ),
+                opponents.map((opponent) => {
+                  const found = run.rows.find((row) => row.opponent === opponent);
                   return h("td", { class: "number" }, found ? mbbText(found.mbb_per_100) : "—");
                 }),
               ),
