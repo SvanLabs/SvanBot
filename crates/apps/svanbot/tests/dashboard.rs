@@ -12,6 +12,7 @@ use serde_json::Value;
 use svanbot::dashboard::{Config, Server};
 use svanbot_runtime::fleet::{self, ArenaRow, ArenaRun, Fleet};
 use svanbot_runtime::status::{Play, Status, status_path};
+use svanbot_strategy::params::Params;
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("svanbot-dashboard-{}-{name}", std::process::id()));
@@ -53,9 +54,14 @@ fn serve(name: &str) -> (SocketAddr, PathBuf) {
         .write(&status_path(&data.join("Alpha.db")))
         .unwrap();
     let fleet_dir = fleet::beside_store(data.join("Alpha.db"));
-    Fleet::in_dir(&fleet_dir)
+    let arena = Fleet::in_dir(&fleet_dir);
+    // The run is of the champion in play: the default until a promotion. A scoreboard of any
+    // other champion is a problem the page raises, which most tests here are not about.
+    let champion = arena.champion().unwrap().digest().to_string();
+    arena
         .record_arena(&ArenaRun {
             commit: "abc1234".into(),
+            champion,
             seed: 7,
             rows: vec![ArenaRow {
                 opponent: "nit".into(),
@@ -157,6 +163,7 @@ fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
     Fleet::in_dir(&elsewhere)
         .record_arena(&ArenaRun {
             commit: "def5678".into(),
+            champion: "00000000000000aa".into(),
             seed: 3,
             rows: vec![ArenaRow {
                 opponent: "maniac".into(),
@@ -204,6 +211,34 @@ fn an_arena_run_that_cannot_be_read_is_a_problem_in_the_fleet() {
             .unwrap()
             .iter()
             .any(|problem| problem.as_str().unwrap().contains("arena")),
+        "{body}"
+    );
+}
+
+#[test]
+fn a_run_of_a_champion_the_fleet_no_longer_plays_is_a_problem_in_the_fleet() {
+    // A promotion changes play without changing the commit, so a scoreboard from before it is
+    // not a scoreboard of what is running. The page says so rather than letting the numbers
+    // stand for a policy that was replaced.
+    let (addr, dir) = serve("arena-promoted");
+    // The promotion: a champion the run's line was not played with.
+    Fleet::in_dir(dir.join("data/fleet"))
+        .promote(&Params {
+            exploit: 0.9,
+            raise_share: 0.9,
+            ..Params::DEFAULT
+        })
+        .unwrap();
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    let problems: Vec<&str> = fleet["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|problem| problem.as_str().unwrap())
+        .collect();
+    assert!(
+        problems.iter().any(|problem| problem.contains("champion")),
         "{body}"
     );
 }

@@ -148,7 +148,7 @@ _Avoid_: opponent type, style
 A scripted opponent style that the sim plays against, standing in for a kind of real opponent. Five
 so far: the **calling station** (calls any bet, bets only its best hands), the **nit** (folds all
 but strong hands to a bet, raises those), the **maniac** (bets and raises with anything), the
-**switching** one (a nit, then a maniac, turn about every 200 hands), and the **learning** one
+**switching** one (a nit, then a maniac, turn about every 20 hands), and the **learning** one
 (adapts to how often we bet).
 _Avoid_: dummy, test bot, persona
 

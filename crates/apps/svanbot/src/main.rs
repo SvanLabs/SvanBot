@@ -41,6 +41,7 @@
 )]
 
 mod arena;
+mod deciders;
 mod download;
 mod fit;
 mod paired;

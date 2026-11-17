@@ -9,6 +9,23 @@ export const STALE_MS = 15_000;
 const DELAYED_MS = 7_000;
 const LOST_MS = 15_000;
 
+/** Whether `run` is an Arena run the scoreboard can draw. */
+function isArenaRun(run) {
+  return (
+    typeof run?.commit === "string" &&
+    typeof run?.champion === "string" &&
+    Number.isFinite(run.seed) &&
+    Array.isArray(run.rows) &&
+    run.rows.every(
+      (row) =>
+        typeof row?.opponent === "string" &&
+        Number.isFinite(row.deals) &&
+        Number.isFinite(row.mbb_per_100) &&
+        Number.isFinite(row.ci95),
+    )
+  );
+}
+
 /** Whether `value` is a fleet document the page can show. */
 export function isFleet(value) {
   return (
@@ -17,7 +34,10 @@ export function isFleet(value) {
     Number.isFinite(value.server_ms) &&
     Array.isArray(value.bots) &&
     value.bots.every((bot) => typeof bot?.bot === "string" && Number.isFinite(bot.updated_ms)) &&
-    Array.isArray(value.problems)
+    Array.isArray(value.problems) &&
+    // The scoreboard reads the Arena's runs straight through, so a bad one is refused here.
+    Array.isArray(value.arena) &&
+    value.arena.every(isArenaRun)
   );
 }
 
@@ -187,6 +207,14 @@ export function route(path) {
  */
 export function arenaRun(runs) {
   return Array.isArray(runs) && runs.length > 0 ? runs[0] : null;
+}
+
+/**
+ * A run's rows as a ladder: the best win rate first, so a strong opponent and a weak one read at
+ * a glance. The row's own order is the run's; the page ranks them.
+ */
+export function ladder(rows) {
+  return [...rows].sort((a, b) => b.mbb_per_100 - a.mbb_per_100);
 }
 
 /** An Arena win rate as text: already per hundred hands, in thousandths of a big blind, signed. */

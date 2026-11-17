@@ -11,6 +11,7 @@ import {
   fleetProblems,
   freshness,
   isFleet,
+  ladder,
   mbbText,
   rateText,
   route,
@@ -319,7 +320,15 @@ function scoreboardPage(fleet) {
       "h1",
       {},
       "Scoreboard ",
-      h("span", { class: "muted mono" }, latest.commit.slice(0, 7), " · seed ", latest.seed),
+      h(
+        "span",
+        { class: "muted mono" },
+        latest.commit.slice(0, 7),
+        " · champion ",
+        latest.champion.slice(0, 8),
+        " · seed ",
+        latest.seed,
+      ),
     ),
     h(
       "div",
@@ -341,7 +350,7 @@ function scoreboardPage(fleet) {
             ["Mean", "number"],
             ["Deals", "number"],
           ],
-          latest.rows.map((row) => {
+          ladder(latest.rows).map((row) => {
             const bar = whisker(row.mbb_per_100, row.ci95, span, width);
             const label = `${row.opponent}: ${mbbText(row.mbb_per_100)} over ${row.deals} deals, between ${mbbText(row.mbb_per_100 - row.ci95)} and ${mbbText(row.mbb_per_100 + row.ci95)}`;
             return h(

@@ -133,11 +133,15 @@ pub struct ArenaRow {
     pub ci95: f64,
 }
 
-/// A recorded run of the Arena: the commit and seed it can be played again from, and its
-/// scoreboard.
+/// A recorded run of the Arena: the commit, the champion and the seed it was played from, and its
+/// scoreboard. The champion is what makes the run's numbers mean anything: a promotion changes
+/// how the bots play without touching the commit, so a scoreboard keyed on the commit alone
+/// could stand for a policy the fleet no longer plays.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ArenaRun {
     pub commit: String,
+    /// The digest of the champion the run played, as `Params::digest` renders it.
+    pub champion: String,
     pub seed: u64,
     pub rows: Vec<ArenaRow>,
 }
@@ -147,6 +151,7 @@ impl ArenaRun {
     pub fn as_value(&self) -> Value {
         json!({
             "commit": self.commit,
+            "champion": self.champion,
             "seed": self.seed,
             "rows": self
                 .rows
@@ -161,7 +166,9 @@ impl ArenaRun {
         })
     }
 
-    fn to_json(&self) -> String {
+    /// The run as the JSON text it is written in, here and in `svanbot arena --out`: one format
+    /// for a run, so the scoreboard and the file it hands an operator cannot disagree.
+    pub fn as_text(&self) -> String {
         self.as_value().to_string()
     }
 
@@ -191,6 +198,10 @@ impl ArenaRun {
             commit: value["commit"]
                 .as_str()
                 .ok_or("the arena run lacks its commit")?
+                .to_owned(),
+            champion: value["champion"]
+                .as_str()
+                .ok_or("the arena run lacks its champion")?
                 .to_owned(),
             seed: value["seed"]
                 .as_u64()
@@ -258,14 +269,17 @@ impl Fleet {
     }
 
     /// Records `run` as the latest, keeping the runs before it up to [`ARENA_HISTORY`]. A run of
-    /// the same commit and seed replaces its old line rather than repeating it.
+    /// the same commit, champion and seed replaces its old line rather than repeating it; the
+    /// same commit under another champion is a different run, and keeps its own line.
     pub fn record_arena(&self, run: &ArenaRun) -> Result<(), String> {
         let mut runs = self.arena_runs()?;
-        let same = |held: &ArenaRun| held.commit == run.commit && held.seed == run.seed;
+        let same = |held: &ArenaRun| {
+            held.commit == run.commit && held.champion == run.champion && held.seed == run.seed
+        };
         runs.retain(|held| !same(held));
         runs.insert(0, run.clone());
         runs.truncate(ARENA_HISTORY);
-        let runs: Vec<String> = runs.iter().map(ArenaRun::to_json).collect();
+        let runs: Vec<String> = runs.iter().map(ArenaRun::as_text).collect();
         self.write("arena.json", &format!("{{\"runs\":[{}]}}", runs.join(",")))
     }
 

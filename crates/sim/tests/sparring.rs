@@ -2,7 +2,7 @@
 
 use svanbot_core::rules::{Action, Legal, RaiseRange, Street};
 use svanbot_core::spot::{Act, ActKind, Spot};
-use svanbot_sim::sparring::{Archetype, Sparring};
+use svanbot_sim::sparring::{Archetype, PERIOD, Sparring};
 
 fn spot(hole: &str, board: &str, pot: u32, call: Option<u32>) -> Spot {
     Spot {
@@ -81,9 +81,27 @@ fn the_switching_archetype_is_a_nit_then_a_maniac_by_the_hand() {
     let facing = spot("9c3d", BOARD, 400, Some(200));
     for seed in 0..20 {
         assert_eq!(switching.decide(&facing, seed, 10), Action::Fold);
-        assert_ne!(switching.decide(&facing, seed, 210), Action::Fold);
-        assert_eq!(switching.decide(&facing, seed, 410), Action::Fold);
+        assert_ne!(switching.decide(&facing, seed, PERIOD + 10), Action::Fold);
+        assert_eq!(
+            switching.decide(&facing, seed, 2 * PERIOD + 10),
+            Action::Fold
+        );
     }
+}
+
+#[test]
+fn a_short_arena_run_still_plays_both_halves_of_the_switching_archetype() {
+    // The Arena's smallest run is two bouts, 100 deals (`BOUT`: 50). A period of 200 would leave
+    // that whole run in the nit half, so the switching row and the nit row would be one test.
+    let switching = Sparring::new(Archetype::Switching);
+    let facing = spot("9c3d", BOARD, 400, Some(200));
+    let nit = (0..100)
+        .filter(|hand| switching.decide(&facing, 1, *hand) == Action::Fold)
+        .count();
+    assert!(
+        (20..=80).contains(&nit),
+        "the maniac half must show in 100 deals, not {nit} nit folds of 100"
+    );
 }
 
 #[test]

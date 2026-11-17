@@ -9,16 +9,11 @@
 use std::process::ExitCode;
 
 use svanbot_core::rules::Action;
-use svanbot_core::rules::Blinds;
 use svanbot_core::spot::Spot;
 use svanbot_learn::paired::{Match, Verdict, duel, verdict};
 use svanbot_strategy::params::Params;
-use svanbot_strategy::policy;
-use svanbot_strategy::pricer::{self, Budget};
-use svanbot_strategy::resolve::iterations_for;
 
-/// Deals sampled by the pricer per decision in a sim.
-const SAMPLES: u64 = 2_000;
+use crate::deciders;
 
 /// Threads the deals are spread over. The box is shared with the live fleet.
 const THREADS: u64 = 4;
@@ -33,29 +28,9 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         eprintln!("svanbot paired: the seed and the iterations are whole numbers");
         return ExitCode::from(2);
     };
-    let game = Match {
-        blinds: Blinds { small: 10, big: 20 },
-        stack: 2000,
-        seed: seed.unwrap_or(1),
-    };
-    let challenger = |spot: &Spot, seed: u64| {
-        let iterations = match fixed {
-            Some(fixed) => u32::try_from(fixed).unwrap_or(u32::MAX),
-            None => iterations_for(spot.pot, spot.big_blind, spot.board.len()),
-        };
-        let budget = Budget {
-            samples: SAMPLES,
-            seed,
-        };
-        policy::decide(spot, None, &Params::DEFAULT, budget, iterations)
-    };
-    let champion = |spot: &Spot, seed: u64| {
-        let budget = Budget {
-            samples: SAMPLES,
-            seed,
-        };
-        pricer::decide(spot, None, budget).action
-    };
+    let game = deciders::game(seed.unwrap_or(1));
+    let challenger = deciders::challenger(&Params::DEFAULT, fixed);
+    let champion = deciders::pricer();
     let found = sim(&game, deals, &challenger, &champion);
     println!(
         "policy against pricer, heads up: {:+.0} mbb/100, 95% CI ±{:.0}, over {} deals (seed {})",
@@ -91,7 +66,11 @@ pub(crate) fn sim(
             .collect();
         workers
             .into_iter()
-            .map(|worker| worker.join().unwrap_or_default())
+            .map(|worker| {
+                // A panicked worker would leave its deals at zero and call that a result; a
+                // panicked sim is a bug, not a verdict.
+                worker.join().expect("a paired sim worker panicked")
+            })
             .collect()
     });
     for (deal, result) in played.into_iter().flatten() {

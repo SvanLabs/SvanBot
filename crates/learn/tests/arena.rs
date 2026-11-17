@@ -2,7 +2,7 @@
 
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
-use svanbot_learn::arena::{BOUT, Row, bout, json, scoreboard};
+use svanbot_learn::arena::{BOUT, Row, bout, scoreboard};
 use svanbot_learn::paired::{Match, Verdict};
 use svanbot_sim::sparring::Archetype;
 
@@ -64,12 +64,4 @@ fn the_scoreboard_lists_each_opponent_with_its_win_rate_and_interval() {
     let board = scoreboard(&rows);
     assert!(board.contains("nit") && board.contains("+12346") && board.contains("±2000"));
     assert!(board.contains("maniac") && board.contains("-500") && board.contains("±9000"));
-    assert_eq!(
-        json(&rows, "abc1234", 7),
-        concat!(
-            r#"{"commit":"abc1234","seed":7,"rows":["#,
-            r#"{"opponent":"nit","deals":400,"mbb_per_100":12345.6,"ci95":2000.4},"#,
-            r#"{"opponent":"maniac","deals":400,"mbb_per_100":-500.0,"ci95":9000.0}]}"#
-        )
-    );
 }

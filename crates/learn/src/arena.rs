@@ -12,7 +12,7 @@ use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
 use svanbot_sim::sparring::{Archetype, Sparring};
 
-use crate::paired::{Match, Verdict, duel};
+use crate::paired::{Match, Verdict, duel_with};
 
 /// Deals in a bout.
 pub const BOUT: u64 = 50;
@@ -28,9 +28,16 @@ pub fn bout(
     let opponent = Sparring::new(archetype);
     (number * BOUT..(number + 1) * BOUT)
         .map(|deal| {
-            duel(game, deal, challenger, &|spot, seed| {
-                opponent.decide(spot, seed, deal)
-            })
+            // Both mirrored hands meet the opponent as it was before this deal: the learning one
+            // would otherwise carry the first hand's bets into the second, and the deal's two
+            // hands would no longer cancel the cards.
+            duel_with(
+                game,
+                deal,
+                challenger,
+                &|spot, seed| opponent.decide(spot, seed, deal),
+                || opponent.reset(),
+            )
         })
         .collect()
 }
@@ -59,38 +66,4 @@ pub fn scoreboard(rows: &[Row]) -> String {
         ));
     }
     board
-}
-
-/// The run as JSON, for the dashboard's scoreboard: the commit and seed it can be played again
-/// from, and each row.
-pub fn json(rows: &[Row], commit: &str, seed: u64) -> String {
-    let rows: Vec<String> = rows
-        .iter()
-        .map(|row| {
-            format!(
-                r#"{{"opponent":"{}","deals":{},"mbb_per_100":{:?},"ci95":{:?}}}"#,
-                escape(&row.opponent),
-                row.verdict.deals,
-                row.verdict.mbb_per_100,
-                row.verdict.ci95
-            )
-        })
-        .collect();
-    format!(
-        r#"{{"commit":"{}","seed":{seed},"rows":[{}]}}"#,
-        escape(commit),
-        rows.join(",")
-    )
-}
-
-/// `text` safe inside a JSON string: the quote, the backslash and control characters escaped.
-fn escape(text: &str) -> String {
-    text.chars()
-        .flat_map(|c| match c {
-            '"' => vec!['\\', '"'],
-            '\\' => vec!['\\', '\\'],
-            c if c.is_control() => format!("\\u{:04x}", c as u32).chars().collect(),
-            c => vec![c],
-        })
-        .collect()
 }

@@ -12,19 +12,12 @@
 
 use std::process::ExitCode;
 
-use svanbot_core::rules::{Action, Blinds};
-use svanbot_core::spot::Spot;
-use svanbot_learn::arena::{BOUT, Row, bout, json, scoreboard};
-use svanbot_learn::paired::{Match, duel, verdict};
+use svanbot_learn::arena::{BOUT, Row, bout, scoreboard};
+use svanbot_learn::paired::{duel, verdict};
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet};
 use svanbot_sim::sparring::Archetype;
-use svanbot_strategy::params::Params;
-use svanbot_strategy::policy;
-use svanbot_strategy::pricer::{self, Budget};
-use svanbot_strategy::resolve::iterations_for;
 
-/// Deals sampled by the pricer per decision in a sim.
-const SAMPLES: u64 = 2_000;
+use crate::deciders;
 
 /// Threads the bouts are spread over. The box is shared with the live fleet.
 const THREADS: u64 = 4;
@@ -39,29 +32,19 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         eprintln!("svanbot arena: the seed and the iterations are whole numbers");
         return ExitCode::from(2);
     };
-    let game = Match {
-        blinds: Blinds { small: 10, big: 20 },
-        stack: 2000,
-        seed: seed.unwrap_or(1),
+    // The champion is what the fleet plays by (`Fleet::champion`), which is the default until a
+    // promotion: an Arena that always played the default would not move when a set is promoted.
+    let fleet = Fleet::in_dir(crate::fleet_dir());
+    let champion = match fleet.champion() {
+        Ok(champion) => champion,
+        Err(why) => {
+            eprintln!("svanbot arena: the champion file is refused: {why}");
+            return ExitCode::from(2);
+        }
     };
-    let challenger = |spot: &Spot, seed: u64| -> Action {
-        let iterations = match fixed {
-            Some(fixed) => u32::try_from(fixed).unwrap_or(u32::MAX),
-            None => iterations_for(spot.pot, spot.big_blind, spot.board.len()),
-        };
-        let budget = Budget {
-            samples: SAMPLES,
-            seed,
-        };
-        policy::decide(spot, None, &Params::DEFAULT, budget, iterations)
-    };
-    let pricer = |spot: &Spot, seed: u64| -> Action {
-        let budget = Budget {
-            samples: SAMPLES,
-            seed,
-        };
-        pricer::decide(spot, None, budget).action
-    };
+    let game = deciders::game(seed.unwrap_or(1));
+    let challenger = deciders::challenger(&champion, fixed);
+    let pricer = deciders::pricer();
     // `None` is the pricer; the rest are the archetypes.
     let opponents: Vec<Option<Archetype>> = std::iter::once(None)
         .chain(Archetype::ALL.map(Some))
@@ -92,7 +75,11 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
                 .collect();
             workers
                 .into_iter()
-                .map(|worker| worker.join().unwrap_or_default())
+                .map(|worker| {
+                    // A panicked worker is a run that would be recorded short of its deals: stop
+                    // here, rather than store numbers it cannot be played again from.
+                    worker.join().expect("an Arena worker panicked")
+                })
                 .collect()
         });
         let mut by_bout: Vec<(u64, Vec<f64>)> = played.into_iter().flatten().collect();
@@ -109,9 +96,12 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         rows.push(row);
     }
     print!("{}", scoreboard(&rows));
-    let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| "unknown".into());
+    // A local run has no commit. It is still a run of a champion and a seed, and those are what
+    // its record is keyed on beside this: two runs cannot collide unless they are the same run.
+    let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| "local".into());
     let run = ArenaRun {
         commit: commit.clone(),
+        champion: champion.digest().to_string(),
         seed: game.seed,
         rows: rows
             .iter()
@@ -128,7 +118,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     }
     if let Some(path) = args.get(3)
-        && let Err(error) = std::fs::write(path, json(&rows, &commit, game.seed) + "\n")
+        && let Err(error) = std::fs::write(path, run.as_text() + "\n")
     {
         eprintln!("svanbot arena: {path} was not written: {error}");
         return ExitCode::from(1);

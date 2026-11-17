@@ -32,11 +32,25 @@ pub fn duel(
     challenger: &impl Fn(&Spot, u64) -> Action,
     champion: &impl Fn(&Spot, u64) -> Action,
 ) -> f64 {
+    duel_with(game, number, challenger, champion, || {})
+}
+
+/// [`duel`], with `reset` run before each of the deal's two hands. A stateful opponent (the
+/// learning archetype) is put back to where the deal began, so both mirrored hands face it the
+/// same and the deal still cancels the luck of the cards. A stateless one passes `|| {}`.
+pub fn duel_with(
+    game: &Match,
+    number: u64,
+    challenger: &impl Fn(&Spot, u64) -> Action,
+    champion: &impl Fn(&Spot, u64) -> Action,
+    reset: impl Fn(),
+) -> f64 {
     let cards = deal(2, &mut Rng::stream(game.seed, number));
     // Both hands of the deal pay an all-in over the same run-outs, so the mirror still cancels.
     let run_outs = Rng::stream(game.seed ^ DECISIONS, 2 * number).next_u64();
     let mut chips = 0.0;
     for seat in 0..2 {
+        reset();
         let mut seeds = Rng::stream(game.seed ^ DECISIONS, 2 * number + seat as u64);
         let won = play_corrected(
             &cards,

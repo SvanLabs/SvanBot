@@ -50,8 +50,10 @@ impl Archetype {
     }
 }
 
-/// Hands the switching archetype plays one way before it plays the other.
-pub const PERIOD: u64 = 200;
+/// Hands the switching archetype plays one way before it plays the other. Short enough that the
+/// Arena's smallest run, two bouts of 50 deals, plays both halves: at 200 a 100-deal run would
+/// never reach the second one, and the switching row would be the nit row under another name.
+pub const PERIOD: u64 = 20;
 
 /// Deals sampled for an archetype's equity.
 const SAMPLES: u64 = 256;
@@ -71,6 +73,12 @@ impl Sparring {
             archetype,
             seen: Cell::new((0, 0)),
         }
+    }
+
+    /// Forgets what it has seen of us, as a fresh opponent would. Both hands of a paired deal
+    /// face the same opponent, so the deal still cancels the luck of the cards.
+    pub fn reset(&self) {
+        self.seen.set((0, 0));
     }
 
     /// The opponent's action at `spot`, in hand number `hand` of its table, drawing from `seed`.

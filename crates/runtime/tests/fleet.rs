@@ -81,6 +81,7 @@ fn a_proposal_reads_back_from_its_own_text_and_names_its_hypothesis() {
 fn run(commit: &str, seed: u64, mbb: f64) -> ArenaRun {
     ArenaRun {
         commit: commit.into(),
+        champion: "00000000000000aa".into(),
         seed,
         rows: vec![ArenaRow {
             opponent: "nit".into(),
@@ -116,7 +117,10 @@ fn a_run_reads_back_from_its_own_file_unchanged_enough_to_report() {
     // The last bit of a float is the writer's, not the run's: the run is played again from its
     // commit and seed, so a scoreboard line has to read back as what it printed, not bit for bit.
     let [read] = fleet.arena_runs().unwrap().try_into().unwrap();
-    assert_eq!((read.commit, read.seed), (run.commit.clone(), run.seed));
+    assert_eq!(
+        (read.commit, read.champion, read.seed),
+        (run.commit.clone(), run.champion.clone(), run.seed)
+    );
     assert_eq!(read.rows.len(), 1);
     assert_eq!(read.rows[0].opponent, "nit");
     assert_eq!(read.rows[0].deals, 400);
@@ -126,6 +130,39 @@ fn a_run_reads_back_from_its_own_file_unchanged_enough_to_report() {
     // policy replaces its line rather than growing the history.
     fleet.record_arena(&run).unwrap();
     assert_eq!(fleet.arena_runs().unwrap().len(), 1);
+}
+
+#[test]
+fn a_run_written_as_text_is_the_run_read_back() {
+    // There is one format for a run: `svanbot arena` writes its `--out` file from this text and
+    // records the same run here, so the file an operator keeps and the scoreboard cannot disagree
+    // on what a run is. The field order is the writer's; the run is the fields and their values.
+    let run = run("abc1234", 7, 12_345.6);
+    let value: serde_json::Value = serde_json::from_str(&run.as_text()).unwrap();
+    assert_eq!(value["commit"], "abc1234");
+    assert_eq!(value["champion"], "00000000000000aa");
+    assert_eq!(value["seed"], 7);
+    assert_eq!(value["rows"][0]["opponent"], "nit");
+    assert_eq!(value["rows"][0]["deals"], 400);
+    assert_eq!(value["rows"][0]["mbb_per_100"], 12_345.6);
+    assert_eq!(value["rows"][0]["ci95"], 250.0);
+}
+
+#[test]
+fn a_promotion_under_the_same_commit_is_a_run_of_its_own() {
+    // The commit says what the code was; the champion says what it played. A promotion between
+    // two runs of one commit moves the scoreboard, so the earlier run is not the later one.
+    let fleet = Fleet::in_dir(scratch("arena-promoted"));
+    let before = run("abc1234", 7, 1.0);
+    fleet.record_arena(&before).unwrap();
+    let after = ArenaRun {
+        champion: "00000000000000bb".into(),
+        ..before
+    };
+    fleet.record_arena(&after).unwrap();
+    let runs = fleet.arena_runs().unwrap();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].champion, "00000000000000bb");
 }
 
 #[test]

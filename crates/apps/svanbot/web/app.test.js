@@ -104,6 +104,7 @@ function fleet() {
     arena: [
       {
         commit: "abc1234def",
+        champion: "308e7da4b29fd533",
         seed: 7,
         rows: [
           { opponent: "nit", deals: 400, mbb_per_100: 12_345.6, ci95: 2_000.4 },
@@ -112,6 +113,7 @@ function fleet() {
       },
       {
         commit: "older999",
+        champion: "308e7da4b29fd533",
         seed: 7,
         rows: [{ opponent: "nit", deals: 400, mbb_per_100: 1_000, ci95: 500 }],
       },
@@ -224,8 +226,11 @@ test("the scoreboard has a whisker an opponent over the latest run, its numbers 
     "Trend",
   ]);
   expect(view.textContent).toContain("abc1234");
+  // The champion is what the numbers mean: a promotion moves play under the same commit.
+  expect(view.textContent).toContain("champion 308e7da4");
   expect(view.textContent).toContain("seed 7");
-  // The Opponents table: a head row and one a opponent, each whisker drawn and its numbers text.
+  // The Opponents table is a ladder: a head row, then the best win rate first, whatever order
+  // the run played them in. Here the fixture lists nit (+12,345.6) before maniac (-5,000).
   const opponents = view.all("table")[0];
   const rows = opponents.all("tr");
   expect(rows.length).toBe(1 + 2);
@@ -238,6 +243,18 @@ test("the scoreboard has a whisker an opponent over the latest run, its numbers 
   expect(trendRows[1].textContent).toContain("abc1234");
   expect(trendRows[2].textContent).toContain("older99");
   expect(trendRows[2].textContent).toContain("—");
+});
+
+test("the scoreboard is a ladder, best win rate first", () => {
+  // The spec asks for a win-rate ladder, not the order the run played them in. The fixture's
+  // lines are nit then maniac; reversed here so the ranking cannot happen by accident.
+  globalThis.location.pathname = "/scoreboard";
+  const reversed = fleet();
+  reversed.arena[0].rows.reverse();
+  listeners.fleet({ data: JSON.stringify(reversed) });
+  const rows = ids.view.all("table")[0].all("tr");
+  expect(rows[1].textContent).toContain("+12345.6 mbb/100");
+  expect(rows[2].textContent).toContain("−5000.0 mbb/100");
 });
 
 test("an opponent's name on the scoreboard is text too", () => {

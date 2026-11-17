@@ -175,10 +175,8 @@ fn fleet_now(config: &Config) -> Value {
         bots: Vec::new(),
         problems: vec![format!("data directory: {error}")],
     });
-    let (runs, problem) = arena(&config.fleet_dir);
-    if let Some(problem) = problem {
-        fleet.problems.push(problem);
-    }
+    let (runs, arena_problems) = arena(&config.fleet_dir);
+    fleet.problems.extend(arena_problems);
     json!({
         "bots": fleet.bots.iter().map(|status| status.to_json()).collect::<Vec<_>>(),
         "problems": fleet.problems,
@@ -187,20 +185,36 @@ fn fleet_now(config: &Config) -> Value {
     })
 }
 
-/// The Arena's recorded runs, newest first, from the fleet. A run file that cannot be read is a
-/// problem the operator has to see, not a scoreboard silently missing: it comes back beside the
-/// empty history, for the strip the status problems already raise.
-fn arena(fleet_dir: &Path) -> (Value, Option<String>) {
-    match fleet::Fleet::in_dir(fleet_dir).arena_runs() {
-        Ok(runs) => (
-            Value::Array(runs.iter().map(ArenaRun::as_value).collect()),
-            None,
-        ),
-        Err(why) => (
-            Value::Array(Vec::new()),
-            Some(format!("the arena run was not read: {why}")),
-        ),
+/// The Arena's recorded runs, newest first, from the fleet, and any problem with them. A run file
+/// that cannot be read is a problem the operator has to see, not a scoreboard silently missing;
+/// so is a latest run that measured a champion the fleet no longer plays, since a promotion
+/// changes play without changing the commit.
+fn arena(fleet_dir: &Path) -> (Value, Vec<String>) {
+    let fleet = fleet::Fleet::in_dir(fleet_dir);
+    let runs = match fleet.arena_runs() {
+        Ok(runs) => runs,
+        Err(why) => {
+            return (
+                Value::Array(Vec::new()),
+                vec![format!("the arena run was not read: {why}")],
+            );
+        }
+    };
+    let mut problems = Vec::new();
+    // An unreadable champion is the live path's problem to report (`Fleet::champion`); here the
+    // question is only whether the last run's numbers are of what is running.
+    if let (Some(latest), Ok(champion)) = (runs.first(), fleet.champion())
+        && latest.champion != champion.digest().to_string()
+    {
+        problems.push(format!(
+            "the last arena run played champion {}, not the champion in play: play `svanbot arena`",
+            latest.champion
+        ));
     }
+    (
+        Value::Array(runs.iter().map(ArenaRun::as_value).collect()),
+        problems,
+    )
 }
 
 /// The fleet document the page reads and the stream pushes: the fleet, and the server's clock.

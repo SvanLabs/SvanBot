@@ -8,6 +8,7 @@ import {
   fleetProblems,
   freshness,
   isFleet,
+  ladder,
   mbbText,
   rateText,
   route,
@@ -126,9 +127,22 @@ test("a path names its view, and a name that is not a bot's falls back to the fl
 });
 
 test("a document that is not a fleet is refused", () => {
-  expect(isFleet({ server_ms: 1, bots: [bot()], problems: [] })).toBe(true);
-  expect(isFleet({ server_ms: 1, bots: [{}], problems: [] })).toBe(false);
+  const fleet = { server_ms: 1, bots: [bot()], problems: [], arena: [] };
+  expect(isFleet(fleet)).toBe(true);
+  expect(isFleet({ ...fleet, bots: [{}] })).toBe(false);
   expect(isFleet(null)).toBe(false);
+});
+
+test("a fleet whose Arena history is not runs is refused, not half-shown", () => {
+  // The scoreboard reads `latest.rows` straight through: a run that is not one has to be caught
+  // here, or the page throws instead of saying the stream sent something it cannot read.
+  const ok = { server_ms: 1, bots: [], problems: [], arena: [] };
+  expect(isFleet(ok)).toBe(true);
+  expect(isFleet({ ...ok, arena: [{ commit: "a", seed: 1, rows: [] }] })).toBe(false);
+  expect(isFleet({ ...ok, arena: [{ commit: "a", champion: "c", seed: 1, rows: [{}] }] })).toBe(
+    false,
+  );
+  expect(isFleet({ ...ok, arena: "not-an-array" })).toBe(false);
 });
 
 const RUN = {
@@ -139,6 +153,17 @@ const RUN = {
     { opponent: "maniac", deals: 400, mbb_per_100: -5_000, ci95: 9_000 },
   ],
 };
+
+test("the ladder puts the best win rate first, whatever order the run played them", () => {
+  const rows = [
+    { opponent: "nit", deals: 400, mbb_per_100: 12_345.6, ci95: 2_000.4 },
+    { opponent: "pricer", deals: 400, mbb_per_100: -9_000, ci95: 1_000 },
+    { opponent: "maniac", deals: 400, mbb_per_100: 5_000, ci95: 9_000 },
+  ];
+  expect(ladder(rows).map((row) => row.opponent)).toEqual(["nit", "maniac", "pricer"]);
+  // The run's own rows are left as they were: ranking is a view, not a rewrite.
+  expect(rows[0].opponent).toBe("nit");
+});
 
 test("the latest run is the first the fleet carries, and none is null", () => {
   expect(arenaRun([RUN, { ...RUN, commit: "older" }]).commit).toBe("abc1234");
