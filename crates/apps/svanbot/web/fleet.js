@@ -9,6 +9,23 @@ export const STALE_MS = 15_000;
 const DELAYED_MS = 7_000;
 const LOST_MS = 15_000;
 
+/** Whether `run` is an Arena run the scoreboard can draw. */
+function isArenaRun(run) {
+  return (
+    typeof run?.commit === "string" &&
+    typeof run?.champion === "string" &&
+    Number.isFinite(run.seed) &&
+    Array.isArray(run.rows) &&
+    run.rows.every(
+      (row) =>
+        typeof row?.opponent === "string" &&
+        Number.isFinite(row.deals) &&
+        Number.isFinite(row.mbb_per_100) &&
+        Number.isFinite(row.ci95),
+    )
+  );
+}
+
 /** Whether `value` is a fleet document the page can show. */
 export function isFleet(value) {
   return (
@@ -17,7 +34,10 @@ export function isFleet(value) {
     Number.isFinite(value.server_ms) &&
     Array.isArray(value.bots) &&
     value.bots.every((bot) => typeof bot?.bot === "string" && Number.isFinite(bot.updated_ms)) &&
-    Array.isArray(value.problems)
+    Array.isArray(value.problems) &&
+    // The scoreboard reads the Arena's runs straight through, so a bad one is refused here.
+    Array.isArray(value.arena) &&
+    value.arena.every(isArenaRun)
   );
 }
 
@@ -169,11 +189,62 @@ export function chart(values, width, height) {
   };
 }
 
-/** The view a path names: the fleet, one bot, or the release. */
+/** The view a path names: the fleet, one bot, the release, or the Arena's scoreboard. */
 export function route(path) {
   const bot = /^\/bot\/([A-Za-z0-9_-]{1,64})$/.exec(path);
   if (bot) {
     return { view: "bot", bot: bot[1] };
   }
-  return { view: path === "/release" ? "release" : "fleet" };
+  if (path === "/release") {
+    return { view: "release" };
+  }
+  return { view: path === "/scoreboard" ? "scoreboard" : "fleet" };
+}
+
+/**
+ * The latest Arena run in a fleet document, or null before the first: the scoreboard's data. The
+ * fleet keeps its history newest first (`ARENA_HISTORY` of them), so the latest is the first.
+ */
+export function arenaRun(runs) {
+  return Array.isArray(runs) && runs.length > 0 ? runs[0] : null;
+}
+
+/**
+ * A run's rows by win rate: the best first, so a strong opponent and a weak one read at a glance.
+ * The row's own order is the run's; the page ranks them. Not a ladder: the glossary rules that
+ * word out for the Arena, since it names a different thing.
+ */
+export function byWinRate(rows) {
+  return [...rows].sort((a, b) => b.mbb_per_100 - a.mbb_per_100);
+}
+
+/** An Arena win rate as text: already per hundred hands, in thousandths of a big blind, signed. */
+export function mbbText(mbb) {
+  return `${mbb >= 0 ? "+" : "−"}${Math.abs(mbb).toFixed(1)} mbb/100`;
+}
+
+/** The span a scoreboard's whiskers are drawn across: every interval's ends, and zero. */
+export function arenaSpan(rows) {
+  // An interval's ends, not the ends of what is drawn: 12,345.6 ± 2,000.4 ends at 14,346.0, and a
+  // whisker must be placed by that, or two rows with the same interval would not line up.
+  const ends = rows.flatMap((row) => [row.mbb_per_100 - row.ci95, row.mbb_per_100 + row.ci95]);
+  return { low: Math.min(0, ...ends), high: Math.max(0, ...ends) };
+}
+
+/**
+ * A run's interval as a whisker in a box `width` wide: where the interval starts and ends, where
+ * its middle is, and where zero falls. An interval running past the span is clamped to the box.
+ */
+export function whisker(mbb, ci95, span, width) {
+  const spread = span.high - span.low;
+  if (spread <= 0) {
+    return { from: 0, to: 0, zero: 0, mean: 0 };
+  }
+  const x = (value) => Math.min(width, Math.max(0, ((value - span.low) / spread) * width));
+  return {
+    from: x(mbb - ci95),
+    to: x(mbb + ci95),
+    zero: x(0),
+    mean: x(mbb),
+  };
 }

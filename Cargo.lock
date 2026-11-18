@@ -457,6 +457,7 @@ dependencies = [
  "svanbot-core",
  "svanbot-learn",
  "svanbot-runtime",
+ "svanbot-sim",
  "svanbot-strategy",
 ]
 

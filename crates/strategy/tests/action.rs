@@ -172,3 +172,19 @@ fn the_baseline_model_bets_and_continues_more_the_stronger_the_cards() {
         }
     }
 }
+
+#[test]
+fn a_model_written_as_text_reads_back_the_same_and_bad_text_is_refused() {
+    use svanbot_strategy::action::ActionModel;
+    let model = ActionModel::baseline();
+    let text = model.to_text();
+    assert_eq!(ActionModel::from_text(&text), Some(model));
+    assert_eq!(ActionModel::from_text(""), None);
+    assert_eq!(ActionModel::from_text("not a model"), None);
+    // A row that is not a distribution over its open moves is refused.
+    let broken = text.replacen("0.", "7.", 1);
+    assert_eq!(ActionModel::from_text(&broken), None);
+    // So is a file cut short.
+    let cut: String = text.lines().take(20).collect::<Vec<_>>().join("\n");
+    assert_eq!(ActionModel::from_text(&cut), None);
+}

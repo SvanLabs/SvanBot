@@ -24,9 +24,11 @@
 //! (`svanbot_runtime::probing`).
 //!
 //! `svanbot download` instead downloads the bot's season hand history into its store, and exits
-//! ([`download`]). `svanbot paired` runs a paired sim of the policy against the pricer ([`paired`]).
-//! `svanbot propose` puts a challenger forward for the canary ([`propose`]). `svanbot dashboard`
-//! serves the fleet's dashboard on loopback ([`svanbot::dashboard`]).
+//! ([`download`]). `svanbot fit` fits the action model on the store's hands ([`fit`]). `svanbot
+//! arena` plays the policy against every sparring archetype ([`arena`]). `svanbot paired` runs a
+//! paired sim of the policy against the pricer ([`paired`]). `svanbot propose` puts a challenger
+//! forward for the canary ([`propose`]). `svanbot dashboard` serves the fleet's dashboard on
+//! loopback ([`svanbot::dashboard`]).
 //!
 //! While it plays, the bot keeps its status file current beside its store, for the dashboard
 //! ([`svanbot::live`]).
@@ -38,7 +40,10 @@
     clippy::disallowed_macros
 )]
 
+mod arena;
+mod deciders;
 mod download;
+mod fit;
 mod paired;
 mod propose;
 
@@ -72,7 +77,7 @@ const MAX_BACKOFF: Duration = Duration::from_secs(60);
 fn main() -> ExitCode {
     // The dashboard is not a bot: it records no start.
     if std::env::args().nth(1).as_deref() == Some("dashboard") {
-        return svanbot::dashboard::run();
+        return svanbot::dashboard::run(fleet_dir());
     }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.
@@ -82,6 +87,13 @@ fn main() -> ExitCode {
     }
     if std::env::args().nth(1).as_deref() == Some("download") {
         return download::run();
+    }
+    if std::env::args().nth(1).as_deref() == Some("fit") {
+        return fit::run();
+    }
+    if std::env::args().nth(1).as_deref() == Some("arena") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return arena::run(&args);
     }
     if std::env::args().nth(1).as_deref() == Some("paired") {
         let args: Vec<String> = std::env::args().skip(2).collect();
@@ -108,6 +120,16 @@ fn main() -> ExitCode {
     // The updater's request to stop between hands, and the answer this bot gives it.
     let health = open_health(&config.me);
     eprintln!("svanbot: {} connects to {}", config.me, config.url);
+    // A fitted action model is used only if it passed the gate (`svanbot fit`). Without one the
+    // policy reads lines by the baseline model.
+    let model = fit::load_model(&config.me);
+    eprintln!(
+        "svanbot: {}",
+        match model {
+            Some(_) => "plays by its fitted action model",
+            None => "has no fitted action model: plays by the baseline",
+        }
+    );
     let canary = std::env::var("SVANBOT_CANARY").is_ok_and(|name| name == config.me);
     let (probing, notes) = Probing::open(&store, Fleet::in_dir(fleet_dir()), canary, now_ms());
     for note in notes {
@@ -144,8 +166,8 @@ fn main() -> ExitCode {
                 let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
                 // The parameter set of the hand in play: the champion's, or a probe's arm.
                 let params = probing.borrow().params();
-                // No fitted action model yet: one is used only after it passes the gate.
-                let decision = decide_drawn(spot, None, &params, budget, iterations);
+                // A fitted action model is used only if it passed the gate (`svanbot fit`).
+                let decision = decide_drawn(spot, model.as_ref(), &params, budget, iterations);
                 if let Some(drawn) = decision.drawn {
                     probing.borrow_mut().decided(Decided {
                         strategy: drawn.strategy,

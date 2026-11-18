@@ -7,7 +7,9 @@ pub(super) fn file(path: &str) -> Option<(&'static str, &'static [u8])> {
     let html = "text/html; charset=utf-8";
     let script = "text/javascript; charset=utf-8";
     Some(match path {
-        "/" | "/release" => (html, include_bytes!("../../web/index.html").as_slice()),
+        "/" | "/release" | "/scoreboard" => {
+            (html, include_bytes!("../../web/index.html").as_slice())
+        }
         _ if path.strip_prefix("/bot/").is_some_and(is_name) => {
             (html, include_bytes!("../../web/index.html").as_slice())
         }

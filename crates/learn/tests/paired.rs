@@ -3,7 +3,7 @@
 use svanbot_core::card::Rank;
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
-use svanbot_learn::paired::{Match, duel, verdict};
+use svanbot_learn::paired::{Match, duel, duel_with, verdict};
 
 const MATCH: Match = Match {
     blinds: Blinds { small: 10, big: 20 },
@@ -17,6 +17,21 @@ fn folds(_: &Spot, _: u64) -> Action {
 
 fn shoves(spot: &Spot, _: u64) -> Action {
     Action::RaiseTo(spot.legal.raise.map_or(0, |range| range.max))
+}
+
+#[test]
+fn both_hands_of_a_deal_face_the_same_opponent_state() {
+    // A learning opponent remembers our bets, so the second hand of a deal would otherwise meet
+    // one already adapted by the first, and the deal would no longer cancel card luck. The reset
+    // runs before each hand: what it puts back is what both hands see.
+    use std::cell::Cell;
+    let resets = Cell::new(0);
+    let result = duel_with(&MATCH, 3, &calls_good_cards, &folds, || {
+        resets.set(resets.get() + 1)
+    });
+    assert_eq!(resets.get(), 2, "one reset before each mirrored hand");
+    // The hook changes no deal: it is the same duel, played from the same streams.
+    assert_eq!(result, duel(&MATCH, 3, &calls_good_cards, &folds));
 }
 
 /// Calls with a pair in the hole or an ace, and gives up otherwise.

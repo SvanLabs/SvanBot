@@ -1,14 +1,19 @@
 import { expect, test } from "bun:test";
 import {
+  arenaRun,
+  arenaSpan,
   botView,
+  byWinRate,
   chart,
   duration,
   fleetProblems,
   freshness,
   isFleet,
+  mbbText,
   rateText,
   route,
   running,
+  whisker,
   winRate,
 } from "./fleet.js";
 
@@ -116,12 +121,86 @@ test("the chart runs from zero through the running total", () => {
 test("a path names its view, and a name that is not a bot's falls back to the fleet", () => {
   expect(route("/")).toEqual({ view: "fleet" });
   expect(route("/release")).toEqual({ view: "release" });
+  expect(route("/scoreboard")).toEqual({ view: "scoreboard" });
   expect(route("/bot/SurSvan")).toEqual({ view: "bot", bot: "SurSvan" });
   expect(route("/bot/<script>")).toEqual({ view: "fleet" });
 });
 
 test("a document that is not a fleet is refused", () => {
-  expect(isFleet({ server_ms: 1, bots: [bot()], problems: [] })).toBe(true);
-  expect(isFleet({ server_ms: 1, bots: [{}], problems: [] })).toBe(false);
+  const fleet = { server_ms: 1, bots: [bot()], problems: [], arena: [] };
+  expect(isFleet(fleet)).toBe(true);
+  expect(isFleet({ ...fleet, bots: [{}] })).toBe(false);
   expect(isFleet(null)).toBe(false);
+});
+
+test("a fleet whose Arena history is not runs is refused, not half-shown", () => {
+  // The scoreboard reads `latest.rows` straight through: a run that is not one has to be caught
+  // here, or the page throws instead of saying the stream sent something it cannot read.
+  const ok = { server_ms: 1, bots: [], problems: [], arena: [] };
+  expect(isFleet(ok)).toBe(true);
+  expect(isFleet({ ...ok, arena: [{ commit: "a", seed: 1, rows: [] }] })).toBe(false);
+  expect(isFleet({ ...ok, arena: [{ commit: "a", champion: "c", seed: 1, rows: [{}] }] })).toBe(
+    false,
+  );
+  expect(isFleet({ ...ok, arena: "not-an-array" })).toBe(false);
+});
+
+const RUN = {
+  commit: "abc1234",
+  seed: 7,
+  rows: [
+    { opponent: "nit", deals: 400, mbb_per_100: 12_345.6, ci95: 2_000.4 },
+    { opponent: "maniac", deals: 400, mbb_per_100: -5_000, ci95: 9_000 },
+  ],
+};
+
+test("the win-rate order puts the best first, whatever order the run played them", () => {
+  const rows = [
+    { opponent: "nit", deals: 400, mbb_per_100: 12_345.6, ci95: 2_000.4 },
+    { opponent: "pricer", deals: 400, mbb_per_100: -9_000, ci95: 1_000 },
+    { opponent: "maniac", deals: 400, mbb_per_100: 5_000, ci95: 9_000 },
+  ];
+  expect(byWinRate(rows).map((row) => row.opponent)).toEqual(["nit", "maniac", "pricer"]);
+  // The run's own rows are left as they were: ranking is a view, not a rewrite.
+  expect(rows[0].opponent).toBe("nit");
+});
+
+test("the latest run is the first the fleet carries, and none is null", () => {
+  expect(arenaRun([RUN, { ...RUN, commit: "older" }]).commit).toBe("abc1234");
+  expect(arenaRun([])).toBe(null);
+  expect(arenaRun(undefined)).toBe(null);
+});
+
+test("a win rate on the scoreboard is thousands of a big blind a hundred hands, signed", () => {
+  // The Arena's number is already per hundred hands, in thousandths of a big blind.
+  expect(mbbText(12_345.6)).toBe("+12345.6 mbb/100");
+  expect(mbbText(-5_000)).toBe("−5000.0 mbb/100");
+  expect(mbbText(0)).toBe("+0.0 mbb/100");
+});
+
+test("a whisker spans a run's interval in a box, clamped to it, with zero marked", () => {
+  // 0 to 20,000 mbb over 100 by 10: 12,000 ± 2,000 is 10..14, so x from 50 to 70; zero at 0.
+  const span = { low: 0, high: 20_000 };
+  expect(whisker(12_000, 2_000, span, 100)).toEqual({ from: 50, to: 70, zero: 0, mean: 60 });
+  // An interval running past the box is clamped to its edges, never drawn outside it.
+  expect(whisker(19_000, 4_000, span, 100)).toEqual({ from: 75, to: 100, zero: 0, mean: 95 });
+  // A span of nothing is the whole box, not a division by zero.
+  expect(whisker(0, 0, { low: 0, high: 0 }, 100)).toEqual({ from: 0, to: 0, zero: 0, mean: 0 });
+});
+
+test("the scoreboard's span reaches every interval it draws, and always zero", () => {
+  // Nit runs to 14,346; the maniac's interval reaches -14,000 and +4,000.
+  const span = arenaSpan(RUN.rows);
+  expect(span).toEqual({ low: -14_000, high: 14_346 });
+  // Zero is inside the span, so a zero line falls on the box, left of a run above it.
+  const line = whisker(12_345.6, 2_000.4, span, 100);
+  expect(line.zero).toBeGreaterThan(0);
+  expect(line.zero).toBeLessThan(line.from);
+  expect(line.from).toBeLessThan(line.mean);
+  expect(line.mean).toBeLessThan(line.to);
+  // A run whose every interval is positive still draws zero, at the box's edge.
+  expect(arenaSpan([{ opponent: "x", deals: 1, mbb_per_100: 500, ci95: 100 }])).toEqual({
+    low: 0,
+    high: 600,
+  });
 });

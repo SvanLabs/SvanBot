@@ -101,6 +101,23 @@ function fleet() {
     server_ms: NOW,
     problems: [],
     release: { current: "11.0.0", previous: "10.9.0", installed: ["10.9.0", "11.0.0"] },
+    arena: [
+      {
+        commit: "abc1234def",
+        champion: "308e7da4b29fd533",
+        seed: 7,
+        rows: [
+          { opponent: "nit", deals: 400, mbb_per_100: 12_345.6, ci95: 2_000.4 },
+          { opponent: "<b>maniac</b>", deals: 400, mbb_per_100: -5_000, ci95: 9_000 },
+        ],
+      },
+      {
+        commit: "older999",
+        champion: "308e7da4b29fd533",
+        seed: 7,
+        rows: [{ opponent: "nit", deals: 400, mbb_per_100: 1_000, ci95: 500 }],
+      },
+    ],
     bots: [
       {
         ...base,
@@ -200,6 +217,90 @@ test("the release page says where the slots point and what each bot runs", () =>
 
 test("a bot that has written no status says so", () => {
   expect(show("/bot/Nobody").textContent).toContain("This bot has written no status.");
+});
+
+test("the scoreboard has a whisker an opponent over the latest run, its numbers as text beside it", () => {
+  const view = show("/scoreboard");
+  expect(view.all("section").map((panel) => panel.querySelector("h2").textContent)).toEqual([
+    "Latest run",
+    "Trend",
+  ]);
+  expect(view.textContent).toContain("abc1234");
+  // The champion is what the numbers mean: a promotion moves play under the same commit.
+  expect(view.textContent).toContain("champion 308e7da4");
+  expect(view.textContent).toContain("seed 7");
+  // The Opponents table is ranked by win rate: a head row, then the best win rate first, whatever order
+  // the run played them in. Here the fixture lists nit (+12,345.6) before maniac (-5,000).
+  const opponents = view.all("table")[0];
+  const rows = opponents.all("tr");
+  expect(rows.length).toBe(1 + 2);
+  expect(rows[1].textContent).toContain("+12345.6 mbb/100");
+  expect(rows[2].textContent).toContain("−5000.0 mbb/100");
+  expect(rows[1].all("svg").length).toBe(1);
+  // The trend keeps each run, newest first, and a run that did not play an opponent is a dash.
+  const trendRows = view.all("table")[1].all("tr");
+  expect(trendRows.length).toBe(1 + 2);
+  expect(trendRows[1].textContent).toContain("abc1234");
+  expect(trendRows[2].textContent).toContain("older99");
+  expect(trendRows[2].textContent).toContain("—");
+});
+
+test("the trend keeps an opponent the latest run did not play", () => {
+  // The trend is across commits, so its columns are every opponent any run played. Taking them
+  // from the newest run alone would drop an opponent the newest run skipped from every row.
+  globalThis.location.pathname = "/scoreboard";
+  const dropped = fleet();
+  dropped.arena[0].rows = dropped.arena[0].rows.filter((row) => row.opponent === "nit");
+  dropped.arena[1].rows = [
+    { opponent: "nit", deals: 400, mbb_per_100: 1_000, ci95: 500 },
+    { opponent: "maniac", deals: 400, mbb_per_100: 2_000, ci95: 500 },
+  ];
+  listeners.fleet({ data: JSON.stringify(dropped) });
+  const trend = ids.view.all("table")[1];
+  const head = trend.all("tr")[0].textContent;
+  expect(head).toContain("maniac");
+  // And the older run's line for it is kept, not dashed out.
+  expect(trend.all("tr")[2].textContent).toContain("+2000.0 mbb/100");
+});
+
+test("two runs of one commit under different champions are told apart", () => {
+  // A promotion changes play under one commit, so the commit alone does not name a run: the
+  // trend would show two identical labels for two different bodies of play.
+  globalThis.location.pathname = "/scoreboard";
+  const promoted = fleet();
+  promoted.arena[0].champion = "aaaa1111bbbb2222";
+  promoted.arena[0].commit = promoted.arena[1].commit;
+  listeners.fleet({ data: JSON.stringify(promoted) });
+  const labels = ids.view
+    .all("table")[1]
+    .all("tr")
+    .slice(1)
+    .map((row) => row.all("td")[0].textContent);
+  expect(new Set(labels).size).toBe(2);
+});
+
+test("the scoreboard is ranked by win rate, best first", () => {
+  // The spec asks for a win-rate order, not the order the run played them in. The fixture's
+  // lines are nit then maniac; reversed here so the ranking cannot happen by accident.
+  globalThis.location.pathname = "/scoreboard";
+  const reversed = fleet();
+  reversed.arena[0].rows.reverse();
+  listeners.fleet({ data: JSON.stringify(reversed) });
+  const rows = ids.view.all("table")[0].all("tr");
+  expect(rows[1].textContent).toContain("+12345.6 mbb/100");
+  expect(rows[2].textContent).toContain("−5000.0 mbb/100");
+});
+
+test("an opponent's name on the scoreboard is text too", () => {
+  const view = show("/scoreboard");
+  expect(view.all("b").length).toBe(0);
+  expect(view.innerHTML).toContain("&lt;b>maniac&lt;/b>");
+});
+
+test("with no Arena run yet the scoreboard says how to make one", () => {
+  globalThis.location.pathname = "/scoreboard";
+  listeners.fleet({ data: JSON.stringify({ ...fleet(), arena: [] }) });
+  expect(ids.view.textContent).toContain("svanbot arena");
 });
 
 test("a dropped stream keeps the last fleet on screen and says it dropped", () => {

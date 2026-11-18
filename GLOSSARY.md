@@ -112,6 +112,11 @@ How likely an opponent is to fold, check, call or bet each size at a spot, given
 A range follows from it and the actions seen so far.
 _Avoid_: showdown fit, tendency table
 
+**Fit**:
+To learn an action model from the hands in one bot's store, and to keep it only if it beats the one
+in use on hands held out of the fit. A fitted model is kept beside the store and read back whole.
+_Avoid_: train, calibrate
+
 **Strength bucket**:
 Where a pair of hole cards ranks among every pair still possible on the board at that moment, cut
 into eight equal shares. The action model sees hole cards only through their bucket.
@@ -140,7 +145,11 @@ Whether an opponent plays a fixed strategy, switches between strategies, or lear
 _Avoid_: opponent type, style
 
 **Sparring archetype**:
-A scripted opponent style that the sim plays against, standing in for a kind of real opponent.
+A scripted opponent style that the sim plays against, standing in for a kind of real opponent. Five
+so far: the **calling station** (calls any bet, bets only its best hands), the **nit** (folds all
+but strong hands to a bet, raises those), the **maniac** (bets and raises with anything), the
+**switching** one (a nit, then a maniac, turn about every 20 hands), and the **learning** one
+(adapts to how often we bet).
 _Avoid_: dummy, test bot, persona
 
 ### Deciding
@@ -297,6 +306,16 @@ _Avoid_: CI, pipeline, checks
 **Arena**:
 SvanBot's own benchmark league, where parameter sets and sparring archetypes play scored matches.
 _Avoid_: tournament, ladder
+
+**Bout**:
+One stretch of the Arena: 50 deals, one sparring opponent, played in order so a learning one
+learns across them. Bouts share nothing, so they run in any order.
+_Avoid_: session, round, match
+
+**Scoreboard**:
+The Arena's table of results: the opponent, the win rate over it, the 95% interval and the deals
+behind it. A run is recorded with its commit and seed, so every line can be played again.
+_Avoid_: leaderboard, standings
 
 **Dossier**:
 Everything SvanBot knows about one opponent, in one place.

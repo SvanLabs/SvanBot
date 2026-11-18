@@ -1,6 +1,7 @@
 # The gate on GitHub (V11-03): the same tiers as on the box, with the tools mise pins. The commit
-# and test tiers run side by side, and cargo-deny runs beside them. Each action is pinned to a
-# commit, with its release named beside it.
+# and test tiers run side by side, and cargo-deny runs beside them. The Arena records a run beside
+# them when a change can move a scoreboard line; it gates nothing yet, and cannot at this budget
+# (see the `arena` job). Each action is pinned to a commit, with its release named beside it.
 name: check
 
 on:
@@ -66,3 +67,69 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
       - run: bun tools/gate.ts ci
+
+  # The Arena re-runs on a pull request that can change play (V11-15): a pure layer decides it, so
+  # a change to runtime or apps alone skips the run. The scoreboard goes into the run's summary,
+  # and an artifact keeps the numbers with the commit and seed they were played from.
+  #
+  # It gates nothing, and must not pretend to. At two bouts a line is 100 deals, where an interval
+  # of ±200000 mbb/100 straddles zero: a run this small cannot say a change helped, so a threshold
+  # on it would be a coin flip with a build cost. What it can do is record a run of a fixed seed,
+  # which deals the same cards every time, so a later change is compared against the run before it
+  # rather than against zero. The release gate that reads these numbers is V11-14's, and runs on
+  # the box, where a run is long enough to mean something.
+  arena:
+    name: Arena
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the diff needs the base to be a commit it can read
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+      - id: behaviour
+        shell: bash
+        run: |
+          # Every step here fails closed: a git or tool error is a failed step, never a silent
+          # "no behaviour change". `pipefail` is what makes that true of the pipelines below.
+          set -euo pipefail
+          # The range is one revision expression, three-dot included: `HEAD~1 HEAD` as one
+          # argument is not a range, and git would refuse it.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            range="origin/${{ github.base_ref }}...HEAD"
+          else
+            range="HEAD~1...HEAD"
+          fi
+          # git's own failure is the step's: the command substitution is under `set -e`.
+          paths=$(git diff --name-only "$range")
+          # The tool reads the diff one path a line, so a big diff is never split into batches,
+          # where one impure batch could hide a pure. No path that can move a scoreboard line
+          # means the Arena is not run.
+          changed=$(printf '%s\n' "$paths" | bun tools/behaviour.ts)
+          if [ -n "$changed" ]; then
+            printf '%s\n' "$changed"
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.behaviour.outputs.run == 'yes'
+        with:
+          workspaces: ". -> target/dev"
+          cache-workspace-crates: true
+      - if: steps.behaviour.outputs.run == 'yes'
+        shell: bash
+        run: |
+          # `pipefail` so a failed Arena fails the step, though it is `tee`'d into the summary.
+          set -euo pipefail
+          # The build is the gate's, so cargo stays behind the one wrapper (`.claude/rules/tools.md`).
+          # The run itself is here because only a step can write the scoreboard into the summary.
+          bun tools/gate.ts arena
+          SVANBOT_FLEET="$RUNNER_TEMP/fleet" SVANBOT_COMMIT="$GITHUB_SHA" \
+            target/dev/debug/svanbot arena 2 17 | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: steps.behaviour.outputs.run == 'yes'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: arena
+          path: ${{ runner.temp }}/fleet/arena.json
+          if-no-files-found: error

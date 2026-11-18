@@ -21,6 +21,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use svanbot_runtime::fleet::{self, ArenaRun};
 use svanbot_runtime::release::version_cmp;
 use svanbot_runtime::slot::Slots;
 use svanbot_runtime::status::Fleet;
@@ -32,6 +33,10 @@ mod stream;
 pub struct Config {
     pub addr: String,
     pub data_dir: PathBuf,
+    /// Where the fleet's files are: the champion, the proposal and the Arena's runs. Passed in
+    /// rather than guessed, so the page reads what `svanbot arena` wrote even when
+    /// `SVANBOT_FLEET` moves it (the binary's `fleet_dir`).
+    pub fleet_dir: PathBuf,
     /// The install tree, whose slots say what is running.
     pub lib_dir: PathBuf,
 }
@@ -166,15 +171,50 @@ fn respond(socket: &mut TcpStream, status: u16, kind: &str, body: &[u8]) -> io::
 
 /// The fleet as it stands, without the clock: what the stream compares to see a change.
 fn fleet_now(config: &Config) -> Value {
-    let fleet = Fleet::read(&config.data_dir).unwrap_or_else(|error| Fleet {
+    let mut fleet = Fleet::read(&config.data_dir).unwrap_or_else(|error| Fleet {
         bots: Vec::new(),
         problems: vec![format!("data directory: {error}")],
     });
+    let (runs, arena_problems) = arena(&config.fleet_dir);
+    fleet.problems.extend(arena_problems);
     json!({
         "bots": fleet.bots.iter().map(|status| status.to_json()).collect::<Vec<_>>(),
         "problems": fleet.problems,
         "release": release(&config.lib_dir),
+        "arena": runs,
     })
+}
+
+/// The Arena's recorded runs, newest first, from the fleet, and any problem with them. A run file
+/// that cannot be read is a problem the operator has to see, not a scoreboard silently missing;
+/// so is a latest run that measured a champion the fleet no longer plays, since a promotion
+/// changes play without changing the commit.
+fn arena(fleet_dir: &Path) -> (Value, Vec<String>) {
+    let fleet = fleet::Fleet::in_dir(fleet_dir);
+    let runs = match fleet.arena_runs() {
+        Ok(runs) => runs,
+        Err(why) => {
+            return (
+                Value::Array(Vec::new()),
+                vec![format!("the arena run was not read: {why}")],
+            );
+        }
+    };
+    let mut problems = Vec::new();
+    // An unreadable champion is the live path's problem to report (`Fleet::champion`); here the
+    // question is only whether the last run's numbers are of what is running.
+    if let (Some(latest), Ok(champion)) = (runs.first(), fleet.champion())
+        && latest.champion != champion.digest().to_string()
+    {
+        problems.push(format!(
+            "the last arena run played champion {}, not the champion in play: play `svanbot arena`",
+            latest.champion
+        ));
+    }
+    (
+        Value::Array(runs.iter().map(ArenaRun::as_value).collect()),
+        problems,
+    )
 }
 
 /// The fleet document the page reads and the stream pushes: the fleet, and the server's clock.
@@ -213,8 +253,9 @@ fn release(lib_dir: &Path) -> Value {
     })
 }
 
-/// Runs the subcommand from the environment, for `svanbot dashboard`.
-pub fn run() -> ExitCode {
+/// Runs the subcommand from the environment, for `svanbot dashboard`. `fleet_dir` is the binary's
+/// (`crate::fleet_dir`), which knows how `SVANBOT_FLEET` moves the fleet away from the stores.
+pub fn run(fleet_dir: PathBuf) -> ExitCode {
     let default_dir = |name: &str, fallback: &str| {
         std::env::var_os(name)
             .map(PathBuf::from)
@@ -232,6 +273,7 @@ pub fn run() -> ExitCode {
     let server = match Server::bind(Config {
         addr: addr.clone(),
         data_dir: data_dir.clone(),
+        fleet_dir,
         lib_dir,
     }) {
         Ok(server) => server,

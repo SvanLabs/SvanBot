@@ -28,7 +28,10 @@ svanbot-sim = { path = "crates/sim" }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 # SQLite compiled in, so the box needs no system library and every machine runs the same one.
 rusqlite = { version = "0.43.0", default-features = false, features = ["bundled"] }
-serde_json = "1.0.154"
+# `float_roundtrip` is serde_json's exact float decoder: without it a written number can read
+# back one bit off, so a recorded run would not be the run it recorded. The fleet's files promise
+# a number reads back to the same bits, and this is what keeps that promise.
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 # The release checksum: the updater installs only a build whose bytes hash to what CI published.
 sha2 = "0.10.9"
 svanbot-runtime = { path = "crates/runtime" }

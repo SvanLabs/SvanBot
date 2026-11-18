@@ -1,11 +1,12 @@
-//! The fleet's files: the champion every bot plays by, and the proposal the canary takes up.
+//! The fleet's files: the champion every bot plays by, the proposal the canary takes up, and the
+//! Arena's recorded runs.
 // A test fleet is a fresh temporary directory.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use std::path::PathBuf;
 
 use svanbot_learn::probe::Kind;
-use svanbot_runtime::fleet::{Fleet, Proposal};
+use svanbot_runtime::fleet::{ARENA_HISTORY, ArenaRow, ArenaRun, Fleet, Proposal};
 use svanbot_strategy::params::Params;
 
 fn scratch(name: &str) -> PathBuf {
@@ -75,4 +76,155 @@ fn a_proposal_reads_back_from_its_own_text_and_names_its_hypothesis() {
     assert_eq!(hypothesis.challenger, CHALLENGER.digest());
     assert_eq!(hypothesis.kind, Kind::Guard { hands: 3_000 });
     assert!(Proposal::from_json("{}").is_err());
+}
+
+fn run(commit: &str, seed: u64, mbb: f64) -> ArenaRun {
+    ArenaRun {
+        commit: commit.into(),
+        champion: "00000000000000aa".into(),
+        seed,
+        rows: vec![ArenaRow {
+            opponent: "nit".into(),
+            deals: 400,
+            mbb_per_100: mbb,
+            ci95: 250.0,
+        }],
+    }
+}
+
+#[test]
+fn the_arena_keeps_the_latest_run_and_a_short_history_of_the_ones_before() {
+    let fleet = Fleet::in_dir(scratch("arena"));
+    assert_eq!(fleet.arena_runs(), Ok(Vec::new()));
+    for number in 0..(ARENA_HISTORY as u64 + 3) {
+        fleet
+            .record_arena(&run(&format!("c{number}"), number, 1.0))
+            .unwrap();
+    }
+    let recorded = fleet.arena_runs().unwrap();
+    assert_eq!(recorded.len(), ARENA_HISTORY);
+    // Newest first, so the dashboard reads the latest without searching, and the oldest fall off.
+    assert_eq!(recorded[0].commit, format!("c{}", ARENA_HISTORY as u64 + 2));
+    assert_eq!(recorded[ARENA_HISTORY - 1].commit, "c3");
+}
+
+#[test]
+fn a_run_reads_back_from_its_own_file_unchanged_enough_to_report() {
+    let dir = scratch("arena-roundtrip");
+    let fleet = Fleet::in_dir(&dir);
+    let run = run("abc1234", 7, 12_345.6 + 0.1 + 0.2);
+    fleet.record_arena(&run).unwrap();
+    // The last bit of a float is the writer's, not the run's: the run is played again from its
+    // commit and seed, so a scoreboard line has to read back as what it printed, not bit for bit.
+    let [read] = fleet.arena_runs().unwrap().try_into().unwrap();
+    assert_eq!(
+        (read.commit, read.champion, read.seed),
+        (run.commit.clone(), run.champion.clone(), run.seed)
+    );
+    assert_eq!(read.rows.len(), 1);
+    assert_eq!(read.rows[0].opponent, "nit");
+    assert_eq!(read.rows[0].deals, 400);
+    assert!((read.rows[0].mbb_per_100 - run.rows[0].mbb_per_100).abs() < 1e-6);
+    assert_eq!(read.rows[0].ci95, 250.0);
+    // The same run recorded twice is the same run: re-running a commit that did not change the
+    // policy replaces its line rather than growing the history.
+    fleet.record_arena(&run).unwrap();
+    assert_eq!(fleet.arena_runs().unwrap().len(), 1);
+}
+
+#[test]
+fn a_local_run_is_not_the_same_run_as_a_local_run_that_measured_otherwise() {
+    // A local run has no commit to be played again from, so two of them under one champion and
+    // seed are not the same run unless every number agrees: otherwise a run of changed code
+    // would replace the run before it, and the scoreboard would show one line where there were two.
+    let fleet = Fleet::in_dir(scratch("arena-local"));
+    fleet.record_arena(&run("local", 7, 1.0)).unwrap();
+    fleet.record_arena(&run("local", 7, 2.0)).unwrap();
+    assert_eq!(fleet.arena_runs().unwrap().len(), 2);
+    // The same local run recorded twice is still one line.
+    fleet.record_arena(&run("local", 7, 2.0)).unwrap();
+    assert_eq!(fleet.arena_runs().unwrap().len(), 2);
+}
+
+#[test]
+fn a_run_written_as_text_is_the_run_read_back() {
+    // There is one format for a run: `svanbot arena` writes its `--out` file from this text and
+    // records the same run here, so the file an operator keeps and the scoreboard cannot disagree
+    // on what a run is. The field order is the writer's; the run is the fields and their values.
+    let run = run("abc1234", 7, 12_345.6);
+    let value: serde_json::Value = serde_json::from_str(&run.as_text()).unwrap();
+    assert_eq!(value["commit"], "abc1234");
+    assert_eq!(value["champion"], "00000000000000aa");
+    assert_eq!(value["seed"], 7);
+    assert_eq!(value["rows"][0]["opponent"], "nit");
+    assert_eq!(value["rows"][0]["deals"], 400);
+    assert_eq!(value["rows"][0]["mbb_per_100"], 12_345.6);
+    assert_eq!(value["rows"][0]["ci95"], 250.0);
+}
+
+#[test]
+fn a_promotion_under_the_same_commit_is_a_run_of_its_own() {
+    // The commit says what the code was; the champion says what it played. A promotion between
+    // two runs of one commit moves the scoreboard, so the earlier run is not the later one.
+    let fleet = Fleet::in_dir(scratch("arena-promoted"));
+    let before = run("abc1234", 7, 1.0);
+    fleet.record_arena(&before).unwrap();
+    let after = ArenaRun {
+        champion: "00000000000000bb".into(),
+        ..before
+    };
+    fleet.record_arena(&after).unwrap();
+    let runs = fleet.arena_runs().unwrap();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].champion, "00000000000000bb");
+}
+
+#[test]
+fn a_run_file_that_does_not_parse_is_refused_rather_than_misread() {
+    let dir = scratch("arena-broken");
+    let fleet = Fleet::in_dir(&dir);
+    fleet.record_arena(&run("bad", 1, 1.0)).unwrap();
+    std::fs::write(dir.join("arena.json"), "{\"runs\":[{\"commit\":\"x\"}]}").unwrap();
+    assert!(fleet.arena_runs().is_err());
+}
+
+#[test]
+fn a_run_of_numbers_with_no_short_decimal_form_reads_back_to_the_bit() {
+    // Real scoreboard numbers come from division, so they almost never have a short decimal
+    // form. The file and the scoreboard must not disagree on what a run is, so a number written
+    // and read back has to be the same number, bit for bit — otherwise a second recording of the
+    // same local run measures differently and becomes a second line.
+    let fleet = Fleet::in_dir(scratch("arena-bit-exact"));
+    // A real scoreboard line from `svanbot arena 1 5 1`: thirty-one deals split one way, and no
+    // short decimal form. serde_json's default decoder rounds it one bit the wrong way.
+    let mbb = -984_173.515_151_514_9;
+    let run = ArenaRun {
+        rows: vec![ArenaRow {
+            ..run("local", 7, mbb).rows.into_iter().next().unwrap()
+        }],
+        ..run("local", 7, mbb)
+    };
+    fleet.record_arena(&run).unwrap();
+    let [read] = fleet.arena_runs().unwrap().try_into().unwrap();
+    assert_eq!(read.rows[0].mbb_per_100.to_bits(), mbb.to_bits());
+    // The same run recorded twice is still one line.
+    fleet.record_arena(&run).unwrap();
+    assert_eq!(fleet.arena_runs().unwrap().len(), 1);
+}
+
+#[test]
+fn recording_a_run_leaves_the_numbers_before_it_alone() {
+    // A later run is a later line; it must not rewrite what an earlier line says.
+    let fleet = Fleet::in_dir(scratch("arena-stable"));
+    let first = run("abc1234", 7, -984_173.515_151_514_9);
+    fleet.record_arena(&first).unwrap();
+    fleet
+        .record_arena(&run("def5678", 7, 2.0 / 7.0 * 100_000.0))
+        .unwrap();
+    let runs = fleet.arena_runs().unwrap();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(
+        runs[1].rows[0].mbb_per_100.to_bits(),
+        first.rows[0].mbb_per_100.to_bits()
+    );
 }
