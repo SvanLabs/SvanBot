@@ -122,10 +122,9 @@ jobs:
         run: |
           # `pipefail` so a failed Arena fails the step, though it is `tee`'d into the summary.
           set -euo pipefail
-          # Cargo directly, not the gate's `cargo()` wrapper: the wrapper's `nice`/`ionice` keep
-          # this box usable for the live fleet, and a CI runner has no fleet to starve. The two
-          # parts that do matter here, `target/dev` and `-j4`, are kept.
-          CARGO_TARGET_DIR=target/dev cargo build -p svanbot -j4
+          # The build is the gate's, so cargo stays behind the one wrapper (`.claude/rules/tools.md`).
+          # The run itself is here because only a step can write the scoreboard into the summary.
+          bun tools/gate.ts arena
           SVANBOT_FLEET="$RUNNER_TEMP/fleet" SVANBOT_COMMIT="$GITHUB_SHA" \
             target/dev/debug/svanbot arena 2 17 | tee -a "$GITHUB_STEP_SUMMARY"
       - if: steps.behaviour.outputs.run == 'yes'

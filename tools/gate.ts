@@ -8,6 +8,8 @@
 //                              and last the disk budget of this clone's target/
 //   bun tools/gate.ts test     the full tier's tests alone: CI runs it beside the commit tier
 //   bun tools/gate.ts ci       cargo-deny, run in CI on every pull request and once a week
+//   bun tools/gate.ts arena    the build CI's Arena job runs the binary from, through the same
+//                              wrapper as every other cargo call
 import { join } from "node:path";
 
 export type Step = { name: string; argv: string[]; env: Record<string, string> };
@@ -22,6 +24,9 @@ const TIERS: Record<string, string[]> = {
   full: [...COMMIT, ...TEST, "disk"],
   test: TEST,
   ci: ["deny"],
+  // CI's Arena job builds here and runs the binary itself: only the workflow can tee a
+  // scoreboard into the step summary. The build still goes through `cargo()`.
+  arena: ["arena-build"],
 };
 
 const ROOT = join(import.meta.dir, "..");
@@ -69,6 +74,8 @@ function stepFor(name: string): Step {
       return { name, argv: ["tools/node_modules/.bin/tsc", "-p", "tools"], env: {} };
     case "deny":
       return { name, argv: ["cargo", "deny", "--locked", "check"], env: {} };
+    case "arena-build":
+      return { name, argv: cargo(["build", "-p", "svanbot"]), env: TARGET };
     case "page-test":
       // The dashboard page's logic, tested without a browser.
       return { name, argv: [process.execPath, "test", "crates/apps/svanbot/web"], env: {} };

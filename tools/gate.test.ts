@@ -48,7 +48,21 @@ test("the ci tier runs cargo-deny against the lockfile", () => {
 });
 
 test("an unknown tier is refused, naming the ones there are", () => {
-  expect(() => plan("nightly")).toThrow('unknown tier "nightly": use commit, full, test or ci');
+  expect(() => plan("nightly")).toThrow(
+    'unknown tier "nightly": use commit, full, test, ci or arena',
+  );
+});
+
+test("the arena tier builds the binary through the wrapper, so CI's job runs no bare cargo", () => {
+  // The workflow's Arena job runs `svanbot arena` itself, because only a step can tee a
+  // scoreboard into the summary. The build before it is the gate's, like every other cargo call.
+  expect(plan("arena")).toEqual([
+    {
+      name: "arena-build",
+      argv: ["nice", "-n", "15", "ionice", "-c3", "cargo", "build", "-p", "svanbot", "-j4"],
+      env: { CARGO_TARGET_DIR: "target/dev" },
+    },
+  ]);
 });
 
 test("cargo builds into target/dev, at low priority, on four jobs", () => {

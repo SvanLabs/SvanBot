@@ -3,12 +3,12 @@ import {
   arenaRun,
   arenaSpan,
   botView,
+  byWinRate,
   chart,
   duration,
   fleetProblems,
   freshness,
   isFleet,
-  ladder,
   mbbText,
   rateText,
   route,
@@ -154,13 +154,13 @@ const RUN = {
   ],
 };
 
-test("the ladder puts the best win rate first, whatever order the run played them", () => {
+test("the win-rate order puts the best first, whatever order the run played them", () => {
   const rows = [
     { opponent: "nit", deals: 400, mbb_per_100: 12_345.6, ci95: 2_000.4 },
     { opponent: "pricer", deals: 400, mbb_per_100: -9_000, ci95: 1_000 },
     { opponent: "maniac", deals: 400, mbb_per_100: 5_000, ci95: 9_000 },
   ];
-  expect(ladder(rows).map((row) => row.opponent)).toEqual(["nit", "maniac", "pricer"]);
+  expect(byWinRate(rows).map((row) => row.opponent)).toEqual(["nit", "maniac", "pricer"]);
   // The run's own rows are left as they were: ranking is a view, not a rewrite.
   expect(rows[0].opponent).toBe("nit");
 });

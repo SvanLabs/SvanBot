@@ -6,12 +6,12 @@ import {
   arenaRun,
   arenaSpan,
   botView,
+  byWinRate,
   chart,
   duration,
   fleetProblems,
   freshness,
   isFleet,
-  ladder,
   mbbText,
   rateText,
   route,
@@ -357,7 +357,7 @@ function scoreboardPage(fleet) {
             ["Mean", "number"],
             ["Deals", "number"],
           ],
-          ladder(latest.rows).map((row) => {
+          byWinRate(latest.rows).map((row) => {
             const bar = whisker(row.mbb_per_100, row.ci95, span, width);
             const label = `${row.opponent}: ${mbbText(row.mbb_per_100)} over ${row.deals} deals, between ${mbbText(row.mbb_per_100 - row.ci95)} and ${mbbText(row.mbb_per_100 + row.ci95)}`;
             return h(

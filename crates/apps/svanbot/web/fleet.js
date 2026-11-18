@@ -210,10 +210,11 @@ export function arenaRun(runs) {
 }
 
 /**
- * A run's rows as a ladder: the best win rate first, so a strong opponent and a weak one read at
- * a glance. The row's own order is the run's; the page ranks them.
+ * A run's rows by win rate: the best first, so a strong opponent and a weak one read at a glance.
+ * The row's own order is the run's; the page ranks them. Not a ladder: the glossary rules that
+ * word out for the Arena, since it names a different thing.
  */
-export function ladder(rows) {
+export function byWinRate(rows) {
   return [...rows].sort((a, b) => b.mbb_per_100 - a.mbb_per_100);
 }
 

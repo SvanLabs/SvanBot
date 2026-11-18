@@ -229,7 +229,7 @@ test("the scoreboard has a whisker an opponent over the latest run, its numbers 
   // The champion is what the numbers mean: a promotion moves play under the same commit.
   expect(view.textContent).toContain("champion 308e7da4");
   expect(view.textContent).toContain("seed 7");
-  // The Opponents table is a ladder: a head row, then the best win rate first, whatever order
+  // The Opponents table is ranked by win rate: a head row, then the best win rate first, whatever order
   // the run played them in. Here the fixture lists nit (+12,345.6) before maniac (-5,000).
   const opponents = view.all("table")[0];
   const rows = opponents.all("tr");
@@ -279,8 +279,8 @@ test("two runs of one commit under different champions are told apart", () => {
   expect(new Set(labels).size).toBe(2);
 });
 
-test("the scoreboard is a ladder, best win rate first", () => {
-  // The spec asks for a win-rate ladder, not the order the run played them in. The fixture's
+test("the scoreboard is ranked by win rate, best first", () => {
+  // The spec asks for a win-rate order, not the order the run played them in. The fixture's
   // lines are nit then maniac; reversed here so the ranking cannot happen by accident.
   globalThis.location.pathname = "/scoreboard";
   const reversed = fleet();
