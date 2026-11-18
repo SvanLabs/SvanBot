@@ -187,3 +187,44 @@ fn a_run_file_that_does_not_parse_is_refused_rather_than_misread() {
     std::fs::write(dir.join("arena.json"), "{\"runs\":[{\"commit\":\"x\"}]}").unwrap();
     assert!(fleet.arena_runs().is_err());
 }
+
+#[test]
+fn a_run_of_numbers_with_no_short_decimal_form_reads_back_to_the_bit() {
+    // Real scoreboard numbers come from division, so they almost never have a short decimal
+    // form. The file and the scoreboard must not disagree on what a run is, so a number written
+    // and read back has to be the same number, bit for bit — otherwise a second recording of the
+    // same local run measures differently and becomes a second line.
+    let fleet = Fleet::in_dir(scratch("arena-bit-exact"));
+    // A real scoreboard line from `svanbot arena 1 5 1`: thirty-one deals split one way, and no
+    // short decimal form. serde_json's default decoder rounds it one bit the wrong way.
+    let mbb = -984_173.515_151_514_9;
+    let run = ArenaRun {
+        rows: vec![ArenaRow {
+            ..run("local", 7, mbb).rows.into_iter().next().unwrap()
+        }],
+        ..run("local", 7, mbb)
+    };
+    fleet.record_arena(&run).unwrap();
+    let [read] = fleet.arena_runs().unwrap().try_into().unwrap();
+    assert_eq!(read.rows[0].mbb_per_100.to_bits(), mbb.to_bits());
+    // The same run recorded twice is still one line.
+    fleet.record_arena(&run).unwrap();
+    assert_eq!(fleet.arena_runs().unwrap().len(), 1);
+}
+
+#[test]
+fn recording_a_run_leaves_the_numbers_before_it_alone() {
+    // A later run is a later line; it must not rewrite what an earlier line says.
+    let fleet = Fleet::in_dir(scratch("arena-stable"));
+    let first = run("abc1234", 7, -984_173.515_151_514_9);
+    fleet.record_arena(&first).unwrap();
+    fleet
+        .record_arena(&run("def5678", 7, 2.0 / 7.0 * 100_000.0))
+        .unwrap();
+    let runs = fleet.arena_runs().unwrap();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(
+        runs[1].rows[0].mbb_per_100.to_bits(),
+        first.rows[0].mbb_per_100.to_bits()
+    );
+}
