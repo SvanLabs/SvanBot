@@ -6,13 +6,14 @@ import {
   byStreet,
   byWinRate,
   chart,
+  chipsText,
   duration,
+  exploitText,
   fleetProblems,
   freshness,
   isFleet,
   mbbText,
   priceText,
-  rangeRows,
   rateText,
   route,
   running,
@@ -229,12 +230,25 @@ test("an action's value is signed and in big blinds, best first", () => {
   expect(valueText(-0.25)).toBe("−0.250 bb");
 });
 
+test("a re-solve's value is signed and in chips, the unit the tree is built in", () => {
+  // The re-solve values in chips (`resolve`): a call of 400 into a 400 pot is worth 400 chips,
+  // and printing it as "+400.000 bb of the pot" says two wrong things at once.
+  expect(chipsText(400)).toBe("+400.0 chips");
+  expect(chipsText(-12.5)).toBe("−12.5 chips");
+});
+
+test("an exploit budget says so, and the baseline says it exploits nothing", () => {
+  expect(exploitText(0.4)).toBe("exploit 0.40");
+  expect(exploitText(null)).toBe("baseline read, no exploit");
+  expect(exploitText(undefined)).toBe("baseline read, no exploit");
+});
+
 test("a hand's decisions group by street, in the order they were made", () => {
   const decisions = [
     { street: "preflop", branch: "priced" },
-    { street: "flop", branch: "solved" },
-    { street: "flop", branch: "solved" },
-    { street: "river", branch: "solved" },
+    { street: "flop", branch: "resolved" },
+    { street: "flop", branch: "resolved" },
+    { street: "river", branch: "resolved" },
   ];
   const streets = byStreet(decisions);
   expect(streets.map((street) => street.name)).toEqual(["preflop", "flop", "river"]);
@@ -246,12 +260,4 @@ test("a hand's decisions group by street, in the order they were made", () => {
 test("an empty trace groups to no streets rather than one empty street", () => {
   expect(byStreet([])).toEqual([]);
   expect(byStreet(undefined)).toEqual([]);
-});
-
-test("a range's masses are labelled weakest first, and add to one", () => {
-  const rows = rangeRows([0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1, 0]);
-  expect(rows.length).toBe(8);
-  expect(rows[0].label).toBe("1");
-  expect(rows[7].label).toBe("8");
-  expect(rows[3].mass).toBeCloseTo(0.3, 6);
 });

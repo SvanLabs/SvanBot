@@ -2,11 +2,11 @@
 // through `fleet.js`, and every name on it is set as text, never as markup: an opponent chooses
 // their own name.
 
+import { facts, h, panel, table } from "./dom.js";
 import {
   arenaRun,
   arenaSpan,
   botView,
-  byStreet,
   byWinRate,
   chart,
   duration,
@@ -14,68 +14,13 @@ import {
   freshness,
   isFleet,
   mbbText,
-  priceText,
-  rangeRows,
   rateText,
   route,
   running,
-  valueText,
   whisker,
   winRate,
 } from "./fleet.js";
-
-const SVG = "http://www.w3.org/2000/svg";
-
-/** An element with attributes and children. A string child is text. */
-function h(tag, attrs = {}, ...children) {
-  const svg = ["svg", "polyline", "line", "title"].includes(tag) && attrs.svg !== false;
-  const node = svg ? document.createElementNS(SVG, tag) : document.createElement(tag);
-  for (const [name, value] of Object.entries(attrs)) {
-    if (name !== "svg" && value !== null && value !== undefined) {
-      node.setAttribute(name, String(value));
-    }
-  }
-  // A view is built from lists of lists: flatten them all the way, or a list would be appended
-  // as its own text.
-  for (const child of children.flat(Number.POSITIVE_INFINITY)) {
-    if (child !== null && child !== undefined) {
-      // A number is text, as it would be in the DOM: `append(7)` makes a text node there too.
-      node.append(typeof child === "object" ? child : String(child));
-    }
-  }
-  return node;
-}
-
-/** A definition list from pairs of a term and what it is. */
-function facts(pairs) {
-  return h(
-    "dl",
-    {},
-    pairs.flatMap(([term, value]) => [h("dt", {}, term), h("dd", {}, value)]),
-  );
-}
-
-function table(caption, heads, rows) {
-  return h(
-    "table",
-    {},
-    h("caption", { class: "muted" }, caption),
-    h(
-      "thead",
-      {},
-      h(
-        "tr",
-        {},
-        heads.map(([text, cls]) => h("th", { scope: "col", class: cls }, text)),
-      ),
-    ),
-    h("tbody", {}, rows),
-  );
-}
-
-function panel(title, ...children) {
-  return h("section", { class: "card" }, h("h2", {}, title), children);
-}
+import { handPage } from "./replay.js";
 
 function when(ms, nowMs) {
   return ms === null || ms === undefined ? "never" : `${duration(nowMs - ms)} ago`;
@@ -290,73 +235,6 @@ function tracedHands(bot) {
         h("td", { class: "number" }, String(hand.decisions)),
         h("td", {}, when(hand.recorded_ms, nowMs)),
       ),
-    ),
-  );
-}
-
-/**
- * One hand's page: every decision in it, street by street, from the trace the bot wrote rather
- * than from a replay of the hand (V11-24). It is loopback only, like every page here.
- */
-function handPage(state, bot, hand) {
-  const title = h("h1", {}, `${bot} `, h("code", {}, hand));
-  const trace = state.trace;
-  const head = h("p", {}, h("a", { href: `/bot/${bot}` }, "← back to the bot"));
-  if (trace === null) {
-    return [title, head, h("p", { class: "muted" }, "Reading the trace…")];
-  }
-  if (trace.error) {
-    return [title, head, h("p", { class: "worst fail" }, trace.error)];
-  }
-  if (!trace.traced) {
-    // A hand from before the trace existed is not a hand that made no decisions.
-    return [title, head, h("p", { class: "muted" }, trace.note)];
-  }
-  const streets = byStreet(trace.decisions);
-  return [
-    title,
-    head,
-    ...streets.map((street) =>
-      panel(streetTitle(street.name), ...street.decisions.map(decisionView)),
-    ),
-  ];
-}
-
-function streetTitle(name) {
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-/** One decision: which way decided, what it was worth, and the ranges it read. */
-function decisionView(decision) {
-  const priced = decision.branch === "priced";
-  return h(
-    "div",
-    { class: "decision" },
-    h(
-      "p",
-      {},
-      h("strong", {}, priced ? "Priced" : "Solved"),
-      priced
-        ? `: equity ${(decision.equity * 100).toFixed(1)}%, ${priceText(decision.price)}`
-        : `: took action ${decision.taken + 1} of ${decision.values.length}`,
-    ),
-    priced
-      ? null
-      : facts(
-          decision.values.map((value, at) => [
-            `Action ${at + 1}`,
-            `${valueText(value)} of the pot, mixed ${(decision.strategy[at] * 100).toFixed(0)}%`,
-          ]),
-        ),
-    ...(decision.ranges ?? []).map((range) =>
-      facts([
-        [
-          `Opponent ${range.seat + 1}`,
-          rangeRows(range.masses)
-            .map((row) => `${row.mass.toFixed(2)}`)
-            .join(" "),
-        ],
-      ]),
     ),
   );
 }

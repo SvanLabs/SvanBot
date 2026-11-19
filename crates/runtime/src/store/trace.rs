@@ -3,8 +3,9 @@
 //! Written by hand rather than through a serialiser. `strategy` carries none, and the record is a
 //! handful of numbers and one word, which is not worth a crate the operator has to approve.
 
+use svanbot_core::card::CardSet;
 use svanbot_core::rules::Street;
-use svanbot_strategy::policy::{Branch, PricedTrace, Ranged, SolvedTrace, Trace};
+use svanbot_strategy::policy::{Abstract, Branch, PricedTrace, Ranged, ResolvedTrace, Trace};
 
 use rusqlite::{Transaction, params};
 
@@ -26,61 +27,62 @@ pub struct TracedHand {
     pub decisions: usize,
 }
 
-pub(super) fn street_name(street: Street) -> &'static str {
-    match street {
-        Street::Preflop => "preflop",
-        Street::Flop => "flop",
-        Street::Turn => "turn",
-        Street::River => "river",
-    }
-}
-
-fn street_named(name: &str) -> Street {
-    match name {
-        "flop" => Street::Flop,
-        "turn" => Street::Turn,
-        "river" => Street::River,
-        _ => Street::Preflop,
-    }
-}
-
-pub(super) fn branch_name(branch: Branch) -> &'static str {
-    match branch {
-        Branch::Solved => "solved",
-        Branch::Priced => "priced",
-    }
-}
-
 /// The trace as JSON. Written by hand: `strategy` carries no serialiser, and the record is a
-/// handful of numbers and one word, which is not worth a crate the operator has to approve.
+/// handful of numbers and a few words, which is not worth a crate the operator has to approve.
+///
+/// A number that is not finite has no JSON spelling (`inf`, `NaN`), and the column's
+/// `json_valid` refuses the row, which would lose the whole hand with it. A value that is not
+/// finite loses its own entry only, and says so with `null`: a recorded hole in the values is
+/// better than a decision the bot played and the store never kept.
 pub(super) fn trace_json(trace: &Trace) -> String {
-    let mut fields: Vec<String> = vec![format!(r#""branch":"{}""#, branch_name(trace.branch))];
-    if let Some(solved) = &trace.solved {
+    let mut fields: Vec<String> = vec![
+        format!(r#""branch":"{}""#, trace.branch.name()),
+        format!(r#""hole":"{}""#, trace.hole),
+        format!(r#""board":"{}""#, trace.board),
+    ];
+    if let Some(resolved) = &trace.resolved {
+        let actions: Vec<String> = resolved
+            .actions
+            .iter()
+            .map(|action| format!(r#""{}""#, action.named()))
+            .collect();
         fields.push(format!(
-            r#""values":{},"strategy":{},"taken":{},"ranges":{}"#,
-            numbers(&solved.values),
-            numbers(&solved.strategy),
-            solved.taken,
-            ranges_json(&solved.ranges)
+            r#""values":{},"strategy":{},"taken":{},"actions":[{}],"ranges":{}"#,
+            numbers(&resolved.values),
+            numbers(&resolved.strategy),
+            resolved.taken,
+            actions.join(","),
+            ranges_json(&resolved.ranges)
         ));
     }
     if let Some(priced) = &trace.priced {
-        let price = match priced.price {
-            Some(price) => price.to_string(),
-            None => "null".into(),
-        };
         fields.push(format!(
-            r#""equity":{},"price":{},"ranges":{}"#,
-            priced.equity,
-            price,
+            r#""equity":{},"price":{},"exploit":{},"ranges":{}"#,
+            number(priced.equity),
+            optional(priced.price),
+            optional(priced.exploit),
             ranges_json(&priced.ranges)
         ));
     }
     format!("{{{}}}", fields.join(","))
 }
 
+/// A float as JSON, or `null` when it has no JSON spelling.
+fn number(value: f64) -> String {
+    if value.is_finite() {
+        value.to_string()
+    } else {
+        "null".to_owned()
+    }
+}
+
+/// A float that may be absent, as JSON.
+fn optional(value: Option<f64>) -> String {
+    value.map_or_else(|| "null".to_owned(), number)
+}
+
 fn numbers(values: &[f64]) -> String {
-    let items: Vec<String> = values.iter().map(ToString::to_string).collect();
+    let items: Vec<String> = values.iter().copied().map(number).collect();
     format!("[{}]", items.join(","))
 }
 
@@ -89,8 +91,8 @@ fn ranges_json(ranges: &[Ranged]) -> String {
         .iter()
         .map(|ranged| {
             format!(
-                r#"{{"seat":{},"masses":{}}}"#,
-                ranged.seat,
+                r#"{{"ordinal":{},"masses":{}}}"#,
+                ranged.ordinal,
                 numbers(&ranged.masses)
             )
         })
@@ -99,33 +101,45 @@ fn ranges_json(ranges: &[Ranged]) -> String {
 }
 
 /// The trace back from [`trace_json`], with the street and branch the row keeps as columns.
+///
+/// A value the schema forbids is an error, not a default: a row whose `branch` or `street` the
+/// `CHECK`s do not allow is a store that disagrees with this code, and reading it as some other
+/// branch would put a wrong answer on the page.
 pub(super) fn trace_from(street: &str, branch: &str, json: &str) -> Result<Trace, StoreError> {
     let value: serde_json::Value =
-        serde_json::from_str(json).map_err(|e| StoreError(e.to_string()))?;
-    let branch = match branch {
-        "solved" => Branch::Solved,
-        _ => Branch::Priced,
+        serde_json::from_str(json).map_err(|e| StoreError(format!("a trace is not JSON: {e}")))?;
+    let branch =
+        Branch::named(branch).ok_or_else(|| StoreError(format!("no branch is called {branch}")))?;
+    let street =
+        Street::named(street).ok_or_else(|| StoreError(format!("no street is called {street}")))?;
+    let text = |name: &str| -> Result<CardSet, StoreError> {
+        value[name]
+            .as_str()
+            .ok_or_else(|| StoreError(format!("a trace has no {name}")))?
+            .parse()
+            .map_err(|e| StoreError(format!("a trace's {name} is not cards: {e}")))
     };
-    let ranges = || -> Vec<Ranged> {
+    let ranges = |value: &serde_json::Value| -> Vec<Ranged> {
         value["ranges"]
             .as_array()
             .map(|rows| {
                 rows.iter()
                     .map(|row| Ranged {
-                        seat: usize::try_from(row["seat"].as_u64().unwrap_or(0)).unwrap_or(0),
+                        ordinal: usize::try_from(row["ordinal"].as_u64().unwrap_or(0)).unwrap_or(0),
                         masses: floats(&row["masses"]),
                     })
                     .collect()
             })
             .unwrap_or_default()
     };
-    let (solved, priced) = match branch {
-        Branch::Solved => (
-            Some(SolvedTrace {
+    let (resolved, priced) = match branch {
+        Branch::Resolved => (
+            Some(ResolvedTrace {
                 values: floats(&value["values"]),
                 strategy: floats(&value["strategy"]),
                 taken: usize::try_from(value["taken"].as_u64().unwrap_or(0)).unwrap_or(0),
-                ranges: ranges(),
+                actions: actions(&value["actions"]),
+                ranges: ranges(&value),
             }),
             None,
         ),
@@ -134,14 +148,17 @@ pub(super) fn trace_from(street: &str, branch: &str, json: &str) -> Result<Trace
             Some(PricedTrace {
                 equity: value["equity"].as_f64().unwrap_or(0.0),
                 price: value["price"].as_f64(),
-                ranges: ranges(),
+                exploit: value["exploit"].as_f64(),
+                ranges: ranges(&value),
             }),
         ),
     };
     Ok(Trace {
         branch,
-        street: street_named(street),
-        solved,
+        street,
+        hole: text("hole")?,
+        board: text("board")?,
+        resolved,
         priced,
     })
 }
@@ -151,6 +168,30 @@ fn floats(value: &serde_json::Value) -> Vec<f64> {
         .as_array()
         .map(|items| items.iter().filter_map(serde_json::Value::as_f64).collect())
         .unwrap_or_default()
+}
+
+/// The names [`trace_json`] wrote for a re-solve's actions, in order.
+fn actions(value: &serde_json::Value) -> Vec<Abstract> {
+    value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .filter_map(abstract_named)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The action called `name`, or `None` when no action is.
+fn abstract_named(name: &str) -> Option<Abstract> {
+    match name {
+        "fold" => Some(Abstract::Fold),
+        "check" => Some(Abstract::Check),
+        "call" => Some(Abstract::Call),
+        other => Some(Abstract::Bet(other.strip_prefix("bet ")?.parse().ok()?)),
+    }
 }
 
 impl Store {
@@ -224,8 +265,8 @@ pub(super) fn keep(tx: &Transaction<'_>, hand: &Hand) -> Result<(), StoreError> 
             params![
                 hand.hand_id,
                 i64::try_from(seq).unwrap_or(i64::MAX),
-                street_name(trace.street),
-                branch_name(trace.branch),
+                trace.street.name(),
+                trace.branch.name(),
                 trace_json(trace)
             ],
         )?;

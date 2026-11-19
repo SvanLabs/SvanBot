@@ -203,6 +203,28 @@ fn random_hands_keep_every_chip_and_accept_every_legal_action() {
 }
 
 #[test]
+fn a_board_names_its_street_and_every_street_names_itself() {
+    let cards: Vec<Card> = ["Ah", "Kh", "Qh", "Jh", "Th"]
+        .into_iter()
+        .map(|text| text.parse().expect("a card"))
+        .collect();
+    let board = |n: usize| cards[..n].iter().copied().collect::<CardSet>();
+
+    assert_eq!(Street::of(board(0)), Street::Preflop);
+    assert_eq!(Street::of(board(3)), Street::Flop);
+    assert_eq!(Street::of(board(4)), Street::Turn);
+    assert_eq!(Street::of(board(5)), Street::River);
+}
+
+#[test]
+fn every_street_reads_back_from_its_name_and_no_other() {
+    for street in Street::ALL {
+        assert_eq!(Street::named(street.name()), Some(street));
+    }
+    assert_eq!(Street::named("showdown"), None);
+}
+
+#[test]
 fn chips_above_every_seat_still_in_come_back() {
     // Heads-up, the big blind is all in for 9, less than the small blind's 10. The small blind
     // folds to the full big blind, loses the 9 matched, and takes back the 1 nobody matched.

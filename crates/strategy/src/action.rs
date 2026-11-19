@@ -423,21 +423,16 @@ pub fn range(model: &ActionModel, seen: &[Seen], dead: CardSet) -> Vec<(CardSet,
         .collect()
 }
 
-/// `range` as its mass over the strength buckets on `board`: one number a bucket, summing to 1.
-///
-/// The range itself is a weight per pair, 17 to 21 KB for a board; a trace keeps this instead. It
-/// is the same abstraction the model reasons in ([`buckets`]), so a reader of the trace and the
-/// solver that read the range are looking at one thing. An empty range summarises to zeros.
-pub fn summary(read: &[(CardSet, f64)], board: CardSet) -> Vec<f64> {
-    masses(read, &ranked(board))
-}
-
 /// Every live pair on `board` with its bucket, once: five opponents on one board share one table.
+/// The range itself is a weight per pair, 17 to 21 KB for a board; a trace keeps the masses
+/// ([`masses`]) instead, the same abstraction the model reasons in ([`buckets`]), so a reader of
+/// the trace and the solver that read the range are looking at one thing.
 pub fn ranked(board: CardSet) -> BTreeMap<CardSet, usize> {
     buckets(board, CardSet::EMPTY).into_iter().collect()
 }
 
-/// [`summary`] by a table [`ranked`] already built.
+/// `read` as its mass over the strength buckets on `board`, through the table `ranked` already
+/// built: one number a bucket, summing to 1. An empty range summarises to zeros.
 pub fn masses(read: &[(CardSet, f64)], ranked: &BTreeMap<CardSet, usize>) -> Vec<f64> {
     let mut masses = vec![0.0; BUCKETS];
     let mut total = 0.0;

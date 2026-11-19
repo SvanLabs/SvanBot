@@ -264,9 +264,25 @@ export function priceText(price) {
     : `${(price * 100).toFixed(1)}% of the pot`;
 }
 
-/** An action's solved value, signed, in big blinds: the unit a scoreboard is read in. */
+/** An action's value, signed, in big blinds: the unit the table runs in. */
 export function valueText(value) {
   return `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(3)} bb`;
+}
+
+/**
+ * An action's value as the re-solve reports it: in chips, which is the unit the solver's tree is
+ * built in. The trace's values are chips (`resolve`), so the replayer formats them here; the
+ * fleet's chart formats big blinds with `valueText`.
+ */
+export function chipsText(chips) {
+  return `${chips >= 0 ? "+" : "−"}${Math.abs(chips).toFixed(1)} chips`;
+}
+
+/** A trace's exploit budget, when a fitted model passed the gate; `null` when the baseline read. */
+export function exploitText(exploit) {
+  return exploit === null || exploit === undefined
+    ? "baseline read, no exploit"
+    : `exploit ${exploit.toFixed(2)}`;
 }
 
 /** A hand's decisions as streets, in the order the streets came, each keeping its own order. */
@@ -290,6 +306,3 @@ export function byStreet(decisions) {
  * A range's masses as rows, weakest bucket first. The bucket is the model's own: eight strengths
  * (`BUCKETS` in `crates/strategy/src/action.rs`), so a reader and the solver share one vocabulary.
  */
-export function rangeRows(masses) {
-  return (masses ?? []).map((mass, at) => ({ label: String(at + 1), mass }));
-}

@@ -23,11 +23,15 @@ pub struct Budget {
     pub seed: u64,
 }
 
-/// The action the pricer chose, and the equity it chose it on.
+/// The action the pricer chose, the equity it chose it on, and the price it compared against.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Decision {
     pub action: Action,
     pub equity: f64,
+    /// The share of the pot a call costs, `call / (pot + call)`, as a fraction of the pot after
+    /// the call. `None` when there was nothing to call: a free check is priced at nothing, and a
+    /// zero would say it costs nothing of a pot it is not in.
+    pub price: Option<f64>,
 }
 
 /// The pricer's decision at `spot`, with each opponent's range from `model` and their line, or
@@ -62,7 +66,16 @@ pub fn price(
     Decision {
         action: choose(spot, equity, params),
         equity,
+        price: price_of(spot),
     }
+}
+
+/// The share of the pot a call costs: `call / (pot + call)`, the price the equity is measured
+/// against. `None` when there is nothing to call.
+pub fn price_of(spot: &Spot) -> Option<f64> {
+    spot.legal
+        .call
+        .map(|call| f64::from(call) / f64::from(spot.pot + call))
 }
 
 fn choose(spot: &Spot, equity: f64, params: &Params) -> Action {
@@ -75,16 +88,10 @@ fn choose(spot: &Spot, equity: f64, params: &Params) -> Action {
             .saturating_add((f64::from(spot.pot) * params.raise_share) as u32);
         return Action::RaiseTo(size.clamp(range.min, range.max));
     }
-    match spot.legal.call {
+    match price_of(spot) {
         None => Action::Check,
-        Some(call) => {
-            let price = f64::from(call) / f64::from(spot.pot + call);
-            if equity >= price {
-                Action::Call
-            } else {
-                Action::Fold
-            }
-        }
+        Some(price) if equity >= price => Action::Call,
+        Some(_) => Action::Fold,
     }
 }
 

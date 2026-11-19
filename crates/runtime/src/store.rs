@@ -97,17 +97,18 @@ CREATE TABLE IF NOT EXISTS decisions (
     -- Where in the hand this decision came, counting from 0 across the whole hand.
     seq     INTEGER NOT NULL CHECK (seq >= 0),
     street  TEXT NOT NULL CHECK (street IN ('preflop', 'flop', 'turn', 'river')),
-    -- 'solved' or 'priced': which of the policy's two ways decided.
-    branch  TEXT NOT NULL CHECK (branch IN ('solved', 'priced')),
-    -- The trace itself as JSON: the values, the mix, the price, the opponents' ranges.
+    -- 'resolved' or 'priced': which of the policy's two ways decided.
+    branch  TEXT NOT NULL CHECK (branch IN ('resolved', 'priced')),
+    -- The trace itself as JSON: the cards, the values, the mix, the price, the ranges.
     trace   TEXT NOT NULL CHECK (json_valid(trace)),
     PRIMARY KEY (hand_id, seq)
 ) STRICT;
 CREATE TRIGGER IF NOT EXISTS decisions_no_update BEFORE UPDATE ON decisions
     BEGIN SELECT RAISE(ABORT, 'decisions are append-only'); END;
 -- No `no_delete` trigger here, and here only. The trace is the one record that is capped: past
--- TRACED_HANDS hands the oldest fall off, and a table that cannot delete cannot cap
--- (`Store::trim_traces`). Nothing else may delete a decision, and nothing may rewrite one.
+-- TRACED_HANDS hands the oldest fall off, and a table that cannot delete cannot cap. The cap and
+-- only the cap: it lives in `store::trace::trim`, which the write runs after the newest hand, and
+-- nothing else may delete a decision. Nothing may rewrite one.
 PRAGMA user_version = 1;
 ";
 

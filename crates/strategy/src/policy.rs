@@ -11,6 +11,7 @@ use svanbot_core::spot::Spot;
 use crate::action::{ActionModel, BUCKETS, Seen, masses, range, ranked};
 use crate::params::Params;
 use crate::pricer::{self, Budget};
+pub use crate::resolve::Abstract;
 use crate::resolve::resolve;
 
 /// The action to play at `spot`: the re-solve's after `iterations` when it covers the spot, and
@@ -52,10 +53,28 @@ impl From<Action> for Decision {
 /// Which of the policy's two ways decided.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Branch {
-    /// The rest of the street was re-solved, and an action drawn from its average strategy.
-    Solved,
+    /// The rest of the street was re-solved, and an action drawn from its average strategy. The
+    /// glossary calls the work the re-solve, so the record says `resolved`, never `solved`.
+    Resolved,
     /// The pricer priced the spot by our equity: before the flop, or in a pot of three or more.
     Priced,
+}
+
+impl Branch {
+    /// The branch's name, as the store keeps it and the page shows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Resolved => "resolved",
+            Self::Priced => "priced",
+        }
+    }
+
+    /// The branch called `name`, or `None` when no branch is.
+    pub fn named(name: &str) -> Option<Self> {
+        [Self::Resolved, Self::Priced]
+            .into_iter()
+            .find(|branch| branch.name() == name)
+    }
 }
 
 /// What a decision was made from, kept with its hand so "why did it do that?" is answered from the
@@ -68,37 +87,48 @@ pub struct Trace {
     pub branch: Branch,
     /// The street the decision was made on: the board's length says it.
     pub street: Street,
+    /// Our two hole cards, and the board as it stood: a replayer cannot say what the bot held
+    /// otherwise, and the ranges below are read on this board.
+    pub hole: CardSet,
+    pub board: CardSet,
     /// The re-solve's record, when it decided.
-    pub solved: Option<SolvedTrace>,
+    pub resolved: Option<ResolvedTrace>,
     /// The pricer's record, when it decided.
     pub priced: Option<PricedTrace>,
 }
 
 /// What the re-solve decided from: what the last iteration valued each action at for our cards,
-/// the mix it drew from, and the range it read the villain at.
+/// the mix it drew from, and the range it read the villain at. `actions` names each entry of
+/// `values` and `strategy`, in order, so "action 2" reads as the call or bet it was.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SolvedTrace {
+pub struct ResolvedTrace {
     pub values: Vec<f64>,
     pub strategy: Vec<f64>,
     pub taken: usize,
+    pub actions: Vec<Abstract>,
     pub ranges: Vec<Ranged>,
 }
 
 /// One opponent's range, summarised.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ranged {
-    /// The seat, counting the seats still in from the button's left, ours included.
-    pub seat: usize,
+    /// Which opponent, counting from the button's left: the index of its line in `Spot::lines`,
+    /// since that is all the decision path knows of it. Ours is not among them.
+    pub ordinal: usize,
     /// The mass in each strength bucket on the board, weakest first.
     pub masses: Vec<f64>,
 }
 
-/// What the pricer decided from: our equity against the opponents' ranges, and the price of the
-/// call it was measured against. `None` when the check was free, since a free check has no price.
+/// What the pricer decided from: our equity against the opponents' ranges, the price of the call
+/// it was measured against, and how far the exploit gate let the reads move it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PricedTrace {
     pub equity: f64,
+    /// `None` when the check was free, since a free check has no price.
     pub price: Option<f64>,
+    /// The exploit budget the decision read by, when a fitted model passed the gate; `None` when
+    /// the baseline decided, since the baseline exploits nothing.
+    pub exploit: Option<f64>,
     pub ranges: Vec<Ranged>,
 }
 
@@ -119,37 +149,46 @@ pub fn decide_drawn(
     budget: Budget,
     iterations: u32,
 ) -> Decision {
-    // Until a fit passes the gate, the baseline reads the opponents' lines.
+    // Until a fit passes the gate, the baseline reads the opponents' lines. A model present is a
+    // model that passed it (`svanbot fit`), so its presence is the gate's answer.
+    let gated = model.is_some();
     let baseline = ActionModel::baseline();
     let model = model.unwrap_or(&baseline);
+    let street = Street::of(spot.board);
     match resolve(spot, Some(model), params.exploit, iterations, budget.seed) {
-        Some(resolved) => Decision {
-            action: resolved.action,
-            drawn: Some(Drawn {
-                strategy: resolved
-                    .strategy
-                    .iter()
-                    .map(|&(_, chance)| chance)
-                    .collect(),
-                values: resolved.values.clone(),
-                taken: resolved.taken,
-            }),
-            trace: Some(Trace {
-                branch: Branch::Solved,
-                street: street_of(spot.board),
-                solved: Some(SolvedTrace {
-                    values: resolved.values,
-                    strategy: resolved
-                        .strategy
-                        .iter()
-                        .map(|&(_, chance)| chance)
-                        .collect(),
+        Some(resolved) => {
+            let strategy: Vec<f64> = resolved
+                .strategy
+                .iter()
+                .map(|&(_, chance)| chance)
+                .collect();
+            Decision {
+                action: resolved.action,
+                drawn: Some(Drawn {
+                    strategy: strategy.clone(),
+                    values: resolved.values.clone(),
                     taken: resolved.taken,
-                    ranges: read_ranges(spot, model, 1, spot.board),
                 }),
-                priced: None,
-            }),
-        },
+                trace: Some(Trace {
+                    branch: Branch::Resolved,
+                    street,
+                    hole: spot.hole,
+                    board: spot.board,
+                    resolved: Some(ResolvedTrace {
+                        values: resolved.values,
+                        strategy,
+                        taken: resolved.taken,
+                        actions: resolved
+                            .strategy
+                            .into_iter()
+                            .map(|(action, _)| action)
+                            .collect(),
+                        ranges: read_ranges(spot, model, 1, spot.hole | spot.board),
+                    }),
+                    priced: None,
+                }),
+            }
+        }
         None => {
             let priced = pricer::price(spot, Some(model), budget, params);
             Decision {
@@ -157,14 +196,15 @@ pub fn decide_drawn(
                 drawn: None,
                 trace: Some(Trace {
                     branch: Branch::Priced,
-                    street: street_of(spot.board),
-                    solved: None,
+                    street,
+                    hole: spot.hole,
+                    board: spot.board,
+                    resolved: None,
                     priced: Some(PricedTrace {
                         equity: priced.equity,
-                        price: spot
-                            .legal
-                            .call
-                            .map(|call| f64::from(call) / f64::from(spot.pot + call)),
+                        // What the pricer compared against, not a second reading of the spot.
+                        price: priced.price,
+                        exploit: gated.then_some(params.exploit),
                         ranges: read_ranges(
                             spot,
                             model,
@@ -178,25 +218,15 @@ pub fn decide_drawn(
     }
 }
 
-/// The street a board of this length is on.
-fn street_of(board: CardSet) -> Street {
-    match board.len() {
-        0 => Street::Preflop,
-        3 => Street::Flop,
-        4 => Street::Turn,
-        _ => Street::River,
-    }
-}
-
 /// The opponents' ranges from `model` and their lines, summarised by strength bucket: one per
 /// opponent, `count` of them, the ones with no line read at the uniform range. `dead` is every
 /// card the range must miss.
 fn read_ranges(spot: &Spot, model: &ActionModel, count: usize, dead: CardSet) -> Vec<Ranged> {
     let ranked = ranked(spot.board);
     (0..count)
-        .map(|seat| Ranged {
-            seat,
-            masses: match spot.lines.get(seat) {
+        .map(|ordinal| Ranged {
+            ordinal,
+            masses: match spot.lines.get(ordinal) {
                 Some(line) if !line.is_empty() => {
                     let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
                     masses(&range(model, &seen, dead), &ranked)

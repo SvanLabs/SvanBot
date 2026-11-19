@@ -4,7 +4,9 @@
 use svanbot_core::card::CardSet;
 use svanbot_core::rules::{Legal, RaiseRange, Street};
 use svanbot_core::spot::Spot;
-use svanbot_strategy::action::{ActionModel, BUCKETS, Move, Seen, Situation, range, summary};
+use svanbot_strategy::action::{
+    ActionModel, BUCKETS, Move, Seen, Situation, masses, range, ranked,
+};
 use svanbot_strategy::params::Params;
 use svanbot_strategy::policy::{Branch, decide_drawn};
 use svanbot_strategy::pricer::Budget;
@@ -23,7 +25,7 @@ fn a_range_reads_as_masses_over_the_strength_buckets() {
         mv: Move::Large,
     }];
     let read = range(&model, &seen, cards("AhKh"));
-    let masses = summary(&read, cards("QhJhTh"));
+    let masses = masses(&read, &ranked(cards("QhJhTh")));
     assert_eq!(masses.len(), BUCKETS);
     assert!((masses.iter().sum::<f64>() - 1.0).abs() < 1e-9);
     // A big bet on that board moves the villain's range off the weak buckets.
@@ -32,23 +34,40 @@ fn a_range_reads_as_masses_over_the_strength_buckets() {
 
 #[test]
 fn a_summary_of_an_empty_range_is_empty_rather_than_a_division_by_zero() {
-    let masses = summary(&[], cards("QhJhTh"));
+    let masses = masses(&[], &ranked(cards("QhJhTh")));
     assert_eq!(masses.len(), BUCKETS);
     assert!(masses.iter().all(|mass| mass.is_finite()));
     assert!(masses.iter().sum::<f64>().abs() < 1e-12);
 }
 
 #[test]
-fn a_solved_trace_carries_its_values_and_the_range_it_read() {
+fn a_resolved_trace_carries_its_values_the_range_it_read_and_what_each_action_was() {
     let river = spot("AhKh", "QhJhTh2c3d", 400, 200, 1);
     let decision = decide_drawn(&river, None, &Params::DEFAULT, BUDGET, 60);
     let trace = decision.trace.as_ref().expect("the policy traces");
-    assert_eq!(trace.branch, Branch::Solved);
-    let solved = trace.solved.as_ref().expect("a re-solve keeps its values");
-    assert_eq!(solved.values.len(), solved.strategy.len());
+    assert_eq!(trace.branch, Branch::Resolved);
+    let resolved = trace
+        .resolved
+        .as_ref()
+        .expect("a re-solve keeps its values");
+    assert_eq!(resolved.values.len(), resolved.strategy.len());
+    // Every value has a name, and the taken index names one of them.
+    assert_eq!(resolved.actions.len(), resolved.values.len());
+    assert!(resolved.taken < resolved.actions.len());
     // Every opponent's range is summarised, and there is one opponent here.
-    assert_eq!(solved.ranges.len(), 1);
-    assert_eq!(solved.ranges[0].masses.len(), BUCKETS);
+    assert_eq!(resolved.ranges.len(), 1);
+    assert_eq!(resolved.ranges[0].masses.len(), BUCKETS);
+}
+
+#[test]
+fn a_trace_carries_the_cards_the_decision_was_made_with() {
+    // The ticket's third item: the trace carries the hole cards and the board. A replayer that
+    // reads it needs nothing from `hands.frames` to say what the bot held.
+    let turn = spot("AhKh", "QhJhTh2c3d", 400, 200, 1);
+    let decision = decide_drawn(&turn, None, &Params::DEFAULT, BUDGET, 60);
+    let trace = decision.trace.as_ref().expect("the policy traces");
+    assert_eq!(trace.hole, cards("AhKh"));
+    assert_eq!(trace.board, cards("QhJhTh2c3d"));
 }
 
 #[test]
@@ -59,13 +78,24 @@ fn a_priced_trace_keeps_its_equity_and_the_price_it_compared_against() {
     let decision = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);
     let trace = decision.trace.as_ref().expect("the policy traces");
     assert_eq!(trace.branch, Branch::Priced);
-    assert!(trace.solved.is_none());
+    assert!(trace.resolved.is_none());
     let priced = trace
         .priced
         .as_ref()
         .expect("the pricer keeps its comparison");
     assert_eq!(priced.price, Some(200.0 / 600.0));
     assert!(priced.equity > 0.0 && priced.equity <= 1.0);
+}
+
+#[test]
+fn a_trace_says_when_no_fitted_model_passed_the_gate() {
+    // No model is no exploit: the trace says `None` rather than a budget of zero, which would
+    // read as a fit that was allowed to move nothing.
+    let preflop = spot("AhAs", "", 400, 200, 1);
+    let decision = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);
+    let trace = decision.trace.as_ref().expect("the policy traces");
+    let priced = trace.priced.as_ref().expect("priced preflop");
+    assert_eq!(priced.exploit, None);
 }
 
 #[test]

@@ -21,7 +21,6 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use svanbot_core::rules::Street;
 use svanbot_runtime::fleet::{self, ArenaRun};
 use svanbot_runtime::release::version_cmp;
 use svanbot_runtime::slot::Slots;
@@ -54,6 +53,10 @@ pub struct Server {
 /// The longest request head read, and the longest wait for one.
 const HEAD_LIMIT: usize = 8 * 1024;
 const HEAD_WAIT: Duration = Duration::from_secs(5);
+
+/// The answer when a store is there but cannot be read: not the caller's mistake, and not a
+/// bot that has played nothing.
+const INTERNAL_ERROR: u16 = 500;
 
 impl Server {
     /// Binds `config.addr`, port 0 included. The dashboard is loopback only: its status names
@@ -119,12 +122,9 @@ fn handle(mut socket: TcpStream, config: &Config) {
         "/api/events" => stream::serve(socket, config),
         _ if path.starts_with("/api/hands/") => {
             let bot = path.trim_start_matches("/api/hands/");
-            respond(
-                &mut socket,
-                200,
-                json_type,
-                hands_json(config, bot).as_bytes(),
-            )
+            let (status, body) = hands_json(config, bot)
+                .unwrap_or((404, json!({ "detail": "not found" }).to_string()));
+            respond(&mut socket, status, json_type, body.as_bytes())
         }
         _ if path.starts_with("/api/trace/") => {
             match trace_json(config, path.trim_start_matches("/api/trace/")) {
@@ -187,16 +187,37 @@ fn respond(socket: &mut TcpStream, status: u16, kind: &str, body: &[u8]) -> io::
     socket.flush()
 }
 
-/// The newest traced hands of one bot, newest first — what the replayer's list opens. A bot with
-/// no store yet has decided nothing, which is an empty list rather than an error.
-fn hands_json(config: &Config, bot: &str) -> String {
+/// The newest traced hands of one bot, newest first — what the replayer's list opens.
+///
+/// A bot with no store yet has played nothing, which is an empty list. A name no bot can have,
+/// or a store that cannot be read, is not an empty list: one is a 404 and the other a 500, since
+/// a page that answered "this bot has no hands" to every question would hide a mistyped name.
+fn hands_json(config: &Config, bot: &str) -> Option<(u16, String)> {
+    if !page::is_name(bot) {
+        return None;
+    }
     let store = match Store::open_reader(&store_at(config, bot)) {
         Ok(store) => store,
-        Err(_) => return json!({ "bot": bot, "hands": [] }).to_string(),
+        Err(_) if !store_at(config, bot).exists() => {
+            return Some((200, json!({ "bot": bot, "hands": [] }).to_string()));
+        }
+        Err(error) => {
+            return Some((
+                INTERNAL_ERROR,
+                json!({ "detail": format!("{bot}'s store cannot be read: {error}") }).to_string(),
+            ));
+        }
     };
-    let hands: Vec<Value> = store
-        .traced_hands()
-        .unwrap_or_default()
+    let hands = match store.traced_hands() {
+        Ok(hands) => hands,
+        Err(error) => {
+            return Some((
+                INTERNAL_ERROR,
+                json!({ "detail": format!("{bot}'s hands cannot be read: {error}") }).to_string(),
+            ));
+        }
+    };
+    let hands: Vec<Value> = hands
         .into_iter()
         .map(|hand| {
             json!({
@@ -207,7 +228,7 @@ fn hands_json(config: &Config, bot: &str) -> String {
             })
         })
         .collect();
-    json!({ "bot": bot, "hands": hands }).to_string()
+    Some((200, json!({ "bot": bot, "hands": hands }).to_string()))
 }
 
 /// One hand's decisions, oldest first. `None` when the store does not hold the hand at all; a hand
@@ -215,6 +236,9 @@ fn hands_json(config: &Config, bot: &str) -> String {
 /// played before the trace existed is not a hand that made no decisions.
 fn trace_json(config: &Config, route: &str) -> Option<(u16, String)> {
     let (bot, hand_id) = route.split_once('/')?;
+    if !page::is_name(bot) || !page::is_name(hand_id) {
+        return None;
+    }
     let store = Store::open_reader(&store_at(config, bot)).ok()?;
     if !store.holds(hand_id).unwrap_or(false) {
         return None;
@@ -242,27 +266,31 @@ fn trace_json(config: &Config, route: &str) -> Option<(u16, String)> {
     }
 }
 
+/// The trace as the page reads it. The street and branch are named where they are defined
+/// (`Street::name`, `Branch::name`), so the page and the store cannot spell them apart.
 fn trace_value(trace: &Trace) -> Value {
-    let street = match trace.street {
-        Street::Preflop => "preflop",
-        Street::Flop => "flop",
-        Street::Turn => "turn",
-        Street::River => "river",
-    };
-    let branch = match trace.branch {
-        Branch::Solved => "solved",
-        Branch::Priced => "priced",
-    };
-    let mut value = json!({ "street": street, "branch": branch });
-    if let Some(solved) = &trace.solved {
-        value["values"] = json!(solved.values);
-        value["strategy"] = json!(solved.strategy);
-        value["taken"] = json!(solved.taken);
-        value["ranges"] = json!(ranges_value(&solved.ranges));
+    let mut value = json!({
+        "street": trace.street.name(),
+        "branch": Branch::name(trace.branch),
+        "hole": trace.hole.to_string(),
+        "board": trace.board.to_string(),
+    });
+    if let Some(resolved) = &trace.resolved {
+        let actions: Vec<String> = resolved
+            .actions
+            .iter()
+            .map(|action| action.named())
+            .collect();
+        value["values"] = json!(resolved.values);
+        value["strategy"] = json!(resolved.strategy);
+        value["taken"] = json!(resolved.taken);
+        value["actions"] = json!(actions);
+        value["ranges"] = json!(ranges_value(&resolved.ranges));
     }
     if let Some(priced) = &trace.priced {
         value["equity"] = json!(priced.equity);
         value["price"] = json!(priced.price);
+        value["exploit"] = json!(priced.exploit);
         value["ranges"] = json!(ranges_value(&priced.ranges));
     }
     value
@@ -271,7 +299,7 @@ fn trace_value(trace: &Trace) -> Value {
 fn ranges_value(ranges: &[Ranged]) -> Vec<Value> {
     ranges
         .iter()
-        .map(|ranged| json!({ "seat": ranged.seat, "masses": ranged.masses }))
+        .map(|ranged| json!({ "opponent": ranged.ordinal + 1, "masses": ranged.masses }))
         .collect()
 }
 

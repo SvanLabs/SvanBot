@@ -42,8 +42,8 @@ fn a_decision_says_which_branch_made_it() {
     // The trace answers "why did it do that", and the first thing it must say is which of the two
     // ways decided: a re-solve of the rest of the street, or the pricer.
     let river = spot("AhKh", "QhJhTh2c3d", 400, 200, 1);
-    let solved = decide_drawn(&river, None, &Params::DEFAULT, BUDGET, 60);
-    assert_eq!(solved.trace.unwrap().branch, Branch::Solved);
+    let resolved = decide_drawn(&river, None, &Params::DEFAULT, BUDGET, 60);
+    assert_eq!(resolved.trace.unwrap().branch, Branch::Resolved);
     let preflop = spot("AhAs", "", 30, 20, 1);
     let priced = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);
     assert_eq!(priced.trace.unwrap().branch, Branch::Priced);

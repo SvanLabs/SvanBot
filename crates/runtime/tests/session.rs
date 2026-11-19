@@ -73,10 +73,13 @@ fn traced(action: Action) -> Decision {
         trace: Some(Trace {
             branch: Branch::Priced,
             street: svanbot_core::rules::Street::Preflop,
-            solved: None,
+            hole: "AhAs".parse().expect("a hole"),
+            board: svanbot_core::card::CardSet::EMPTY,
+            resolved: None,
             priced: Some(PricedTrace {
                 equity: 0.7,
                 price: Some(0.5),
+                exploit: None,
                 ranges: Vec::new(),
             }),
         }),
