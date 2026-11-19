@@ -207,7 +207,9 @@ fn read_ranges(spot: &Spot, model: &ActionModel, count: usize, dead: CardSet) ->
                     let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
                     masses(&range(model, &seen, dead), &ranked)
                 }
-                _ => vec![0.0; BUCKETS],
+                // No line is no information: every pair equally likely, which is uniform over
+                // the buckets too. An all-zero row would read as "nothing is possible".
+                _ => vec![1.0 / BUCKETS as f64; BUCKETS],
             },
         })
         .collect()

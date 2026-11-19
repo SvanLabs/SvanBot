@@ -85,6 +85,21 @@ fn a_free_check_prices_nothing() {
 }
 
 #[test]
+fn an_opponent_with_no_line_reads_at_the_uniform_range() {
+    // A villain who has not acted yet is not a villain with no cards. The trace says what the
+    // pricer and the re-solve both assume: every pair equally likely, one eighth a bucket.
+    let preflop = spot("AhAs", "", 400, 200, 1);
+    let decision = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);
+    let trace = decision.trace.as_ref().expect("the policy traces");
+    let priced = trace.priced.as_ref().expect("priced preflop");
+    let masses = &priced.ranges[0].masses;
+    assert_eq!(masses.len(), BUCKETS);
+    for mass in masses {
+        assert!((mass - 1.0 / BUCKETS as f64).abs() < 1e-9, "{masses:?}");
+    }
+}
+
+#[test]
 fn every_opponent_gets_his_own_summary() {
     // Two villains are two ranges, and averaging them into one would describe a player who was
     // never at the table.
