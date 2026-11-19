@@ -430,19 +430,34 @@ const state = {
   traceFor: null,
 };
 
+/** The server's sentence for a refusal, or `fallback` when it sent none: a detail is never markup. */
+function textOf(body, fallback) {
+  return typeof body?.detail === "string" ? body.detail : fallback;
+}
+
 /** Asks for what the path needs, once per path: the stream carries the fleet, not the traces. */
 function load(at) {
   if (at.view === "bot" && state.handsFor !== at.bot) {
     state.handsFor = at.bot;
     state.hands = null;
     fetch(`/api/hands/${at.bot}`)
-      .then((answer) => (answer.ok ? answer.json() : Promise.reject(new Error("no hands"))))
+      .then((answer) =>
+        // The server says why a 500 happened; a 404 is a name no bot has. Read the detail, and
+        // fall back to the plain sentence if the body is not the JSON it should be.
+        answer.ok
+          ? answer.json()
+          : answer.json().then(
+              (body) =>
+                Promise.reject(new Error(textOf(body, "The bot's store could not be read."))),
+              () => Promise.reject(new Error("The bot's store could not be read.")),
+            ),
+      )
       .then((body) => {
         state.hands = body.hands ?? [];
         render();
       })
-      .catch(() => {
-        state.hands = { error: "The bot's store could not be read." };
+      .catch((error) => {
+        state.hands = { error: error.message };
         render();
       });
   }
@@ -451,13 +466,23 @@ function load(at) {
     state.traceFor = key;
     state.trace = null;
     fetch(`/api/trace/${at.bot}/${at.hand}`)
-      .then((answer) => (answer.ok ? answer.json() : Promise.reject(new Error("no trace"))))
+      .then((answer) =>
+        // A 500 carries why the store could not be read; a 404 is a hand nobody played. The
+        // page must not show a broken store as a hand that does not exist.
+        answer.ok
+          ? answer.json()
+          : answer.json().then(
+              (body) =>
+                Promise.reject(new Error(textOf(body, "This hand is not in the bot's store."))),
+              () => Promise.reject(new Error("This hand is not in the bot's store.")),
+            ),
+      )
       .then((body) => {
         state.trace = body;
         render();
       })
-      .catch(() => {
-        state.trace = { error: "This hand is not in the bot's store." };
+      .catch((error) => {
+        state.trace = { error: error.message };
         render();
       });
   }

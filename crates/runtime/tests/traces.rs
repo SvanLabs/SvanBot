@@ -140,10 +140,10 @@ fn the_oldest_traced_hands_fall_off_past_the_cap() {
 }
 
 #[test]
-fn a_traced_hand_is_capped_by_when_it_was_played_not_when_it_was_written() {
-    // A hand written late — replayed from a resync, or stored after a reconnect — is still an old
-    // hand. The cap must drop it ahead of newer hands written before it, or a long replay would
-    // evict live play.
+fn a_traced_hand_is_capped_by_its_recorded_time_not_its_insert_order() {
+    // The cap orders by `recorded_ms`, then `rowid`. A hand written last with an earlier recorded
+    // time — a backfill, or two writes in one batch — falls off before the newer ones, so the
+    // order is the recorded clock and only the tie-break is insertion order.
     let path = scratch("cap-order").join("SurSvan.db");
     let store = Store::open(&path, "SurSvan").unwrap();
     for number in 0..svanbot_runtime::store::TRACED_HANDS {
