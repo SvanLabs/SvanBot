@@ -6,7 +6,7 @@
 mod support;
 
 use serde_json::Value;
-use support::{get, serve, traced_store};
+use support::{get, serve, traced_store, undecodable_trace};
 
 #[test]
 fn the_hands_route_lists_a_bots_traced_hands_newest_first() {
@@ -92,6 +92,25 @@ fn a_hand_the_store_does_not_hold_is_a_404() {
     traced_store(&dir.join("data"), "Alpha");
     let (code, _) = get(addr, "/api/trace/Alpha/h-missing");
     assert_eq!(code, 404);
+}
+
+#[test]
+fn a_trace_this_code_cannot_read_is_a_500_not_an_untraced_hand() {
+    // A decision the codec cannot read is not a hand with no trace: the hands list counts that
+    // decision, so a 200 that said "no trace" would show the page an empty hand the store says it
+    // holds a decision for. The two routes agree that the store cannot be read.
+    let (addr, dir) = serve("undecodable-trace-route");
+    undecodable_trace(&dir.join("data"), "Alpha");
+    let (code, body) = get(addr, "/api/hands/Alpha");
+    assert_eq!(code, 200, "{body}");
+    let listed: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        listed["hands"][0]["decisions"], 1,
+        "the hands list counts it"
+    );
+    let (code, body) = get(addr, "/api/trace/Alpha/h-3");
+    assert_eq!(code, 500, "{body}");
+    assert!(body.contains("trace cannot be read"), "{body}");
 }
 
 #[test]

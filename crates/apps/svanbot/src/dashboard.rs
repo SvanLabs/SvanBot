@@ -278,7 +278,19 @@ fn trace_json(config: &Config, route: &str) -> Option<(u16, String)> {
     if !holds {
         return None;
     }
-    match store.traces(hand_id).ok().flatten() {
+    let traces = match store.traces(hand_id) {
+        Ok(traces) => traces,
+        // A decision the codec cannot read is not a hand with no trace: the hands list counts
+        // that decision, so answering "no trace" here would show the page an empty hand the
+        // store says it holds decisions for.
+        Err(error) => {
+            return Some((
+                INTERNAL_ERROR,
+                json!({ "detail": format!("{bot}'s trace cannot be read: {error}") }).to_string(),
+            ));
+        }
+    };
+    match traces {
         Some(traces) => {
             let decisions: Vec<Value> = traces.iter().map(trace_value).collect();
             Some((

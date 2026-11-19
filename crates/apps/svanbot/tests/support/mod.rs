@@ -110,6 +110,44 @@ pub fn get(addr: SocketAddr, path: &str) -> (u16, String) {
     (status.split(' ').nth(1).unwrap().parse().unwrap(), body)
 }
 
+/// A store whose one traced hand has a decision the codec cannot read: valid JSON and a street and
+/// branch the schema allows, but no `hole`, as the row shape before `hole` and `board` were kept
+/// wrote it. The hand is one `/api/hands` counts a decision in, so `/api/trace` cannot call it
+/// untraced.
+pub fn undecodable_trace(data: &std::path::Path, bot: &str) {
+    use svanbot_runtime::record::Hand;
+    use svanbot_runtime::store::{Source, Store};
+
+    let store = Store::open(&data.join(format!("{bot}.db")), bot).unwrap();
+    store
+        .append_hand(
+            &Hand {
+                hand_id: "h-3".into(),
+                table_id: "t-1".into(),
+                frames: vec![r#"{"type":"hand_start","hand_id":"h-3"}"#.into()],
+                traced: Vec::new(),
+            },
+            Source::Live,
+            3_000,
+        )
+        .unwrap();
+    drop(store);
+    // A decision written straight, since the writer refuses one the reader could not read: the
+    // point is a store this code reads that an older writer left. Append-only allows the insert,
+    // and the `json_valid` CHECK takes this JSON.
+    let raw = rusqlite::Connection::open(data.join(format!("{bot}.db"))).unwrap();
+    raw.execute(
+        "INSERT INTO decisions (hand_id, seq, street, branch, trace) VALUES (?1, 0, ?2, ?3, ?4)",
+        rusqlite::params![
+            "h-3",
+            "preflop",
+            "priced",
+            r#"{"branch":"priced","equity":0.5,"price":null,"ranges":[]}"#
+        ],
+    )
+    .unwrap();
+}
+
 /// A status with the bot's store beside it, holding one traced hand and one untraced one.
 pub fn traced_store(data: &std::path::Path, bot: &str) {
     use svanbot_core::rules::Street;
