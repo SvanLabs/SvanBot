@@ -119,6 +119,7 @@ fn a_stored_hand_gives_a_shown_a_mucked_and_an_unseen_opponent_and_never_us() {
         hand_id: "h-1".into(),
         table_id: "t-1".into(),
         frames: frames(),
+        traced: Vec::new(),
     };
     let sides = observed(&hand, 7);
     assert_eq!(sides.len(), 3, "seats 0, 4 and 5; not ours");

@@ -340,3 +340,122 @@ fn the_event_stream_sends_the_fleet_at_once_and_again_when_it_changes() {
     let changed = read_until("\"Beta\"");
     assert!(changed.contains("event: fleet"), "{changed}");
 }
+
+/// A status with the bot's store beside it, holding one traced hand and one untraced one.
+fn traced_store(data: &std::path::Path, bot: &str) {
+    use svanbot_core::rules::Street;
+    use svanbot_runtime::record::Hand;
+    use svanbot_runtime::store::{Source, Store};
+    use svanbot_strategy::policy::{Branch, PricedTrace, Ranged, Trace};
+
+    let path = data.join(format!("{bot}.db"));
+    let store = Store::open(&path, bot).unwrap();
+    for (id, ms, traced) in [("h-1", 1_000, true), ("h-2", 2_000, false)] {
+        store
+            .append_hand(
+                &Hand {
+                    hand_id: id.into(),
+                    table_id: "t-1".into(),
+                    frames: vec![
+                        format!(r#"{{"type":"hand_start","hand_id":"{id}"}}"#),
+                        format!(r#"{{"type":"hand_result","hand_id":"{id}"}}"#),
+                    ],
+                    traced: if traced {
+                        vec![Trace {
+                            branch: Branch::Priced,
+                            street: Street::Preflop,
+                            solved: None,
+                            priced: Some(PricedTrace {
+                                equity: 0.61,
+                                price: Some(0.25),
+                                ranges: vec![Ranged {
+                                    seat: 0,
+                                    masses: vec![0.0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1, 0.0],
+                                }],
+                            }),
+                        }]
+                    } else {
+                        Vec::new()
+                    },
+                },
+                Source::Live,
+                ms,
+            )
+            .unwrap();
+    }
+}
+
+#[test]
+fn the_hands_route_lists_a_bots_traced_hands_newest_first() {
+    let (addr, dir) = serve("hands-route");
+    traced_store(&dir.join("data"), "Alpha");
+    let (code, body) = get(addr, "/api/hands/Alpha");
+    assert_eq!(code, 200);
+    let listed: Value = serde_json::from_str(&body).unwrap();
+    let rows = listed["hands"].as_array().unwrap();
+    assert_eq!(rows.len(), 1, "only the traced hand is listed");
+    assert_eq!(rows[0]["hand_id"], "h-1");
+    assert_eq!(rows[0]["decisions"], 1);
+}
+
+#[test]
+fn the_trace_route_reads_one_hands_decisions() {
+    let (addr, dir) = serve("trace-route");
+    traced_store(&dir.join("data"), "Alpha");
+    let (code, body) = get(addr, "/api/trace/Alpha/h-1");
+    assert_eq!(code, 200);
+    let trace: Value = serde_json::from_str(&body).unwrap();
+    let decisions = trace["decisions"].as_array().unwrap();
+    assert_eq!(decisions.len(), 1);
+    assert_eq!(decisions[0]["branch"], "priced");
+    assert_eq!(decisions[0]["street"], "preflop");
+    assert_eq!(decisions[0]["price"], 0.25);
+}
+
+#[test]
+fn an_untraced_hand_says_so_rather_than_rendering_an_empty_trace() {
+    let (addr, dir) = serve("untraced-route");
+    traced_store(&dir.join("data"), "Alpha");
+    let (code, body) = get(addr, "/api/trace/Alpha/h-2");
+    assert_eq!(code, 200);
+    let trace: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(trace["traced"], false);
+    assert!(trace["decisions"].as_array().unwrap().is_empty());
+    assert!(
+        trace["note"].as_str().unwrap().contains("no trace"),
+        "the page is told why it has nothing to show"
+    );
+}
+
+#[test]
+fn a_hand_the_store_does_not_hold_is_a_404() {
+    let (addr, dir) = serve("missing-hand-route");
+    traced_store(&dir.join("data"), "Alpha");
+    let (code, _) = get(addr, "/api/trace/Alpha/h-missing");
+    assert_eq!(code, 404);
+}
+
+#[test]
+fn a_bot_with_no_store_lists_no_hands_rather_than_failing() {
+    // A bot that has just started has decided nothing yet, and the page asks before its store
+    // exists.
+    let (addr, _dir) = serve("no-store-route");
+    let (code, body) = get(addr, "/api/hands/Nobody");
+    assert_eq!(code, 200);
+    let listed: Value = serde_json::from_str(&body).unwrap();
+    assert!(listed["hands"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn a_hands_page_is_the_dashboard_document_and_nothing_else_is() {
+    // The page is one document the script routes: `/bot/Alpha/hand/h-1` is the replayer's page,
+    // and anything deeper is not a page at all.
+    let (addr, _dir) = serve("hand-page");
+    let (code, body) = get(addr, "/bot/Alpha/hand/h-1");
+    assert_eq!(code, 200);
+    assert!(body.contains("<!doctype html"), "the dashboard document");
+    let (code, _) = get(addr, "/bot/Alpha/hand/h-1/extra");
+    assert_eq!(code, 404);
+    let (code, _) = get(addr, "/bot/Alpha/hand/../../etc/passwd");
+    assert_eq!(code, 404);
+}

@@ -179,7 +179,7 @@ test("the fleet page has one card a bot and the strip names the worst problem", 
   expect(view.querySelector("a").attrs.href).toBe("/bot/SurSvan");
 });
 
-test("a bot's page has five panels, its table, and a chart with its numbers in a table", () => {
+test("a bot's page has six panels, its table, and a chart with its numbers in a table", () => {
   const view = show("/bot/SurSvan");
   expect(view.all("section").map((panel) => panel.querySelector("h2").textContent)).toEqual([
     "Now",
@@ -187,6 +187,7 @@ test("a bot's page has five panels, its table, and a chart with its numbers in a
     "Ledger",
     "Plays by",
     "Process",
+    "Traced hands",
   ]);
   expect(view.textContent).toContain("Ah Kd 7c 2s");
   expect(view.textContent).toContain("SurSvan (us)");

@@ -11,6 +11,8 @@
 //!   score of their own, and after the flop by the strength of the best five cards.
 //! - A **move** is a fold, check, call, or a bet or raise sized by the chips it adds to the pot.
 
+use std::collections::BTreeMap;
+
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::eval::{Strength, strength};
 use svanbot_core::rules::Street;
@@ -419,4 +421,37 @@ pub fn range(model: &ActionModel, seen: &[Seen], dead: CardSet) -> Vec<(CardSet,
         .zip(weights)
         .map(|(combo, weight)| (combo, weight / total))
         .collect()
+}
+
+/// `range` as its mass over the strength buckets on `board`: one number a bucket, summing to 1.
+///
+/// The range itself is a weight per pair, 17 to 21 KB for a board; a trace keeps this instead. It
+/// is the same abstraction the model reasons in ([`buckets`]), so a reader of the trace and the
+/// solver that read the range are looking at one thing. An empty range summarises to zeros.
+pub fn summary(read: &[(CardSet, f64)], board: CardSet) -> Vec<f64> {
+    masses(read, &ranked(board))
+}
+
+/// Every live pair on `board` with its bucket, once: five opponents on one board share one table.
+pub fn ranked(board: CardSet) -> BTreeMap<CardSet, usize> {
+    buckets(board, CardSet::EMPTY).into_iter().collect()
+}
+
+/// [`summary`] by a table [`ranked`] already built.
+pub fn masses(read: &[(CardSet, f64)], ranked: &BTreeMap<CardSet, usize>) -> Vec<f64> {
+    let mut masses = vec![0.0; BUCKETS];
+    let mut total = 0.0;
+    for &(held, weight) in read {
+        let Some(&bucket) = ranked.get(&held) else {
+            continue;
+        };
+        masses[bucket] += weight;
+        total += weight;
+    }
+    if total > 0.0 {
+        for mass in &mut masses {
+            *mass /= total;
+        }
+    }
+    masses
 }

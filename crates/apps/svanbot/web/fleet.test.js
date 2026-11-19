@@ -3,6 +3,7 @@ import {
   arenaRun,
   arenaSpan,
   botView,
+  byStreet,
   byWinRate,
   chart,
   duration,
@@ -10,9 +11,12 @@ import {
   freshness,
   isFleet,
   mbbText,
+  priceText,
+  rangeRows,
   rateText,
   route,
   running,
+  valueText,
   whisker,
   winRate,
 } from "./fleet.js";
@@ -203,4 +207,51 @@ test("the scoreboard's span reaches every interval it draws, and always zero", (
     low: 0,
     high: 600,
   });
+});
+
+test("a hand's path names its bot and its hand", () => {
+  // `/bot/Alpha` is the bot's page; `/bot/Alpha/hand/h-1` is one of its hands.
+  expect(route("/bot/Alpha/hand/h-1")).toEqual({ view: "hand", bot: "Alpha", hand: "h-1" });
+  expect(route("/bot/Alpha")).toEqual({ view: "bot", bot: "Alpha" });
+  // A hand id with anything outside a short name's characters is not a hand's path.
+  expect(route("/bot/Alpha/hand/../../etc")).toEqual({ view: "fleet" });
+});
+
+test("a price is the share of the pot a call costs, and a free check has none", () => {
+  // The pricer compares our equity against the price of the call: 200 to call a pot of 400 is a
+  // third of the pot it would be calling into.
+  expect(priceText(0.25)).toBe("25.0% of the pot");
+  expect(priceText(null)).toBe("no call to price");
+});
+
+test("an action's value is signed and in big blinds, best first", () => {
+  expect(valueText(1.5)).toBe("+1.500 bb");
+  expect(valueText(-0.25)).toBe("−0.250 bb");
+});
+
+test("a hand's decisions group by street, in the order they were made", () => {
+  const decisions = [
+    { street: "preflop", branch: "priced" },
+    { street: "flop", branch: "solved" },
+    { street: "flop", branch: "solved" },
+    { street: "river", branch: "solved" },
+  ];
+  const streets = byStreet(decisions);
+  expect(streets.map((street) => street.name)).toEqual(["preflop", "flop", "river"]);
+  expect(streets[1].decisions.length).toBe(2);
+  // Two decisions on one street keep the order they were made in.
+  expect(streets[1].decisions).toEqual([decisions[1], decisions[2]]);
+});
+
+test("an empty trace groups to no streets rather than one empty street", () => {
+  expect(byStreet([])).toEqual([]);
+  expect(byStreet(undefined)).toEqual([]);
+});
+
+test("a range's masses are labelled weakest first, and add to one", () => {
+  const rows = rangeRows([0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1, 0]);
+  expect(rows.length).toBe(8);
+  expect(rows[0].label).toBe("1");
+  expect(rows[7].label).toBe("8");
+  expect(rows[3].mass).toBeCloseTo(0.3, 6);
 });

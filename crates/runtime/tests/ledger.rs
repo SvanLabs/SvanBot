@@ -23,6 +23,7 @@ fn hand(table: &str, number: u32, stack: u32) -> Hand {
                 r#"{{"type":"hand_result","winners":[],"final_stacks":{{"0":1960,"2":{stack}}}}}"#
             ),
         ],
+        traced: Vec::new(),
     }
 }
 

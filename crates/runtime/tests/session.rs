@@ -6,6 +6,7 @@ use svanbot_core::rules::{Action, RaiseRange};
 use svanbot_core::spot::Spot;
 use svanbot_runtime::session::{Incident, Session};
 use svanbot_runtime::wire::{Inbound, Offer, Outbound, Player, Turn, VenueAction};
+use svanbot_strategy::policy::{Branch, Decision, PricedTrace, Trace};
 
 const ROSTER: [&str; 5] = ["SvanBotV10", "Svanar", "Svanism", "SuraGunnar", "SurSvan"];
 
@@ -62,6 +63,74 @@ fn facing_a_blind() -> Offer {
 
 fn never(_: &Spot) -> Action {
     unreachable!("no decision is due")
+}
+
+/// A decision the policy made, with the trace that made it.
+fn traced(action: Action) -> Decision {
+    Decision {
+        action,
+        drawn: None,
+        trace: Some(Trace {
+            branch: Branch::Priced,
+            street: svanbot_core::rules::Street::Preflop,
+            solved: None,
+            priced: Some(PricedTrace {
+                equity: 0.7,
+                price: Some(0.5),
+                ranges: Vec::new(),
+            }),
+        }),
+    }
+}
+
+#[test]
+fn the_trace_of_a_decision_rides_out_on_the_step_that_plays_it() {
+    // The policy's record has to leave the session with the action, because the session is the
+    // only place that has both the trace and the hand id it belongs to.
+    let mut session = session();
+    session.on_frame(
+        joined(vec![
+            player(0, "alpha_bot", 2000),
+            player(2, "SurSvan", 2000),
+        ]),
+        never,
+    );
+    session.on_frame(start(), never);
+    session.on_frame(
+        Inbound::HoleCards {
+            cards: vec!["Ah".parse().unwrap(), "As".parse().unwrap()],
+        },
+        never,
+    );
+    let step = session.on_frame(turn(facing_a_blind()), |_| traced(Action::RaiseTo(60)));
+    assert_eq!(step.traced.len(), 1);
+    let (hand_id, trace) = &step.traced[0];
+    assert_eq!(hand_id, "h-1");
+    assert_eq!(trace.branch, Branch::Priced);
+    assert_eq!(trace.priced.as_ref().unwrap().equity, 0.7);
+}
+
+#[test]
+fn a_decision_with_no_trace_leaves_the_step_untraced() {
+    // A caller that hands back a bare action has not traced it, and the replayer must be able to
+    // tell that from a decision whose trace happened to be empty.
+    let mut session = session();
+    session.on_frame(
+        joined(vec![
+            player(0, "alpha_bot", 2000),
+            player(2, "SurSvan", 2000),
+        ]),
+        never,
+    );
+    session.on_frame(start(), never);
+    session.on_frame(
+        Inbound::HoleCards {
+            cards: vec!["Ah".parse().unwrap(), "As".parse().unwrap()],
+        },
+        never,
+    );
+    let step = session.on_frame(turn(facing_a_blind()), |_| Action::RaiseTo(60));
+    assert!(step.traced.is_empty());
 }
 
 #[test]

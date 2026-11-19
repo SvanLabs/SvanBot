@@ -98,6 +98,8 @@ pub fn download(
                 hand_id,
                 table_id: text(item, &["table_id"]).unwrap_or_default(),
                 frames: vec![item.to_string()],
+                // A downloaded hand was played elsewhere, on a build that kept no trace.
+                traced: Vec::new(),
             };
             if store.append_hand(&hand, Source::History, now_ms())? {
                 summary.added += 1;

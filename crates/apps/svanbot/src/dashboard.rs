@@ -21,10 +21,13 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use svanbot_core::rules::Street;
 use svanbot_runtime::fleet::{self, ArenaRun};
 use svanbot_runtime::release::version_cmp;
 use svanbot_runtime::slot::Slots;
 use svanbot_runtime::status::Fleet;
+use svanbot_runtime::store::Store;
+use svanbot_strategy::policy::{Branch, Ranged, Trace};
 
 mod page;
 mod stream;
@@ -114,6 +117,21 @@ fn handle(mut socket: TcpStream, config: &Config) {
     let _ = match path {
         "/api/fleet" => respond(&mut socket, 200, json_type, fleet_json(config).as_bytes()),
         "/api/events" => stream::serve(socket, config),
+        _ if path.starts_with("/api/hands/") => {
+            let bot = path.trim_start_matches("/api/hands/");
+            respond(
+                &mut socket,
+                200,
+                json_type,
+                hands_json(config, bot).as_bytes(),
+            )
+        }
+        _ if path.starts_with("/api/trace/") => {
+            match trace_json(config, path.trim_start_matches("/api/trace/")) {
+                Some((status, body)) => respond(&mut socket, status, json_type, body.as_bytes()),
+                None => respond(&mut socket, 404, json_type, b"{\"detail\":\"not found\"}"),
+            }
+        }
         _ if path.starts_with("/api/") => {
             respond(&mut socket, 404, json_type, b"{\"detail\":\"not found\"}")
         }
@@ -167,6 +185,99 @@ fn respond(socket: &mut TcpStream, status: u16, kind: &str, body: &[u8]) -> io::
     )?;
     socket.write_all(body)?;
     socket.flush()
+}
+
+/// The newest traced hands of one bot, newest first — what the replayer's list opens. A bot with
+/// no store yet has decided nothing, which is an empty list rather than an error.
+fn hands_json(config: &Config, bot: &str) -> String {
+    let store = match Store::open_reader(&store_at(config, bot)) {
+        Ok(store) => store,
+        Err(_) => return json!({ "bot": bot, "hands": [] }).to_string(),
+    };
+    let hands: Vec<Value> = store
+        .traced_hands()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|hand| {
+            json!({
+                "hand_id": hand.hand_id,
+                "table_id": hand.table_id,
+                "recorded_ms": hand.recorded_ms,
+                "decisions": hand.decisions,
+            })
+        })
+        .collect();
+    json!({ "bot": bot, "hands": hands }).to_string()
+}
+
+/// One hand's decisions, oldest first. `None` when the store does not hold the hand at all; a hand
+/// it holds with no decisions is `"traced": false`, with the note the page reads, because a hand
+/// played before the trace existed is not a hand that made no decisions.
+fn trace_json(config: &Config, route: &str) -> Option<(u16, String)> {
+    let (bot, hand_id) = route.split_once('/')?;
+    let store = Store::open_reader(&store_at(config, bot)).ok()?;
+    if !store.holds(hand_id).unwrap_or(false) {
+        return None;
+    }
+    match store.traces(hand_id).ok().flatten() {
+        Some(traces) => {
+            let decisions: Vec<Value> = traces.iter().map(trace_value).collect();
+            Some((
+                200,
+                json!({ "bot": bot, "hand_id": hand_id, "traced": true, "decisions": decisions })
+                    .to_string(),
+            ))
+        }
+        None => Some((
+            200,
+            json!({
+                "bot": bot,
+                "hand_id": hand_id,
+                "traced": false,
+                "decisions": [],
+                "note": "no trace — this hand was played before traces were recorded, or it has been pruned",
+            })
+            .to_string(),
+        )),
+    }
+}
+
+fn trace_value(trace: &Trace) -> Value {
+    let street = match trace.street {
+        Street::Preflop => "preflop",
+        Street::Flop => "flop",
+        Street::Turn => "turn",
+        Street::River => "river",
+    };
+    let branch = match trace.branch {
+        Branch::Solved => "solved",
+        Branch::Priced => "priced",
+    };
+    let mut value = json!({ "street": street, "branch": branch });
+    if let Some(solved) = &trace.solved {
+        value["values"] = json!(solved.values);
+        value["strategy"] = json!(solved.strategy);
+        value["taken"] = json!(solved.taken);
+        value["ranges"] = json!(ranges_value(&solved.ranges));
+    }
+    if let Some(priced) = &trace.priced {
+        value["equity"] = json!(priced.equity);
+        value["price"] = json!(priced.price);
+        value["ranges"] = json!(ranges_value(&priced.ranges));
+    }
+    value
+}
+
+fn ranges_value(ranges: &[Ranged]) -> Vec<Value> {
+    ranges
+        .iter()
+        .map(|ranged| json!({ "seat": ranged.seat, "masses": ranged.masses }))
+        .collect()
+}
+
+/// A bot's store: beside its status file, under the data directory, as the bot writes it.
+fn store_at(config: &Config, bot: &str) -> PathBuf {
+    config.data_dir.join(format!("{bot}.db"))
 }
 
 /// The fleet as it stands, without the clock: what the stream compares to see a change.

@@ -6,6 +6,7 @@ import {
   arenaRun,
   arenaSpan,
   botView,
+  byStreet,
   byWinRate,
   chart,
   duration,
@@ -13,9 +14,12 @@ import {
   freshness,
   isFleet,
   mbbText,
+  priceText,
+  rangeRows,
   rateText,
   route,
   running,
+  valueText,
   whisker,
   winRate,
 } from "./fleet.js";
@@ -251,8 +255,110 @@ function botPage(fleet, name, nowMs) {
           ["Process", String(status.pid)],
         ]),
       ),
+      panel("Traced hands", tracedHands(name)),
     ),
   ];
+}
+
+/** The newest hands this bot traced, each linking to its own page. */
+function tracedHands(bot) {
+  const hands = state.hands;
+  if (hands === null) {
+    return h("p", { class: "muted" }, "Reading the store…");
+  }
+  if (hands.error) {
+    return h("p", { class: "worst fail" }, hands.error);
+  }
+  if (hands.length === 0) {
+    return h("p", { class: "muted" }, "No traced hands yet.");
+  }
+  const nowMs = Date.now();
+  return table(
+    "Newest first",
+    [
+      ["Hand", null],
+      ["Table", null],
+      ["Decisions", "number"],
+      ["Recorded", null],
+    ],
+    hands.map((hand) =>
+      h(
+        "tr",
+        {},
+        h("td", {}, h("a", { href: `/bot/${bot}/hand/${hand.hand_id}` }, hand.hand_id)),
+        h("td", {}, hand.table_id),
+        h("td", { class: "number" }, String(hand.decisions)),
+        h("td", {}, when(hand.recorded_ms, nowMs)),
+      ),
+    ),
+  );
+}
+
+/**
+ * One hand's page: every decision in it, street by street, from the trace the bot wrote rather
+ * than from a replay of the hand (V11-24). It is loopback only, like every page here.
+ */
+function handPage(state, bot, hand) {
+  const title = h("h1", {}, `${bot} `, h("code", {}, hand));
+  const trace = state.trace;
+  const head = h("p", {}, h("a", { href: `/bot/${bot}` }, "← back to the bot"));
+  if (trace === null) {
+    return [title, head, h("p", { class: "muted" }, "Reading the trace…")];
+  }
+  if (trace.error) {
+    return [title, head, h("p", { class: "worst fail" }, trace.error)];
+  }
+  if (!trace.traced) {
+    // A hand from before the trace existed is not a hand that made no decisions.
+    return [title, head, h("p", { class: "muted" }, trace.note)];
+  }
+  const streets = byStreet(trace.decisions);
+  return [
+    title,
+    head,
+    ...streets.map((street) =>
+      panel(streetTitle(street.name), ...street.decisions.map(decisionView)),
+    ),
+  ];
+}
+
+function streetTitle(name) {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** One decision: which way decided, what it was worth, and the ranges it read. */
+function decisionView(decision) {
+  const priced = decision.branch === "priced";
+  return h(
+    "div",
+    { class: "decision" },
+    h(
+      "p",
+      {},
+      h("strong", {}, priced ? "Priced" : "Solved"),
+      priced
+        ? `: equity ${(decision.equity * 100).toFixed(1)}%, ${priceText(decision.price)}`
+        : `: took action ${decision.taken + 1} of ${decision.values.length}`,
+    ),
+    priced
+      ? null
+      : facts(
+          decision.values.map((value, at) => [
+            `Action ${at + 1}`,
+            `${valueText(value)} of the pot, mixed ${(decision.strategy[at] * 100).toFixed(0)}%`,
+          ]),
+        ),
+    ...(decision.ranges ?? []).map((range) =>
+      facts([
+        [
+          `Opponent ${range.seat + 1}`,
+          rangeRows(range.masses)
+            .map((row) => `${row.mass.toFixed(2)}`)
+            .join(" "),
+        ],
+      ]),
+    ),
+  );
 }
 
 /** The release page: what is installed, where the slots point, and what each bot runs. */
@@ -433,7 +539,51 @@ function scoreboardPage(fleet) {
   ];
 }
 
-const state = { fleet: null, offset: 0, lastMessageMs: null, streamError: null };
+const state = {
+  fleet: null,
+  offset: 0,
+  lastMessageMs: null,
+  streamError: null,
+  // The views the stream does not carry: one bot's hands, and one hand's trace. Fetched when the
+  // path asks for them, and refetched when it changes.
+  hands: null,
+  handsFor: null,
+  trace: null,
+  traceFor: null,
+};
+
+/** Asks for what the path needs, once per path: the stream carries the fleet, not the traces. */
+function load(at) {
+  if (at.view === "bot" && state.handsFor !== at.bot) {
+    state.handsFor = at.bot;
+    state.hands = null;
+    fetch(`/api/hands/${at.bot}`)
+      .then((answer) => (answer.ok ? answer.json() : Promise.reject(new Error("no hands"))))
+      .then((body) => {
+        state.hands = body.hands ?? [];
+        render();
+      })
+      .catch(() => {
+        state.hands = { error: "The bot's store could not be read." };
+        render();
+      });
+  }
+  const key = at.view === "hand" ? `${at.bot}/${at.hand}` : null;
+  if (key !== null && state.traceFor !== key) {
+    state.traceFor = key;
+    state.trace = null;
+    fetch(`/api/trace/${at.bot}/${at.hand}`)
+      .then((answer) => (answer.ok ? answer.json() : Promise.reject(new Error("no trace"))))
+      .then((body) => {
+        state.trace = body;
+        render();
+      })
+      .catch(() => {
+        state.trace = { error: "This hand is not in the bot's store." };
+        render();
+      });
+  }
+}
 
 function render() {
   const local = Date.now();
@@ -458,14 +608,17 @@ function render() {
         ? problems[0].text
         : `${problems[0].text} (and ${problems.length - 1} more)`;
   const at = route(location.pathname);
+  load(at);
   const view =
-    at.view === "bot"
-      ? botPage(state.fleet, at.bot, nowMs)
-      : at.view === "release"
-        ? releasePage(state.fleet, nowMs)
-        : at.view === "scoreboard"
-          ? scoreboardPage(state.fleet)
-          : fleetView(state.fleet, nowMs, problems);
+    at.view === "hand"
+      ? handPage(state, at.bot, at.hand)
+      : at.view === "bot"
+        ? botPage(state.fleet, at.bot, nowMs)
+        : at.view === "release"
+          ? releasePage(state.fleet, nowMs)
+          : at.view === "scoreboard"
+            ? scoreboardPage(state.fleet)
+            : fleetView(state.fleet, nowMs, problems);
   // Redraw only what changed: a redraw every second would take the focus and the scroll from
   // whoever is reading the table. An open table fallback stays open across a redraw.
   const shown = document.getElementById("view");

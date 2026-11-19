@@ -168,14 +168,16 @@ fn main() -> ExitCode {
                 let params = probing.borrow().params();
                 // A fitted action model is used only if it passed the gate (`svanbot fit`).
                 let decision = decide_drawn(spot, model.as_ref(), &params, budget, iterations);
-                if let Some(drawn) = decision.drawn {
+                if let Some(drawn) = &decision.drawn {
                     probing.borrow_mut().decided(Decided {
-                        strategy: drawn.strategy,
-                        values: drawn.values,
+                        strategy: drawn.strategy.clone(),
+                        values: drawn.values.clone(),
                         taken: drawn.taken,
                     });
                 }
-                decision.action
+                // The trace rides back with the decision; the session puts it on the step and the
+                // recorder keeps it with the hand (`V11-24`).
+                decision
             },
             |event| keep(&store, &probing, &live, event),
             &stop,
