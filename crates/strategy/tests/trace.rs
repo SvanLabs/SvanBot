@@ -46,7 +46,6 @@ fn a_solved_trace_carries_its_values_and_the_range_it_read() {
     assert_eq!(trace.branch, Branch::Solved);
     let solved = trace.solved.as_ref().expect("a re-solve keeps its values");
     assert_eq!(solved.values.len(), solved.strategy.len());
-    assert!(!solved.actions.is_empty());
     // Every opponent's range is summarised, and there is one opponent here.
     assert_eq!(solved.ranges.len(), 1);
     assert_eq!(solved.ranges[0].masses.len(), BUCKETS);

@@ -290,7 +290,6 @@ fn trace(branch: Branch) -> Trace {
             branch,
             street: Street::Flop,
             solved: Some(SolvedTrace {
-                actions: Vec::new(),
                 values: vec![1.5, -0.25],
                 strategy: vec![0.75, 0.25],
                 taken: 0,

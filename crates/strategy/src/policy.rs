@@ -11,7 +11,7 @@ use svanbot_core::spot::Spot;
 use crate::action::{ActionModel, BUCKETS, Seen, masses, range, ranked};
 use crate::params::Params;
 use crate::pricer::{self, Budget};
-use crate::resolve::{Abstract, resolve};
+use crate::resolve::resolve;
 
 /// The action to play at `spot`: the re-solve's after `iterations` when it covers the spot, and
 /// the pricer's otherwise. Both read the opponents' ranges from their lines, by `model` or, with
@@ -74,11 +74,10 @@ pub struct Trace {
     pub priced: Option<PricedTrace>,
 }
 
-/// What the re-solve decided from: the actions the root offered, what the last iteration valued
-/// each at for our cards, the mix it drew from, and the range it read the villain at.
+/// What the re-solve decided from: what the last iteration valued each action at for our cards,
+/// the mix it drew from, and the range it read the villain at.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SolvedTrace {
-    pub actions: Vec<Abstract>,
     pub values: Vec<f64>,
     pub strategy: Vec<f64>,
     pub taken: usize,
@@ -139,11 +138,6 @@ pub fn decide_drawn(
                 branch: Branch::Solved,
                 street: street_of(spot.board),
                 solved: Some(SolvedTrace {
-                    actions: resolved
-                        .strategy
-                        .iter()
-                        .map(|&(action, _)| action)
-                        .collect(),
                     values: resolved.values,
                     strategy: resolved
                         .strategy

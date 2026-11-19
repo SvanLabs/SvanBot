@@ -122,9 +122,6 @@ pub(super) fn trace_from(street: &str, branch: &str, json: &str) -> Result<Trace
     let (solved, priced) = match branch {
         Branch::Solved => (
             Some(SolvedTrace {
-                // The actions are the tree's own names, and the page reads the branch: a stored
-                // trace says what each action was worth, and the values are in the same order.
-                actions: Vec::new(),
                 values: floats(&value["values"]),
                 strategy: floats(&value["strategy"]),
                 taken: usize::try_from(value["taken"].as_u64().unwrap_or(0)).unwrap_or(0),
