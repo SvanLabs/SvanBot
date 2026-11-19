@@ -65,6 +65,10 @@ fn a_hands_route_that_cannot_read_the_store_is_not_an_empty_list() {
     let (code, body) = get(addr, "/api/hands/Broken");
     assert_eq!(code, 500, "{body}");
     assert!(body.contains("cannot be read"), "{body}");
+    // The trace route makes the same distinction: a broken store is not a hand nobody played.
+    let (code, body) = get(addr, "/api/trace/Broken/h-1");
+    assert_eq!(code, 500, "{body}");
+    assert!(body.contains("cannot be read"), "{body}");
 }
 
 #[test]

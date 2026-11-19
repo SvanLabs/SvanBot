@@ -243,13 +243,35 @@ fn hands_json(config: &Config, bot: &str) -> Option<(u16, String)> {
 /// One hand's decisions, oldest first. `None` when the store does not hold the hand at all; a hand
 /// it holds with no decisions is `"traced": false`, with the note the page reads, because a hand
 /// played before the trace existed is not a hand that made no decisions.
+///
+/// A store that is there and cannot be read is neither: it is `INTERNAL_ERROR`, the same as the
+/// hands list, so a corrupt store does not read as a hand that was never played.
 fn trace_json(config: &Config, route: &str) -> Option<(u16, String)> {
     let (bot, hand_id) = route.split_once('/')?;
     if !page::is_name(bot) || !page::is_name(hand_id) {
         return None;
     }
-    let store = Store::open_reader(&config.store_of(bot)).ok()?;
-    if !store.holds(hand_id).unwrap_or(false) {
+    let store = match Store::open_reader(&config.store_of(bot)) {
+        Ok(store) => store,
+        Err(error) => {
+            return Some((
+                INTERNAL_ERROR,
+                json!({ "detail": format!("{bot}'s store cannot be read: {error}") }).to_string(),
+            ));
+        }
+    };
+    // The store opens lazily, so a file that is not a database fails here rather than at
+    // `open_reader`: a read error on a store that is there is a 500, not a hand nobody played.
+    let holds = match store.holds(hand_id) {
+        Ok(holds) => holds,
+        Err(error) => {
+            return Some((
+                INTERNAL_ERROR,
+                json!({ "detail": format!("{bot}'s store cannot be read: {error}") }).to_string(),
+            ));
+        }
+    };
+    if !holds {
         return None;
     }
     match store.traces(hand_id).ok().flatten() {

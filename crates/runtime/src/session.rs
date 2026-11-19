@@ -25,7 +25,7 @@ use crate::status::{Seat, Table};
 use std::collections::BTreeMap;
 
 use svanbot_core::card::CardSet;
-use svanbot_core::rules::{Action, Street};
+use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
 use svanbot_strategy::policy::{Decision, Trace};
 
@@ -44,16 +44,6 @@ pub enum Incident {
     },
     /// A hand was dealt with a stablemate in it.
     SharedHand { hand_id: String, stablemate: String },
-}
-
-/// The venue's name for a street, as the dashboard shows it.
-fn street_name(street: Street) -> &'static str {
-    match street {
-        Street::Preflop => "preflop",
-        Street::Flop => "flop",
-        Street::Turn => "turn",
-        Street::River => "river",
-    }
 }
 
 /// What the session does in answer to one frame.
@@ -88,13 +78,10 @@ impl Step {
                 self.incidents.push(incident);
             }
         }
-        // A resync replays a turn the session may have answered already, so a trace carried on both
-        // is one trace, not two rows in the store.
-        for traced in later.traced {
-            if !self.traced.contains(&traced) {
-                self.traced.push(traced);
-            }
-        }
+        // A trace is added, never merged: one step decides at most once, and a turn seen twice is
+        // refused by `played_token` before it can decide again. A resync skips replayed turns and
+        // snapshots (`resync.rs`), so its one decision carries one trace.
+        self.traced.extend(later.traced);
         self
     }
 }
@@ -179,9 +166,7 @@ impl Session {
             seat: self.seat,
             hand_id: self.hand.as_ref().map(|hand| hand.hand_id.clone()),
             street: if in_hand {
-                self.lines
-                    .street()
-                    .map(|street| street_name(street).to_owned())
+                self.lines.street().map(|street| street.name().to_owned())
             } else {
                 None
             },
