@@ -431,7 +431,7 @@ const state = {
 };
 
 /** The server's sentence for a refusal, or `fallback` when it sent none: a detail is never markup. */
-function textOf(body, fallback) {
+export function textOf(body, fallback) {
   return typeof body?.detail === "string" ? body.detail : fallback;
 }
 

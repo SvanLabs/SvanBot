@@ -103,6 +103,10 @@ fn a_bot_with_no_store_lists_no_hands_rather_than_failing() {
     assert_eq!(code, 200);
     let listed: Value = serde_json::from_str(&body).unwrap();
     assert!(listed["hands"].as_array().unwrap().is_empty());
+    // The trace route agrees: a bot with no store has no hand, so this is a 404 — not a 500 that
+    // would say the store is broken.
+    let (code, _) = get(addr, "/api/trace/Nobody/h-1");
+    assert_eq!(code, 404);
 }
 
 #[test]

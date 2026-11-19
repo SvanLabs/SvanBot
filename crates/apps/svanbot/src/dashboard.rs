@@ -251,8 +251,12 @@ fn trace_json(config: &Config, route: &str) -> Option<(u16, String)> {
     if !page::is_name(bot) || !page::is_name(hand_id) {
         return None;
     }
-    let store = match Store::open_reader(&config.store_of(bot)) {
+    let path = config.store_of(bot);
+    let store = match Store::open_reader(&path) {
         Ok(store) => store,
+        // A bot that has played nothing has no store, and no store holds no hands: the same answer
+        // the hands list gives, so the two routes agree about a bot that has just started.
+        Err(_) if !path.exists() => return None,
         Err(error) => {
             return Some((
                 INTERNAL_ERROR,

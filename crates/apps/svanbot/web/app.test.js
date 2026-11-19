@@ -168,6 +168,19 @@ beforeAll(async () => {
   await import("./app.js");
 });
 
+test("a refusal's sentence is the server's when it sent one, and the page's when it did not", async () => {
+  // The trace route answers 500 with a sentence saying why the store could not be read. The page
+  // shows that sentence, so a corrupt store does not read as "no such hand". A detail that is not
+  // a string is never shown: it would be an object where a sentence belongs.
+  const { textOf } = await import("./app.js");
+  expect(textOf({ detail: "Alpha's store cannot be read: no such table" }, "fallback")).toBe(
+    "Alpha's store cannot be read: no such table",
+  );
+  expect(textOf({}, "fallback")).toBe("fallback");
+  expect(textOf({ detail: { note: "obj" } }, "fallback")).toBe("fallback");
+  expect(textOf(null, "fallback")).toBe("fallback");
+});
+
 test("the fleet page has one card a bot and the strip names the worst problem", () => {
   const view = show("/");
   expect(view.all("article").length).toBe(2);
