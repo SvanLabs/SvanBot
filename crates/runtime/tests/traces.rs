@@ -9,7 +9,7 @@ use serde_json::json;
 use support::{hand, scratch};
 use svanbot_core::card::CardSet;
 use svanbot_core::rules::Street;
-use svanbot_runtime::record::{Hand, Recorder};
+use svanbot_runtime::record::{Hand, PENDING_LIMIT, Recorder};
 use svanbot_runtime::store::{Source, Store};
 use svanbot_runtime::wire::parse_frame;
 use svanbot_strategy::policy::{Abstract, Branch, PricedTrace, Ranged, ResolvedTrace, Trace};
@@ -113,7 +113,13 @@ fn the_oldest_traced_hands_fall_off_past_the_cap() {
     let over = svanbot_runtime::store::TRACED_HANDS + 3;
     for number in 0..over {
         let hand = traced_hand(&format!("h-{number}"), &[Branch::Priced]);
-        assert!(store.append_hand(&hand, Source::Live, 1_000).unwrap());
+        // Each hand recorded a moment later than the last, so the cap's order has something to
+        // read: with one `recorded_ms` for all of them the test would only ever exercise `rowid`.
+        assert!(
+            store
+                .append_hand(&hand, Source::Live, 1_000 + i64::try_from(number).unwrap())
+                .unwrap()
+        );
     }
     // The newest are all there.
     assert!(
@@ -130,6 +136,37 @@ fn the_oldest_traced_hands_fall_off_past_the_cap() {
     assert_eq!(
         store.traced_hands().unwrap().len(),
         svanbot_runtime::store::TRACED_HANDS
+    );
+}
+
+#[test]
+fn a_traced_hand_is_capped_by_when_it_was_played_not_when_it_was_written() {
+    // A hand written late — replayed from a resync, or stored after a reconnect — is still an old
+    // hand. The cap must drop it ahead of newer hands written before it, or a long replay would
+    // evict live play.
+    let path = scratch("cap-order").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    for number in 0..svanbot_runtime::store::TRACED_HANDS {
+        let hand = traced_hand(&format!("new-{number}"), &[Branch::Priced]);
+        assert!(
+            store
+                .append_hand(&hand, Source::Live, 10_000 + i64::try_from(number).unwrap())
+                .unwrap()
+        );
+    }
+    // One more, written last but recorded a minute before any of them.
+    assert!(
+        store
+            .append_hand(&traced_hand("late", &[Branch::Priced]), Source::Live, 9_000)
+            .unwrap()
+    );
+    assert!(
+        store.traces("late").unwrap().is_none(),
+        "the late-written old hand is the one the cap drops"
+    );
+    assert!(
+        store.traces("new-0").unwrap().is_some(),
+        "the oldest of the new hands stays"
     );
 }
 
@@ -176,6 +213,44 @@ fn a_reader_reads_a_bots_store_without_claiming_it() {
             .append_hand(&hand("h-2"), Source::Live, 2_000)
             .is_err(),
         "a reader may not write"
+    );
+}
+
+#[test]
+fn a_value_with_no_json_spelling_keeps_its_hand_and_loses_only_itself() {
+    // `NaN` and the infinities have no JSON number, and the column's `json_valid` would refuse
+    // the whole row — losing a decision the bot played. The value is written as `null` instead:
+    // a recorded hole in the values is better than a hand the store never kept.
+    let path = scratch("non-finite").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    let mut hand = traced_hand("h-1", &[Branch::Resolved]);
+    let resolved = hand.traced[0].resolved.as_mut().expect("resolved");
+    resolved.values = vec![f64::NAN, f64::INFINITY, 1.5];
+    assert!(store.append_hand(&hand, Source::Live, 1_000).unwrap());
+    let kept = store.traces("h-1").unwrap().expect("the hand survived");
+    let values = &kept[0].resolved.as_ref().expect("resolved").values;
+    assert_eq!(values.len(), 3);
+    assert_eq!(values[2], 1.5, "the finite value reads back as written");
+    // A JSON `null` reads back as `NaN`, which is finite nothing but is not the number it was.
+    assert!(values[0].is_nan());
+}
+
+#[test]
+fn a_trace_waiting_for_a_hand_that_never_opens_is_not_held_forever() {
+    // A trace can arrive before its hand when a resync replays a turn first. One whose hand never
+    // arrives — a connection that is dropped mid-replay — must not accumulate for the life of the
+    // process, so past a hand's worth of waiting traces the oldest are dropped.
+    let mut recorder = Recorder::default();
+    for number in 0..(PENDING_LIMIT + 5) {
+        recorder.trace(vec![(format!("h-{number}"), preflop_trace())]);
+    }
+    // The newest wait for their hand; the earliest are gone rather than held.
+    let hand = recorder_hand(&mut recorder, &format!("h-{}", PENDING_LIMIT + 4));
+    assert_eq!(hand.traced.len(), 1, "the newest waiting trace is kept");
+    let old = recorder_hand(&mut recorder, "h-0");
+    assert!(
+        old.traced.is_empty(),
+        "the oldest waiting trace was dropped"
     );
 }
 
@@ -238,6 +313,22 @@ fn a_trace_for_another_hand_is_not_filed_in_this_one() {
     recorder.trace(vec![("h-2".to_owned(), preflop_trace())]);
     let hand = recorder_hand_after_start(&mut recorder, "h-1");
     assert!(hand.traced.is_empty(), "h-2's trace is not h-1's");
+}
+
+#[test]
+fn a_trace_for_a_hand_after_this_one_waits_for_it_rather_than_being_dropped() {
+    // A resync can replay the next hand's turn while this one is still open. That trace is not
+    // this hand's, and it is not garbage either: it waits and is filed when its own hand opens.
+    let mut recorder = Recorder::default();
+    let text = hand_start("h-1");
+    recorder.record(&text, &parse_frame(&text).unwrap());
+    let trace = preflop_trace();
+    recorder.trace(vec![("h-2".to_owned(), trace.clone())]);
+    let first = recorder_hand_after_start(&mut recorder, "h-1");
+    assert!(first.traced.is_empty(), "h-2's trace is not h-1's");
+    // The hand it was for opens next, and takes it.
+    let second = recorder_hand(&mut recorder, "h-2");
+    assert_eq!(second.traced, vec![trace], "h-2's trace reached h-2");
 }
 
 /// Closes an already-started hand `hand_id` and returns it.

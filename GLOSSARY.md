@@ -119,8 +119,9 @@ _Avoid_: train, calibrate
 
 **Strength bucket**:
 Where a pair of hole cards ranks among every pair still possible on the board at that moment, cut
-into eight equal shares. The action model sees hole cards only through their bucket.
-_Avoid_: tier, hand class
+into eight equal shares. The action model sees hole cards only through their bucket, and a
+decision trace keeps each opponent's mass in each bucket rather than the whole range.
+_Avoid_: tier, hand class, band, percentile
 
 **Prior**:
 What SvanBot believes about an opponent it has not yet seen enough of, taken from the whole
@@ -339,11 +340,6 @@ _Avoid_: sampled, rolled, picked
 The test a fit must pass before a bot reads by it. A model that failed it is not in the process at
 all, so the trace's `exploit` is `None` and the **baseline** read the spot.
 _Avoid_: threshold, approval
-
-**Strength bucket**:
-One of eight slices of an opponent's range, weakest first, on the board as it stands. A trace
-keeps each opponent's mass in each bucket rather than the whole range.
-_Avoid_: band, tier, percentile
 
 **Public TV**:
 The live table shown to an audience, with nothing private on it.

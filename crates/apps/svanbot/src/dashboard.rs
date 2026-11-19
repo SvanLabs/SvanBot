@@ -43,6 +43,14 @@ pub struct Config {
     pub lib_dir: PathBuf,
 }
 
+impl Config {
+    /// One bot's store: `data_dir/{bot}.db`. The caller has already refused a name no bot can
+    /// have (`page::is_name`), since only a name reaches this path.
+    pub fn store_of(&self, bot: &str) -> PathBuf {
+        self.data_dir.join(format!("{bot}.db"))
+    }
+}
+
 /// A bound dashboard server. Tests bind port 0 and ask [`Server::addr`].
 pub struct Server {
     listener: TcpListener,
@@ -196,9 +204,10 @@ fn hands_json(config: &Config, bot: &str) -> Option<(u16, String)> {
     if !page::is_name(bot) {
         return None;
     }
-    let store = match Store::open_reader(&store_at(config, bot)) {
+    let path = config.store_of(bot);
+    let store = match Store::open_reader(&path) {
         Ok(store) => store,
-        Err(_) if !store_at(config, bot).exists() => {
+        Err(_) if !path.exists() => {
             return Some((200, json!({ "bot": bot, "hands": [] }).to_string()));
         }
         Err(error) => {
@@ -239,7 +248,7 @@ fn trace_json(config: &Config, route: &str) -> Option<(u16, String)> {
     if !page::is_name(bot) || !page::is_name(hand_id) {
         return None;
     }
-    let store = Store::open_reader(&store_at(config, bot)).ok()?;
+    let store = Store::open_reader(&config.store_of(bot)).ok()?;
     if !store.holds(hand_id).unwrap_or(false) {
         return None;
     }
@@ -301,11 +310,6 @@ fn ranges_value(ranges: &[Ranged]) -> Vec<Value> {
         .iter()
         .map(|ranged| json!({ "opponent": ranged.ordinal + 1, "masses": ranged.masses }))
         .collect()
-}
-
-/// A bot's store: beside its status file, under the data directory, as the bot writes it.
-fn store_at(config: &Config, bot: &str) -> PathBuf {
-    config.data_dir.join(format!("{bot}.db"))
 }
 
 /// The fleet as it stands, without the clock: what the stream compares to see a change.

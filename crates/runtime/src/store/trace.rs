@@ -138,7 +138,7 @@ pub(super) fn trace_from(street: &str, branch: &str, json: &str) -> Result<Trace
                 values: floats(&value["values"]),
                 strategy: floats(&value["strategy"]),
                 taken: usize::try_from(value["taken"].as_u64().unwrap_or(0)).unwrap_or(0),
-                actions: actions(&value["actions"]),
+                actions: actions(&value["actions"])?,
                 ranges: ranges(&value),
             }),
             None,
@@ -163,25 +163,38 @@ pub(super) fn trace_from(street: &str, branch: &str, json: &str) -> Result<Trace
     })
 }
 
+/// The floats [`trace_json`] wrote, in order. A `null` keeps its place as `NaN` rather than
+/// dropping out: `values`, `strategy` and `actions` are read by index together, so a value that
+/// vanished would put every later value against the wrong action.
 fn floats(value: &serde_json::Value) -> Vec<f64> {
-    value
-        .as_array()
-        .map(|items| items.iter().filter_map(serde_json::Value::as_f64).collect())
-        .unwrap_or_default()
-}
-
-/// The names [`trace_json`] wrote for a re-solve's actions, in order.
-fn actions(value: &serde_json::Value) -> Vec<Abstract> {
     value
         .as_array()
         .map(|items| {
             items
                 .iter()
-                .filter_map(serde_json::Value::as_str)
-                .filter_map(abstract_named)
+                .map(|item| item.as_f64().unwrap_or(f64::NAN))
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// The names [`trace_json`] wrote for a re-solve's actions, in order.
+///
+/// An action this code does not know is an error, like an unknown branch: dropping it would shift
+/// every later action against the value and the mix that belong to a different one.
+fn actions(value: &serde_json::Value) -> Result<Vec<Abstract>, StoreError> {
+    let Some(items) = value.as_array() else {
+        return Ok(Vec::new());
+    };
+    items
+        .iter()
+        .map(|item| {
+            let name = item
+                .as_str()
+                .ok_or_else(|| StoreError("an action is not a name".to_owned()))?;
+            abstract_named(name).ok_or_else(|| StoreError(format!("no action is called {name}")))
+        })
+        .collect()
 }
 
 /// The action called `name`, or `None` when no action is.

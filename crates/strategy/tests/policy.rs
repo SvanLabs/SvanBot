@@ -31,6 +31,17 @@ fn a_re_solved_decision_says_what_it_drew_from() {
 }
 
 #[test]
+fn a_bare_action_is_a_decision_with_no_trace_behind_it() {
+    // A caller that decides without the policy — a test's fixed action, a replay — has no trace
+    // to offer. The decision says so with `None`, so the replayer is told which of the two it
+    // holds rather than shown an empty trace as though a decision had no reasoning.
+    let decision = svanbot_strategy::policy::Decision::from(Action::Fold);
+    assert_eq!(decision.action, Action::Fold);
+    assert_eq!(decision.trace, None);
+    assert_eq!(decision.drawn, None);
+}
+
+#[test]
 fn the_pricer_draws_nothing() {
     let preflop = spot("AhAs", "", 30, 20, 1);
     let decision = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);

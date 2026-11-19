@@ -128,3 +128,51 @@ test("a decision with no action names still says which index was taken", async (
   const text = replay.decisionView(resolved({ actions: undefined })).textContent;
   expect(text).toContain("took action 2 of 3");
 });
+
+/** The page's title and headings, which is the street grouping a reader sees. */
+function headings(page) {
+  return page
+    .flat(Infinity)
+    .filter((node) => node && typeof node === "object")
+    .flatMap((node) =>
+      node.tag === "h1" || node.tag === "h2" ? [node] : node.all("h1").concat(node.all("h2")),
+    )
+    .map((node) => node.textContent.trim());
+}
+
+test("a hand's page groups its decisions by street, in the order they were made", async () => {
+  // The ticket's item 8: the page is the reason the trace groups by street. Two on the flop
+  // stay two, and the streets read preflop, flop, turn in the order they came.
+  const page = replay.handPage(
+    {
+      trace: {
+        traced: true,
+        decisions: [
+          priced(),
+          resolved({ street: "flop" }),
+          resolved({ street: "flop", taken: 0 }),
+          resolved({ street: "turn", board: "QhJhTh2c" }),
+        ],
+      },
+    },
+    "Alpha",
+    "h-1",
+  );
+  expect(headings(page)).toEqual(["Alpha h-1", "Preflop", "Flop", "Turn"]);
+});
+
+test("a hand with no trace says so rather than showing an empty page", async () => {
+  // The ticket is explicit that an untraced hand is not a hand that made no decisions; the page
+  // must say which it is holding.
+  const page = replay.handPage(
+    { trace: { traced: false, decisions: [], note: "no trace — played before traces" } },
+    "Alpha",
+    "h-1",
+  );
+  expect(
+    page
+      .flat(Infinity)
+      .map((node) => node?.textContent ?? "")
+      .join(" "),
+  ).toContain("no trace");
+});

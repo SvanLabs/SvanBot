@@ -29,20 +29,29 @@ pub struct Recorder {
     pending: Vec<(String, Trace)>,
 }
 
+/// How many traces wait for a hand that has not opened. A trace can arrive before its hand when
+/// a resync replays a turn first; past a hand's worth of them the hand is never coming, and
+/// holding them would be a leak the length of the process.
+pub const PENDING_LIMIT: usize = 64;
+
 impl Recorder {
     /// Files the traces the session reported for a frame just applied.
     ///
-    /// A trace whose hand has not arrived, or has already been written, is dropped: a trace is kept
-    /// with its hand or not at all (`Store::append_hand`).
+    /// A trace for the hand that is open goes into it. One for a hand that has not opened yet waits
+    /// for it: a resync can replay a turn before the hand's own frames. A trace whose hand has been
+    /// written already is dropped — a trace is kept with its hand or not at all
+    /// (`Store::append_hand`) — and so is a waiting trace once more are waiting than any hand makes
+    /// decisions.
     pub fn trace(&mut self, traced: Vec<(String, Trace)>) {
-        match &mut self.open {
-            Some(hand) => hand.traced.extend(
-                traced
-                    .into_iter()
-                    .filter(|(id, _)| *id == hand.hand_id)
-                    .map(|(_, t)| t),
-            ),
-            None => self.pending.extend(traced),
+        for (id, trace) in traced {
+            match &mut self.open {
+                Some(hand) if hand.hand_id == id => hand.traced.push(trace),
+                _ => self.pending.push((id, trace)),
+            }
+        }
+        if self.pending.len() > PENDING_LIMIT {
+            let overflow = self.pending.len() - PENDING_LIMIT;
+            self.pending.drain(..overflow);
         }
     }
 
