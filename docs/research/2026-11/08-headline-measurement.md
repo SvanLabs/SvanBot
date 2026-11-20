@@ -90,9 +90,12 @@ right trade for a number that gates a release.
   is the same one this build hit: the pin is traceable to a commit but not yet to a *played* run.
   Closing that needs the run stored where it cannot be edited after the fact (V11-21's artifact
   keyed by commit, or a record the gate replays), not just a commit that exists in history.
-- **V11-21 (PR-to-run link):** a per-PR Arena job runs 27 s at two bouts. Three bouts a line (about
-  300 shared deals) would let a PR's own summary state a number that can be told from zero at this
-  effect size, at ~40 s of CI, rather than a coin flip with a build cost.
+- **V11-21 (PR-to-run link):** a per-PR Arena job is cheap enough to *record* but not to *replay*:
+  measured here at 690 s wall for two bouts, with the learning archetype running last and longest
+  (note 09 §4.2).
+  Three bouts a line (about 300 shared deals) would let a PR's own summary state a number that can
+  be told from zero at this effect size, rather than a coin flip with a build cost — and note 09 §3
+  says the run that *gates* a release must be replayed, not trusted.
 - **V11-23 (the league's shape):** the deals are shared **by design**, which is what makes a
   heads-up league a fair comparison of policies on the same cards. If 6-max joins, it must keep the
   deal-sharing property, or the headline's bound no longer describes it.
