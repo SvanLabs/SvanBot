@@ -45,6 +45,27 @@ fn an_opponents_line_knows_its_seat() {
 }
 
 #[test]
+fn every_line_has_a_seat_or_the_spot_names_none_at_all() {
+    // The invariant the two fields share: seats is empty (a caller that did not know them), or it
+    // has one entry per line. Never a partial list, which would pair some lines with the wrong
+    // seat — a wrong label that reads as a right one.
+    let spot = Spot {
+        opponents: 2,
+        seats: vec![4, 1],
+        lines: vec![vec![], vec![]],
+        ..bare()
+    };
+    assert_eq!(spot.seats.len(), spot.lines.len());
+
+    let unknown = Spot {
+        opponents: 2,
+        lines: vec![vec![], vec![]],
+        ..bare()
+    };
+    assert!(unknown.seats.is_empty());
+}
+
+#[test]
 fn a_spot_with_no_opponents_has_no_seats() {
     let spot = bare();
     assert_eq!(spot.opponents, 0);
