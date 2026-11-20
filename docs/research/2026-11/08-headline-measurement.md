@@ -94,7 +94,7 @@ right trade for a number that gates a release.
   measured here at 690 s wall for two bouts, with the learning archetype running last and longest
   (note 09 §4.2).
   Three bouts a line (about 300 shared deals) would let a PR's own summary state a number that can
-  be told from zero at this effect size, rather than a coin flip with a build cost — and note 09 §3
+  be told from zero at this effect size, rather than a coin flip with a build cost — and note 09 §4
   says the run that *gates* a release must be replayed, not trusted.
 - **V11-23 (the league's shape):** the deals are shared **by design**, which is what makes a
   heads-up league a fair comparison of policies on the same cards. If 6-max joins, it must keep the
