@@ -64,12 +64,32 @@ because the `nit` row is far tighter than the rest.
 - **It buys an honest gate.** V11-22's bar is "the interval above zero". A gate that read the
   independent pool would pass a run the shared deals cannot justify. Reading the correlated bound
   is conservative in the safe direction: a run that clears it clears any real correlation.
-- **The lever is deals, not opponents.** `√k` comes from a wider pool only because more rows are
-  more measurements of the *same* deals; to narrow the interval you play more deals. A run needs
-  roughly `(214,459/9,764)² · 100 ≈ 4,800` shared deals before the pinned interval would clear zero
-  at this effect size — about 96 bouts, well inside the box's reach for a release run (V11-22).
+- **The lever is deals, not opponents.** More rows are more measurements of the *same* deals, so
+  they do not narrow the shared-deal bound the way independent samples would. To narrow it you play
+  more deals. At the pinned effect size the bound clears zero at about
+  `(214,459/128,024)² · 100 ≈ 281` shared deals in a row — about 6 bouts, not the thousands the
+  independent formula would have implied. Deal count is the lever, and a release run (V11-22) has
+  plenty of it.
 
-## 5. Smaller readings the build settled
+## 5. What this means for the next tickets
+
+- **V11-22 (release gate):** the gate should read the *shared-deal* bound, or it will pass a run the
+  cards do not justify. The bar "the interval above zero" is reachable: at the pinned effect size
+  (+128,000 mbb/100) the correlated interval clears zero at about **281 shared deals per row**, and
+  a 1M-hand run (≈83,000 per row across 6 opponents, two seats a deal) would put it near ±7,400.
+  So the headline's caution is a sample-size fact, not a ceiling, and a release run is comfortably
+  long enough. The gate's own caution — "a gate that reads a file anyone can write is not a gate" —
+  is the same one this build hit: the pin is traceable to a commit but not yet to a *played* run.
+  Closing that needs the run stored where it cannot be edited after the fact (V11-21's artifact
+  keyed by commit, or a record the gate replays), not just a commit that exists in history.
+- **V11-21 (PR-to-run link):** a per-PR Arena job runs 27 s at two bouts. Three bouts a line (about
+  300 shared deals) would let a PR's own summary state a number that can be told from zero at this
+  effect size, at ~40 s of CI, rather than a coin flip with a build cost.
+- **V11-23 (the league's shape):** the deals are shared **by design**, which is what makes a
+  heads-up league a fair comparison of policies on the same cards. If 6-max joins, it must keep the
+  deal-sharing property, or the headline's bound no longer describes it.
+
+## 6. Smaller readings the build settled
 
 - **Deals are counted once.** "over 100 deals", not "600", because the 600 is 100 deals replayed
   six ways. Summing rows would inflate the sample by the opponent count.
