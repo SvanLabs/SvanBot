@@ -33,13 +33,18 @@ test("the headline weights every opponent by the deals behind it", () => {
   expect(headline(clear()).aggregate.mbb_per_100).toBeCloseTo((42 + 61) / 2, 10);
 });
 
-test("the league's interval pools the opponents' intervals as the means they are", () => {
-  // `verdict()` in learn/src/paired.rs sets ci = 1.96 · SE(mean), so (ci/1.96)² is already the
-  // variance of that row's mean, and Var(Σ w_i·mean_i) = Σ w_i²·(ci_i/1.96)². Dividing again by
-  // the row's deals would understate the pool by its sample size and print confidence it lacks.
+test("the league's interval is wide enough for rows that share their deals", () => {
+  // `verdict()` in learn/src/paired.rs sets ci = 1.96 · SE(mean), so (ci/1.96)² is the variance
+  // of that row's mean. But the Arena plays the SAME deals against every opponent (arena.rs), so
+  // the rows are not independent and their variances do not simply add. With the cards shared,
+  // the honest bound is the perfectly-correlated one — the weighted mean of the per-row SEs, no
+  // /sqrt(k) credit for more rows — which is this test's formula. The independent sum is the
+  // narrower figure the code used to print, and it overclaims confidence the run does not have.
   const said = headline(clear());
-  const pooled = ((9 / 1.96) ** 2 + (6 / 1.96) ** 2) / 4;
-  expect(said.aggregate.ci95).toBeCloseTo(1.96 * Math.sqrt(pooled), 6);
+  const correlated = 1.96 * (9 / 1.96 / 2 + 6 / 1.96 / 2);
+  expect(said.aggregate.ci95).toBeCloseTo(correlated, 6);
+  const independent = 1.96 * Math.sqrt(((9 / 1.96) ** 2 + (6 / 1.96) ** 2) / 4);
+  expect(said.aggregate.ci95).toBeGreaterThan(independent);
 });
 
 test("the headline names the run it came from, and its seed", () => {
@@ -53,7 +58,7 @@ test("a run clear of zero is stated as a number, with its interval", () => {
   const block = headline(clear()).block;
   expect(block).toContain("mbb/100**");
   expect(block).toContain("over 5,000 deals");
-  expect(block).toContain("95% CI ±5.41");
+  expect(block).toContain("95% CI ±7.50");
 });
 
 test("a run that straddles zero is said to be a coin flip, never a number", () => {
@@ -68,7 +73,7 @@ test("a run that straddles zero is said to be a coin flip, never a number", () =
   const block = headline(noisy).block;
   // mean +500, pooled half-width 2,000: the interval runs -1,500 to +2,500 and covers zero.
   expect(block).toContain("Not yet distinguishable from zero");
-  expect(block).toContain("±14,100"); // the pooled half-width, at three figures
+  expect(block).toContain("±20,000"); // the pooled half-width, at three figures
   expect(block).not.toContain("mbb/100**");
 });
 
@@ -119,6 +124,19 @@ test("the league's deals are counted honestly: one set of deals against each opp
   // deals played six ways, not 600 independent ones. The block says the smaller, true number.
   const block = headline(clear()).block; // two rows of 5,000 shares each
   expect(block).toContain("over 5,000 deals of the Arena across 2 opponents");
+});
+
+test("a pin whose shape is wrong is a problem line, never a thrown type error", () => {
+  // `rows` that is not an array, a row that is null, a seed that is a string: each fails as the
+  // malformed run it is, so the operator reads a reason rather than a stack trace.
+  for (const broken of [
+    { commit: "c", champion: "d", seed: 1, rows: "abc" },
+    { commit: "c", champion: "d", seed: 1, rows: [null] },
+    { commit: "c", champion: "d", seed: "x", rows: [] },
+  ] as never[]) {
+    expect(() => headline(broken)).not.toThrow();
+    expect(headline(broken).problems.length).toBeGreaterThan(0);
+  }
 });
 
 test("a malformed run is refused with a problem, not a crash", () => {

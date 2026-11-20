@@ -97,11 +97,13 @@ V11-00.
   takes its probe up from its store.
 - The headline: `tools/headline.ts` writes the README's one number from the Arena run pinned in
   `fleet/headline.json` — the pooled mbb/100 across every opponent, weighted by deals, with the
-  pooled 95% interval that says whether it can be told from zero. A run whose interval covers
-  zero says "not yet distinguishable from zero" rather than a rate the sample cannot support; a
-  run clear of zero below says it is behind; and a row with no measured interval leaves the pool
-  unmeasured rather than exact. The Arena plays one set of deals against every opponent, so the
-  headline counts deals once, and figures stop at three significant ones. The block names its
+  pooled 95% interval that says whether it can be told from zero. Because the Arena plays one set
+  of deals against every opponent, the interval is the shared-deal bound — the weighted mean of
+  the rows' intervals, not a sum that would buy confidence from one sample seen six ways — so a
+  100-deal run reads "not yet distinguishable from zero" and only clears at several thousand
+  deals. A run clear of zero below says it is behind; a row with no measured interval leaves the
+  pool unmeasured rather than exact; the headline counts deals once, and figures stop at three
+  significant ones. The block names its
   commit, champion and seed, and says what the league is not. The commit tier fails a README that
   drifts from the pin, refuses a pin whose commit the repository does not hold, and refuses a
   cloned tree with no pin; a run is pinned on `v11` from the `arena` artifact a pull request's CI

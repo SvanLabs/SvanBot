@@ -58,20 +58,29 @@ export function headline(run: Run | undefined): Headline {
     aggregate: { deals: 0, mbb_per_100: 0, ci95: undefined },
     problems: [problem],
   });
-  if (run.rows.length === 0) return none(NO_ROWS);
   // A malformed pin fails as a problem line, not a NaN or a crash: every field the block reads
   // has to be a finite number, and a row has to have played a non-negative whole number of deals.
+  // The check runs before any `.length` or `.reduce` on `rows`, so a `rows` that is not an array,
+  // or a row that is null, is a problem line too rather than a thrown type error.
   const whole = (value: unknown): value is number =>
     typeof value === "number" && Number.isFinite(value);
-  const sound = run.rows.every(
-    (row) =>
-      whole(row.deals) &&
-      row.deals >= 0 &&
-      whole(row.mbb_per_100) &&
-      whole(row.ci95) &&
-      typeof row.opponent === "string",
-  );
+  const sound =
+    Array.isArray(run.rows) &&
+    typeof run.commit === "string" &&
+    typeof run.champion === "string" &&
+    whole(run.seed) &&
+    run.rows.every(
+      (row) =>
+        row !== null &&
+        typeof row === "object" &&
+        whole(row.deals) &&
+        row.deals >= 0 &&
+        whole(row.mbb_per_100) &&
+        whole(row.ci95) &&
+        typeof row.opponent === "string",
+    );
   if (!sound) return none(MALFORMED);
+  if (run.rows.length === 0) return none(NO_ROWS);
   const deals = run.rows.reduce((sum, row) => sum + row.deals, 0);
   if (deals === 0) return none(NO_DEALS);
   // The Arena plays one set of deals against every opponent (`arena.rs`), so the shares are not
@@ -81,18 +90,18 @@ export function headline(run: Run | undefined): Headline {
 
   // The league's rate is what it won over the hands it played, so a bout weighs by its deals.
   const mbb_per_100 = run.rows.reduce((sum, row) => sum + row.mbb_per_100 * row.deals, 0) / deals;
-  // Its interval pools the rows as the means they are: a row's `ci95` is already 1.96 standard
-  // errors of that row's mean (learn/src/paired.rs `verdict`), so Var(pooled) = Σ w_i²·(ci_i/1.96)².
-  // A row that measured no interval measured nothing at all, and cannot be taken as an exact
-  // zero: the pool's interval is then unmeasured too, rather than narrow on a row's silence.
+  // Its interval is bounded, not summed. The Arena plays the SAME deals against every opponent
+  // (arena.rs: each opponent plays `(number*BOUT..)`, and a deal's cards come from its number),
+  // so the rows are not independent: two opponents winning the same deal is one coin, not two.
+  // The independent sum Σ w_i²·SE_i² is therefore too narrow — it buys a /√k for a sample that is
+  // one set of deals — and the honest figure is the perfectly-correlated one, the weighted mean of
+  // the per-row half-widths, Σ w_i·ci_i. That is an upper bound (Cauchy–Schwarz), so a run is
+  // "clear of zero" only when its widest reading is, and the headline never claims more than the
+  // shared cards can support. A row that measured nothing leaves the whole bound unmeasured.
   const measured = run.rows.every((row) => row.ci95 > 0);
-  const variance = measured
-    ? run.rows.reduce((sum, row) => {
-        const weight = row.deals / deals;
-        return sum + weight * weight * (row.ci95 / 1.96) ** 2;
-      }, 0)
+  const ci95 = measured
+    ? run.rows.reduce((sum, row) => sum + (row.deals / deals) * row.ci95, 0)
     : undefined;
-  const ci95 = variance === undefined ? undefined : 1.96 * Math.sqrt(variance);
   const opponents = run.rows.length;
   const league = `over ${count(shared)} deals of the Arena across ${
     opponents === 1 ? "one opponent" : `${count(opponents)} opponents`

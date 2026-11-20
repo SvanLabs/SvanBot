@@ -321,9 +321,11 @@ _Avoid_: leaderboard, standings
 **Headline**:
 The README's one number: the pinned Arena run's pooled mbb/100 with the interval that says
 whether it can be told from zero. The Arena plays one set of deals against every opponent, so the
-headline counts deals once, not once per opponent. It names the commit, champion and seed it came
-from, and the block is generated, never typed. A run clear of zero says its number (below zero,
-that it is behind); a run that straddles zero says it is not yet distinguishable from it.
+headline counts deals once, not once per opponent, and its interval is the shared-deal bound — the
+weighted mean of the rows' intervals — not a sum that would buy confidence from rows that are one
+sample. It names the commit, champion and seed it came from, and the block is generated, never
+typed. A run clear of zero says its number (below zero, that it is behind); a run that straddles
+zero says it is not yet distinguishable from it.
 _Avoid_: front page, summary, blurb
 
 **Pin**:
