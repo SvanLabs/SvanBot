@@ -15,3 +15,4 @@ they led to live on the V11 tickets, not here. The notes describe v10 as it was.
 | [06 build, CI and tooling](06-build-ci-tooling.md) | V11-03 |
 | [07 dashboard, agentic workflow and docs](07-dashboard-agentic-docs.md) | V11-11, V11-12 |
 | [08 reading the Arena's number](08-headline-measurement.md) | V11-20, V11-22, V11-23 |
+| [09 what a gate can trust](09-what-a-gate-can-trust.md) | V11-21, V11-22 |
