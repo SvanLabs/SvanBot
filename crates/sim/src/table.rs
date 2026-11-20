@@ -200,6 +200,10 @@ fn bet(
                 .filter(|&other| other != seat && !folded[other])
                 .map(|other| lines[other].clone())
                 .collect(),
+            // The sim's seats are its own, but a trace read from it can still name one.
+            seats: (0..seats)
+                .filter(|&other| other != seat && !folded[other])
+                .collect(),
         };
         let action = nearest(decide(seat, &spot), legal);
         let before = hand.committed()[seat];

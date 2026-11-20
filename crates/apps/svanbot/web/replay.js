@@ -54,11 +54,18 @@ export function decisionView(decision) {
     h("p", { class: "muted" }, cardsText(decision)),
     priced ? null : facts(decision.values.map((value, at) => actionRow(decision, at, value))),
     ...(decision.ranges ?? []).map((range) =>
-      facts([
-        [`Opponent ${range.opponent}`, range.masses.map((mass) => mass.toFixed(2)).join(" ")],
-      ]),
+      facts([[seatLabel(range.seat), range.masses.map((mass) => mass.toFixed(2)).join(" ")]]),
     ),
   );
+}
+
+/**
+ * The opponent's seat, which is what a reader can find at the table. A range whose spot carried
+ * no seat says so: numbering it from its position in the list would name a player the table does
+ * not show, which is a wrong label that reads as a right one.
+ */
+function seatLabel(seat) {
+  return typeof seat === "number" ? `Seat ${seat}` : "Seat unknown";
 }
 
 /** `fold`, `check`, `call`, `bet 200`: the name the trace kept, or the bare index when none did. */

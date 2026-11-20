@@ -28,6 +28,10 @@ pub struct Spot {
     /// What each opponent still in the hand has done in it so far, one line per opponent. Empty
     /// when the caller did not follow the hand.
     pub lines: Vec<Vec<Act>>,
+    /// The seat each entry of [`Spot::lines`] came from, in the same order: `seats[i]` is the seat
+    /// of the opponent whose line is `lines[i]`. A reader matches a seat to the table, so a trace
+    /// names its opponents by seat rather than by a position in a list. One entry per line.
+    pub seats: Vec<usize>,
 }
 
 /// One action a player took, as the table saw it.

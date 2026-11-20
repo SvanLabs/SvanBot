@@ -22,6 +22,7 @@ fn spot(hole: &str, board: &str, pot: u32, call: Option<u32>) -> Spot {
         big_blind: 20,
         in_position: true,
         lines: vec![vec![]],
+        seats: vec![],
     }
 }
 

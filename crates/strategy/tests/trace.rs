@@ -137,10 +137,27 @@ fn every_opponent_gets_his_own_summary() {
         vec![act(Street::Flop, true, 400, 200)],
         vec![act(Street::Flop, true, 400, 200)],
     ];
+    multiway.seats = vec![4, 1];
     let decision = decide_drawn(&multiway, None, &Params::DEFAULT, BUDGET, 60);
     let trace = decision.trace.as_ref().expect("the policy traces");
     let priced = trace.priced.as_ref().expect("multiway is priced");
     assert_eq!(priced.ranges.len(), 2);
+    // Each range names the seat it read, not a position in the list: a reader matches "seat 4"
+    // to the table, and "opponent 1" to nothing on it.
+    let seats: Vec<Option<usize>> = priced.ranges.iter().map(|range| range.seat).collect();
+    assert_eq!(seats, vec![Some(4), Some(1)]);
+}
+
+#[test]
+fn a_seat_is_unknown_rather_than_guessed_when_the_spot_carries_none() {
+    // A spot a caller built without seats (a sim, or a hand-made test) must not invent one from
+    // the ordinal: the trace says the seat is unknown, which reads as unknown, not as seat 1.
+    let preflop = spot("AhAs", "", 400, 200, 1);
+    assert!(preflop.seats.is_empty());
+    let decision = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);
+    let trace = decision.trace.as_ref().expect("the policy traces");
+    let priced = trace.priced.as_ref().expect("priced preflop");
+    assert_eq!(priced.ranges[0].seat, None);
 }
 
 const BUDGET: Budget = Budget {
@@ -178,6 +195,7 @@ fn spot(hole: &str, board: &str, pot: u32, call: u32, opponents: usize) -> Spot 
         committed: 0,
         big_blind: 20,
         in_position: false,
+        seats: vec![],
         lines: vec![],
     }
 }

@@ -90,11 +90,13 @@ fn ranges_json(ranges: &[Ranged]) -> String {
     let items: Vec<String> = ranges
         .iter()
         .map(|ranged| {
-            format!(
-                r#"{{"ordinal":{},"masses":{}}}"#,
-                ranged.ordinal,
-                numbers(&ranged.masses)
-            )
+            // A seat the spot did not carry is `null`, not 0: zero is a seat at the table, and a
+            // trace that guessed one would put a wrong label on the page.
+            let seat = match ranged.seat {
+                Some(seat) => seat.to_string(),
+                None => "null".to_owned(),
+            };
+            format!(r#"{{"seat":{seat},"masses":{}}}"#, numbers(&ranged.masses))
         })
         .collect();
     format!("[{}]", items.join(","))
@@ -125,7 +127,11 @@ pub(super) fn trace_from(street: &str, branch: &str, json: &str) -> Result<Trace
             .map(|rows| {
                 rows.iter()
                     .map(|row| Ranged {
-                        ordinal: usize::try_from(row["ordinal"].as_u64().unwrap_or(0)).unwrap_or(0),
+                        // A trace written before the seat was carried has no `seat`, and reads
+                        // back as unknown rather than as seat 0.
+                        seat: row["seat"]
+                            .as_u64()
+                            .and_then(|seat| usize::try_from(seat).ok()),
                         masses: floats(&row["masses"]),
                     })
                     .collect()

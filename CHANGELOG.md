@@ -100,14 +100,19 @@ V11-00.
   pooled 95% interval that says whether it can be told from zero. Because the Arena plays one set
   of deals against every opponent, the interval is the shared-deal bound — the weighted mean of
   the rows' intervals, not a sum that would buy confidence from one sample seen six ways — so a
-  100-deal run reads "not yet distinguishable from zero" and only clears at several thousand
-  deals. A run clear of zero below says it is behind; a row with no measured interval leaves the
+  100-deal run reads "not yet distinguishable from zero" and only clears at a few hundred shared
+  deals a line (about 281 at the pinned effect size), which a release run has. A run clear of
+  zero below says it is behind; a row with no measured interval leaves the
   pool unmeasured rather than exact; the headline counts deals once, and figures stop at three
   significant ones. The block names its
   commit, champion and seed, and says what the league is not. The commit tier fails a README that
   drifts from the pin, refuses a pin whose commit the repository does not hold, and refuses a
   cloned tree with no pin; a run is pinned on `v11` from the `arena` artifact a pull request's CI
   left, never from the pull request itself.
+- The decision trace names a range by **seat**: the spot carries the seat each opponent's line came
+  from, and the trace, the store and the page keep it, so a reader matches a range to a seat in the
+  table view rather than to a position in a list. A spot built without seats (a sim's own table, or
+  a caller that did not follow the hand) reads as an unknown seat, never as seat `0`.
 - Agent workflow: `tools/hook.ts` holds an agent session to the rules a machine can check. It
   refuses a push to `main`, a forced push, a build outside `target/dev`, a release build and
   any start, stop or swap of a bot; it runs the layering check after an edit of a `Cargo.toml`;

@@ -19,6 +19,12 @@ _Avoid_: account, user, operator (the operator is the person who runs SvanBot)
 One player identity under the owner, with its own name, key and leaderboard rank.
 _Avoid_: agent, instance, seat
 
+**Seat**:
+One numbered place at a table. A bot's identity is not its seat and a seat is not its identity: the
+same bot sits in different seats, and a seat is held by different bots. A range in a decision trace
+names its opponent by seat, because a seat is what a reader can find on the table.
+_Avoid_: position, index, ordinal
+
 **Roster**:
 Every bot the owner has registered, under every name each one has played as.
 _Avoid_: fleet names, bot list
@@ -340,7 +346,8 @@ _Avoid_: profile page, file
 
 **Decision trace**:
 The record of one decision: the hole cards and board, the ranges, what each action was worth, and
-why one won. The replayer reads it rather than playing the hand again.
+why one won. The replayer reads it rather than playing the hand again. Each range names the
+opponent by **seat**, the one thing a reader can find at the table.
 _Avoid_: debug log, explanation
 
 **Branch**:
