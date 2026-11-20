@@ -98,11 +98,14 @@ V11-00.
 - The headline: `tools/headline.ts` writes the README's one number from the Arena run pinned in
   `fleet/headline.json` — the pooled mbb/100 across every opponent, weighted by deals, with the
   pooled 95% interval that says whether it can be told from zero. A run whose interval covers
-  zero says "not yet distinguishable from zero" rather than a rate the sample cannot support, and
-  a row with no measured interval leaves the pool unmeasured rather than exact. The block names
-  its commit, champion and seed, and says what the league is not. The commit tier fails a README
-  that drifts from the pin; a run is pinned on `v11` from the `arena` artifact a pull request's
-  CI left, never from the pull request itself.
+  zero says "not yet distinguishable from zero" rather than a rate the sample cannot support; a
+  run clear of zero below says it is behind; and a row with no measured interval leaves the pool
+  unmeasured rather than exact. The Arena plays one set of deals against every opponent, so the
+  headline counts deals once, and figures stop at three significant ones. The block names its
+  commit, champion and seed, and says what the league is not. The commit tier fails a README that
+  drifts from the pin, refuses a pin whose commit the repository does not hold, and refuses a
+  cloned tree with no pin; a run is pinned on `v11` from the `arena` artifact a pull request's CI
+  left, never from the pull request itself.
 - Agent workflow: `tools/hook.ts` holds an agent session to the rules a machine can check. It
   refuses a push to `main`, a forced push, a build outside `target/dev`, a release build and
   any start, stop or swap of a bot; it runs the layering check after an edit of a `Cargo.toml`;

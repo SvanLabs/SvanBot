@@ -32,6 +32,7 @@ export const CLOSE = "<!-- /headline -->";
 
 const NO_PIN = "no Arena run is pinned in fleet/headline.json: the headline has nothing to say";
 const NO_ROWS = "the pinned Arena run played no deals: the headline has nothing to say";
+const MALFORMED = "the pinned Arena run is malformed: the headline has nothing to say";
 const NO_DEALS = "the pinned Arena run's deals add to none: the headline has nothing to say";
 
 const SOURCE = [
@@ -58,70 +59,99 @@ export function headline(run: Run | undefined): Headline {
     problems: [problem],
   });
   if (run.rows.length === 0) return none(NO_ROWS);
+  // A malformed pin fails as a problem line, not a NaN or a crash: every field the block reads
+  // has to be a finite number, and a row has to have played a non-negative whole number of deals.
+  const whole = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+  const sound = run.rows.every(
+    (row) =>
+      whole(row.deals) &&
+      row.deals >= 0 &&
+      whole(row.mbb_per_100) &&
+      whole(row.ci95) &&
+      typeof row.opponent === "string",
+  );
+  if (!sound) return none(MALFORMED);
   const deals = run.rows.reduce((sum, row) => sum + row.deals, 0);
   if (deals === 0) return none(NO_DEALS);
+  // The Arena plays one set of deals against every opponent (`arena.rs`), so the shares are not
+  // independent hands that add up: the pool is as many deals as its largest share played, and the
+  // block says that smaller, true number rather than the sum, which would overstate the sample.
+  const shared = Math.max(...run.rows.map((row) => row.deals));
 
   // The league's rate is what it won over the hands it played, so a bout weighs by its deals.
   const mbb_per_100 = run.rows.reduce((sum, row) => sum + row.mbb_per_100 * row.deals, 0) / deals;
-  // Its interval pools the rows the way a pooled mean does: a row's half-width is 1.96 standard
-  // errors over its deals, so Var(pooled mean) = Σ (n_i/N)² · (ci_i/1.96)²/n_i. A row that
-  // measured no interval measured nothing at all, and cannot be taken as an exact zero: the
-  // pool's interval is then unmeasured too, rather than narrow on a row's silence.
+  // Its interval pools the rows as the means they are: a row's `ci95` is already 1.96 standard
+  // errors of that row's mean (learn/src/paired.rs `verdict`), so Var(pooled) = Σ w_i²·(ci_i/1.96)².
+  // A row that measured no interval measured nothing at all, and cannot be taken as an exact
+  // zero: the pool's interval is then unmeasured too, rather than narrow on a row's silence.
   const measured = run.rows.every((row) => row.ci95 > 0);
   const variance = measured
     ? run.rows.reduce((sum, row) => {
         const weight = row.deals / deals;
-        return sum + (weight * weight * (row.ci95 / 1.96) ** 2) / row.deals;
+        return sum + weight * weight * (row.ci95 / 1.96) ** 2;
       }, 0)
     : undefined;
   const ci95 = variance === undefined ? undefined : 1.96 * Math.sqrt(variance);
   const opponents = run.rows.length;
-  const league = `over ${count(deals)} deals of the Arena across ${
+  const league = `over ${count(shared)} deals of the Arena across ${
     opponents === 1 ? "one opponent" : `${count(opponents)} opponents`
   }`;
   const spread = ci95 === undefined ? "95% CI not measured" : `95% CI ±${grouped(ci95)}`;
 
   // The number is only a number when the interval leaves zero on one side or the other; a sample
   // that straddles it says so, and how wide the interval came out, rather than claiming a rate it
-  // cannot support. Below zero is a rate like any other, and a losing one is still the truth.
-  const clearOfZero = ci95 !== undefined && Math.abs(mbb_per_100) > ci95;
-  const headlineLine = clearOfZero
+  // cannot support. Below zero is a number too: the block says it is behind, not that it might win.
+  const above = ci95 !== undefined && mbb_per_100 - ci95 > 0;
+  const below = ci95 !== undefined && mbb_per_100 + ci95 < 0;
+  const headlineLine = above
     ? `**${signed(mbb_per_100)} mbb/100**, ${league}, ${spread}.`
-    : `**Not yet distinguishable from zero**: ${signed(mbb_per_100)} mbb/100 ${league}, ${spread}.`;
+    : below
+      ? `**${signed(mbb_per_100)} mbb/100 — behind**, ${league}, ${spread}.`
+      : `**Not yet distinguishable from zero**: ${signed(mbb_per_100)} mbb/100 ${league}, ${spread}.`;
 
   const lines = run.rows.map(
     (row) =>
       `| ${row.opponent} | ${signed(row.mbb_per_100)} | ${interval(row.ci95)} | ${count(row.deals)} |`,
   );
-  const block =
-    [
-      OPEN,
-      ...SOURCE,
-      headlineLine,
-      "",
-      `Played at commit \`${run.commit}\`, champion \`${run.champion}\`, seed ${run.seed}:`,
-      "",
-      "| opponent | mbb/100 | 95% CI | deals |",
-      "| --- | ---: | ---: | ---: |",
-      ...lines,
-      "",
-      `${NOT} the full benchmark. The run above replays every line.`,
-      CLOSE,
-    ].join("\n") + "\n";
+  const block = `${[
+    OPEN,
+    ...SOURCE,
+    headlineLine,
+    "",
+    `Played at commit \`${run.commit}\`, champion \`${run.champion}\`, seed ${run.seed}:`,
+    "",
+    "| opponent | mbb/100 | 95% CI | deals |",
+    "| --- | ---: | ---: | ---: |",
+    ...lines,
+    "",
+    `${NOT} the full benchmark. The run above replays every line.`,
+    CLOSE,
+  ].join("\n")}\n`;
   return { block, aggregate: { deals, mbb_per_100, ci95 }, problems: [] };
 }
 
 /** The block the README holds, markers included, so writing it back is a plain replacement. */
 export function between(text: string): { text: string } | { problems: string[] } {
-  const open = text.indexOf(OPEN);
-  const close = text.indexOf(CLOSE);
-  if (open < 0 || close < 0 || close < open) {
-    return { problems: ["README.md has no headline markers"] };
+  const opens = occurrences(text, OPEN);
+  const closes = occurrences(text, CLOSE);
+  if (opens === 0 && closes === 0) return { problems: ["README.md has no headline markers"] };
+  // Exactly one pair, the close alone on its line: a second pair, or text sharing the close's
+  // line, would make a rewrite pick the wrong span, so the check refuses rather than guess.
+  const openAt = text.indexOf(OPEN);
+  const closeAt = text.indexOf(CLOSE);
+  const afterClose = closeAt + CLOSE.length;
+  const line = text.indexOf("\n", afterClose);
+  const onCloseLine = text.slice(afterClose, line < 0 ? text.length : line);
+  if (opens !== 1 || closes !== 1 || closeAt < openAt || onCloseLine !== "") {
+    return { problems: ["README.md's headline markers are not exactly one pair"] };
   }
-  // The block runs to the end of the marker's line, so a README that holds it is exactly the
-  // text of one write, wherever the markers sit.
-  const line = text.indexOf("\n", close);
-  return { text: text.slice(open, line < 0 ? text.length : line + 1) };
+  // The block runs to the end of the close marker's line, so it is exactly the text of one write.
+  return { text: text.slice(openAt, line < 0 ? text.length : line + 1) };
+}
+
+function occurrences(text: string, needle: string): number {
+  return text.split(needle).length - 1;
 }
 
 /** Whether the README's block is the pinned run's. Empty means it is. */
@@ -151,18 +181,25 @@ function interval(value: number): string {
   return value === 0 ? "not measured" : `±${grouped(value)}`;
 }
 
-/** Three significant figures: the sample cannot say more, and padding it would pretend it can. */
+/** Three significant figures at every scale: the sample cannot say more, and padding it lies. */
 function grouped(value: number): string {
   if (!Number.isFinite(value)) return "…";
-  if (value === 0) return "0.00";
-  const digits = Math.max(0, 2 - Math.floor(Math.log10(Math.abs(value))));
-  const text = value.toFixed(digits);
+  const magnitude = Math.abs(value);
+  if (magnitude === 0) return "0.00";
+  // Three figures means rounding, not just truncating a decimal count: 200,448 is 200,000 at this
+  // width, since the units and tens are noise on an interval of ±201,399. Round at the figure
+  // where the third significant digit sits, then print it grouped.
+  const figure = Math.floor(Math.log10(magnitude));
+  const step = 10 ** (figure - 2);
+  const rounded = Math.round(value / step) * step;
+  // A tiny non-zero value gets a fixed floor of decimals, so `toFixed` is never asked for 300.
+  const digits = Math.min(6, Math.max(0, -figure + 2));
+  const text = rounded.toFixed(digits);
   // Group the whole part only: a thousands separator inside a fraction would be a wrong number.
-  if (Math.abs(value) < 1000) return text;
   const point = text.indexOf(".");
-  const whole = point < 0 ? text : text.slice(0, point);
-  const fraction = point < 0 ? "" : text.slice(point);
-  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + fraction;
+  if (point < 0) return text.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const whole = text.slice(0, point);
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${text.slice(point)}`;
 }
 
 function count(value: number): string {
@@ -178,8 +215,16 @@ if (import.meta.main) {
   const readmePath = join(root, "README.md");
   const args = process.argv.slice(2);
   const readPin = (): Run | undefined =>
-    existsSync(pinPath) ? JSON.parse(readFileSync(pinPath, "utf8")) : undefined;
+    existsSync(pinPath) ? (parse(readFileSync(pinPath, "utf8")) as Run | undefined) : undefined;
   const readReadme = (): string => (existsSync(readmePath) ? readFileSync(readmePath, "utf8") : "");
+  // The pin has to name a commit this repository holds: a fabricated pin would otherwise pass the
+  // check with a made-up number, since nothing else ties the block to a played run. Git is the
+  // record, so `cat-file` is the test. It fails closed: no git, or no object, is a problem.
+  const inHistory = (commit: unknown): boolean => {
+    if (typeof commit !== "string" || commit === "") return false;
+    const found = Bun.spawnSync(["git", "cat-file", "-e", `${commit}^{commit}`], { cwd: root });
+    return found.exitCode === 0;
+  };
 
   const pinAt = args.indexOf("--pin");
   if (pinAt >= 0) {
@@ -187,7 +232,12 @@ if (import.meta.main) {
     // text back, so the pin can be read as a line of the file it came from.
     const source = args[pinAt + 1] ?? "";
     const text = existsSync(source) ? readFileSync(source, "utf8") : "";
-    const run = (JSON.parse(text || "{}").runs ?? [])[0] as Run | undefined;
+    const run = (parse(text)?.runs ?? [])[0] as Run | undefined;
+    // A run with no commit is not traceable, which is the whole point of the pin: refuse it.
+    if (run && (typeof run.commit !== "string" || run.commit === "")) {
+      console.log("the run to pin names no commit: the headline has nothing to trace");
+      process.exit(1);
+    }
     const said = headline(run);
     if (said.problems.length > 0) {
       console.log(said.problems.join("\n"));
@@ -215,7 +265,21 @@ if (import.meta.main) {
     process.exit(0);
   }
 
-  const found = problems(readPin(), readReadme());
-  for (const problem of found) console.log(problem);
-  process.exit(found.length > 0 ? 1 : 0);
+  const pin = readPin();
+  const problemsFound = problems(pin, readReadme());
+  if (pin && problemsFound.length === 0 && !inHistory(pin.commit)) {
+    problemsFound.push(`the pinned run's commit \`${pin.commit}\` is not in this repository`);
+  }
+  for (const problem of problemsFound) console.log(problem);
+  process.exit(problemsFound.length > 0 ? 1 : 0);
+}
+
+/** JSON that a malformed pin cannot crash: an unreadable file reads as nothing to say. */
+function parse(text: string): { runs?: Run[] } | undefined {
+  try {
+    const value = JSON.parse(text);
+    return value && typeof value === "object" ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }

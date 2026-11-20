@@ -33,11 +33,12 @@ test("the headline weights every opponent by the deals behind it", () => {
   expect(headline(clear()).aggregate.mbb_per_100).toBeCloseTo((42 + 61) / 2, 10);
 });
 
-test("the league's interval pools the opponents' intervals by the deals behind them", () => {
-  // A rate over a pooled sample has the variance of the pooled mean: each row's half-width is
-  // 1.96 standard errors, so Var(row) = (ci/1.96)², and Var(pooled mean) = Σ (n_i/N)² Var(row)/n_i.
+test("the league's interval pools the opponents' intervals as the means they are", () => {
+  // `verdict()` in learn/src/paired.rs sets ci = 1.96 · SE(mean), so (ci/1.96)² is already the
+  // variance of that row's mean, and Var(Σ w_i·mean_i) = Σ w_i²·(ci_i/1.96)². Dividing again by
+  // the row's deals would understate the pool by its sample size and print confidence it lacks.
   const said = headline(clear());
-  const pooled = ((9 / 1.96) ** 2 + (6 / 1.96) ** 2) / 5_000 / 4;
+  const pooled = ((9 / 1.96) ** 2 + (6 / 1.96) ** 2) / 4;
   expect(said.aggregate.ci95).toBeCloseTo(1.96 * Math.sqrt(pooled), 6);
 });
 
@@ -51,8 +52,8 @@ test("the headline names the run it came from, and its seed", () => {
 test("a run clear of zero is stated as a number, with its interval", () => {
   const block = headline(clear()).block;
   expect(block).toContain("mbb/100**");
-  expect(block).toContain("over 10,000 deals");
-  expect(block).toContain("95% CI ±0.0765");
+  expect(block).toContain("over 5,000 deals");
+  expect(block).toContain("95% CI ±5.41");
 });
 
 test("a run that straddles zero is said to be a coin flip, never a number", () => {
@@ -67,7 +68,7 @@ test("a run that straddles zero is said to be a coin flip, never a number", () =
   const block = headline(noisy).block;
   // mean +500, pooled half-width 2,000: the interval runs -1,500 to +2,500 and covers zero.
   expect(block).toContain("Not yet distinguishable from zero");
-  expect(block).toContain("±2,000"); // the pooled half-width
+  expect(block).toContain("±14,100"); // the pooled half-width, at three figures
   expect(block).not.toContain("mbb/100**");
 });
 
@@ -87,9 +88,9 @@ test("a row with no interval makes the league's interval unmeasured, not exact",
   expect(block).not.toContain("mbb/100**");
 });
 
-test("a run clearly below zero is a number too, and a losing one", () => {
-  // "Not distinguishable from zero" is a claim about the interval, and an interval below zero
-  // is distinguishable from it. The block says the number it measured, sign and all.
+test("a run clearly below zero says behind, not a number that looks like a win", () => {
+  // "Not distinguishable from zero" is a claim about the interval, and an interval below zero is
+  // distinguishable from it. The block says the number and that it is behind, sign and all.
   const losing = clear({
     rows: [
       row({ opponent: "pricer", deals: 5_000, mbb_per_100: -42, ci95: 9 }),
@@ -97,7 +98,8 @@ test("a run clearly below zero is a number too, and a losing one", () => {
     ],
   });
   const block = headline(losing).block;
-  expect(block).toContain("**-51.5 mbb/100**");
+  expect(block).toContain("**-51.5 mbb/100 — behind**");
+  expect(block).toContain("behind");
   expect(block).not.toContain("Not yet distinguishable");
 });
 
@@ -110,6 +112,24 @@ test("the headline keeps each opponent's line, with its interval", () => {
 test("the headline says what the league is not", () => {
   expect(headline(clear()).block).toContain("heads up");
   expect(headline(clear()).block).toContain("not the full benchmark");
+});
+
+test("the league's deals are counted honestly: one set of deals against each opponent", () => {
+  // The Arena plays the same deals against every opponent (`arena.rs`), so 6 rows of 100 are 100
+  // deals played six ways, not 600 independent ones. The block says the smaller, true number.
+  const block = headline(clear()).block; // two rows of 5,000 shares each
+  expect(block).toContain("over 5,000 deals of the Arena across 2 opponents");
+});
+
+test("a malformed run is refused with a problem, not a crash", () => {
+  const broken = { commit: "abc", champion: "d", seed: 1, rows: [{ opponent: "x" }] } as never;
+  expect(headline(broken).problems).toEqual([
+    "the pinned Arena run is malformed: the headline has nothing to say",
+  ]);
+  const negative = clear({ rows: [row({ deals: -5 }), row({ opponent: "nit", deals: 5 })] });
+  expect(headline(negative).problems).toEqual([
+    "the pinned Arena run is malformed: the headline has nothing to say",
+  ]);
 });
 
 test("a clone with no pin is refused, so a branch cannot delete the headline", () => {
@@ -133,6 +153,19 @@ test("a run whose deals add to none is refused rather than divided by zero", () 
   expect(
     headline(clear({ rows: [row({ deals: 0, mbb_per_100: 500, ci95: 10 })] })).problems,
   ).toEqual(["the pinned Arena run's deals add to none: the headline has nothing to say"]);
+});
+
+test("two pairs of markers are refused, so the check never rewrites the wrong block", () => {
+  const block = headline(clear()).block;
+  const twice = `${block}\n${block}\n`;
+  expect(between(twice)).toEqual({
+    problems: ["README.md's headline markers are not exactly one pair"],
+  });
+  // Content on the close marker's own line would be swallowed by a rewrite, so it is refused too.
+  const trailing = "<!-- headline -->\nnumber\n<!-- /headline --> trailing\n";
+  expect(between(trailing)).toEqual({
+    problems: ["README.md's headline markers are not exactly one pair"],
+  });
 });
 
 test("the block carries its markers, and a missing one is a problem", () => {
@@ -159,6 +192,13 @@ test("writing the block back leaves the rest of the README as it was", () => {
   expect(replace("no markers", "NEW\n")).toEqual({
     problems: ["README.md has no headline markers"],
   });
+});
+
+test("a big number is still said to three significant figures, not to the unit", () => {
+  // An interval of ±201,399 over 100 deals cannot support the tens. The block says 201,000.
+  expect(
+    headline(clear({ rows: [row({ deals: 100, mbb_per_100: 200448.4, ci95: 201399.2 })] })).block,
+  ).toContain("| pricer | +200,000 | ±201,000 | 100 |");
 });
 
 test("a number is said to three significant figures, and a missing interval is said as such", () => {

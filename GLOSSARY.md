@@ -319,14 +319,17 @@ behind it. A run is recorded with its commit and seed, so every line can be play
 _Avoid_: leaderboard, standings
 
 **Headline**:
-The README's one number: the pinned Arena run's mbb/100 over all its deals, pooled with the
-interval that says whether it can be told from zero. It names the commit, champion and seed it
-came from, and the block is generated, never typed.
+The README's one number: the pinned Arena run's pooled mbb/100 with the interval that says
+whether it can be told from zero. The Arena plays one set of deals against every opponent, so the
+headline counts deals once, not once per opponent. It names the commit, champion and seed it came
+from, and the block is generated, never typed. A run clear of zero says its number (below zero,
+that it is behind); a run that straddles zero says it is not yet distinguishable from it.
 _Avoid_: front page, summary, blurb
 
 **Pin**:
 Choosing the Arena run the headline states, by writing it to `fleet/headline.json`. A run is
-pinned from the base branch and never from a pull request, whose commit may not merge.
+pinned from the base branch and never from a pull request, whose commit may not merge, and the
+check refuses a pin whose commit the repository does not hold.
 _Avoid_: publish, set
 
 **Dossier**:
