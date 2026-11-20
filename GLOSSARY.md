@@ -346,8 +346,9 @@ _Avoid_: profile page, file
 
 **Decision trace**:
 The record of one decision: the hole cards and board, the ranges, what each action was worth, and
-why one won. The replayer reads it rather than playing the hand again. Each range names the
-opponent by **seat**, the one thing a reader can find at the table.
+why one won. The replayer reads it rather than playing the hand again, so the trace keeps its own
+copy of the cards instead of parsing frames. Each range names the opponent by **seat**, the one
+thing a reader can find at the table.
 _Avoid_: debug log, explanation
 
 **Branch**:
