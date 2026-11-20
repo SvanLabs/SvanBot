@@ -318,6 +318,17 @@ The Arena's table of results: the opponent, the win rate over it, the 95% interv
 behind it. A run is recorded with its commit and seed, so every line can be played again.
 _Avoid_: leaderboard, standings
 
+**Headline**:
+The README's one number: the pinned Arena run's mbb/100 over all its deals, pooled with the
+interval that says whether it can be told from zero. It names the commit, champion and seed it
+came from, and the block is generated, never typed.
+_Avoid_: front page, summary, blurb
+
+**Pin**:
+Choosing the Arena run the headline states, by writing it to `fleet/headline.json`. A run is
+pinned from the base branch and never from a pull request, whose commit may not merge.
+_Avoid_: publish, set
+
 **Dossier**:
 Everything SvanBot knows about one opponent, in one place.
 _Avoid_: profile page, file

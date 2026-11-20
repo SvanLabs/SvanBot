@@ -13,9 +13,16 @@ test("the commit tier runs the fast checks first and clippy last", () => {
     "file-size",
     "secrets",
     "provenance",
+    "headline",
     "layering",
     "clippy",
   ]);
+});
+
+test("the headline check joins the commit tier, so a stale README fails a commit", () => {
+  // The README's number is the number played: a commit that leaves it behind is the drift the
+  // check exists to refuse. It reads one file and compares text, so it is fast enough for the tier.
+  expect(step("commit", "headline")?.argv).toEqual([process.execPath, "tools/headline.ts"]);
 });
 
 test("the full tier adds the tests and the type check, then reports the disk budget", () => {
@@ -25,6 +32,7 @@ test("the full tier adds the tests and the type check, then reports the disk bud
     "file-size",
     "secrets",
     "provenance",
+    "headline",
     "layering",
     "clippy",
     "nextest",
