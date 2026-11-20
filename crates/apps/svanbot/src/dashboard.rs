@@ -343,10 +343,13 @@ fn trace_value(trace: &Trace) -> Value {
     value
 }
 
+/// Each range's seat, as the trace keeps it. A seat the spot did not carry is `null`: the page
+/// says the seat is unknown rather than numbering the opponents itself, which would put a label
+/// on a player the table view does not show.
 fn ranges_value(ranges: &[Ranged]) -> Vec<Value> {
     ranges
         .iter()
-        .map(|ranged| json!({ "opponent": ranged.ordinal + 1, "masses": ranged.masses }))
+        .map(|ranged| json!({ "seat": ranged.seat, "masses": ranged.masses }))
         .collect()
 }
 

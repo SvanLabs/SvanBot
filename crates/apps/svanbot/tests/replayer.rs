@@ -39,6 +39,9 @@ fn the_trace_route_reads_one_hands_decisions() {
     assert_eq!(decisions[0]["board"], "");
     // The store keeps what the pricer read by, and the route passes it through.
     assert_eq!(decisions[0]["exploit"], 0.4);
+    // Each range names a seat, which is what a reader can find at the table, not a position in
+    // the list.
+    assert_eq!(decisions[0]["ranges"][0]["seat"], 3);
 }
 
 #[test]

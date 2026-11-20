@@ -28,7 +28,7 @@ fn trace(branch: Branch) -> Trace {
                 price: Some(0.25),
                 exploit: Some(0.4),
                 ranges: vec![Ranged {
-                    ordinal: 0,
+                    seat: Some(2),
                     masses: vec![0.0, 0.0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1],
                 }],
             }),
@@ -44,7 +44,7 @@ fn trace(branch: Branch) -> Trace {
                 taken: 0,
                 actions: vec![Abstract::Check, Abstract::Bet(200)],
                 ranges: vec![Ranged {
-                    ordinal: 0,
+                    seat: Some(2),
                     masses: vec![0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 }],
             }),
@@ -77,6 +77,30 @@ fn a_hand_keeps_the_traces_that_made_its_decisions() {
     assert_eq!(kept[1].branch, Branch::Resolved);
     assert_eq!(kept[1].resolved.as_ref().unwrap().values, [1.5, -0.25]);
     assert_eq!(kept[2].branch, Branch::Priced);
+}
+
+#[test]
+fn a_range_keeps_its_seat_through_the_store_and_says_unknown_when_there_was_none() {
+    // The seat is what the page shows, so the store has to carry it back exactly: some is some,
+    // and none stays none rather than coming back as seat 0.
+    let path = scratch("seats").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    let mut hand = traced_hand("h-seat", &[Branch::Priced]);
+    {
+        let priced = hand.traced[0].priced.as_mut().expect("priced");
+        priced.ranges[0].seat = Some(3);
+    }
+    assert!(store.append_hand(&hand, Source::Live, 1_000).unwrap());
+    let kept = store.traces("h-seat").unwrap().expect("a traced hand");
+    let ranges = &kept[0].priced.as_ref().expect("priced").ranges;
+    assert_eq!(ranges[0].seat, Some(3));
+    assert_eq!(ranges[0].masses.len(), 8);
+
+    let mut unsure = traced_hand("h-noseat", &[Branch::Priced]);
+    unsure.traced[0].priced.as_mut().unwrap().ranges[0].seat = None;
+    assert!(store.append_hand(&unsure, Source::Live, 2_000).unwrap());
+    let kept = store.traces("h-noseat").unwrap().expect("a traced hand");
+    assert_eq!(kept[0].priced.as_ref().unwrap().ranges[0].seat, None);
 }
 
 #[test]

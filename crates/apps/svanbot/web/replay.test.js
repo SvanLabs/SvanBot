@@ -52,7 +52,7 @@ function resolved(overrides = {}) {
     strategy: [0, 0.75, 0.25],
     taken: 1,
     actions: ["check", "bet 200", "fold"],
-    ranges: [{ opponent: 1, masses: [0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1, 0] }],
+    ranges: [{ seat: 3, masses: [0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1, 0] }],
     ...overrides,
   };
 }
@@ -67,7 +67,7 @@ function priced(overrides = {}) {
     equity: 0.7,
     price: 0.25,
     exploit: null,
-    ranges: [{ opponent: 1, masses: [0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.1] }],
+    ranges: [{ seat: 2, masses: [0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.1] }],
     ...overrides,
   };
 }
@@ -119,9 +119,19 @@ test("a priced decision reads by an exploit budget when a fit passed the gate", 
   expect(text).toContain("exploit 0.40");
 });
 
-test("opponents are counted from one, and each range is shown", async () => {
+test("a range names the seat it read, so it matches the table", async () => {
   const text = replay.decisionView(resolved()).textContent;
-  expect(text).toContain("Opponent 1");
+  expect(text).toContain("Seat 3");
+});
+
+test("a range with no seat says so rather than numbering the opponents itself", async () => {
+  // A spot a sim built, or a hand traced before the seat was carried: the page must not invent
+  // "Opponent 1" from the position in the list, which names nobody at the table.
+  const text = replay.decisionView(
+    resolved({ ranges: [{ seat: null, masses: [1, 0, 0, 0, 0, 0, 0, 0] }] }),
+  ).textContent;
+  expect(text).toContain("Seat unknown");
+  expect(text).not.toContain("Opponent 1");
 });
 
 test("a decision with no action names still says which index was taken", async () => {

@@ -83,6 +83,7 @@ fn spot(hole: &str, board: &str, pot: u32, call: u32, opponents: usize) -> Spot 
         big_blind: 20,
         in_position: false,
         lines: vec![],
+        seats: vec![],
     }
 }
 

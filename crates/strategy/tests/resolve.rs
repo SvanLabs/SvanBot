@@ -25,6 +25,7 @@ fn spot(hole: &str, board: &str, pot: u32, legal: Legal) -> Spot {
         big_blind: 20,
         in_position: false,
         lines: vec![],
+        seats: vec![],
     }
 }
 

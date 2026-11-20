@@ -26,6 +26,9 @@ impl Session {
         let in_position = lines
             .iter()
             .all(|(seat, _)| self.lines.turn_order(*seat) < ours);
+        // The lines keep their seats: a trace names an opponent by seat, and this is the one place
+        // that knows it. Both lists are built from the same iteration, so they stay in step.
+        let seats: Vec<usize> = lines.iter().map(|(seat, _)| *seat).collect();
         let lines: Vec<_> = lines.into_iter().map(|(_, line)| line).collect();
         let raise = turn.offer.raise.or(turn
             .offer
@@ -45,6 +48,7 @@ impl Session {
             big_blind: self.lines.big_blind(),
             in_position,
             lines,
+            seats,
         }
     }
 }

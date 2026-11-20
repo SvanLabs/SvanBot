@@ -112,9 +112,12 @@ pub struct ResolvedTrace {
 /// One opponent's range, summarised.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ranged {
-    /// Which opponent, counting from the button's left: the index of its line in `Spot::lines`,
-    /// since that is all the decision path knows of it. Ours is not among them.
-    pub ordinal: usize,
+    /// The opponent's seat at the table, as the spot carried it, so a reader can match the range
+    /// to a seat in the table view. `None` when the spot named no seats: a sim's own table, or a
+    /// caller that did not follow the hand. The ordinal (the line's index in `Spot::lines`) is
+    /// never written here in its place — a seat guessed from a position is a wrong label that
+    /// reads as a right one.
+    pub seat: Option<usize>,
     /// The mass in each strength bucket on the board, weakest first.
     pub masses: Vec<f64>,
 }
@@ -183,7 +186,7 @@ pub fn decide_drawn(
                             .into_iter()
                             .map(|(action, _)| action)
                             .collect(),
-                        ranges: read_ranges(spot, model, 1, spot.hole | spot.board),
+                        ranges: read_ranges(spot, model, 1),
                     }),
                     priced: None,
                 }),
@@ -205,12 +208,7 @@ pub fn decide_drawn(
                         // What the pricer compared against, not a second reading of the spot.
                         price: priced.price,
                         exploit: gated.then_some(params.exploit),
-                        ranges: read_ranges(
-                            spot,
-                            model,
-                            spot.opponents.max(1),
-                            spot.hole | spot.board,
-                        ),
+                        ranges: read_ranges(spot, model, spot.opponents.max(1)),
                     }),
                 }),
             }
@@ -220,12 +218,13 @@ pub fn decide_drawn(
 
 /// The opponents' ranges from `model` and their lines, summarised by strength bucket: one per
 /// opponent, `count` of them, the ones with no line read at the uniform range. `dead` is every
-/// card the range must miss.
-fn read_ranges(spot: &Spot, model: &ActionModel, count: usize, dead: CardSet) -> Vec<Ranged> {
+/// card the range must miss. Each range names its opponent's seat when the spot carries one.
+fn read_ranges(spot: &Spot, model: &ActionModel, count: usize) -> Vec<Ranged> {
     let ranked = ranked(spot.board);
+    let dead = spot.hole | spot.board;
     (0..count)
         .map(|ordinal| Ranged {
-            ordinal,
+            seat: spot.seats.get(ordinal).copied(),
             masses: match spot.lines.get(ordinal) {
                 Some(line) if !line.is_empty() => {
                     let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
