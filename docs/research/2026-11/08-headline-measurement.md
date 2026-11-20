@@ -55,6 +55,14 @@ The right-hand side is exactly the perfectly-correlated figure, and it is the on
 actually supports. For equal rows it is `√k` times the independent one — 2.2× on the committed run,
 because the `nit` row is far tighter than the rest.
 
+A simulation makes the three figures concrete (six rows on one shared set of 200 deals, row noise
+of different sizes): the true SD of the pooled mean was 0.148, the bound `(1/k)Σ SE_i` was 0.183,
+and the independent formula said 0.076. The bound holds and the independent figure is less than
+half the truth. The bound is *conservative*, not tight — the real correlation sits between
+independent and perfect, so the honest interval is narrower than `Σ w_i·ci_i` and wider than the
+independent sum. Reading the upper bound costs a little power and never overclaims, which is the
+right trade for a number that gates a release.
+
 ## 4. What this costs, and what it buys
 
 - **It costs the headline its number today.** At 6 opponents × 100 shared deals the interval is
