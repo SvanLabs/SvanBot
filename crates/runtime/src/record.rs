@@ -63,6 +63,25 @@ impl Hand {
                 }
             }
         };
+        // A snapshot names the board and the hero's hole cards, and when it carries the offer and
+        // turn token the session decides from it — so a decision's trace may have come from one.
+        // The venue sends snapshots two ways: inside a `resync_response`, and as a plain
+        // `table_state`, both the same shape. Reading only the resync would leave a hand whose
+        // cards arrived by `table_state` compared against nothing; reading neither would call it
+        // unreached.
+        let fold_snapshot =
+            |snapshot: &crate::wire::Snapshot, seen: &mut Seen, named: &mut bool| {
+                if !snapshot.board.is_empty() {
+                    *named = true;
+                    seen.board |= snapshot.board.iter().copied().collect::<CardSet>();
+                }
+                if let Some(hero) = &snapshot.hero
+                    && !hero.hole.is_empty()
+                {
+                    *named = true;
+                    seen.hole = hero.hole.iter().copied().collect();
+                }
+            };
         for frame in &self.frames {
             let Ok(frame) = crate::wire::parse(frame) else {
                 continue;
@@ -105,18 +124,21 @@ impl Hand {
                             .is_none_or(|id| *id == self.hand_id)
                     });
                     if let Some(snapshot) = ours {
-                        if !snapshot.board.is_empty() {
-                            named = true;
-                            seen.board |= snapshot.board.iter().copied().collect::<CardSet>();
-                        }
-                        if let Some(hero) = &snapshot.hero
-                            && !hero.hole.is_empty()
-                        {
-                            named = true;
-                            seen.hole = hero.hole.iter().copied().collect();
-                        }
+                        fold_snapshot(snapshot, &mut seen, &mut named);
                         advance(&seen, &mut at, &mut wrong);
                     }
+                }
+                // A bare `table_state` is the same snapshot the resync carries, with no replayed
+                // events. It is authority to act when it names our hand, so it can source a
+                // decision's cards exactly as a resync can.
+                Inbound::TableState(snapshot)
+                    if snapshot
+                        .hand_id
+                        .as_ref()
+                        .is_none_or(|id| *id == self.hand_id) =>
+                {
+                    fold_snapshot(snapshot, &mut seen, &mut named);
+                    advance(&seen, &mut at, &mut wrong);
                 }
                 _ => {}
             }

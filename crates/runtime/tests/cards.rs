@@ -370,3 +370,62 @@ fn a_live_reconnect_through_the_session_and_recorder_is_not_a_disagreement() {
     assert!(saw_flop, "the resync's flop reached a decision");
     assert_eq!(hand.cards_disagree(), vec![]);
 }
+
+#[test]
+fn a_table_state_is_read_for_the_cards_it_names() {
+    // A mid-hand `table_state` is the same snapshot a resync carries, and the session decides from
+    // it when it names our hand and carries the offer — so a decision's trace can have come from
+    // one. Reading only top-level `hole_cards`/`community_cards` would leave it compared against
+    // nothing, and a wrong board in one would never be caught.
+    let frames = [
+        json!({"type": "table_joined", "table_id": "t", "seat": 2, "players": []}),
+        json!({"type": "hand_start", "hand_id": "h-ts", "seat": 2, "dealer_seat": 0,
+               "blinds": {"small_blind": 10, "big_blind": 20}}),
+        json!({"type": "table_state", "hand_id": "h-ts", "pot": 60,
+               "board": ["Qh", "Jh", "Th"], "seats": [],
+               "hero": {"seat": 2, "hole_cards": ["Ah", "As"]}}),
+    ];
+    let mut recorder = Recorder::default();
+    for frame in frames {
+        let text = frame.to_string();
+        let frame = parse_frame(&text).expect("the venue's frame");
+        recorder.record(&text, &frame);
+    }
+    // The decision saw the table_state's `AhAs` and `QhJhTh`, so the trace agrees with it.
+    recorder.trace(vec![(
+        "h-ts".into(),
+        trace_on(Street::Flop, "AhAs", "QhJhTh"),
+    )]);
+    let text =
+        json!({"type": "hand_result", "hand_id": "h-ts", "final_stacks": {"2": 300}}).to_string();
+    let hand = recorder
+        .record(&text, &parse_frame(&text).expect("the venue's frame"))
+        .expect("the hand closed");
+    assert_eq!(hand.cards_disagree(), vec![]);
+
+    // And a trace that disagrees with the table_state's cards is named, not passed over.
+    let frames = [
+        json!({"type": "table_joined", "table_id": "t", "seat": 2, "players": []}),
+        json!({"type": "hand_start", "hand_id": "h-ts2", "seat": 2, "dealer_seat": 0,
+               "blinds": {"small_blind": 10, "big_blind": 20}}),
+        json!({"type": "table_state", "hand_id": "h-ts2", "pot": 60,
+               "board": ["Qh", "Jh", "Th"], "seats": [],
+               "hero": {"seat": 2, "hole_cards": ["Ah", "As"]}}),
+    ];
+    let mut recorder = Recorder::default();
+    for frame in frames {
+        let text = frame.to_string();
+        let frame = parse_frame(&text).expect("the venue's frame");
+        recorder.record(&text, &frame);
+    }
+    recorder.trace(vec![(
+        "h-ts2".into(),
+        trace_on(Street::Flop, "AhKh", "QhJhTh"),
+    )]);
+    let text =
+        json!({"type": "hand_result", "hand_id": "h-ts2", "final_stacks": {"2": 300}}).to_string();
+    let hand = recorder
+        .record(&text, &parse_frame(&text).expect("the venue's frame"))
+        .expect("the hand closed");
+    assert_eq!(hand.cards_disagree(), vec![(0, "hole")]);
+}
