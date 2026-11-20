@@ -210,6 +210,84 @@ fn a_reconnect_that_replays_the_cards_is_not_a_disagreement() {
 }
 
 #[test]
+fn a_reconnect_that_replays_several_streets_reaches_each_decisions_street() {
+    // `already_seated` asks for a resync from the start (`last_table_seq: 0`), so the replayed
+    // events carry the flop AND the turn, and the snapshot's board is the turn. A checker that
+    // folded every replayed card in at once, then compared, would jump the board from empty to
+    // the turn and call the flop decision "unreached" — a false alarm on a normal reconnect.
+    let frames = [
+        json!({"type": "hole_cards", "hand_id": "h-8", "cards": ["Ah", "As"]}),
+        json!({"type": "resync_response", "role": "player", "table_seq": 20,
+        "replayed_events": [
+            {"type": "community_cards", "table_seq": 14, "street": "flop",
+             "cards": ["Qh", "Jh", "Th"]},
+            {"type": "community_cards", "table_seq": 18, "street": "turn",
+             "cards": ["2c"]}
+        ],
+        "snapshot": {
+            "hand_id": "h-8", "pot": 200, "board": ["Qh", "Jh", "Th", "2c"],
+            "seats": [], "hero": {"seat": 2, "hole_cards": ["Ah", "As"]}
+        }}),
+    ];
+    let hand = Hand {
+        hand_id: "h-8".into(),
+        table_id: "t-1".into(),
+        frames: frames.iter().map(|f| f.to_string()).collect(),
+        traced: vec![
+            trace_on(Street::Preflop, "AhAs", ""),
+            trace_on(Street::Flop, "AhAs", "QhJhTh"),
+            trace_on(Street::Turn, "AhAs", "QhJhTh2c"),
+        ],
+    };
+    assert_eq!(hand.cards_disagree(), vec![]);
+}
+
+#[test]
+fn a_decision_compared_before_its_hole_cards_arrived_is_not_blamed_for_them() {
+    // A replay can list the board before the hole cards (a `hole_cards` event replayed after a
+    // `community_cards` one, or a snapshot whose hero arrives without them). Comparing a preflop
+    // decision at the moment the board shows would then call its `AhAs` wrong against an empty
+    // hole. The preflop decision is compared against the hole cards the hand actually had, which
+    // arrive later; only the street's board has to be there for the comparison to happen.
+    let frames = [
+        json!({"type": "resync_response", "role": "player", "table_seq": 5,
+               "replayed_events": [
+                   {"type": "community_cards", "table_seq": 4, "street": "preflop", "cards": []}
+               ],
+               "snapshot": {"hand_id": "h-9", "pot": 30, "board": [],
+                            "seats": [], "hero": {"seat": 2, "hole_cards": []}}}),
+        json!({"type": "hole_cards", "hand_id": "h-9", "cards": ["Ah", "As"]}),
+    ];
+    let hand = Hand {
+        hand_id: "h-9".into(),
+        table_id: "t-1".into(),
+        frames: frames.iter().map(|f| f.to_string()).collect(),
+        traced: vec![trace_on(Street::Preflop, "AhAs", "")],
+    };
+    assert_eq!(hand.cards_disagree(), vec![]);
+}
+
+#[test]
+fn hole_cards_that_arrive_late_and_wrong_are_still_caught() {
+    // The waiting above must not become a way to pass by never arriving: when the hole cards do
+    // come and differ from the trace, that is the disagreement the check exists to find.
+    let frames = [
+        json!({"type": "resync_response", "role": "player", "table_seq": 5,
+               "replayed_events": [], "snapshot": {"hand_id": "h-9", "pot": 30, "board": [],
+                                                   "seats": [], "hero": {"seat": 2,
+                                                                          "hole_cards": []}}}),
+        json!({"type": "hole_cards", "hand_id": "h-9", "cards": ["Ah", "Kh"]}),
+    ];
+    let hand = Hand {
+        hand_id: "h-9".into(),
+        table_id: "t-1".into(),
+        frames: frames.iter().map(|f| f.to_string()).collect(),
+        traced: vec![trace_on(Street::Preflop, "AhAs", "")],
+    };
+    assert_eq!(hand.cards_disagree(), vec![(0, "hole")]);
+}
+
+#[test]
 fn a_reconnect_whose_replayed_board_disagrees_is_still_a_disagreement() {
     // The reconnect is not a free pass: cards that arrive through it are compared like any other.
     let frames = [

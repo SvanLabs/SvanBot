@@ -38,6 +38,31 @@ impl Hand {
         let mut named = false;
         let mut at = 0;
         let mut wrong = Vec::new();
+        // Advance the trace past every decision whose street the cards now reach. A decision is
+        // compared at the moment its street's cards have arrived, not when the whole hand has
+        // been read: a reconnect replays several streets at once (`already_seated` asks from the
+        // start, `last_table_seq: 0`), and comparing only at the end would jump the board to its
+        // final street and call every earlier decision unreached.
+        let advance = |seen: &Seen, at: &mut usize, wrong: &mut Vec<(usize, &'static str)>| {
+            while let Some(trace) = self.traced.get(*at) {
+                if trace.street != Street::of(seen.board) {
+                    break;
+                }
+                // A decision always has the bot's two hole cards, so an empty hole means they have
+                // not arrived yet — a replay can list the board before `hole_cards`. Comparing the
+                // decision now would blame its real hole against an empty one; wait for them.
+                if trace.hole != CardSet::EMPTY && seen.hole == CardSet::EMPTY {
+                    break;
+                }
+                *at += 1;
+                if trace.hole != seen.hole {
+                    wrong.push((*at - 1, "hole"));
+                }
+                if trace.board != seen.board {
+                    wrong.push((*at - 1, "board"));
+                }
+            }
+        };
         for frame in &self.frames {
             let Ok(frame) = crate::wire::parse(frame) else {
                 continue;
@@ -51,24 +76,27 @@ impl Hand {
                 Inbound::HoleCards { cards } => {
                     named = true;
                     seen.hole = cards.iter().copied().collect();
+                    advance(&seen, &mut at, &mut wrong);
                 }
                 Inbound::CommunityCards { cards } => {
                     named = true;
                     seen.board |= cards.iter().copied().collect::<CardSet>();
+                    advance(&seen, &mut at, &mut wrong);
                 }
                 Inbound::Resync(resync) => {
                     for event in &resync.replayed {
                         match &event.inbound {
-                            Inbound::CommunityCards { cards } => {
-                                named = true;
-                                seen.board |= cards.iter().copied().collect::<CardSet>();
-                            }
                             Inbound::HoleCards { cards } => {
                                 named = true;
                                 seen.hole = cards.iter().copied().collect();
                             }
-                            _ => {}
+                            Inbound::CommunityCards { cards } => {
+                                named = true;
+                                seen.board |= cards.iter().copied().collect::<CardSet>();
+                            }
+                            _ => continue,
                         }
+                        advance(&seen, &mut at, &mut wrong);
                     }
                     let ours = resync.snapshot.as_ref().filter(|snapshot| {
                         snapshot
@@ -87,23 +115,10 @@ impl Hand {
                             named = true;
                             seen.hole = hero.hole.iter().copied().collect();
                         }
+                        advance(&seen, &mut at, &mut wrong);
                     }
                 }
                 _ => {}
-            }
-            // Every decision the cards seen so far reach must agree with them — once the frames
-            // have named any cards. Before that there is no claim to compare against.
-            while named && let Some(trace) = self.traced.get(at) {
-                if trace.street != Street::of(seen.board) {
-                    break;
-                }
-                at += 1;
-                if trace.hole != seen.hole {
-                    wrong.push((at - 1, "hole"));
-                }
-                if trace.board != seen.board {
-                    wrong.push((at - 1, "board"));
-                }
             }
         }
         // A decision on a street whose card frame never came is one the hand made with no frame
