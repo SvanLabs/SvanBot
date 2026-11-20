@@ -95,6 +95,19 @@ V11-00.
   a 3,000-hand harm guard on the canary first: cleared, the canary writes the fleet's champion
   and the other bots adopt it between hands; harmful, the champion stays. A restarted canary
   takes its probe up from its store.
+- The headline: `tools/headline.ts` writes the README's one number from the Arena run pinned in
+  `fleet/headline.json` — the pooled mbb/100 across every opponent, weighted by deals, with the
+  pooled 95% interval that says whether it can be told from zero. Because the Arena plays one set
+  of deals against every opponent, the interval is the shared-deal bound — the weighted mean of
+  the rows' intervals, not a sum that would buy confidence from one sample seen six ways — so a
+  100-deal run reads "not yet distinguishable from zero" and only clears at several thousand
+  deals. A run clear of zero below says it is behind; a row with no measured interval leaves the
+  pool unmeasured rather than exact; the headline counts deals once, and figures stop at three
+  significant ones. The block names its
+  commit, champion and seed, and says what the league is not. The commit tier fails a README that
+  drifts from the pin, refuses a pin whose commit the repository does not hold, and refuses a
+  cloned tree with no pin; a run is pinned on `v11` from the `arena` artifact a pull request's CI
+  left, never from the pull request itself.
 - Agent workflow: `tools/hook.ts` holds an agent session to the rules a machine can check. It
   refuses a push to `main`, a forced push, a build outside `target/dev`, a release build and
   any start, stop or swap of a bot; it runs the layering check after an edit of a `Cargo.toml`;

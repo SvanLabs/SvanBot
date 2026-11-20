@@ -127,6 +127,14 @@ jobs:
           bun tools/gate.ts arena
           SVANBOT_FLEET="$RUNNER_TEMP/fleet" SVANBOT_COMMIT="$GITHUB_SHA" \
             target/dev/debug/svanbot arena 2 17 | tee -a "$GITHUB_STEP_SUMMARY"
+          # The README's headline is pinned to the base branch's run, not to this one: a pull
+          # request's number would name a commit that never merged. To promote this run, download
+          # the `arena` artifact and, on the base branch, run the pin below it.
+          {
+            echo ""
+            echo "This run is not the README's headline. To pin it, download the \`arena\` artifact"
+            echo "and run \`bun tools/headline.ts --pin <downloaded>/arena.json\` on \`v11\`."
+          } >> "$GITHUB_STEP_SUMMARY"
       - if: steps.behaviour.outputs.run == 'yes'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

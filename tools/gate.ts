@@ -2,7 +2,7 @@
 // by the pre-commit hook. The full tier runs before a push and adds the tests and the type check.
 // Run it under mise (`mise run commit`, `mise run full`), so every tool is the pinned one.
 //   bun tools/gate.ts commit   fmt, biome, the 500-line limit, the secret scan, provenance, the
-//                              layering check and clippy
+//                              README's headline, the layering check and clippy
 //   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc, the tool tests and
 //                              the dashboard page's tests,
 //                              and last the disk budget of this clone's target/
@@ -15,7 +15,16 @@ import { join } from "node:path";
 export type Step = { name: string; argv: string[]; env: Record<string, string> };
 
 // Fast checks first, so a typo fails in a second rather than after a build.
-const COMMIT = ["fmt", "biome", "file-size", "secrets", "provenance", "layering", "clippy"];
+const COMMIT = [
+  "fmt",
+  "biome",
+  "file-size",
+  "secrets",
+  "provenance",
+  "headline",
+  "layering",
+  "clippy",
+];
 const TEST = ["nextest", "doc-test", "tsc", "tools-test", "page-test"];
 const TIERS: Record<string, string[]> = {
   commit: COMMIT,
@@ -49,6 +58,7 @@ function stepFor(name: string): Step {
     case "file-size":
     case "secrets":
     case "provenance":
+    case "headline":
     case "layering":
     case "disk":
       return { name, argv: [process.execPath, `tools/${name}.ts`], env: {} };
