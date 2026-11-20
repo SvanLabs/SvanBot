@@ -3,6 +3,8 @@
 //! A hand is every frame from its `hand_start` to its `hand_result`, kept as the venue's own JSON
 //! text, so nothing is lost in translation and the learner can read it again with any later parser.
 
+use svanbot_core::card::CardSet;
+use svanbot_core::rules::Street;
 use svanbot_strategy::policy::Trace;
 
 use crate::wire::{Frame, Inbound};
@@ -17,6 +19,74 @@ pub struct Hand {
     /// What made each of our decisions in it, oldest first. Empty when the caller traced nothing:
     /// a hand played before the trace existed is not a hand that made no decisions.
     pub traced: Vec<Trace>,
+}
+
+impl Hand {
+    /// The decisions that disagree with the frames about the cards they saw, as
+    /// `(index of the decision, which of "hole"/"board")`.
+    ///
+    /// The trace keeps its own copy of the cards so the replayer needs no frame parser — a later
+    /// change to how frames are read must not change what a past decision says it held. The frames
+    /// keep the venue's own JSON. Two copies can drift, and a drift is invisible: the trace comes
+    /// from the decision path, the frames from the wire, and nothing else compares them. This is
+    /// that comparison, for the caller that asserts on a live hand.
+    ///
+    /// A hand whose frames name no cards has nothing to compare, and compares equal: a missing
+    /// card is not a disagreement about one.
+    pub fn cards_disagree(&self) -> Vec<(usize, &'static str)> {
+        let mut seen = Seen::default();
+        let mut named = false;
+        let mut at = 0;
+        let mut wrong = Vec::new();
+        for frame in &self.frames {
+            let Ok(frame) = crate::wire::parse(frame) else {
+                continue;
+            };
+            match &frame {
+                Inbound::HoleCards { cards } => {
+                    named = true;
+                    seen.hole = cards.iter().copied().collect();
+                }
+                Inbound::CommunityCards { cards } => {
+                    named = true;
+                    seen.board |= cards.iter().copied().collect::<CardSet>();
+                }
+                _ => {}
+            }
+            // Every decision the cards seen so far reach must agree with them — once the frames
+            // have named any cards. Before that there is no claim to compare against.
+            while named && let Some(trace) = self.traced.get(at) {
+                if trace.street != Street::of(seen.board) {
+                    break;
+                }
+                at += 1;
+                if trace.hole != seen.hole {
+                    wrong.push((at - 1, "hole"));
+                }
+                if trace.board != seen.board {
+                    wrong.push((at - 1, "board"));
+                }
+            }
+        }
+        // A decision on a street whose card frame never came is one the hand made with no frame
+        // to agree with, which is a disagreement, not a decision to skip. A hand whose frames
+        // name no cards at all never had anything to agree with, so it is left alone: a missing
+        // card is not a disagreement about one.
+        if named {
+            for index in at..self.traced.len() {
+                wrong.push((index, "unreached"));
+            }
+        }
+        wrong
+    }
+}
+
+/// The cards a hand's frames have named so far: the hole from `hole_cards`, and the board as each
+/// `community_cards` frame extends it.
+#[derive(Clone, Copy, Debug, Default)]
+struct Seen {
+    hole: CardSet,
+    board: CardSet,
 }
 
 /// Gathers frames into hands. It outlives a connection, like the session: a hand that a resync
