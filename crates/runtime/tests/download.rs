@@ -70,6 +70,7 @@ fn it_pages_the_history_into_the_store_and_resumes_where_it_stopped() {
         hand_id: "h-3".into(),
         table_id: "t-1".into(),
         frames: vec![json!({"type": "hand_start"}).to_string()],
+        traced: Vec::new(),
     };
     store.append_hand(&live, Source::Live, 1).unwrap();
     let full = PAGE;

@@ -19,6 +19,19 @@ pub enum Abstract {
     Bet(u32),
 }
 
+impl Abstract {
+    /// The action as the trace and the page name it: `fold`, `check`, `call`, or the chips a bet
+    /// or raise adds to the pot, as `bet 200`.
+    pub fn named(self) -> String {
+        match self {
+            Self::Fold => "fold".to_owned(),
+            Self::Check => "check".to_owned(),
+            Self::Call => "call".to_owned(),
+            Self::Bet(added) => format!("bet {added}"),
+        }
+    }
+}
+
 /// A node of the tree.
 #[derive(Clone, Debug)]
 pub enum Node {

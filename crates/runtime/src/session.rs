@@ -17,6 +17,7 @@
 //! again (`resync`).
 
 mod resync;
+mod view;
 
 use crate::lines::Lines;
 use crate::status::{Seat, Table};
@@ -24,8 +25,9 @@ use crate::status::{Seat, Table};
 use std::collections::BTreeMap;
 
 use svanbot_core::card::CardSet;
-use svanbot_core::rules::{Action, Legal, RaiseRange, Street};
+use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
+use svanbot_strategy::policy::{Decision, Trace};
 
 use crate::wire::{Frame, Inbound, Offer, Outbound, Player, Turn, VenueAction};
 
@@ -44,22 +46,15 @@ pub enum Incident {
     SharedHand { hand_id: String, stablemate: String },
 }
 
-/// The venue's name for a street, as the dashboard shows it.
-fn street_name(street: Street) -> &'static str {
-    match street {
-        Street::Preflop => "preflop",
-        Street::Flop => "flop",
-        Street::Turn => "turn",
-        Street::River => "river",
-    }
-}
-
 /// What the session does in answer to one frame.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Step {
     pub send: Vec<Outbound>,
     /// Every incident the frame raised, each once.
     pub incidents: Vec<Incident>,
+    /// What each decision in this step was made from, with the hand it belongs to. Empty when the
+    /// step decided nothing, or when the caller handed back a bare action with no trace.
+    pub traced: Vec<(String, Trace)>,
 }
 
 impl Step {
@@ -67,6 +62,7 @@ impl Step {
         Self {
             send: vec![message],
             incidents: Vec::new(),
+            traced: Vec::new(),
         }
     }
 
@@ -82,6 +78,10 @@ impl Step {
                 self.incidents.push(incident);
             }
         }
+        // A trace is added, never merged: one step decides at most once, and a turn seen twice is
+        // refused by `played_token` before it can decide again. A resync skips replayed turns and
+        // snapshots (`resync.rs`), so its one decision carries one trace.
+        self.traced.extend(later.traced);
         self
     }
 }
@@ -166,9 +166,7 @@ impl Session {
             seat: self.seat,
             hand_id: self.hand.as_ref().map(|hand| hand.hand_id.clone()),
             street: if in_hand {
-                self.lines
-                    .street()
-                    .map(|street| street_name(street).to_owned())
+                self.lines.street().map(|street| street.name().to_owned())
             } else {
                 None
             },
@@ -211,10 +209,10 @@ impl Session {
 
     /// Answers one frame. `decide` is asked only at our turn, with the spot as the session sees it.
     /// A frame whose `table_seq` is not past the watermark was applied already, and is ignored.
-    pub fn on_frame(
+    pub fn on_frame<D: Into<Decision>>(
         &mut self,
         frame: impl Into<Frame>,
-        decide: impl FnOnce(&Spot) -> Action,
+        decide: impl FnOnce(&Spot) -> D,
     ) -> Step {
         let Frame { table_seq, inbound } = frame.into();
         if let Inbound::Resync(resync) = inbound {
@@ -333,6 +331,7 @@ impl Session {
                         table_id: self.table_id.clone(),
                         stablemate,
                     }],
+                    traced: Vec::new(),
                 }
             }
             None => Step::default(),
@@ -357,7 +356,11 @@ impl Session {
             .map(|player| player.name.clone())
     }
 
-    fn your_turn(&mut self, turn: Turn, decide: impl FnOnce(&Spot) -> Action) -> Step {
+    fn your_turn<D: Into<Decision>>(
+        &mut self,
+        turn: Turn,
+        decide: impl FnOnce(&Spot) -> D,
+    ) -> Step {
         let left = self.seat_list(turn.players.clone());
         let stablemate = self.stablemate();
         let hand = self.hand.clone().unwrap_or_default();
@@ -376,10 +379,20 @@ impl Session {
         self.played_token = Some(turn.turn_token.clone());
         // In a shared hand the bot folds outright, even when the check is free: it takes no further
         // part in a hand a stablemate is in.
-        let action = match stablemate {
-            Some(_) => VenueAction::Fold,
-            None => offered(decide(&self.spot(&turn, &hand)), &turn.offer),
+        let decided = match stablemate {
+            Some(_) => None,
+            None => Some(decide(&self.spot(&turn, &hand)).into()),
         };
+        let action = match &decided {
+            Some(decision) => offered(decision.action, &turn.offer),
+            None => VenueAction::Fold,
+        };
+        // The trace rides out with the action: the session is the only place holding both it and
+        // the hand id it belongs to, and the store writes it with the hand (`Store::append_hand`).
+        let traced: Vec<(String, Trace)> = decided
+            .and_then(|decision| decision.trace.map(|trace| (hand_id.clone(), trace)))
+            .into_iter()
+            .collect();
         self.actions_sent += 1;
         let action = Outbound::Action {
             hand_id: hand_id.clone(),
@@ -398,46 +411,10 @@ impl Session {
             })
             .into_iter()
             .collect();
-        Step { send, incidents }
-    }
-
-    fn spot(&self, turn: &Turn, hand: &HandSeen) -> Spot {
-        let me = self.me.to_lowercase();
-        let mine = turn
-            .players
-            .iter()
-            .find(|player| player.name.to_lowercase() == me);
-        let lines: Vec<_> = turn
-            .players
-            .iter()
-            .filter(|player| {
-                player.name.to_lowercase() != me && !hand.folded.contains(&player.seat)
-            })
-            .map(|player| (player.seat, self.lines.of(player.seat).to_vec()))
-            .collect();
-        let ours = self.seat.map_or(0, |seat| self.lines.turn_order(seat));
-        let in_position = lines
-            .iter()
-            .all(|(seat, _)| self.lines.turn_order(*seat) < ours);
-        let lines: Vec<_> = lines.into_iter().map(|(_, line)| line).collect();
-        let raise = turn.offer.raise.or(turn
-            .offer
-            .all_in
-            .map(|all| RaiseRange { min: all, max: all }));
-        Spot {
-            hole: hand.hole,
-            board: turn.board.iter().copied().collect(),
-            pot: turn.pot,
-            legal: Legal {
-                call: turn.offer.call,
-                raise,
-            },
-            opponents: lines.len(),
-            stack: mine.map_or(0, |player| player.stack),
-            committed: self.seat.map_or(0, |seat| self.lines.committed(seat)),
-            big_blind: self.lines.big_blind(),
-            in_position,
-            lines,
+        Step {
+            send,
+            incidents,
+            traced,
         }
     }
 }

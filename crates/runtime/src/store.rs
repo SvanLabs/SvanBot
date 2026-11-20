@@ -4,7 +4,9 @@
 //!
 //! It runs in WAL mode, so a reader never blocks the bot's writes. Its tables are `STRICT` and
 //! append-only: triggers refuse every `UPDATE` and `DELETE`, so a stored hand or incident stays as
-//! it was written. The schema is v11's own and takes no v10 migration (`user_version` 1).
+//! it was written. The one exception is `decisions`, the hand trace: it is capped, so it takes no
+//! `DELETE` trigger (`store/trace.rs`). The schema is v11's own and takes no v10 migration
+//! (`user_version` 1).
 
 use std::fmt;
 use std::path::Path;
@@ -90,6 +92,23 @@ CREATE TRIGGER IF NOT EXISTS probes_no_update BEFORE UPDATE ON probes
     BEGIN SELECT RAISE(ABORT, 'probes are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS probes_no_delete BEFORE DELETE ON probes
     BEGIN SELECT RAISE(ABORT, 'probes are append-only'); END;
+CREATE TABLE IF NOT EXISTS decisions (
+    hand_id TEXT NOT NULL,
+    -- Where in the hand this decision came, counting from 0 across the whole hand.
+    seq     INTEGER NOT NULL CHECK (seq >= 0),
+    street  TEXT NOT NULL CHECK (street IN ('preflop', 'flop', 'turn', 'river')),
+    -- 'resolved' or 'priced': which of the policy's two ways decided.
+    branch  TEXT NOT NULL CHECK (branch IN ('resolved', 'priced')),
+    -- The trace itself as JSON: the cards, the values, the mix, the price, the ranges.
+    trace   TEXT NOT NULL CHECK (json_valid(trace)),
+    PRIMARY KEY (hand_id, seq)
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS decisions_no_update BEFORE UPDATE ON decisions
+    BEGIN SELECT RAISE(ABORT, 'decisions are append-only'); END;
+-- No `no_delete` trigger here, and here only. The trace is the one record that is capped: past
+-- TRACED_HANDS hands the oldest fall off, and a table that cannot delete cannot cap. The cap and
+-- only the cap: it lives in `store::trace::trim`, which the write runs after the newest hand, and
+-- nothing else may delete a decision. Nothing may rewrite one.
 PRAGMA user_version = 1;
 ";
 
@@ -173,6 +192,21 @@ impl Store {
         Ok(Self { db })
     }
 
+    /// Opens `path` to read only, with no bot named and none checked.
+    ///
+    /// This is the dashboard's handle, and it is not `open`: `open` refuses a bot that is not the
+    /// store's owner, because two bots sharing one store would pool their reads (ADR 0004). A
+    /// reader pools nothing — it takes one look at a hand the bot's own process wrote, and the
+    /// store runs in WAL, so the bot's writes are never blocked. Nothing can be written through it.
+    pub fn open_reader(path: &Path) -> Result<Self, StoreError> {
+        let db = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        db.execute_batch("PRAGMA busy_timeout = 5000;")?;
+        Ok(Self { db })
+    }
+
     /// The journal mode SQLite reports: `wal` once open.
     pub fn journal_mode(&self) -> Result<String, StoreError> {
         Ok(self
@@ -211,7 +245,11 @@ impl Store {
     ) -> Result<bool, StoreError> {
         // Each frame is a JSON object as the venue sent it, so the list is a JSON array.
         let frames = format!("[{}]", hand.frames.join(","));
-        let added = self.db.execute(
+        // The hand and its traces are one write: a trace has no meaning without its hand, and the
+        // recorder drops an open hand when the connection breaks, so a decision written at
+        // decision time can outlive a hand the store never kept.
+        let tx = self.db.unchecked_transaction()?;
+        let added = tx.execute(
             "INSERT INTO hands (hand_id, table_id, source, recorded_ms, frames)
              VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (hand_id) DO NOTHING",
             params![
@@ -222,6 +260,10 @@ impl Store {
                 frames
             ],
         )?;
+        if added == 1 {
+            trace::keep(&tx, hand)?;
+        }
+        tx.commit()?;
         Ok(added == 1)
     }
 
@@ -265,6 +307,7 @@ impl Store {
                 hand_id,
                 table_id,
                 frames: frames.iter().map(ToString::to_string).collect(),
+                traced: Vec::new(),
             })
         })
         .collect()
@@ -429,6 +472,10 @@ impl Store {
             .map(|(probe, _, detail)| (u64::from_str_radix(&probe, 16).unwrap_or(0), detail)))
     }
 }
+
+mod trace;
+
+pub use trace::{TRACED_HANDS, TracedHand};
 
 fn arm_name(arm: Arm) -> &'static str {
     match arm {

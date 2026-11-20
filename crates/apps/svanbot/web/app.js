@@ -2,6 +2,7 @@
 // through `fleet.js`, and every name on it is set as text, never as markup: an opponent chooses
 // their own name.
 
+import { facts, h, panel, table } from "./dom.js";
 import {
   arenaRun,
   arenaSpan,
@@ -19,59 +20,7 @@ import {
   whisker,
   winRate,
 } from "./fleet.js";
-
-const SVG = "http://www.w3.org/2000/svg";
-
-/** An element with attributes and children. A string child is text. */
-function h(tag, attrs = {}, ...children) {
-  const svg = ["svg", "polyline", "line", "title"].includes(tag) && attrs.svg !== false;
-  const node = svg ? document.createElementNS(SVG, tag) : document.createElement(tag);
-  for (const [name, value] of Object.entries(attrs)) {
-    if (name !== "svg" && value !== null && value !== undefined) {
-      node.setAttribute(name, String(value));
-    }
-  }
-  // A view is built from lists of lists: flatten them all the way, or a list would be appended
-  // as its own text.
-  for (const child of children.flat(Number.POSITIVE_INFINITY)) {
-    if (child !== null && child !== undefined) {
-      // A number is text, as it would be in the DOM: `append(7)` makes a text node there too.
-      node.append(typeof child === "object" ? child : String(child));
-    }
-  }
-  return node;
-}
-
-/** A definition list from pairs of a term and what it is. */
-function facts(pairs) {
-  return h(
-    "dl",
-    {},
-    pairs.flatMap(([term, value]) => [h("dt", {}, term), h("dd", {}, value)]),
-  );
-}
-
-function table(caption, heads, rows) {
-  return h(
-    "table",
-    {},
-    h("caption", { class: "muted" }, caption),
-    h(
-      "thead",
-      {},
-      h(
-        "tr",
-        {},
-        heads.map(([text, cls]) => h("th", { scope: "col", class: cls }, text)),
-      ),
-    ),
-    h("tbody", {}, rows),
-  );
-}
-
-function panel(title, ...children) {
-  return h("section", { class: "card" }, h("h2", {}, title), children);
-}
+import { handPage } from "./replay.js";
 
 function when(ms, nowMs) {
   return ms === null || ms === undefined ? "never" : `${duration(nowMs - ms)} ago`;
@@ -251,8 +200,43 @@ function botPage(fleet, name, nowMs) {
           ["Process", String(status.pid)],
         ]),
       ),
+      panel("Traced hands", tracedHands(name)),
     ),
   ];
+}
+
+/** The newest hands this bot traced, each linking to its own page. */
+function tracedHands(bot) {
+  const hands = state.hands;
+  if (hands === null) {
+    return h("p", { class: "muted" }, "Reading the store…");
+  }
+  if (hands.error) {
+    return h("p", { class: "worst fail" }, hands.error);
+  }
+  if (hands.length === 0) {
+    return h("p", { class: "muted" }, "No traced hands yet.");
+  }
+  const nowMs = Date.now();
+  return table(
+    "Newest first",
+    [
+      ["Hand", null],
+      ["Table", null],
+      ["Decisions", "number"],
+      ["Recorded", null],
+    ],
+    hands.map((hand) =>
+      h(
+        "tr",
+        {},
+        h("td", {}, h("a", { href: `/bot/${bot}/hand/${hand.hand_id}` }, hand.hand_id)),
+        h("td", {}, hand.table_id),
+        h("td", { class: "number" }, String(hand.decisions)),
+        h("td", {}, when(hand.recorded_ms, nowMs)),
+      ),
+    ),
+  );
 }
 
 /** The release page: what is installed, where the slots point, and what each bot runs. */
@@ -433,7 +417,76 @@ function scoreboardPage(fleet) {
   ];
 }
 
-const state = { fleet: null, offset: 0, lastMessageMs: null, streamError: null };
+const state = {
+  fleet: null,
+  offset: 0,
+  lastMessageMs: null,
+  streamError: null,
+  // The views the stream does not carry: one bot's hands, and one hand's trace. Fetched when the
+  // path asks for them, and refetched when it changes.
+  hands: null,
+  handsFor: null,
+  trace: null,
+  traceFor: null,
+};
+
+/** The server's sentence for a refusal, or `fallback` when it sent none: a detail is never markup. */
+export function textOf(body, fallback) {
+  return typeof body?.detail === "string" ? body.detail : fallback;
+}
+
+/** Asks for what the path needs, once per path: the stream carries the fleet, not the traces. */
+function load(at) {
+  if (at.view === "bot" && state.handsFor !== at.bot) {
+    state.handsFor = at.bot;
+    state.hands = null;
+    fetch(`/api/hands/${at.bot}`)
+      .then((answer) =>
+        // The server says why a 500 happened; a 404 is a name no bot has. Read the detail, and
+        // fall back to the plain sentence if the body is not the JSON it should be.
+        answer.ok
+          ? answer.json()
+          : answer.json().then(
+              (body) =>
+                Promise.reject(new Error(textOf(body, "The bot's store could not be read."))),
+              () => Promise.reject(new Error("The bot's store could not be read.")),
+            ),
+      )
+      .then((body) => {
+        state.hands = body.hands ?? [];
+        render();
+      })
+      .catch((error) => {
+        state.hands = { error: error.message };
+        render();
+      });
+  }
+  const key = at.view === "hand" ? `${at.bot}/${at.hand}` : null;
+  if (key !== null && state.traceFor !== key) {
+    state.traceFor = key;
+    state.trace = null;
+    fetch(`/api/trace/${at.bot}/${at.hand}`)
+      .then((answer) =>
+        // A 500 carries why the store could not be read; a 404 is a hand nobody played. The
+        // page must not show a broken store as a hand that does not exist.
+        answer.ok
+          ? answer.json()
+          : answer.json().then(
+              (body) =>
+                Promise.reject(new Error(textOf(body, "This hand is not in the bot's store."))),
+              () => Promise.reject(new Error("This hand is not in the bot's store.")),
+            ),
+      )
+      .then((body) => {
+        state.trace = body;
+        render();
+      })
+      .catch((error) => {
+        state.trace = { error: error.message };
+        render();
+      });
+  }
+}
 
 function render() {
   const local = Date.now();
@@ -458,14 +511,17 @@ function render() {
         ? problems[0].text
         : `${problems[0].text} (and ${problems.length - 1} more)`;
   const at = route(location.pathname);
+  load(at);
   const view =
-    at.view === "bot"
-      ? botPage(state.fleet, at.bot, nowMs)
-      : at.view === "release"
-        ? releasePage(state.fleet, nowMs)
-        : at.view === "scoreboard"
-          ? scoreboardPage(state.fleet)
-          : fleetView(state.fleet, nowMs, problems);
+    at.view === "hand"
+      ? handPage(state, at.bot, at.hand)
+      : at.view === "bot"
+        ? botPage(state.fleet, at.bot, nowMs)
+        : at.view === "release"
+          ? releasePage(state.fleet, nowMs)
+          : at.view === "scoreboard"
+            ? scoreboardPage(state.fleet)
+            : fleetView(state.fleet, nowMs, problems);
   // Redraw only what changed: a redraw every second would take the focus and the scroll from
   // whoever is reading the table. An open table fallback stays open across a redraw.
   const shown = document.getElementById("view");

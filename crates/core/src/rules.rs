@@ -9,6 +9,8 @@ mod pots;
 
 use std::fmt;
 
+use crate::card::CardSet;
+
 /// The forced bets. The venue plays 10/20.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Blinds {
@@ -23,6 +25,36 @@ pub enum Street {
     Flop,
     Turn,
     River,
+}
+
+impl Street {
+    /// The streets in the order they are played.
+    pub const ALL: [Self; 4] = [Self::Preflop, Self::Flop, Self::Turn, Self::River];
+
+    /// The street `board` is on: the one the community cards open.
+    pub fn of(board: CardSet) -> Self {
+        match board.len() {
+            0 => Self::Preflop,
+            3 => Self::Flop,
+            4 => Self::Turn,
+            _ => Self::River,
+        }
+    }
+
+    /// The street's name, as the store keeps it and the page shows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Preflop => "preflop",
+            Self::Flop => "flop",
+            Self::Turn => "turn",
+            Self::River => "river",
+        }
+    }
+
+    /// The street called `name`, or `None` when no street is.
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|street| street.name() == name)
+    }
 }
 
 /// What a seat does when it is its turn. A raise names the total the seat's bet on this street

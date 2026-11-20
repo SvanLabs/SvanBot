@@ -1,8 +1,8 @@
 //! Coming back to a table: the errors that name or lose it, the `resync_response`, and installing
 //! a snapshot (<https://docs.openpoker.ai/llms-full.txt>, rev 2026-09-02, "Reconnection").
 
-use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
+use svanbot_strategy::policy::Decision;
 
 use super::{HandSeen, Session, Step, join_lobby};
 use crate::wire::{Frame, Hero, Inbound, Outbound, Player, Resync, Snapshot, Turn};
@@ -30,7 +30,11 @@ impl Session {
     }
 
     /// Applies the replayed events in `table_seq` order, then installs the snapshot over them.
-    pub(super) fn resync(&mut self, resync: Resync, decide: impl FnOnce(&Spot) -> Action) -> Step {
+    pub(super) fn resync<D: Into<Decision>>(
+        &mut self,
+        resync: Resync,
+        decide: impl FnOnce(&Spot) -> D,
+    ) -> Step {
         self.resyncing = false;
         if !resync.player {
             return self.back_to_the_lobby();
@@ -62,10 +66,10 @@ impl Session {
 
     /// Installs a snapshot as the table's state. Its seats pass through the seat-list seam. It is
     /// authority to act only when it carries the hero's offer and turn token.
-    pub(super) fn install(
+    pub(super) fn install<D: Into<Decision>>(
         &mut self,
         snapshot: Snapshot,
-        decide: impl FnOnce(&Spot) -> Action,
+        decide: impl FnOnce(&Spot) -> D,
     ) -> Step {
         match &snapshot.hand_id {
             None => self.hand = None,
@@ -124,6 +128,7 @@ impl Session {
         Step {
             send: join_lobby(),
             incidents: Vec::new(),
+            traced: Vec::new(),
         }
     }
 }

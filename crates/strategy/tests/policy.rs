@@ -3,7 +3,7 @@
 use svanbot_core::rules::{Action, Legal, RaiseRange};
 use svanbot_core::spot::Spot;
 use svanbot_strategy::params::Params;
-use svanbot_strategy::policy::{decide, decide_drawn};
+use svanbot_strategy::policy::{Branch, decide, decide_drawn};
 use svanbot_strategy::pricer::{self, Budget};
 use svanbot_strategy::resolve::{Abstract, resolve};
 
@@ -31,10 +31,33 @@ fn a_re_solved_decision_says_what_it_drew_from() {
 }
 
 #[test]
+fn a_bare_action_is_a_decision_with_no_trace_behind_it() {
+    // A caller that decides without the policy — a test's fixed action, a replay — has no trace
+    // to offer. The decision says so with `None`, so the replayer is told which of the two it
+    // holds rather than shown an empty trace as though a decision had no reasoning.
+    let decision = svanbot_strategy::policy::Decision::from(Action::Fold);
+    assert_eq!(decision.action, Action::Fold);
+    assert_eq!(decision.trace, None);
+    assert_eq!(decision.drawn, None);
+}
+
+#[test]
 fn the_pricer_draws_nothing() {
     let preflop = spot("AhAs", "", 30, 20, 1);
     let decision = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);
     assert_eq!(decision.drawn, None);
+}
+
+#[test]
+fn a_decision_says_which_branch_made_it() {
+    // The trace answers "why did it do that", and the first thing it must say is which of the two
+    // ways decided: a re-solve of the rest of the street, or the pricer.
+    let river = spot("AhKh", "QhJhTh2c3d", 400, 200, 1);
+    let resolved = decide_drawn(&river, None, &Params::DEFAULT, BUDGET, 60);
+    assert_eq!(resolved.trace.unwrap().branch, Branch::Resolved);
+    let preflop = spot("AhAs", "", 30, 20, 1);
+    let priced = decide_drawn(&preflop, None, &Params::DEFAULT, BUDGET, 60);
+    assert_eq!(priced.trace.unwrap().branch, Branch::Priced);
 }
 
 const BUDGET: Budget = Budget {

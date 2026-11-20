@@ -10,7 +10,7 @@ pub(super) fn file(path: &str) -> Option<(&'static str, &'static [u8])> {
         "/" | "/release" | "/scoreboard" => {
             (html, include_bytes!("../../web/index.html").as_slice())
         }
-        _ if path.strip_prefix("/bot/").is_some_and(is_name) => {
+        _ if path.strip_prefix("/bot/").is_some_and(is_hand_path) => {
             (html, include_bytes!("../../web/index.html").as_slice())
         }
         "/app.css" => (
@@ -19,12 +19,24 @@ pub(super) fn file(path: &str) -> Option<(&'static str, &'static [u8])> {
         ),
         "/app.js" => (script, include_bytes!("../../web/app.js").as_slice()),
         "/fleet.js" => (script, include_bytes!("../../web/fleet.js").as_slice()),
+        "/dom.js" => (script, include_bytes!("../../web/dom.js").as_slice()),
+        "/replay.js" => (script, include_bytes!("../../web/replay.js").as_slice()),
         _ => return None,
     })
 }
 
-/// Whether `text` could be a bot's name: a short run of letters, digits, `_` and `-`.
-fn is_name(text: &str) -> bool {
+/// Whether `rest` is a bot's name, or a bot's name and one of its hands: `/bot/Alpha` or
+/// `/bot/Alpha/hand/h-1`. Nothing else after `/bot/` is a page.
+fn is_hand_path(rest: &str) -> bool {
+    match rest.split_once("/hand/") {
+        Some((bot, hand)) => is_name(bot) && is_name(hand),
+        None => is_name(rest),
+    }
+}
+
+/// Whether `text` could be a bot's name: a short run of letters, digits, `_` and `-`. The page
+/// route and the JSON routes both refuse anything else.
+pub(super) fn is_name(text: &str) -> bool {
     (1..=64).contains(&text.len())
         && text
             .bytes()

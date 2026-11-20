@@ -143,7 +143,10 @@ impl FromStr for Card {
 }
 
 /// A set of cards, such as a board, a player's hole cards or what is left of the deck.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+///
+/// Ordered by its bits, which is an arbitrary but total and stable order: it is what lets a pure
+/// layer key a `BTreeMap` by a set where it may not use a `HashMap` (`clippy.toml`).
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CardSet(u64);
 
 impl CardSet {

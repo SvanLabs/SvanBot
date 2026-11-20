@@ -2,35 +2,17 @@
 // A test store is a file in a fresh temporary directory.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
-use std::path::PathBuf;
+mod support;
 
 use serde_json::{Value, json};
+use support::{hand, scratch};
 use svanbot_learn::probe::Arm;
 use svanbot_runtime::ledger::Played;
-use svanbot_runtime::record::{Hand, Recorder};
+use svanbot_runtime::record::Recorder;
 use svanbot_runtime::session::Incident;
 use svanbot_runtime::store::{Source, Store, Totals};
 use svanbot_runtime::wire::parse_frame;
 use svanbot_strategy::params::Params;
-
-/// A fresh, empty directory for one test.
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("svanbot-store-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn hand(id: &str) -> Hand {
-    Hand {
-        hand_id: id.into(),
-        table_id: "t-1".into(),
-        frames: vec![
-            json!({"type": "hand_start", "hand_id": id}).to_string(),
-            json!({"type": "hand_result", "hand_id": id}).to_string(),
-        ],
-    }
-}
 
 #[test]
 fn a_hand_is_kept_with_its_frames_once_and_survives_a_reopen() {

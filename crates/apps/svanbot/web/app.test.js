@@ -168,6 +168,19 @@ beforeAll(async () => {
   await import("./app.js");
 });
 
+test("a refusal's sentence is the server's when it sent one, and the page's when it did not", async () => {
+  // The trace route answers 500 with a sentence saying why the store could not be read. The page
+  // shows that sentence, so a corrupt store does not read as "no such hand". A detail that is not
+  // a string is never shown: it would be an object where a sentence belongs.
+  const { textOf } = await import("./app.js");
+  expect(textOf({ detail: "Alpha's store cannot be read: no such table" }, "fallback")).toBe(
+    "Alpha's store cannot be read: no such table",
+  );
+  expect(textOf({}, "fallback")).toBe("fallback");
+  expect(textOf({ detail: { note: "obj" } }, "fallback")).toBe("fallback");
+  expect(textOf(null, "fallback")).toBe("fallback");
+});
+
 test("the fleet page has one card a bot and the strip names the worst problem", () => {
   const view = show("/");
   expect(view.all("article").length).toBe(2);
@@ -179,7 +192,7 @@ test("the fleet page has one card a bot and the strip names the worst problem", 
   expect(view.querySelector("a").attrs.href).toBe("/bot/SurSvan");
 });
 
-test("a bot's page has five panels, its table, and a chart with its numbers in a table", () => {
+test("a bot's page has six panels, its table, and a chart with its numbers in a table", () => {
   const view = show("/bot/SurSvan");
   expect(view.all("section").map((panel) => panel.querySelector("h2").textContent)).toEqual([
     "Now",
@@ -187,6 +200,7 @@ test("a bot's page has five panels, its table, and a chart with its numbers in a
     "Ledger",
     "Plays by",
     "Process",
+    "Traced hands",
   ]);
   expect(view.textContent).toContain("Ah Kd 7c 2s");
   expect(view.textContent).toContain("SurSvan (us)");

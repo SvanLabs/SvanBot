@@ -119,8 +119,9 @@ _Avoid_: train, calibrate
 
 **Strength bucket**:
 Where a pair of hole cards ranks among every pair still possible on the board at that moment, cut
-into eight equal shares. The action model sees hole cards only through their bucket.
-_Avoid_: tier, hand class
+into eight equal shares. The action model sees hole cards only through their bucket, and a
+decision trace keeps each opponent's mass in each bucket rather than the whole range.
+_Avoid_: tier, hand class, band, percentile
 
 **Prior**:
 What SvanBot believes about an opponent it has not yet seen enough of, taken from the whole
@@ -322,8 +323,23 @@ Everything SvanBot knows about one opponent, in one place.
 _Avoid_: profile page, file
 
 **Decision trace**:
-The record of one decision: the spot, the ranges, what each action was worth, and why one won.
+The record of one decision: the hole cards and board, the ranges, what each action was worth, and
+why one won. The replayer reads it rather than playing the hand again.
 _Avoid_: debug log, explanation
+
+**Branch**:
+Which of the policy's two ways made a decision: the **re-solve** (`resolved`) or the **pricer**
+(`priced`). The trace names its branch, and the store keeps it as a column.
+_Avoid_: path, route, solved
+
+**Drawn**:
+The action a re-solve's mixed strategy picked: the mix, the values, and the index that won.
+_Avoid_: sampled, rolled, picked
+
+**Exploit gate**:
+The test a fit must pass before a bot reads by it. A model that failed it is not in the process at
+all, so the trace's `exploit` is `None` and the **baseline** read the spot.
+_Avoid_: threshold, approval
 
 **Public TV**:
 The live table shown to an audience, with nothing private on it.

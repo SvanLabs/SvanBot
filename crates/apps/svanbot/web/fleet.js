@@ -189,8 +189,12 @@ export function chart(values, width, height) {
   };
 }
 
-/** The view a path names: the fleet, one bot, the release, or the Arena's scoreboard. */
+/** The view a path names: the fleet, one bot, one hand, the release, or the scoreboard. */
 export function route(path) {
+  const hand = /^\/bot\/([A-Za-z0-9_-]{1,64})\/hand\/([A-Za-z0-9_-]{1,64})$/.exec(path);
+  if (hand) {
+    return { view: "hand", bot: hand[1], hand: hand[2] };
+  }
   const bot = /^\/bot\/([A-Za-z0-9_-]{1,64})$/.exec(path);
   if (bot) {
     return { view: "bot", bot: bot[1] };
@@ -248,3 +252,57 @@ export function whisker(mbb, ci95, span, width) {
     mean: x(mbb),
   };
 }
+
+/**
+ * The price the pricer measured our equity against: the share of the pot the call costs, or the
+ * fact that there was no call to price. A checking spot has no price, and the page says so rather
+ * than showing a zero that would read as a free call.
+ */
+export function priceText(price) {
+  return price === null || price === undefined
+    ? "no call to price"
+    : `${(price * 100).toFixed(1)}% of the pot`;
+}
+
+/** An action's value, signed, in big blinds: the unit the table runs in. */
+export function valueText(value) {
+  return `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(3)} bb`;
+}
+
+/**
+ * An action's value as the re-solve reports it: in chips, which is the unit the solver's tree is
+ * built in. The trace's values are chips (`resolve`), so the replayer formats them here; the
+ * fleet's chart formats big blinds with `valueText`.
+ */
+export function chipsText(chips) {
+  return `${chips >= 0 ? "+" : "−"}${Math.abs(chips).toFixed(1)} chips`;
+}
+
+/** A trace's exploit budget, when a fitted model passed the gate; `null` when the baseline read. */
+export function exploitText(exploit) {
+  return exploit === null || exploit === undefined
+    ? "baseline read, no exploit"
+    : `exploit ${exploit.toFixed(2)}`;
+}
+
+/** A hand's decisions as streets, in the order the streets came, each keeping its own order. */
+export function byStreet(decisions) {
+  const order = ["preflop", "flop", "turn", "river"];
+  const streets = [];
+  for (const decision of decisions ?? []) {
+    const name = decision.street ?? "preflop";
+    let street = streets.find((group) => group.name === name);
+    if (!street) {
+      street = { name, at: order.indexOf(name), decisions: [] };
+      streets.push(street);
+    }
+    street.decisions.push(decision);
+  }
+  // The street's own order, not the order the decisions happened in: a hand never goes back.
+  return streets.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * A range's masses as rows, weakest bucket first. The bucket is the model's own: eight strengths
+ * (`BUCKETS` in `crates/strategy/src/action.rs`), so a reader and the solver share one vocabulary.
+ */

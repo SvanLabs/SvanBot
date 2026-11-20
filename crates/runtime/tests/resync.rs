@@ -10,6 +10,7 @@ use svanbot_runtime::session::{Incident, Session};
 use svanbot_runtime::wire::{
     Frame, Hero, Inbound, Offer, Outbound, Player, Resync, Seat, Snapshot, VenueAction,
 };
+use svanbot_strategy::policy::Decision;
 
 const ROSTER: [&str; 5] = ["SvanBotV10", "Svanar", "Svanism", "SuraGunnar", "SurSvan"];
 
@@ -171,6 +172,64 @@ fn the_actor_replays_then_acts_on_the_snapshots_token_once() {
     // The same token is never played twice: the venue would reject it.
     let again = session.on_frame(resync, |_| Action::Call);
     assert_eq!((again.send, asked.get()), (vec![], 1));
+    // And a decision is traced once: a replay that reaches the same turn again must not leave a
+    // second trace for the one decision, or the replayer shows two.
+    assert!(again.traced.is_empty(), "{:?}", again.traced);
+}
+
+#[test]
+fn a_resync_traces_the_decision_it_plays_once() {
+    // The ticket's item 5. The replayed events carry no turn — a replayed turn would be stale, so
+    // the resync skips it — and the snapshot decides once. One decision, one trace.
+    let mut session = seated();
+    let resync = Inbound::Resync(Resync {
+        player: true,
+        to_table_seq: Some(50),
+        replayed: vec![at(
+            47,
+            Inbound::PlayerAction {
+                seat: 0,
+                action: "fold".into(),
+                amount: 0,
+                stack: 1940,
+                detail: Default::default(),
+            },
+        )],
+        snapshot: Some(acting(vec![
+            seat(0, "alpha_bot", None),
+            seat(2, "SurSvan", Some(false)),
+        ])),
+    });
+    let step = session.on_frame(resync, |_| traced_call());
+    assert_eq!(step.traced.len(), 1, "{:?}", step.traced);
+    assert_eq!(
+        step.traced[0].0, "h-7",
+        "the trace names the hand it was made in"
+    );
+}
+
+/// A call the policy traced, so a resync has a trace to keep once.
+fn traced_call() -> Decision {
+    use svanbot_core::card::CardSet;
+    use svanbot_core::rules::Street;
+    use svanbot_strategy::policy::{Branch, PricedTrace, Trace};
+    Decision {
+        action: Action::Call,
+        drawn: None,
+        trace: Some(Trace {
+            branch: Branch::Priced,
+            street: Street::Preflop,
+            hole: "AhKd".parse().expect("a hole"),
+            board: CardSet::EMPTY,
+            resolved: None,
+            priced: Some(PricedTrace {
+                equity: 0.6,
+                price: Some(0.25),
+                exploit: None,
+                ranges: Vec::new(),
+            }),
+        }),
+    }
 }
 
 #[test]

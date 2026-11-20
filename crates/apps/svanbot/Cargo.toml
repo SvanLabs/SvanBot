@@ -8,6 +8,12 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[dev-dependencies]
+# The replayer's tests write a decision the way an older writer left it, to prove the route tells an
+# unreadable trace from no trace at all. `apps` is not a pure layer, and the binary itself reads
+# through `svanbot-runtime`, so this reaches nothing the crate does not already depend on.
+rusqlite.workspace = true
+
 [dependencies]
 serde_json.workspace = true
 svanbot-core.workspace = true

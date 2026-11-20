@@ -13,8 +13,8 @@ use std::fmt;
 use std::net::TcpStream;
 use std::time::Duration;
 
-use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
+use svanbot_strategy::policy::Decision;
 use tungstenite::client::IntoClientRequest;
 use tungstenite::http::HeaderValue;
 use tungstenite::http::header::AUTHORIZATION;
@@ -142,10 +142,10 @@ pub enum PlayOutcome {
 
 /// Plays one connection until the venue closes it. `decide` is asked at each of our turns;
 /// `on_event` hears every incident and every finished hand.
-pub fn play(
+pub fn play<D: Into<Decision>>(
     config: &Config,
     bot: &mut Bot,
-    decide: impl FnMut(&Spot) -> Action,
+    decide: impl FnMut(&Spot) -> D,
     on_event: impl FnMut(Event<'_>),
 ) -> Result<PlayOutcome, ClientError> {
     play_with_stop(config, bot, decide, on_event, &|| false)
@@ -155,10 +155,10 @@ pub fn play(
 /// sent the last frame of the hand it dealt and is waiting for the next, so a stop here never
 /// cuts a hand: it is exactly when an update may replace the build. `stop` is asked before a
 /// blocking read, so it lands within [`READ_WAIT_MS`] of being set.
-pub fn play_with_stop(
+pub fn play_with_stop<D: Into<Decision>>(
     config: &Config,
     bot: &mut Bot,
-    mut decide: impl FnMut(&Spot) -> Action,
+    mut decide: impl FnMut(&Spot) -> D,
     mut on_event: impl FnMut(Event<'_>),
     stop: &dyn Fn() -> bool,
 ) -> Result<PlayOutcome, ClientError> {
@@ -225,6 +225,7 @@ pub fn play_with_stop(
                 for incident in &step.incidents {
                     on_event(Event::Incident(incident));
                 }
+                bot.recorder.trace(step.traced);
                 step.send
             }
         };

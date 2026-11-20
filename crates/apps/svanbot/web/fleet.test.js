@@ -3,16 +3,21 @@ import {
   arenaRun,
   arenaSpan,
   botView,
+  byStreet,
   byWinRate,
   chart,
+  chipsText,
   duration,
+  exploitText,
   fleetProblems,
   freshness,
   isFleet,
   mbbText,
+  priceText,
   rateText,
   route,
   running,
+  valueText,
   whisker,
   winRate,
 } from "./fleet.js";
@@ -203,4 +208,56 @@ test("the scoreboard's span reaches every interval it draws, and always zero", (
     low: 0,
     high: 600,
   });
+});
+
+test("a hand's path names its bot and its hand", () => {
+  // `/bot/Alpha` is the bot's page; `/bot/Alpha/hand/h-1` is one of its hands.
+  expect(route("/bot/Alpha/hand/h-1")).toEqual({ view: "hand", bot: "Alpha", hand: "h-1" });
+  expect(route("/bot/Alpha")).toEqual({ view: "bot", bot: "Alpha" });
+  // A hand id with anything outside a short name's characters is not a hand's path.
+  expect(route("/bot/Alpha/hand/../../etc")).toEqual({ view: "fleet" });
+});
+
+test("a price is the share of the pot a call costs, and a free check has none", () => {
+  // The pricer compares our equity against the price of the call: 200 to call a pot of 400 is a
+  // third of the pot it would be calling into.
+  expect(priceText(0.25)).toBe("25.0% of the pot");
+  expect(priceText(null)).toBe("no call to price");
+});
+
+test("an action's value is signed and in big blinds, best first", () => {
+  expect(valueText(1.5)).toBe("+1.500 bb");
+  expect(valueText(-0.25)).toBe("−0.250 bb");
+});
+
+test("a re-solve's value is signed and in chips, the unit the tree is built in", () => {
+  // The re-solve values in chips (`resolve`): a call of 400 into a 400 pot is worth 400 chips,
+  // and printing it as "+400.000 bb of the pot" says two wrong things at once.
+  expect(chipsText(400)).toBe("+400.0 chips");
+  expect(chipsText(-12.5)).toBe("−12.5 chips");
+});
+
+test("an exploit budget says so, and the baseline says it exploits nothing", () => {
+  expect(exploitText(0.4)).toBe("exploit 0.40");
+  expect(exploitText(null)).toBe("baseline read, no exploit");
+  expect(exploitText(undefined)).toBe("baseline read, no exploit");
+});
+
+test("a hand's decisions group by street, in the order they were made", () => {
+  const decisions = [
+    { street: "preflop", branch: "priced" },
+    { street: "flop", branch: "resolved" },
+    { street: "flop", branch: "resolved" },
+    { street: "river", branch: "resolved" },
+  ];
+  const streets = byStreet(decisions);
+  expect(streets.map((street) => street.name)).toEqual(["preflop", "flop", "river"]);
+  expect(streets[1].decisions.length).toBe(2);
+  // Two decisions on one street keep the order they were made in.
+  expect(streets[1].decisions).toEqual([decisions[1], decisions[2]]);
+});
+
+test("an empty trace groups to no streets rather than one empty street", () => {
+  expect(byStreet([])).toEqual([]);
+  expect(byStreet(undefined)).toEqual([]);
 });
