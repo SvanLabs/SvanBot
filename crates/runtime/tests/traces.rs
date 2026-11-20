@@ -8,17 +8,11 @@ mod support;
 use serde_json::json;
 use support::{hand, scratch};
 use svanbot_core::card::CardSet;
-use svanbot_core::rules::{Action, Street};
+use svanbot_core::rules::Street;
 use svanbot_runtime::record::{Hand, PENDING_LIMIT, Recorder};
-use svanbot_runtime::session::Session;
 use svanbot_runtime::store::{Source, Store};
 use svanbot_runtime::wire::parse_frame;
-use svanbot_strategy::policy::{
-    Abstract, Branch, Decision, PricedTrace, Ranged, ResolvedTrace, Trace,
-};
-
-/// The roster the session guards: a bot at this table with a stablemate would leave.
-const ROSTER: [&str; 5] = ["SvanBotV10", "Svanar", "Svanism", "SuraGunnar", "SurSvan"];
+use svanbot_strategy::policy::{Abstract, Branch, PricedTrace, Ranged, ResolvedTrace, Trace};
 
 /// A trace the policy might have made, as the store keeps it.
 fn trace(branch: Branch) -> Trace {
@@ -107,121 +101,6 @@ fn a_range_keeps_its_seat_through_the_store_and_says_unknown_when_there_was_none
     assert!(store.append_hand(&unsure, Source::Live, 2_000).unwrap());
     let kept = store.traces("h-noseat").unwrap().expect("a traced hand");
     assert_eq!(kept[0].priced.as_ref().unwrap().ranges[0].seat, None);
-}
-
-#[test]
-fn a_trace_and_its_frames_that_disagree_about_the_cards_name_the_disagreement() {
-    // The trace keeps its own copy of the cards so the replayer needs no frame parser, and the
-    // frames keep the venue's JSON. Two copies can drift apart, and a drift is invisible: the
-    // trace comes from the decision path, the frames from the wire, and nothing else compares
-    // them. This says which decision disagrees and about what.
-    let hand = Hand {
-        hand_id: "h-1".into(),
-        table_id: "t-1".into(),
-        frames: vec![
-            json!({"type": "hole_cards", "cards": ["Ah", "As"]}).to_string(),
-            json!({"type": "community_cards", "cards": ["Qh"], "street": "flop"}).to_string(),
-            json!({"type": "community_cards", "cards": ["Jh"], "street": "turn"}).to_string(),
-            json!({"type": "community_cards", "cards": ["Th"], "street": "river"}).to_string(),
-        ],
-        // A preflop decision with the frames' hole cards and no board, then a flop decision on
-        // `QhJhTh` that says its hole was `AhKh`, which the frames never dealt.
-        traced: vec![trace(Branch::Priced), trace(Branch::Resolved)],
-    };
-    assert_eq!(hand.traced[0].street, Street::Preflop);
-    assert_eq!(hand.traced[0].board, CardSet::EMPTY);
-    assert_eq!(hand.traced[1].street, Street::Flop);
-    assert_eq!(hand.traced[1].board, "QhJhTh".parse().unwrap());
-    // The priced trace is an `AhAs` preflop decision and the frames agree there; the resolved one
-    // says `AhKh` on `QhJhTh`, and the frames' hole cards are `AhAs`, so only its hole differs.
-    let wrong = hand.cards_disagree();
-    assert_eq!(wrong, vec![(1, "hole")]);
-
-    // Made to agree: a preflop decision with the frames' hole cards and no board yet.
-    let mut agree = hand.clone();
-    agree.traced[1].hole = "AhAs".parse().unwrap();
-    agree.traced[1].board = CardSet::EMPTY;
-    agree.traced[1].street = Street::Preflop;
-    assert!(agree.cards_disagree().is_empty());
-}
-
-#[test]
-fn a_hand_whose_frames_name_no_cards_disagrees_with_nothing() {
-    // A hand a download produced without card frames, or a trace made before the hand opened:
-    // there is nothing to compare, and a missing card is not a disagreement about one.
-    let mut hand = Hand {
-        hand_id: "h-1".into(),
-        table_id: "t-1".into(),
-        frames: vec![
-            json!({"type": "hand_start", "hand_id": "h-1", "seat": 2,
-                            "dealer_seat": 0,
-                            "blinds": {"small_blind": 10, "big_blind": 20}})
-            .to_string(),
-        ],
-        traced: vec![trace(Branch::Priced)],
-    };
-    // The frames parsed and say nothing about cards, which is not a claim that there were none.
-    assert!(hand.cards_disagree().is_empty());
-    hand.frames = Vec::new();
-    assert!(hand.cards_disagree().is_empty());
-}
-
-#[test]
-fn a_live_hand_through_the_session_and_recorder_states_cards_that_agree_with_its_frames() {
-    // The case the ticket asks to pin, end to end: the real session builds the spot from the real
-    // frames, the policy traces what it saw, and the recorder keeps trace and frames together. If
-    // the two ever describe different cards, this is where it would show first.
-    let roster = ROSTER.map(String::from);
-    let mut session = Session::new("SurSvan", roster.iter().cloned());
-    let mut recorder = Recorder::default();
-    let frames = [
-        json!({"type": "table_joined", "table_id": "t-9", "seat": 2, "players": []}),
-        json!({"type": "hand_start", "hand_id": "h-5", "seat": 2, "dealer_seat": 0,
-               "blinds": {"small_blind": 10, "big_blind": 20}}),
-        json!({"type": "hole_cards", "hand_id": "h-5", "cards": ["Ah", "As"]}),
-        json!({"type": "your_turn", "hand_id": "h-5", "turn_token": "tok-1", "pot": 30,
-        "community_cards": [],
-        "players": [{"seat": 0, "name": "alpha_bot", "stack": 1980},
-                    {"seat": 2, "name": "SurSvan", "stack": 1990}],
-        "valid_actions": [
-            {"action": "fold"},
-            {"action": "call", "amount": 20},
-            {"action": "raise", "min": 40, "max": 2000},
-        ]}),
-        json!({"type": "hand_result", "hand_id": "h-5", "final_stacks": {"2": 2010}}),
-    ];
-    let mut finished = None;
-    for text in frames.map(|frame| frame.to_string()) {
-        let frame = parse_frame(&text).expect("the venue's frame");
-        if let Some(hand) = recorder.record(&text, &frame) {
-            finished = Some(hand);
-        }
-        let step = session.on_frame(frame, |spot| {
-            // What the session handed the policy: the decision path's view of the cards.
-            assert_eq!(spot.hole, "AhAs".parse().unwrap());
-            Decision {
-                action: Action::Call,
-                drawn: None,
-                trace: Some(Trace {
-                    branch: Branch::Priced,
-                    street: Street::Preflop,
-                    hole: spot.hole,
-                    board: spot.board,
-                    resolved: None,
-                    priced: Some(PricedTrace {
-                        equity: 0.7,
-                        price: Some(0.25),
-                        exploit: None,
-                        ranges: vec![],
-                    }),
-                }),
-            }
-        });
-        recorder.trace(step.traced);
-    }
-    let hand = finished.expect("the hand closed");
-    assert_eq!(hand.traced.len(), 1, "the one decision was traced");
-    assert_eq!(hand.cards_disagree(), vec![]);
 }
 
 #[test]

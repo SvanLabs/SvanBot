@@ -42,6 +42,11 @@ impl Hand {
             let Ok(frame) = crate::wire::parse(frame) else {
                 continue;
             };
+            // A reconnect is not a bug, and the venue sends the missed cards inside
+            // `resync_response` rather than as top-level frames: the replayed events, then the
+            // snapshot, which is authoritative for the hand it names. Reading only top-level
+            // frames would call every reconnect a disagreement. Events for another hand, or a
+            // spectator's snapshot with no hero, are not this hand's cards and are left out.
             match &frame {
                 Inbound::HoleCards { cards } => {
                     named = true;
@@ -50,6 +55,39 @@ impl Hand {
                 Inbound::CommunityCards { cards } => {
                     named = true;
                     seen.board |= cards.iter().copied().collect::<CardSet>();
+                }
+                Inbound::Resync(resync) => {
+                    for event in &resync.replayed {
+                        match &event.inbound {
+                            Inbound::CommunityCards { cards } => {
+                                named = true;
+                                seen.board |= cards.iter().copied().collect::<CardSet>();
+                            }
+                            Inbound::HoleCards { cards } => {
+                                named = true;
+                                seen.hole = cards.iter().copied().collect();
+                            }
+                            _ => {}
+                        }
+                    }
+                    let ours = resync.snapshot.as_ref().filter(|snapshot| {
+                        snapshot
+                            .hand_id
+                            .as_ref()
+                            .is_none_or(|id| *id == self.hand_id)
+                    });
+                    if let Some(snapshot) = ours {
+                        if !snapshot.board.is_empty() {
+                            named = true;
+                            seen.board |= snapshot.board.iter().copied().collect::<CardSet>();
+                        }
+                        if let Some(hero) = &snapshot.hero
+                            && !hero.hole.is_empty()
+                        {
+                            named = true;
+                            seen.hole = hero.hole.iter().copied().collect();
+                        }
+                    }
                 }
                 _ => {}
             }
