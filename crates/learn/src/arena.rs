@@ -13,6 +13,7 @@ use svanbot_core::spot::Spot;
 use svanbot_sim::sparring::{Archetype, Sparring};
 
 use crate::paired::{Match, Verdict, duel_with};
+use crate::ring::{SIX_MAX, ring_with};
 
 /// Deals in a bout.
 pub const BOUT: u64 = 50;
@@ -37,6 +38,35 @@ pub fn bout(
                 challenger,
                 &|spot, seed| opponent.decide(spot, seed, deal),
                 || opponent.reset(),
+            )
+        })
+        .collect()
+}
+
+/// Plays 6-max bout `number` against five of `archetype`: its deals, each once from every seat
+/// ([`ring_with`]), in order. Each seat has its own opponent, and a learning one watches the
+/// challenger's seat, not its own copies. Returns what the challenger won on each deal, in big blinds a hand.
+pub fn ring_bout(
+    game: &Match,
+    archetype: Archetype,
+    number: u64,
+    challenger: &impl Fn(&Spot, u64) -> Action,
+) -> Vec<f64> {
+    let opponents: Vec<Sparring> = (0..SIX_MAX).map(|_| Sparring::new(archetype)).collect();
+    (number * BOUT..(number + 1) * BOUT)
+        .map(|deal| {
+            ring_with(
+                game,
+                SIX_MAX,
+                deal,
+                challenger,
+                &|seat, spot, seed| opponents[seat].decide(spot, seed, deal),
+                |us| {
+                    for opponent in &opponents {
+                        opponent.reset();
+                        opponent.watch(us);
+                    }
+                },
             )
         })
         .collect()
