@@ -52,10 +52,7 @@ fn the_evaluator_values_match_v10() {
 #[test]
 fn the_wheel_and_the_royal_rank_as_v10_ranks_them() {
     let hand = |text: &str| {
-        let cards: Vec<Card> = text
-            .split(' ')
-            .map(|c| Card::parse(c).unwrap())
-            .collect();
+        let cards: Vec<Card> = text.split(' ').map(|c| Card::parse(c).unwrap()).collect();
         eval(mask_of(&cards))
     };
     let wheel = hand("Ah 2c 3d 4s 5h 9c Kd");
