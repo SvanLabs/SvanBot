@@ -10,9 +10,13 @@
 //! v10's `SmallRng` used; [`draw`] holds v10's ways of turning its words into numbers.
 
 pub mod cards;
+pub mod continuation;
 pub mod deals;
 pub mod draw;
 pub mod equity;
 pub mod eval;
 pub mod preflop;
+pub mod profile;
+pub mod ranges;
+pub mod situation;
 pub mod strengths;
