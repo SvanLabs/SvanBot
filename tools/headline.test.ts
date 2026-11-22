@@ -1,7 +1,7 @@
 // The README's headline, tested at its one seam: the run the fleet's `headline.json` pins in, the
 // block of text and its problems out. The run here is the shape `arena.json` holds.
 import { expect, test } from "bun:test";
-import { between, headline, problems, replace } from "./headline";
+import { between, headline, pinnable, problems, replace } from "./headline";
 
 type Row = { opponent: string; deals: number; mbb_per_100: number; ci95: number };
 type Run = { commit: string; champion: string; seed: number; rows: Row[] };
@@ -228,4 +228,17 @@ test("a number is said to three significant figures, and a missing interval is s
 test("the block is the same text on every write, so a fixed run is a fixed README", () => {
   // Nothing in the block may depend on the clock, a path or the order of a hash map.
   expect(headline(clear()).block).toBe(headline(clear()).block);
+});
+
+test("the pin takes the newest heads-up run, never a 6-max one", () => {
+  // The headline is the heads-up league (V11-20); 6-max runs share arena.json beside them
+  // (V11-29), and the newest of the file may be one.
+  const six = { ...clear({ commit: "6666666" }), league: "6-max" };
+  const heads = { ...clear({ commit: "2222222" }), league: "heads-up" };
+  const old = clear({ commit: "0000000" });
+  expect(pinnable([six, heads, old])?.commit).toBe("2222222");
+  // A run stored before 6-max has no league, and was heads up.
+  expect(pinnable([six, old])?.commit).toBe("0000000");
+  expect(pinnable([six])).toBe(undefined);
+  expect(pinnable(undefined)).toBe(undefined);
 });

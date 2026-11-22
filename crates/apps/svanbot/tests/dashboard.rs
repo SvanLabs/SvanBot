@@ -10,7 +10,7 @@ use std::thread;
 use serde_json::Value;
 use support::{get, scratch, send, serve, status};
 use svanbot::dashboard::{Config, Server};
-use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet};
+use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_runtime::status::status_path;
 use svanbot_strategy::params::Params;
 
@@ -68,6 +68,7 @@ fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
             commit: "def5678".into(),
             champion: "00000000000000aa".into(),
             seed: 3,
+            league: League::HeadsUp,
             rows: vec![ArenaRow {
                 opponent: "maniac".into(),
                 deals: 100,
@@ -142,6 +143,50 @@ fn a_run_of_a_champion_the_fleet_no_longer_plays_is_a_problem_in_the_fleet() {
         .collect();
     assert!(
         problems.iter().any(|problem| problem.contains("champion")),
+        "{body}"
+    );
+}
+
+#[test]
+fn each_league_is_checked_for_the_champion_in_play() {
+    // A 6-max run of the new champion is not a heads-up run of it: the heads-up board still
+    // shows the old champion, and the page has to say so though the newest run is current.
+    let (addr, dir) = serve("arena-promoted-league");
+    let fleet = Fleet::in_dir(dir.join("data/fleet"));
+    fleet
+        .promote(&Params {
+            exploit: 0.9,
+            raise_share: 0.9,
+            ..Params::DEFAULT
+        })
+        .unwrap();
+    fleet
+        .record_arena(&ArenaRun {
+            commit: "abc1234".into(),
+            champion: fleet.champion().unwrap().digest().to_string(),
+            seed: 7,
+            league: League::SixMax,
+            rows: Vec::new(),
+        })
+        .unwrap();
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    let problems: Vec<&str> = fleet["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|problem| problem.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        problems
+            .iter()
+            .filter(|problem| problem.contains("champion"))
+            .count(),
+        1,
+        "{body}"
+    );
+    assert!(
+        problems.iter().any(|problem| problem.contains("heads-up")),
         "{body}"
     );
 }

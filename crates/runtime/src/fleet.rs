@@ -6,9 +6,10 @@
 //!   champion is [`Params::DEFAULT`].
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running.
-//! - `arena.json`: the Arena's last runs. The newest is the scoreboard the dashboard shows and
-//!   the release gate reads; [`ARENA_HISTORY`] of them are kept, so a trend across commits is a
-//!   read and not a re-run.
+//! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
+//!   its board on the scoreboard, and the newest heads-up run is what the release gate reads;
+//!   [`ARENA_HISTORY`] of each league are kept, so a trend across commits is a read and not a
+//!   re-run.
 //!
 //! A parameter set is numbers the owner tuned, not a read of an opponent, so sharing it crosses no
 //! bot's reads (`docs/adr/0004-reads-are-per-bot.md`). Each number is written as the text that
@@ -121,8 +122,37 @@ impl Proposal {
     }
 }
 
-/// Runs kept in `arena.json`: the newest, and the ones before it, for the trend.
+/// Runs kept in `arena.json` for each league: the newest, and the ones before it, for the trend.
 pub const ARENA_HISTORY: usize = 12;
+
+/// Which Arena league a run was played in (V11-29). The two measure different things: heads up
+/// is the re-solve after the flop, 6-max the multiway path. They are kept side by side and
+/// never pooled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum League {
+    HeadsUp,
+    SixMax,
+}
+
+impl League {
+    /// The league's name in `arena.json` and on the scoreboard.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::HeadsUp => "heads-up",
+            Self::SixMax => "6-max",
+        }
+    }
+
+    /// The league of a stored run. A run stored before 6-max has no league, and was heads up.
+    fn from_json(value: &Value) -> Result<Self, String> {
+        match value.as_str() {
+            None if value.is_null() => Ok(Self::HeadsUp),
+            Some("heads-up") => Ok(Self::HeadsUp),
+            Some("6-max") => Ok(Self::SixMax),
+            _ => Err(format!("no Arena league is called {value}")),
+        }
+    }
+}
 
 /// One line of a recorded run: how the policy did against one opponent.
 #[derive(Clone, Debug, PartialEq)]
@@ -143,6 +173,7 @@ pub struct ArenaRun {
     /// The digest of the champion the run played, as `Params::digest` renders it.
     pub champion: String,
     pub seed: u64,
+    pub league: League,
     pub rows: Vec<ArenaRow>,
 }
 
@@ -157,6 +188,7 @@ impl ArenaRun {
             "commit": self.commit,
             "champion": self.champion,
             "seed": self.seed,
+            "league": self.league.name(),
             "rows": self
                 .rows
                 .iter()
@@ -210,6 +242,7 @@ impl ArenaRun {
             seed: value["seed"]
                 .as_u64()
                 .ok_or("the arena run lacks its seed")?,
+            league: League::from_json(&value["league"])?,
             rows,
         })
     }
@@ -272,23 +305,31 @@ impl Fleet {
             .collect()
     }
 
-    /// Records `run` as the latest, keeping the runs before it up to [`ARENA_HISTORY`]. A run of
-    /// the same commit, champion and seed replaces its old line rather than repeating it; the
-    /// same commit under another champion is a different run, and keeps its own line.
+    /// Records `run` as the latest, keeping the runs before it up to [`ARENA_HISTORY`] in each
+    /// league. A run of the same league, commit, champion and seed replaces its old line rather
+    /// than repeating it; the same commit under another champion is a different run, and keeps
+    /// its own line.
     pub fn record_arena(&self, run: &ArenaRun) -> Result<(), String> {
         let mut runs = self.arena_runs()?;
         // A run with a commit is played again from it, so commit, champion and seed name it. A
         // local run has no commit to be played from, so it is the same run only if it measured
         // the same: two runs of changed code must not replace one another.
         let same = |held: &ArenaRun| {
-            held.commit == run.commit
+            held.league == run.league
+                && held.commit == run.commit
                 && held.champion == run.champion
                 && held.seed == run.seed
                 && (run.commit != ArenaRun::LOCAL_COMMIT || held.rows == run.rows)
         };
         runs.retain(|held| !same(held));
         runs.insert(0, run.clone());
-        runs.truncate(ARENA_HISTORY);
+        // Newest first, so the first ARENA_HISTORY of a league are the ones it keeps.
+        let mut kept = [0usize; 2];
+        runs.retain(|held| {
+            let count = &mut kept[held.league as usize];
+            *count += 1;
+            *count <= ARENA_HISTORY
+        });
         let runs: Vec<String> = runs.iter().map(ArenaRun::as_text).collect();
         self.write("arena.json", &format!("{{\"runs\":[{}]}}", runs.join(",")))
     }

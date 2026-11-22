@@ -213,6 +213,22 @@ export function arenaRun(runs) {
   return Array.isArray(runs) && runs.length > 0 ? runs[0] : null;
 }
 
+/** The Arena's leagues in the order the scoreboard shows them (V11-29). */
+const LEAGUES = ["heads-up", "6-max"];
+
+/**
+ * The Arena's runs as one board a league, heads up first, each league's runs newest first. The
+ * leagues measure different things, so a run is never pooled with another league's. A run
+ * stored before 6-max has no league, and was heads up.
+ */
+export function arenaLeagues(runs) {
+  const leagueOf = (run) => run.league ?? "heads-up";
+  return LEAGUES.map((league) => ({
+    league,
+    runs: (runs ?? []).filter((run) => leagueOf(run) === league),
+  })).filter((board) => board.runs.length > 0);
+}
+
 /**
  * A run's rows by win rate: the best first, so a strong opponent and a weak one read at a glance.
  * The row's own order is the run's; the page ranks them. Not a ladder: the glossary rules that

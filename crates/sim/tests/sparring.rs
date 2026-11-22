@@ -132,3 +132,35 @@ fn the_learning_archetype_calls_lighter_once_it_has_seen_us_bet_and_bet() {
         Action::Fold
     );
 }
+
+#[test]
+fn at_a_full_table_the_learning_archetype_learns_from_the_seat_it_watches() {
+    let act = |kind| Act {
+        street: Street::River,
+        board: BOARD.parse().unwrap(),
+        facing: false,
+        kind,
+    };
+    let bet = act(ActKind::Bet {
+        added: 200,
+        pot: 200,
+    });
+    // Seat 2 bets every hand and seat 4, the one it watches, only checks: seat 2's bets say
+    // nothing of us, so it still folds ace high.
+    let mut facing = spot("Ac3d", BOARD, 400, Some(200));
+    facing.lines = vec![vec![bet], vec![act(ActKind::Check)]];
+    facing.seats = vec![2, 4];
+    let learning = Sparring::new(Archetype::Learning);
+    learning.watch(4);
+    for hand in 0..40 {
+        learning.decide(&facing, 1, hand);
+    }
+    assert_eq!(learning.decide(&facing, 1, 40), Action::Fold);
+    // Watching seat 2 instead, the same bets make it call.
+    let watching = Sparring::new(Archetype::Learning);
+    watching.watch(2);
+    for hand in 0..40 {
+        watching.decide(&facing, 1, hand);
+    }
+    assert_eq!(watching.decide(&facing, 1, 40), Action::Call);
+}

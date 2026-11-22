@@ -15,7 +15,7 @@ use std::cell::Cell;
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::Action;
-use svanbot_core::spot::{ActKind, Spot};
+use svanbot_core::spot::{Act, ActKind, Spot};
 
 use crate::equity::sampled;
 
@@ -65,6 +65,9 @@ pub struct Sparring {
     archetype: Archetype,
     /// Our last actions it has looked at, and how many were bets or raises.
     seen: Cell<(u32, u32)>,
+    /// The seat whose line it reads as ours. `None` reads the first line, which heads up is the
+    /// only one; at a full table the others are its own copies.
+    watched: Cell<Option<usize>>,
 }
 
 impl Sparring {
@@ -72,6 +75,24 @@ impl Sparring {
         Self {
             archetype,
             seen: Cell::new((0, 0)),
+            watched: Cell::new(None),
+        }
+    }
+
+    /// Reads the line of `seat` as ours from here on, by [`Spot::seats`].
+    pub fn watch(&self, seat: usize) {
+        self.watched.set(Some(seat));
+    }
+
+    /// Our line at `spot`: the watched seat's, or the first.
+    fn ours<'a>(&self, spot: &'a Spot) -> Option<&'a Vec<Act>> {
+        match self.watched.get() {
+            Some(seat) => spot
+                .seats
+                .iter()
+                .position(|&at| at == seat)
+                .and_then(|index| spot.lines.get(index)),
+            None => spot.lines.first(),
         }
     }
 
@@ -103,7 +124,7 @@ impl Sparring {
 
     fn learning(&self, spot: &Spot, equity: f64, roll: f64) -> Action {
         let (mut acts, mut bets) = self.seen.get();
-        if let Some(last) = spot.lines.first().and_then(|line| line.last()) {
+        if let Some(last) = self.ours(spot).and_then(|line| line.last()) {
             acts += 1;
             bets += u32::from(matches!(last.kind, ActKind::Bet { .. }));
             self.seen.set((acts, bets));

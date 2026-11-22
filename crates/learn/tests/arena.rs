@@ -2,7 +2,7 @@
 
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
-use svanbot_learn::arena::{BOUT, Row, bout, scoreboard};
+use svanbot_learn::arena::{BOUT, Row, bout, ring_bout, scoreboard};
 use svanbot_learn::paired::{Match, Verdict};
 use svanbot_sim::sparring::Archetype;
 
@@ -39,6 +39,31 @@ fn a_bout_repeats_for_its_seed_and_differs_by_its_number() {
     let first = bout(&MATCH, Archetype::Learning, 3, &check_or_call);
     assert_eq!(first, bout(&MATCH, Archetype::Learning, 3, &check_or_call));
     assert_ne!(first, bout(&MATCH, Archetype::Learning, 4, &check_or_call));
+}
+
+#[test]
+fn a_seat_that_always_folds_breaks_even_with_five_nits() {
+    // Round a full table the challenger posts each blind once, and the nits never open: every
+    // deal's blinds go back and forth to nothing.
+    let results = ring_bout(&MATCH, Archetype::Nit, 0, &folds);
+    assert_eq!(results.len() as u64, BOUT);
+    assert!(
+        results.iter().all(|result| result.abs() < 1e-9),
+        "{results:?}"
+    );
+}
+
+#[test]
+fn a_six_max_bout_repeats_for_its_seed_and_differs_by_its_number() {
+    let first = ring_bout(&MATCH, Archetype::Learning, 1, &check_or_call);
+    assert_eq!(
+        first,
+        ring_bout(&MATCH, Archetype::Learning, 1, &check_or_call)
+    );
+    assert_ne!(
+        first,
+        ring_bout(&MATCH, Archetype::Learning, 2, &check_or_call)
+    );
 }
 
 #[test]

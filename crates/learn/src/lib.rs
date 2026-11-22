@@ -17,3 +17,4 @@ pub mod fit;
 pub mod paired;
 pub mod prior;
 pub mod probe;
+pub mod ring;
