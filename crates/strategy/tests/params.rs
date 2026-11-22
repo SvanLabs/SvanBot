@@ -1,5 +1,4 @@
 //! Parameter sets and their digests.
-//! Temporary test-only change for the hosted Arena publication trial.
 
 use svanbot_strategy::params::Params;
 
