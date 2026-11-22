@@ -161,6 +161,17 @@ impl Situation {
         out
     }
 
+    /// The most hero can win or lose against the deepest live opponent.
+    pub fn effective_stack(&self) -> i64 {
+        let hero = self.hero();
+        let opp_max = self
+            .live_opponents()
+            .map(|p| p.stack + p.bet)
+            .max()
+            .unwrap_or(0);
+        (hero.stack + hero.bet).min(opp_max)
+    }
+
     /// What each seat has put in the pot, scaled to sum to the pot.
     pub fn invested(&self) -> BTreeMap<usize, f64> {
         let mut street_max: BTreeMap<(usize, Street), i64> = BTreeMap::new();
