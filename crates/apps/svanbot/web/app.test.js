@@ -305,6 +305,27 @@ test("the scoreboard is ranked by win rate, best first", () => {
   expect(rows[2].textContent).toContain("−5000.0 mbb/100");
 });
 
+test("a 6-max run is its own board beside heads up, never in the heads-up trend", () => {
+  globalThis.location.pathname = "/scoreboard";
+  const both = fleet();
+  both.arena.unshift({ ...both.arena[0], commit: "sixmax1", league: "6-max" });
+  listeners.fleet({ data: JSON.stringify(both) });
+  const headings = ids.view.all("h2").map((heading) => heading.textContent);
+  expect(headings.filter((text) => text.startsWith("Heads up ")).length).toBe(1);
+  expect(headings.filter((text) => text.startsWith("6-max ")).length).toBe(1);
+  // Heads up first, whichever league played last: its latest run is still abc1234.
+  expect(headings.findIndex((t) => t.startsWith("Heads up"))).toBeLessThan(
+    headings.findIndex((t) => t.startsWith("6-max")),
+  );
+  const tables = ids.view.all("table");
+  expect(tables.length).toBe(4);
+  // Heads up: latest run, then a trend of its own two runs only.
+  expect(tables[1].all("tr").length).toBe(1 + 2);
+  expect(tables[1].textContent).not.toContain("sixmax1");
+  expect(tables[3].all("tr").length).toBe(1 + 1);
+  expect(tables[3].textContent).toContain("sixmax1");
+});
+
 test("an opponent's name on the scoreboard is text too", () => {
   const view = show("/scoreboard");
   expect(view.all("b").length).toBe(0);

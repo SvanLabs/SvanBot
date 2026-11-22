@@ -10,7 +10,7 @@ use std::thread;
 use serde_json::Value;
 use support::{get, scratch, send, serve, status};
 use svanbot::dashboard::{Config, Server};
-use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet};
+use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_runtime::status::status_path;
 use svanbot_strategy::params::Params;
 
@@ -68,6 +68,7 @@ fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
             commit: "def5678".into(),
             champion: "00000000000000aa".into(),
             seed: 3,
+            league: League::HeadsUp,
             rows: vec![ArenaRow {
                 opponent: "maniac".into(),
                 deals: 100,

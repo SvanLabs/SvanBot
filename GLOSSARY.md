@@ -319,6 +319,19 @@ One stretch of the Arena: 50 deals, one sparring opponent, played in order so a 
 learns across them. Bouts share nothing, so they run in any order.
 _Avoid_: session, round, match
 
+**League**:
+Which table an Arena run is played at: heads up, or 6-max. The two measure different things (the
+re-solve after the flop, the multiway path), so each keeps its own runs and its own board, and a
+result is never pooled across them. The headline states the heads-up league.
+_Avoid_: format, mode, division
+
+**Ring**:
+One deal played once from every seat of a full table, the challenger moving a seat each time
+against the same opponents, so it holds every hand in every position and the luck of the cards
+cancels as the mirror cancels it heads up. Each seat's decisions draw from that seat's own stream,
+so a policy playing itself breaks even.
+_Avoid_: rotation, orbit
+
 **Scoreboard**:
 The Arena's table of results: the opponent, the win rate over it, the 95% interval and the deals
 behind it. A run is recorded with its commit and seed, so every line can be played again.

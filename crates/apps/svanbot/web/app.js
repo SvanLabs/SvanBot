@@ -4,6 +4,7 @@
 
 import { facts, h, panel, table } from "./dom.js";
 import {
+  arenaLeagues,
   arenaRun,
   arenaSpan,
   botView,
@@ -281,11 +282,13 @@ function releasePage(fleet, nowMs) {
   ];
 }
 
-/** The scoreboard: the Arena's latest run, a whisker an opponent, and each opponent's trend. */
+/**
+ * The scoreboard: one board a league (V11-29), heads up first. The leagues measure different
+ * things, so each has its own whiskers and its own trend, and no run is pooled across them.
+ */
 function scoreboardPage(fleet) {
-  const runs = fleet.arena ?? [];
-  const latest = arenaRun(runs);
-  if (latest === null) {
+  const boards = arenaLeagues(fleet.arena);
+  if (boards.length === 0) {
     return [
       h("h1", {}, "Scoreboard"),
       h(
@@ -297,6 +300,20 @@ function scoreboardPage(fleet) {
       ),
     ];
   }
+  return [h("h1", {}, "Scoreboard"), ...boards.flatMap((board) => leagueBoard(board))];
+}
+
+/** How a league's runs are played, for the board's caption. */
+const PLAYED = {
+  "heads-up":
+    "by playing each deal from both seats, heads up against the pricer and the sparring archetypes",
+  "6-max":
+    "by playing each deal from every seat of a full table, against five of the pricer or of one sparring archetype",
+};
+
+/** One league's board: its latest run, a whisker an opponent, and each opponent's trend. */
+function leagueBoard({ league, runs }) {
+  const latest = arenaRun(runs);
   const span = arenaSpan(latest.rows);
   // A trend is across commits, so its columns are every opponent any run played: taking them
   // from the newest run alone would drop an opponent it skipped from every row.
@@ -306,9 +323,9 @@ function scoreboardPage(fleet) {
   const [width, height] = [300, 16];
   return [
     h(
-      "h1",
+      "h2",
       {},
-      "Scoreboard ",
+      league === "6-max" ? "6-max " : "Heads up ",
       h(
         "span",
         { class: "muted mono" },
@@ -327,11 +344,9 @@ function scoreboardPage(fleet) {
         h(
           "p",
           { class: "muted" },
-          `Milli-big-blinds a hundred deals, luck of the cards taken out by playing each deal ` +
-            `from both seats. Each whisker is the run's interval, its dark mark the mean, and ` +
-            `the dashed line zero. The box spans ${mbbText(span.low)} to ${mbbText(span.high)}. ` +
-            `Heads up only: the champion against the pricer and the sparring archetypes, not ` +
-            `the wider league.`,
+          `Milli-big-blinds a hundred deals, luck of the cards taken out ${PLAYED[league]}. ` +
+            `Each whisker is the run's interval, its dark mark the mean, and the dashed line ` +
+            `zero. The box spans ${mbbText(span.low)} to ${mbbText(span.high)}.`,
         ),
         table(
           "Each opponent, its whisker, its mean and its interval",

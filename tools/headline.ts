@@ -42,6 +42,18 @@ const SOURCE = [
 const NOT =
   "This is the league so far: heads up against the sparring archetypes and the pricer, not";
 
+/**
+ * The run `--pin` takes from `arena.json`: the newest heads-up one. The headline states the
+ * heads-up league, and a 6-max run (V11-29) sits beside it in the same file, never in its place.
+ * A run stored before 6-max has no league, and was heads up.
+ */
+export function pinnable(runs: unknown): Run | undefined {
+  if (!Array.isArray(runs)) return undefined;
+  return runs.find(
+    (run) => run && typeof run === "object" && (run.league ?? "heads-up") === "heads-up",
+  ) as Run | undefined;
+}
+
 /** The block: a number over the whole league, the run it came from, and the lines behind it. */
 export function headline(run: Run | undefined): Headline {
   // No pin is no headline, and the check refuses it: a branch that deleted the pin would else
@@ -241,7 +253,7 @@ if (import.meta.main) {
     // text back, so the pin can be read as a line of the file it came from.
     const source = args[pinAt + 1] ?? "";
     const text = existsSync(source) ? readFileSync(source, "utf8") : "";
-    const run = (parse(text)?.runs ?? [])[0] as Run | undefined;
+    const run = pinnable(parse(text)?.runs);
     // A run with no commit is not traceable, which is the whole point of the pin: refuse it.
     if (run && (typeof run.commit !== "string" || run.commit === "")) {
       console.log("the run to pin names no commit: the headline has nothing to trace");

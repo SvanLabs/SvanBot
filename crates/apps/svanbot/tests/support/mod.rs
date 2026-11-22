@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use svanbot::dashboard::{Config, Server};
-use svanbot_runtime::fleet::{self, ArenaRow, ArenaRun, Fleet};
+use svanbot_runtime::fleet::{self, ArenaRow, ArenaRun, Fleet, League};
 use svanbot_runtime::status::{Play, Status, status_path};
 
 pub fn scratch(name: &str) -> PathBuf {
@@ -62,6 +62,7 @@ pub fn serve(name: &str) -> (SocketAddr, PathBuf) {
             commit: "abc1234".into(),
             champion,
             seed: 7,
+            league: League::HeadsUp,
             rows: vec![ArenaRow {
                 opponent: "nit".into(),
                 deals: 400,

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  arenaLeagues,
   arenaRun,
   arenaSpan,
   botView,
@@ -174,6 +175,17 @@ test("the latest run is the first the fleet carries, and none is null", () => {
   expect(arenaRun([RUN, { ...RUN, commit: "older" }]).commit).toBe("abc1234");
   expect(arenaRun([])).toBe(null);
   expect(arenaRun(undefined)).toBe(null);
+});
+
+test("each league is its own board, heads up first, and a run with no league is heads up", () => {
+  const six = { ...RUN, commit: "six", league: "6-max" };
+  const old = { ...RUN, commit: "old" };
+  const boards = arenaLeagues([six, { ...RUN, league: "heads-up" }, old]);
+  expect(boards.map((board) => board.league)).toEqual(["heads-up", "6-max"]);
+  // Newest first within a league, as the fleet keeps them, and never pooled across leagues.
+  expect(boards[0].runs.map((run) => run.commit)).toEqual(["abc1234", "old"]);
+  expect(boards[1].runs.map((run) => run.commit)).toEqual(["six"]);
+  expect(arenaLeagues([])).toEqual([]);
 });
 
 test("a win rate on the scoreboard is thousands of a big blind a hundred hands, signed", () => {

@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use svanbot_learn::probe::Kind;
-use svanbot_runtime::fleet::{ARENA_HISTORY, ArenaRow, ArenaRun, Fleet, Proposal};
+use svanbot_runtime::fleet::{ARENA_HISTORY, ArenaRow, ArenaRun, Fleet, League, Proposal};
 use svanbot_strategy::params::Params;
 
 fn scratch(name: &str) -> PathBuf {
@@ -83,6 +83,7 @@ fn run(commit: &str, seed: u64, mbb: f64) -> ArenaRun {
         commit: commit.into(),
         champion: "00000000000000aa".into(),
         seed,
+        league: League::HeadsUp,
         rows: vec![ArenaRow {
             opponent: "nit".into(),
             deals: 400,
@@ -227,4 +228,59 @@ fn recording_a_run_leaves_the_numbers_before_it_alone() {
         runs[1].rows[0].mbb_per_100.to_bits(),
         first.rows[0].mbb_per_100.to_bits()
     );
+}
+
+#[test]
+fn a_six_max_run_is_never_the_heads_up_run_of_the_same_name() {
+    // The two leagues measure different things, so the same commit, champion and seed in each is
+    // two runs, and each reads back as the league it was played in.
+    let fleet = Fleet::in_dir(scratch("arena-league"));
+    fleet.record_arena(&run("abc1234", 7, 1.0)).unwrap();
+    let six = ArenaRun {
+        league: League::SixMax,
+        ..run("abc1234", 7, 1.0)
+    };
+    fleet.record_arena(&six).unwrap();
+    let leagues: Vec<League> = fleet
+        .arena_runs()
+        .unwrap()
+        .iter()
+        .map(|r| r.league)
+        .collect();
+    assert_eq!(leagues, [League::SixMax, League::HeadsUp]);
+}
+
+#[test]
+fn a_run_stored_before_six_max_reads_as_heads_up() {
+    let dir = scratch("arena-old");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("arena.json"),
+        r#"{"runs":[{"commit":"abc1234","champion":"00000000000000aa","seed":7,"rows":[]}]}"#,
+    )
+    .unwrap();
+    let [read] = Fleet::in_dir(&dir)
+        .arena_runs()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    assert_eq!(read.league, League::HeadsUp);
+}
+
+#[test]
+fn each_league_keeps_its_own_history() {
+    // A long 6-max session on the box must not push the heads-up league off the scoreboard.
+    let fleet = Fleet::in_dir(scratch("arena-histories"));
+    fleet.record_arena(&run("heads", 1, 1.0)).unwrap();
+    for number in 0..(ARENA_HISTORY as u64 + 2) {
+        let six = ArenaRun {
+            league: League::SixMax,
+            ..run(&format!("six{number}"), number, 1.0)
+        };
+        fleet.record_arena(&six).unwrap();
+    }
+    let runs = fleet.arena_runs().unwrap();
+    let count = |league| runs.iter().filter(|r| r.league == league).count();
+    assert_eq!(count(League::SixMax), ARENA_HISTORY);
+    assert_eq!(count(League::HeadsUp), 1);
 }
