@@ -6,8 +6,9 @@
 //! policy in each seat of a full table against five of the opponent (`learn::ring`). Either way
 //! the luck of the cards is taken out. The two leagues are recorded apart and never pooled.
 //! With `iterations` the re-solve runs that many on every spot; without, the compute budget sizes
-//! them by the pot, as in live play. The scoreboard is printed, and written as JSON to `out.json` when one is named,
-//! with the commit in `SVANBOT_COMMIT` and the seed, so the run can be played again.
+//! them by the pot, as in live play. The scoreboard is printed, and written as JSON to `out.json`
+//! when one is named, with the commit in `SVANBOT_COMMIT` and the seed, so the run can be played
+//! again.
 //!
 //! Every run is also recorded in the fleet's `arena.json` (`Fleet::record_arena`), so the
 //! dashboard's scoreboard and the release gate read the same numbers this printed.

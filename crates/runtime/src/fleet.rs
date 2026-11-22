@@ -6,9 +6,10 @@
 //!   champion is [`Params::DEFAULT`].
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running.
-//! - `arena.json`: the Arena's last runs. The newest is the scoreboard the dashboard shows and
-//!   the release gate reads; [`ARENA_HISTORY`] of them are kept, so a trend across commits is a
-//!   read and not a re-run.
+//! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
+//!   its board on the scoreboard, and the newest heads-up run is what the release gate reads;
+//!   [`ARENA_HISTORY`] of each league are kept, so a trend across commits is a read and not a
+//!   re-run.
 //!
 //! A parameter set is numbers the owner tuned, not a read of an opponent, so sharing it crosses no
 //! bot's reads (`docs/adr/0004-reads-are-per-bot.md`). Each number is written as the text that

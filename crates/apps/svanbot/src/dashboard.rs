@@ -386,14 +386,22 @@ fn arena(fleet_dir: &Path) -> (Value, Vec<String>) {
     };
     let mut problems = Vec::new();
     // An unreadable champion is the live path's problem to report (`Fleet::champion`); here the
-    // question is only whether the last run's numbers are of what is running.
-    if let (Some(latest), Ok(champion)) = (runs.first(), fleet.champion())
-        && latest.champion != champion.digest().to_string()
-    {
-        problems.push(format!(
-            "the last arena run played champion {}, not the champion in play: play `svanbot arena`",
-            latest.champion
-        ));
+    // question is only whether each league's last run is of what is running. Each league is its
+    // own board (V11-29), so a newer run of one says nothing of the other's.
+    if let Ok(champion) = fleet.champion() {
+        let digest = champion.digest().to_string();
+        for league in [fleet::League::HeadsUp, fleet::League::SixMax] {
+            if let Some(latest) = runs.iter().find(|run| run.league == league)
+                && latest.champion != digest
+            {
+                problems.push(format!(
+                    "the last {} arena run played champion {}, not the champion in play: play \
+                     `svanbot arena`",
+                    league.name(),
+                    latest.champion
+                ));
+            }
+        }
     }
     (
         Value::Array(runs.iter().map(ArenaRun::as_value).collect()),

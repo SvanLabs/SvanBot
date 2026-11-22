@@ -148,6 +148,50 @@ fn a_run_of_a_champion_the_fleet_no_longer_plays_is_a_problem_in_the_fleet() {
 }
 
 #[test]
+fn each_league_is_checked_for_the_champion_in_play() {
+    // A 6-max run of the new champion is not a heads-up run of it: the heads-up board still
+    // shows the old champion, and the page has to say so though the newest run is current.
+    let (addr, dir) = serve("arena-promoted-league");
+    let fleet = Fleet::in_dir(dir.join("data/fleet"));
+    fleet
+        .promote(&Params {
+            exploit: 0.9,
+            raise_share: 0.9,
+            ..Params::DEFAULT
+        })
+        .unwrap();
+    fleet
+        .record_arena(&ArenaRun {
+            commit: "abc1234".into(),
+            champion: fleet.champion().unwrap().digest().to_string(),
+            seed: 7,
+            league: League::SixMax,
+            rows: Vec::new(),
+        })
+        .unwrap();
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    let problems: Vec<&str> = fleet["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|problem| problem.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        problems
+            .iter()
+            .filter(|problem| problem.contains("champion"))
+            .count(),
+        1,
+        "{body}"
+    );
+    assert!(
+        problems.iter().any(|problem| problem.contains("heads-up")),
+        "{body}"
+    );
+}
+
+#[test]
 fn a_status_that_cannot_be_read_is_a_problem_in_the_fleet() {
     let (addr, dir) = serve("problem");
     std::fs::write(dir.join("data/Broken.status.json"), "{").unwrap();
