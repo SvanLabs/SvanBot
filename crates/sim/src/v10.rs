@@ -14,3 +14,5 @@ pub mod deals;
 pub mod draw;
 pub mod equity;
 pub mod eval;
+pub mod preflop;
+pub mod strengths;
