@@ -21,5 +21,6 @@ pub mod preflop;
 pub mod profile;
 pub mod ranges;
 pub mod responses;
+pub mod seat;
 pub mod situation;
 pub mod strengths;
