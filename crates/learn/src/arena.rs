@@ -11,9 +11,10 @@
 use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
 use svanbot_sim::sparring::{Archetype, Sparring};
+use svanbot_sim::v10::seat::V10;
 
-use crate::paired::{Match, Verdict, duel_with};
-use crate::ring::{SIX_MAX, ring_with};
+use crate::paired::{Match, Verdict, duel_seen, duel_with};
+use crate::ring::{SIX_MAX, ring_seen, ring_with};
 
 /// Deals in a bout.
 pub const BOUT: u64 = 50;
@@ -70,6 +71,33 @@ pub fn ring_bout(
             )
         })
         .collect()
+}
+
+/// Plays deal `number` heads up against v10.0.2 ([`V10`]), from mirrored seats. v10 keeps
+/// nothing between hands, so a deal stands alone and needs no bout. Returns what the challenger
+/// won, in big blinds a hand.
+pub fn v10_duel(game: &Match, number: u64, challenger: &impl Fn(&Spot, u64) -> Action) -> f64 {
+    let v10 = V10::default();
+    duel_seen(
+        game,
+        number,
+        challenger,
+        &|seat, spot, seen, seed| v10.decide(seat, spot, seen, seed),
+        || {},
+    )
+}
+
+/// Plays deal `number` at a full table of v10.0.2, once from every seat ([`ring_seen`]).
+pub fn v10_ring(game: &Match, number: u64, challenger: &impl Fn(&Spot, u64) -> Action) -> f64 {
+    let v10 = V10::default();
+    ring_seen(
+        game,
+        SIX_MAX,
+        number,
+        challenger,
+        &|seat, spot, seen, seed| v10.decide(seat, spot, seen, seed),
+        |_| {},
+    )
 }
 
 /// One line of the scoreboard: an opponent, and the verdict against it.

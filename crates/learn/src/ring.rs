@@ -10,7 +10,7 @@
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
-use svanbot_sim::table::{deal, play_corrected};
+use svanbot_sim::table::{Seen, deal, play_seen};
 
 use crate::paired::Match;
 
@@ -47,6 +47,26 @@ pub fn ring_with(
     opponent: &impl Fn(usize, &Spot, u64) -> Action,
     reset: impl Fn(usize),
 ) -> f64 {
+    ring_seen(
+        game,
+        seats,
+        number,
+        challenger,
+        &|at, spot, _, seed| opponent(at, spot, seed),
+        reset,
+    )
+}
+
+/// [`ring_with`], with each opponent also shown the whole table ([`Seen`]): one that reads every
+/// seat, as v10.0.2 does. The challenger sees only its spot.
+pub fn ring_seen(
+    game: &Match,
+    seats: usize,
+    number: u64,
+    challenger: &impl Fn(&Spot, u64) -> Action,
+    opponent: &impl Fn(usize, &Spot, &Seen, u64) -> Action,
+    reset: impl Fn(usize),
+) -> f64 {
     let cards = deal(seats, &mut Rng::stream(game.seed, number));
     let block = number * seats as u64;
     // Every rotation pays an all-in over the same run-outs.
@@ -58,14 +78,21 @@ pub fn ring_with(
         let mut seeds: Vec<Rng> = (0..seats)
             .map(|seat| Rng::stream(game.seed ^ DECISIONS, block + seat as u64))
             .collect();
-        let won = play_corrected(&cards, &stacks, 0, game.blinds, run_outs, |at, spot| {
-            let seed = seeds[at].next_u64();
-            if at == us {
-                challenger(spot, seed)
-            } else {
-                opponent(at, spot, seed)
-            }
-        });
+        let won = play_seen(
+            &cards,
+            &stacks,
+            0,
+            game.blinds,
+            run_outs,
+            |at, spot, seen| {
+                let seed = seeds[at].next_u64();
+                if at == us {
+                    challenger(spot, seed)
+                } else {
+                    opponent(at, spot, seen, seed)
+                }
+            },
+        );
         chips += won[us];
     }
     chips / (seats as f64 * f64::from(game.blinds.big))

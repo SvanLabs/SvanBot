@@ -1,4 +1,4 @@
-//! `svanbot arena`: the policy against every sparring archetype and the pricer, as a scoreboard,
+//! `svanbot arena`: the policy against the pricer, v10.0.2 and every sparring archetype, as a scoreboard,
 //! then exit. It touches neither the venue nor a store.
 //!
 //! `svanbot arena [6-max] <bouts> [seed] [iterations] [out.json]`: each bout is 50 deals. Heads
@@ -15,7 +15,7 @@
 
 use std::process::ExitCode;
 
-use svanbot_learn::arena::{BOUT, Row, bout, ring_bout, scoreboard};
+use svanbot_learn::arena::{BOUT, Row, bout, ring_bout, scoreboard, v10_duel, v10_ring};
 use svanbot_learn::paired::{duel, verdict};
 use svanbot_learn::ring::{SIX_MAX, ring};
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
@@ -25,6 +25,26 @@ use crate::deciders;
 
 /// Threads the bouts are spread over. The box is shared with the live fleet.
 const THREADS: u64 = 4;
+
+/// A row of the scoreboard: who the policy plays.
+#[derive(Clone, Copy)]
+enum Opponent {
+    /// The pricer the strategy layer falls back to.
+    Pricer,
+    /// v10.0.2, ported (`sim::v10`): the bar a release must clear.
+    V10,
+    Sparring(Archetype),
+}
+
+impl Opponent {
+    fn name(self) -> &'static str {
+        match self {
+            Opponent::Pricer => "pricer",
+            Opponent::V10 => svanbot_sim::v10::seat::NAME,
+            Opponent::Sparring(archetype) => archetype.name(),
+        }
+    }
+}
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let (league, args) = match args.first().map(String::as_str) {
@@ -55,9 +75,9 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     let game = deciders::game(seed.unwrap_or(1));
     let challenger = deciders::challenger(&champion, fixed);
     let pricer = deciders::pricer();
-    // `None` is the pricer; the rest are the archetypes.
-    let opponents: Vec<Option<Archetype>> = std::iter::once(None)
-        .chain(Archetype::ALL.map(Some))
+    let opponents: Vec<Opponent> = [Opponent::Pricer, Opponent::V10]
+        .into_iter()
+        .chain(Archetype::ALL.map(Opponent::Sparring))
         .collect();
     let mut rows = Vec::new();
     for opponent in opponents {
@@ -73,16 +93,22 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
                             .map(|number| {
                                 let deals = number * BOUT..(number + 1) * BOUT;
                                 let results = match (league, opponent) {
-                                    (League::HeadsUp, Some(archetype)) => {
+                                    (League::HeadsUp, Opponent::Sparring(archetype)) => {
                                         bout(&game, archetype, number, challenger)
                                     }
-                                    (League::HeadsUp, None) => deals
+                                    (League::HeadsUp, Opponent::V10) => deals
+                                        .map(|deal| v10_duel(&game, deal, challenger))
+                                        .collect(),
+                                    (League::SixMax, Opponent::V10) => deals
+                                        .map(|deal| v10_ring(&game, deal, challenger))
+                                        .collect(),
+                                    (League::HeadsUp, Opponent::Pricer) => deals
                                         .map(|deal| duel(&game, deal, challenger, pricer))
                                         .collect(),
-                                    (League::SixMax, Some(archetype)) => {
+                                    (League::SixMax, Opponent::Sparring(archetype)) => {
                                         ring_bout(&game, archetype, number, challenger)
                                     }
-                                    (League::SixMax, None) => deals
+                                    (League::SixMax, Opponent::Pricer) => deals
                                         .map(|deal| {
                                             ring(
                                                 &game,
@@ -116,7 +142,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             .flat_map(|(_, results)| results)
             .collect();
         let row = Row {
-            opponent: opponent.map_or("pricer", Archetype::name).to_owned(),
+            opponent: opponent.name().to_owned(),
             verdict: verdict(&results),
         };
         eprintln!("svanbot arena: {} done", row.opponent);
