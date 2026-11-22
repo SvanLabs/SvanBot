@@ -1,7 +1,7 @@
 # The gate on GitHub (V11-03): the same tiers as on the box, with the tools mise pins. The commit
 # and test tiers run side by side, and cargo-deny runs beside them. The Arena records a run beside
-# them when a change can move a scoreboard line; it gates nothing yet, and cannot at this budget
-# (see the `arena` job). Each action is pinned to a commit, with its release named beside it.
+# them when a change can move a scoreboard line. The publication check requires the run, not a
+# positive score. Each action is pinned to a commit, with its release named beside it.
 name: check
 
 on:
@@ -72,7 +72,7 @@ jobs:
   # a change to runtime or apps alone skips the run. The scoreboard goes into the run's summary,
   # and an artifact keeps the numbers with the commit and seed they were played from.
   #
-  # It gates nothing, and must not pretend to. At two bouts a line is 100 deals, where an interval
+  # The score is evidence, not a merge threshold. At two bouts a line is 100 deals, where an interval
   # of ±200000 mbb/100 straddles zero: a run this small cannot say a change helped, so a threshold
   # on it would be a coin flip with a build cost. What it can do is record a run of a fixed seed,
   # which deals the same cards every time, so a later change is compared against the run before it
@@ -82,9 +82,14 @@ jobs:
     name: Arena
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    outputs:
+      required: ${{ steps.behaviour.outputs.run }}
+      rows: ${{ steps.play.outputs.rows }}
+      artifact: ${{ steps.upload.outputs.artifact-url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0 # the diff needs the base to be a commit it can read
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
       - id: behaviour
@@ -117,7 +122,8 @@ jobs:
         with:
           workspaces: ". -> target/dev"
           cache-workspace-crates: true
-      - if: steps.behaviour.outputs.run == 'yes'
+      - id: play
+        if: steps.behaviour.outputs.run == 'yes'
         shell: bash
         run: |
           # `pipefail` so a failed Arena fails the step, though it is `tee`'d into the summary.
@@ -125,8 +131,11 @@ jobs:
           # The build is the gate's, so cargo stays behind the one wrapper (`.claude/rules/tools.md`).
           # The run itself is here because only a step can write the scoreboard into the summary.
           bun tools/gate.ts arena
-          SVANBOT_FLEET="$RUNNER_TEMP/fleet" SVANBOT_COMMIT="$GITHUB_SHA" \
+          commit=$(git rev-parse HEAD)
+          SVANBOT_FLEET="$RUNNER_TEMP/fleet" SVANBOT_COMMIT="$commit" \
             target/dev/debug/svanbot arena 2 17 | tee -a "$GITHUB_STEP_SUMMARY"
+          rows=$(jq -ce --arg commit "$commit" '.runs[0] | select(.commit == $commit) | .rows | select(type == "array" and length > 0)' "$RUNNER_TEMP/fleet/arena.json")
+          printf 'rows=%s\n' "$rows" >> "$GITHUB_OUTPUT"
           # The README's headline is pinned to the base branch's run, not to this one: a pull
           # request's number would name a commit that never merged. To promote this run, download
           # the `arena` artifact and, on the base branch, run the pin below it.
@@ -135,9 +144,68 @@ jobs:
             echo "This run is not the README's headline. To pin it, download the \`arena\` artifact"
             echo "and run \`bun tools/headline.ts --pin <downloaded>/arena.json\` on \`v11\`."
           } >> "$GITHUB_STEP_SUMMARY"
-      - if: steps.behaviour.outputs.run == 'yes'
+      - id: upload
+        if: steps.behaviour.outputs.run == 'yes'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: arena
           path: ${{ runner.temp }}/fleet/arena.json
           if-no-files-found: error
+
+  publication:
+    name: Arena publication
+    needs: arena
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: write
+    steps:
+      # No checkout, artifact execution, or PR strings interpolated into this script.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.arena.result }}
+          REQUIRED: ${{ needs.arena.outputs.required }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+          ROWS: ${{ needs.arena.outputs.rows }}
+          ARTIFACT: ${{ needs.arena.outputs.artifact }}
+        shell: python
+        run: |
+          import json, os, re, subprocess
+          e = os.environ
+          if e['RESULT'] != 'success' or e['REQUIRED'] not in ('yes', 'no'):
+              raise SystemExit('Arena failed or did not classify this diff')
+          repo, pr, sha = e['GITHUB_REPOSITORY'], e['PR'], e['HEAD_SHA']
+          marker = '<!-- svanbot-arena-publication -->'
+          def api(*args):
+              return subprocess.check_output(['gh', 'api', *args], text=True).strip()
+          base = f'repos/{repo}'
+          path = f'{base}/issues/{pr}/comments'
+          def current():
+              if api(f'{base}/pulls/{pr}', '--jq', '.head.sha') != sha:
+                  raise SystemExit('Superseded PR head')
+          pages = json.loads(api('--paginate', '--slurp', path))
+          owned = [c['id'] for page in pages for c in page if c['user']['login'] == 'github-actions[bot]' and c['body'].startswith(marker + '\n')]
+          def publish(lines):
+              current()
+              api('-X', 'PATCH' if owned else 'POST', f'{base}/issues/comments/{owned[0]}' if owned else path, '-f', 'body=' + '\n'.join(lines))
+              current()
+          if e['REQUIRED'] == 'no':
+              if owned:
+                  publish([marker, f'No Arena run required at `{sha}`.'])
+              raise SystemExit(0)
+          prefix = f"{e['GITHUB_SERVER_URL']}/{repo}/actions/runs/{e['GITHUB_RUN_ID']}/artifacts/"
+          if not re.fullmatch(re.escape(prefix) + r'[0-9]+', e['ARTIFACT']):
+              raise SystemExit('Missing run artifact')
+          lines = [marker, f"Arena at `{sha}` · [Run artifact]({e['ARTIFACT']})", '',
+                   '| Opponent | mbb/100 | 95% CI (±) | Deals |', '|---|---:|---:|---:|']
+          rows = json.loads(e['ROWS'])
+          if not isinstance(rows, list) or not 1 <= len(rows) <= 100:
+              raise SystemExit('Missing scoreboard')
+          for row in rows:
+              if not re.fullmatch(r'[A-Za-z0-9 -]{1,64}', row['opponent']):
+                  raise SystemExit('Invalid opponent name')
+              if type(row['deals']) is not int or row['deals'] <= 0 or row['ci95'] < 0:
+                  raise SystemExit('Invalid measurement')
+              lines.append('| {} | {:+d} | {} | {} |'.format(row['opponent'], round(row['mbb_per_100']), round(row['ci95']), row['deals']))
+          publish(lines)
