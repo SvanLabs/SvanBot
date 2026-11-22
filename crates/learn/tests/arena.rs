@@ -2,7 +2,7 @@
 
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
-use svanbot_learn::arena::{BOUT, Row, bout, ring_bout, scoreboard};
+use svanbot_learn::arena::{BOUT, Row, bout, ring_bout, scoreboard, v10_duel, v10_ring};
 use svanbot_learn::paired::{Match, Verdict};
 use svanbot_sim::sparring::Archetype;
 
@@ -64,6 +64,27 @@ fn a_six_max_bout_repeats_for_its_seed_and_differs_by_its_number() {
         first,
         ring_bout(&MATCH, Archetype::Learning, 2, &check_or_call)
     );
+}
+
+#[test]
+fn a_seat_that_always_folds_against_v10_loses_its_blinds_or_wins_the_small_one() {
+    // Our button folds its small blind. In the big blind we fold to any raise or limp, and
+    // win the small blind when v10 folds it: 0 or -30 chips over the deal, of 40 a hand.
+    for deal in 0..3 {
+        let won = v10_duel(&MATCH, deal, &folds);
+        assert!(
+            won == 0.0 || (won + 0.75).abs() < 1e-9,
+            "deal {deal}: {won}"
+        );
+        assert_eq!(won, v10_duel(&MATCH, deal, &folds));
+    }
+}
+
+#[test]
+fn a_seat_that_always_folds_at_a_table_of_v10_gives_up_chips() {
+    let won = v10_ring(&MATCH, 0, &folds);
+    assert!(won <= 0.0, "{won}");
+    assert_eq!(won, v10_ring(&MATCH, 0, &folds));
 }
 
 #[test]

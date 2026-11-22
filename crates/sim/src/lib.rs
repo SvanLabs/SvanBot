@@ -10,3 +10,4 @@
 pub mod equity;
 pub mod sparring;
 pub mod table;
+pub mod v10;

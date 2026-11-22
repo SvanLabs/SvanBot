@@ -6,7 +6,7 @@ use svanbot_core::card::Card;
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Blinds, Street};
 use svanbot_core::spot::{ActKind, Spot};
-use svanbot_sim::table::{Deal, deal, play, play_corrected};
+use svanbot_sim::table::{Deal, Record, deal, play, play_corrected, play_seen};
 
 const BLINDS: Blinds = Blinds { small: 10, big: 20 };
 
@@ -223,4 +223,58 @@ fn the_correction_keeps_the_mean_and_cuts_the_spread() {
     );
     let error = spread(&dealt) / (dealt.len() as f64).sqrt();
     assert!((mean(&fair) - mean(&dealt)).abs() < 3.0 * error);
+}
+
+#[test]
+fn an_opponent_sees_the_whole_table_and_the_hand_in_order() {
+    // Three seats, the button on 0: 1 posts 10, 2 posts 20, and 0 acts first.
+    let cards = dealt(&["7c2d", "AhAs", "KcKd"], "Qs9d4c7h2s");
+    let mut seen_at_two = None;
+    play_seen(
+        &cards,
+        &[2000, 2000, 2000],
+        0,
+        BLINDS,
+        1,
+        |seat, _, seen| {
+            if seat == 2 && seen_at_two.is_none() {
+                seen_at_two = Some(seen.clone());
+            }
+            match seat {
+                0 => Action::RaiseTo(60),
+                1 => Action::Call,
+                _ => Action::Fold,
+            }
+        },
+    );
+    let seen = seen_at_two.expect("the big blind acted");
+    assert_eq!(seen.button, 0);
+    assert!(seen.board.is_empty(), "no card is out before the flop");
+    let at = |s: usize| {
+        let seat = &seen.seats[s];
+        (seat.stack, seat.bet, seat.folded)
+    };
+    assert_eq!(
+        [at(0), at(1), at(2)],
+        [(1940, 60, false), (1940, 60, false), (1980, 20, false)]
+    );
+    let raise = Record {
+        seat: 0,
+        street: Street::Preflop,
+        action: Action::RaiseTo(60),
+        to: 60,
+        pot_before: 30,
+        owed_before: 20,
+        bet_before: 0,
+        all_in: false,
+    };
+    let call = Record {
+        seat: 1,
+        action: Action::Call,
+        pot_before: 90,
+        owed_before: 50,
+        bet_before: 10,
+        ..raise
+    };
+    assert_eq!(seen.record, [raise, call]);
 }

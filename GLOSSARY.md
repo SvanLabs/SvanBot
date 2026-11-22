@@ -337,6 +337,19 @@ The Arena's table of results: the opponent, the win rate over it, the 95% interv
 behind it. A run is recorded with its commit and seed, so every line can be played again.
 _Avoid_: leaderboard, standings
 
+**v10.0.2**:
+The Arena opponent that is v10's last release, ported into `sim::v10` with its default knobs and
+held to the actions the real binary took (the parity test). It reads the whole table, as v10's
+engine showed it a hand, so it plays only in the sim, and its row on both boards carries the
+name `v10.0.2`: the bar a v11 release must clear.
+_Avoid_: v10, the old bot, legacy
+
+**Seen**:
+The whole table at a seat's turn: the button, the board in the order it came, every seat's stack,
+street bet and fold, and the hand's actions in order. Only the sim can show it, and only an
+opponent that reads every seat, such as v10.0.2, is handed it; the challenger sees its spot.
+_Avoid_: table state, view
+
 **Headline**:
 The README's one number: the pinned Arena run's pooled mbb/100 with the interval that says
 whether it can be told from zero. The Arena plays one set of deals against every opponent, so the

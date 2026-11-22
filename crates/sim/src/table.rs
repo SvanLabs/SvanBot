@@ -32,6 +32,46 @@ impl Deal {
     }
 }
 
+/// The whole table at a seat's turn.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Seen {
+    pub button: usize,
+    /// The community cards out, in the order they came.
+    pub board: Vec<Card>,
+    /// Every seat, in table order.
+    pub seats: Vec<SeatSeen>,
+    /// Every action of the hand so far, in order. The blinds are not in it.
+    pub record: Vec<Record>,
+}
+
+/// One seat as the table shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SeatSeen {
+    /// The chips behind.
+    pub stack: u32,
+    /// The chips in on this street, a blind included.
+    pub bet: u32,
+    pub folded: bool,
+}
+
+/// One action, with the table as it stood before it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Record {
+    pub seat: usize,
+    pub street: Street,
+    /// The action as it was played: the nearest legal one to what was asked.
+    pub action: Action,
+    /// The seat's street bet after it; 0 for a fold or a check.
+    pub to: u32,
+    /// The pot, this street's bets included.
+    pub pot_before: u32,
+    /// What the seat owed: the street's top bet less its own.
+    pub owed_before: u32,
+    pub bet_before: u32,
+    /// Whether it put the seat's last chip in.
+    pub all_in: bool,
+}
+
 /// Deals `seats` hands and a board from `rng`.
 pub fn deal(seats: usize, rng: &mut Rng) -> Deal {
     let mut deck: Vec<Card> = Rank::ALL
@@ -53,9 +93,11 @@ pub fn play(
     stacks: &[u32],
     button: usize,
     blinds: Blinds,
-    decide: impl FnMut(usize, &Spot) -> Action,
+    mut decide: impl FnMut(usize, &Spot) -> Action,
 ) -> Vec<i64> {
-    let (hand, _, _) = bet(deal, stacks, button, blinds, decide);
+    let (hand, _, _) = bet(deal, stacks, button, blinds, |seat, spot, _| {
+        decide(seat, spot)
+    });
     let all = deal.shown(Street::River);
     let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
     paid.iter()
@@ -84,7 +126,22 @@ pub fn play_corrected(
     button: usize,
     blinds: Blinds,
     seed: u64,
-    decide: impl FnMut(usize, &Spot) -> Action,
+    mut decide: impl FnMut(usize, &Spot) -> Action,
+) -> Vec<f64> {
+    play_seen(deal, stacks, button, blinds, seed, |seat, spot, _| {
+        decide(seat, spot)
+    })
+}
+
+/// [`play_corrected`], with each seat also shown the whole table ([`Seen`]): what an opponent
+/// that reads every seat, as v10.0.2 did, decides from. Only the sim can show it.
+pub fn play_seen(
+    deal: &Deal,
+    stacks: &[u32],
+    button: usize,
+    blinds: Blinds,
+    seed: u64,
+    decide: impl FnMut(usize, &Spot, &Seen) -> Action,
 ) -> Vec<f64> {
     let (hand, last, mut stood) = bet(deal, stacks, button, blinds, decide);
     let all = deal.shown(Street::River);
@@ -165,7 +222,7 @@ fn bet(
     stacks: &[u32],
     button: usize,
     blinds: Blinds,
-    mut decide: impl FnMut(usize, &Spot) -> Action,
+    mut decide: impl FnMut(usize, &Spot, &Seen) -> Action,
 ) -> (Hand, Street, Vec<(Hand, Street, Street)>) {
     let seats = stacks.len();
     let mut stood = Vec::new();
@@ -173,6 +230,9 @@ fn bet(
     let mut lines: Vec<Vec<Act>> = vec![Vec::new(); seats];
     let mut committed = vec![0; seats];
     let mut street = hand.street();
+    let mut record = Vec::new();
+    // What each seat had in when the street began: before the flop nothing, so a blind is a bet.
+    let mut street_start = vec![0; seats];
     // How late a seat acts after the flop: the button's left is first, and the button is last.
     let late = |seat: usize| (seat + seats - button - 1) % seats;
     while let (Some(seat), Some(legal)) = (hand.to_act(), hand.legal()) {
@@ -180,6 +240,7 @@ fn bet(
             stood.push((hand.clone(), street, hand.street()));
             street = hand.street();
             committed.fill(0);
+            street_start = hand.committed();
         }
         let board = deal.shown(street);
         let folded = hand.folded();
@@ -205,11 +266,44 @@ fn bet(
                 .filter(|&other| other != seat && !folded[other])
                 .collect(),
         };
-        let action = nearest(decide(seat, &spot), legal);
+        let bets: Vec<u32> = hand
+            .committed()
+            .iter()
+            .zip(&street_start)
+            .map(|(total, start)| total - start)
+            .collect();
+        let seen = Seen {
+            button,
+            board: deal.board[..board.len()].to_vec(),
+            seats: (0..seats)
+                .map(|at| SeatSeen {
+                    stack: hand.stacks()[at],
+                    bet: bets[at],
+                    folded: folded[at],
+                })
+                .collect(),
+            record: record.clone(),
+        };
+        let action = nearest(decide(seat, &spot, &seen), legal);
         let before = hand.committed()[seat];
         if hand.act(action).is_err() {
             break;
         }
+        let put_in = !matches!(action, Action::Fold | Action::Check);
+        record.push(Record {
+            seat,
+            street,
+            action,
+            to: if put_in {
+                bets[seat] + hand.committed()[seat] - before
+            } else {
+                0
+            },
+            pot_before: pot,
+            owed_before: bets.iter().max().copied().unwrap_or(0) - bets[seat],
+            bet_before: bets[seat],
+            all_in: put_in && hand.stacks()[seat] == 0,
+        });
         let added = hand.committed()[seat] - before;
         committed[seat] += added;
         lines[seat].push(Act {
