@@ -130,6 +130,7 @@ fn a_live_short_call_uses_only_reconciled_hand_contributions() {
         s.on_frame(
             Inbound::PlayerAction {
                 seat: 3,
+                name: None,
                 action: "fold".into(),
                 amount: 0,
                 stack: 390,
