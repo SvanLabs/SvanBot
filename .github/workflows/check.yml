@@ -209,3 +209,35 @@ jobs:
                   raise SystemExit('Invalid measurement')
               lines.append('| {} | {:+d} | {} | {} |'.format(row['opponent'], round(row['mbb_per_100']), round(row['ci95']), row['deals']))
           publish(lines)
+
+  # The one status the `main` ruleset requires (V11-34). It needs every other job and passes only
+  # when they did, so a merge that waits on `check` waits on all of them. On a push there is no
+  # pull request to publish to, so the publication is not waited for there.
+  check:
+    name: check
+    needs: [commit, test, deny, arena, publication]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          EVENT: ${{ github.event_name }}
+          COMMIT: ${{ needs.commit.result }}
+          TEST: ${{ needs.test.result }}
+          DENY: ${{ needs.deny.result }}
+          ARENA: ${{ needs.arena.result }}
+          PUBLICATION: ${{ needs.publication.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for job in COMMIT TEST DENY ARENA; do
+            if [ "${!job}" != success ]; then
+              echo "check: ${job,,} is ${!job}" >&2
+              exit 1
+            fi
+          done
+          if [ "$EVENT" = pull_request ] && [ "$PUBLICATION" != success ]; then
+            echo "check: publication is $PUBLICATION" >&2
+            exit 1
+          fi
+          echo "check: every job passed"
