@@ -12,7 +12,7 @@ const BUDGET: Budget = Budget {
     seed: 5,
 };
 
-fn spot(hole: &str, board: &str, pot: u32, legal: Legal, opponents: usize) -> Spot {
+fn spot(hole: &str, board: &str, pot: u64, legal: Legal, opponents: usize) -> Spot {
     Spot {
         hole: hole.parse().unwrap(),
         board: board.parse().unwrap(),
@@ -29,7 +29,7 @@ fn spot(hole: &str, board: &str, pot: u32, legal: Legal, opponents: usize) -> Sp
     }
 }
 
-fn facing(call: u32, raise: Option<(u32, u32)>) -> Legal {
+fn facing(call: u64, raise: Option<(u64, u64)>) -> Legal {
     Legal {
         call: Some(call),
         raise: raise.map(|(min, max)| RaiseRange { min, max }),
@@ -85,6 +85,37 @@ fn aces_raise_preflop() {
         matches!(decision.action, Action::RaiseTo(_)),
         "{decision:?}"
     );
+}
+
+#[test]
+fn a_premium_hand_opens_a_full_table_to_two_and_a_half_blinds() {
+    // First to act of six, the blinds posted: kings are worth more raised than limped, and the
+    // raise is the table's standard open, not a shove.
+    let decision = decide(
+        &spot("KhKs", "", 30, facing(20, Some((40, 2000))), 5),
+        None,
+        BUDGET,
+    );
+    assert_eq!(decision.action, Action::RaiseTo(50), "{decision:?}");
+}
+
+#[test]
+fn an_unopened_pot_is_opened_or_folded_by_its_position() {
+    // Nobody has acted yet: every opponent still in is behind us. Five behind is UTG, two behind
+    // and in position is the button.
+    let seat = |hole: &str, behind: usize, in_position: bool| {
+        let mut at = spot(hole, "", 30, facing(20, Some((40, 2000))), behind);
+        at.lines = vec![vec![]; behind];
+        at.in_position = in_position;
+        decide(&at, None, BUDGET).action
+    };
+    assert_eq!(seat("AhKs", 5, false), Action::RaiseTo(50));
+    assert_eq!(seat("7h2s", 5, false), Action::Fold);
+    assert_eq!(seat("Kh9s", 5, false), Action::Fold);
+    assert_eq!(seat("Kh9s", 2, true), Action::RaiseTo(50));
+    // Heads up the button opens most hands; the same hand folds in the small blind of six.
+    assert_eq!(seat("8h5s", 1, true), Action::RaiseTo(50));
+    assert_eq!(seat("8h5s", 1, false), Action::Fold);
 }
 
 #[test]
@@ -177,6 +208,140 @@ fn every_decision_is_legal_and_the_same_seed_repeats_it() {
         assert!(legal_now, "{decision:?} at {spot:?}");
         assert_eq!(decide(&spot, None, budget), decision);
     }
+}
+
+/// A table whose players, facing a bet, always take `answer`, and otherwise check.
+fn answering(answer: svanbot_strategy::action::Move) -> svanbot_strategy::action::ActionModel {
+    use svanbot_strategy::action::{ActionModel, BUCKETS, Counts, Move, Situation};
+    let mut counts = Counts::default();
+    for situation in Situation::all() {
+        for bucket in 0..BUCKETS {
+            let mv = if situation.facing {
+                answer
+            } else {
+                Move::Check
+            };
+            counts.add(situation, bucket, mv, 1.0);
+        }
+    }
+    ActionModel::from_counts(&counts, 0.0)
+}
+
+#[test]
+fn a_bet_is_worth_the_pot_it_takes_when_everyone_folds() {
+    use svanbot_strategy::action::Move;
+    use svanbot_strategy::pricer::price_lines;
+    // 7-2 offsuit missed the board and checking wins it rarely; against two players who fold to
+    // any bet, a bet takes the whole pot every time.
+    let free = Legal {
+        call: None,
+        raise: Some(RaiseRange { min: 20, max: 2000 }),
+    };
+    let at = spot("7c2d", "AhKsQh", 400, free, 2);
+    let folds = answering(Move::Fold);
+    let decision = price_lines(&at, &[&folds, &folds], BUDGET);
+    assert!(
+        matches!(decision.action, Action::RaiseTo(_)),
+        "{decision:?}"
+    );
+    // Against two who never fold, the same bet only puts chips behind a losing hand.
+    let calls = answering(Move::Call);
+    let decision = price_lines(&at, &[&calls, &calls], BUDGET);
+    assert_eq!(decision.action, Action::Check, "{decision:?}");
+}
+
+#[test]
+fn a_call_is_priced_against_the_players_left_to_act_as_they_answer_it() {
+    use svanbot_core::rules::Street;
+    use svanbot_core::spot::{Act, ActKind};
+    use svanbot_strategy::action::{ActionModel, BUCKETS, Counts, Move, Situation};
+    use svanbot_strategy::pricer::price_lines;
+    // One player opened to three blinds; three are still to act, and this table folds 95% of
+    // the time to any bet, whatever it holds. Against four players who all stay, nines fall
+    // short of the price; against the opener and the few who call behind, they are worth it.
+    let mut counts = Counts::default();
+    for situation in Situation::all() {
+        for bucket in 0..BUCKETS {
+            if situation.facing {
+                counts.add(situation, bucket, Move::Fold, 0.95);
+                counts.add(situation, bucket, Move::Large, 0.05);
+            } else {
+                counts.add(situation, bucket, Move::Check, 1.0);
+            }
+        }
+    }
+    let table = ActionModel::from_counts(&counts, 0.0);
+    let mut at = spot("9h9s", "", 90, facing(60, None), 4);
+    let opened = Act {
+        street: Street::Preflop,
+        board: CardSet::EMPTY,
+        facing: true,
+        kind: ActKind::Bet { added: 60, pot: 30 },
+    };
+    at.lines = vec![vec![opened], vec![], vec![], vec![]];
+    let decision = price_lines(&at, &[&table; 4], BUDGET);
+    assert!(decision.equity < 0.4, "{decision:?}");
+    assert_eq!(decision.action, Action::Call, "{decision:?}");
+}
+
+/// A table whose players, facing a bet, fold, call or raise big at these rates, whatever they
+/// hold, and otherwise check.
+fn facing_table(fold: f64, call: f64, raise: f64) -> svanbot_strategy::action::ActionModel {
+    use svanbot_strategy::action::{ActionModel, BUCKETS, Counts, Move, Situation};
+    let mut counts = Counts::default();
+    for situation in Situation::all() {
+        for bucket in 0..BUCKETS {
+            if situation.facing {
+                counts.add(situation, bucket, Move::Fold, fold);
+                counts.add(situation, bucket, Move::Call, call);
+                counts.add(situation, bucket, Move::Large, raise);
+            } else {
+                counts.add(situation, bucket, Move::Check, 1.0);
+            }
+        }
+    }
+    ActionModel::from_counts(&counts, 0.0)
+}
+
+#[test]
+fn a_call_is_folded_when_the_players_behind_reraise_it() {
+    use svanbot_core::rules::Street;
+    use svanbot_core::spot::{Act, ActKind};
+    use svanbot_strategy::pricer::price_lines;
+    // The same open as above, but the three players still to act re-raise half the time they are
+    // bet into. A call that is squeezed out loses what it put in, so nines are folded.
+    let table = facing_table(0.5, 0.0, 0.5);
+    let mut at = spot("9h9s", "", 90, facing(60, None), 4);
+    let opened = Act {
+        street: Street::Preflop,
+        board: CardSet::EMPTY,
+        facing: true,
+        kind: ActKind::Bet { added: 60, pot: 30 },
+    };
+    at.lines = vec![vec![opened], vec![], vec![], vec![]];
+    let decision = price_lines(&at, &[&table; 4], BUDGET);
+    assert_eq!(decision.action, Action::Fold, "{decision:?}");
+}
+
+#[test]
+fn a_limp_is_priced_against_the_blinds_who_have_its_bet_in_already() {
+    use svanbot_core::rules::Street;
+    use svanbot_core::spot::{Act, ActKind};
+    use svanbot_strategy::pricer::price_lines;
+    // One player limped; four are behind, and they fold 98% of the time to a bet. A limp is not a
+    // bet they can fold to — the big blind already has it in — so 7-2 offsuit is not taken
+    // heads up against the limper: it meets the whole table, and folds.
+    let table = facing_table(0.98, 0.02, 0.0);
+    let mut at = spot("7h2s", "", 50, facing(20, None), 5);
+    let limped = Act {
+        street: Street::Preflop,
+        board: CardSet::EMPTY,
+        facing: true,
+        kind: ActKind::Call,
+    };
+    at.lines = vec![vec![limped], vec![], vec![], vec![], vec![]];
+    let decision = price_lines(&at, &[&table; 5], BUDGET);
+    assert_eq!(decision.action, Action::Fold, "{decision:?}");
 }
 
 #[test]

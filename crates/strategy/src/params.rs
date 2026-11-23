@@ -2,6 +2,9 @@
 //!
 //! The digest is FNV-1a over each number's name and bits, written here: a pure layer takes no
 //! crate for it. Two equal parameter sets have one digest, on any machine.
+//!
+//! The pricer once read two numbers of its own, a value margin and a raise share. Since V11-39 it
+//! values every action in chips instead, so neither is a number it plays by, and both are gone.
 
 use std::fmt;
 use std::str::FromStr;
@@ -12,27 +15,15 @@ pub struct Params {
     /// The exploit budget, 0 to 1: how far the re-solve holds a villain to their fitted action
     /// model past its depth limit.
     pub exploit: f64,
-    /// How far from its fair share to the whole pot the pricer's equity must be before it raises.
-    pub value_margin: f64,
-    /// The share of the pot a pricer's raise adds to the smallest raise.
-    pub raise_share: f64,
 }
 
 impl Params {
     /// What the bots play by until a challenger is promoted.
-    pub const DEFAULT: Self = Self {
-        exploit: 0.5,
-        value_margin: 0.4,
-        raise_share: 0.75,
-    };
+    pub const DEFAULT: Self = Self { exploit: 0.5 };
 
     /// Each number with its name.
-    pub fn named(&self) -> [(&'static str, f64); 3] {
-        [
-            ("exploit", self.exploit),
-            ("value_margin", self.value_margin),
-            ("raise_share", self.raise_share),
-        ]
+    pub fn named(&self) -> [(&'static str, f64); 1] {
+        [("exploit", self.exploit)]
     }
 
     /// This parameter set with the number called `name` set to `value`, or `None` for a name no
@@ -41,8 +32,6 @@ impl Params {
     pub fn with(mut self, name: &str, value: f64) -> Option<Self> {
         match name {
             "exploit" => self.exploit = value,
-            "value_margin" => self.value_margin = value,
-            "raise_share" => self.raise_share = value,
             _ => return None,
         }
         Some(self)

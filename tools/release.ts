@@ -4,10 +4,10 @@
 // Writes <out>/svanbot-<version>-<cpu>.tar.gz and the tarball's `.sha256` beside it.
 //
 // The program is built by the workflow, not here: this runs after `cargo build --release` and only
-// packages what is already in `target/dev/release`. `--cpu` names the instruction level in the
-// bundle's file name; it never selects one — a compiler cannot be told to emit a level it is not
-// running at, and CI's runner is x86-64-v3. Nothing downstream reads the level back: there is one
-// box and one runner, so the level is fixed by the build rather than checked at the install.
+// packages what is already in `target/dev/release`. `--cpu` names the instruction level the build
+// was made for (`RUSTFLAGS=-C target-cpu=<level>` in the workflow); it never selects one. The level
+// goes in the bundle's file name and in `UPGRADE/cpu`, which `install.sh` reads back and refuses
+// when the machine's CPU lacks it: a bot that reaches an instruction its CPU does not have dies.
 //
 // The archive's shape is the contract with two readers: `release/` is the staged release the
 // updater's `install` verifies (`crates/runtime/src/release.rs` — the program, its `sha256` and the
@@ -27,6 +27,12 @@ export const RELEASE = "release";
 
 /** What a machine with no toolchain takes: the installer, and the tool that does the swapping. */
 export const UPGRADE = "UPGRADE";
+
+/**
+ * The instruction level a release is built for: the box's. Its QEMU CPU reports every x86-64-v2
+ * flag (SSE4.2, POPCNT, SSSE3, CX16) and none of v3's (no AVX, AVX2, BMI or FMA).
+ */
+export const CPU = "x86-64-v2";
 
 /** The version manifest's name inside `release/`, which `Release::at` reads. */
 export const MANIFEST = "version";
@@ -56,7 +62,7 @@ export function version(root: string): string {
  * checksum is computed here and written both as `release/sha256` and into the version manifest, so
  * the two readers of the release cannot disagree about which bytes were released.
  */
-export function collect(root: string, version: string): Files {
+export function collect(root: string, version: string, cpu: string = CPU): Files {
   const program = built(root, PROGRAM);
   const digest = sha256(program);
   const files: Files = new Map();
@@ -67,6 +73,8 @@ export function collect(root: string, version: string): Files {
     if (!existsSync(path)) throw new Error(`no ${path}: build the release first`);
     files.set(`${UPGRADE}/${member}`, readFileSync(path));
   }
+  // The level the program was built for, which `install.sh` checks against the machine's CPU.
+  files.set(`${UPGRADE}/cpu`, Buffer.from(`${cpu}\n`));
   return files;
 }
 
@@ -168,7 +176,7 @@ export function build(options: { root: string; version: string; cpu: string; out
   sha256: string;
 } {
   const version = safe(options.version);
-  const bytes = pack(collect(options.root, version));
+  const bytes = pack(collect(options.root, version, options.cpu));
   const name = `${PROGRAM}-${version}-${options.cpu}.tar.gz`;
   mkdirSync(options.out, { recursive: true });
   const archive = join(options.out, name);
@@ -189,7 +197,7 @@ function flag(args: string[], name: string): string | undefined {
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const root = flag(args, "--root") ?? join(import.meta.dir, "..");
-  const cpu = flag(args, "--cpu") ?? "x86-64-v3";
+  const cpu = flag(args, "--cpu") ?? CPU;
   const forVersion = flag(args, "--version") ?? version(root);
   const out = flag(args, "--out") ?? join(root, "target/dist");
   const built = build({ root, version: forVersion, cpu, out });

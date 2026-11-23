@@ -8,12 +8,14 @@
 //! - It checks when the check is free, and it never folds then.
 
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
-use svanbot_core::rules::Action;
+use svanbot_core::rules::{Action, Street};
 use svanbot_core::spot::Spot;
-use svanbot_sim::equity::sampled;
+use svanbot_sim::equity::{Showdown, equity_over, showdowns};
 
-use crate::action::{ActionModel, Seen, range};
-use crate::params::Params;
+use crate::action::{ActionModel, Seen, range, ranked};
+
+mod ev;
+use crate::preflop;
 
 /// The work a decision may do, passed in so the decision never reads the clock: how many deals
 /// to sample, and the seed they are drawn from.
@@ -37,30 +39,18 @@ pub struct Decision {
 /// The pricer's decision at `spot`, with each opponent's range from `model` and their line, or
 /// uniform when there is no model or no line.
 pub fn decide(spot: &Spot, model: Option<&ActionModel>, budget: Budget) -> Decision {
-    price(spot, model, budget, &Params::DEFAULT)
-}
-
-/// [`decide`] by the margins of `params`.
-pub fn price(
-    spot: &Spot,
-    model: Option<&ActionModel>,
-    budget: Budget,
-    params: &Params,
-) -> Decision {
     match model {
-        Some(model) => price_lines(spot, &vec![model; spot.lines.len()], budget, params),
-        None => price_lines(spot, &[], budget, params),
+        Some(model) => price_lines(spot, &vec![model; spot.lines.len()], budget),
+        None => price_lines(spot, &[], budget),
     }
 }
 
-/// [`price`] with each opponent's line read by its own model: `models[i]` reads `spot.lines[i]`.
+/// [`decide`] with each opponent's line read by its own model: `models[i]` reads `spot.lines[i]`.
 /// A line without a model is read as uniform.
-pub fn price_lines(
-    spot: &Spot,
-    models: &[&ActionModel],
-    budget: Budget,
-    params: &Params,
-) -> Decision {
+pub fn price_lines(spot: &Spot, models: &[&ActionModel], budget: Budget) -> Decision {
+    if let Some(decision) = opening(spot) {
+        return decision;
+    }
     let uniform = uniform_range(spot.hole | spot.board);
     let read: Vec<Vec<(CardSet, f64)>> = spot
         .lines
@@ -74,9 +64,15 @@ pub fn price_lines(
         .collect();
     let mut ranges: Vec<&[(CardSet, f64)]> = read.iter().map(Vec::as_slice).collect();
     ranges.resize(spot.opponents.max(1), &uniform);
-    let equity = sampled(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
+    let dealt = showdowns(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
+    let equity = equity_over(&dealt);
+    // A line with no model of its own answers a raise as the baseline's sound opponent would.
+    let baseline = ActionModel::baseline();
+    let folding: Vec<&ActionModel> = (0..ranges.len())
+        .map(|at| models.get(at).copied().unwrap_or(&baseline))
+        .collect();
     Decision {
-        action: choose(spot, equity, params),
+        action: choose(spot, &dealt, &folding, equity),
         equity,
         price: price_of(spot),
     }
@@ -86,25 +82,117 @@ pub fn price_lines(
 /// ordinary pot price. `None` when there is nothing to call.
 pub fn price_of(spot: &Spot) -> Option<f64> {
     spot.legal.call.map(|call| {
-        f64::from(call) / (f64::from(spot.callable_pot.unwrap_or(spot.pot)) + f64::from(call))
+        (call as f64) / ((spot.callable_pot.unwrap_or(spot.pot) as f64) + (call as f64))
     })
 }
 
-fn choose(spot: &Spot, equity: f64, params: &Params) -> Action {
-    let fair = 1.0 / (spot.opponents.max(1) + 1) as f64;
-    if let Some(range) = spot.legal.raise
-        && equity > fair + (1.0 - fair) * params.value_margin
+/// The action worth the most chips from here on ([`ev`]). The passive action is worth our share
+/// of the pot it is played into; a raise must beat it outright, so a tie stays passive, and a
+/// free check is never folded.
+fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64) -> Action {
+    let sizes = ev::sizes(spot);
+    let answering = answering(spot, models.len());
+    // Each opponent's fold chances, built only when a raise or an answered call will read them.
+    let references = if !sizes.is_empty() || (spot.legal.call.is_some() && answering != 0) {
+        ev::references(spot, dealt, models, &ranked(spot.board))
+    } else {
+        Vec::new()
+    };
+    let (mut best, mut worth) = match spot.legal.call {
+        None => (Action::Check, equity * (spot.pot as f64)),
+        Some(call) => {
+            let pot = spot.callable_pot.unwrap_or(spot.pot);
+            let called = if answering == 0 {
+                equity * ((pot as f64) + (call as f64)) - (call as f64)
+            } else {
+                ev::call(
+                    dealt,
+                    &references,
+                    answering,
+                    pot,
+                    call,
+                    spot.committed + call,
+                )
+            };
+            if called >= 0.0 {
+                (Action::Call, called)
+            } else {
+                (Action::Fold, 0.0)
+            }
+        }
+    };
+    if !sizes.is_empty() {
+        let call = spot.legal.call.unwrap_or(0);
+        for to in sizes {
+            let raised = ev::raise(dealt, &references, spot.pot, call, to - spot.committed);
+            if raised > worth {
+                (best, worth) = (Action::RaiseTo(to), raised);
+            }
+        }
+    }
+    best
+}
+
+/// The decision in an unopened pot, from the opening range ([`preflop::opens`]): before the flop,
+/// with nobody yet to have acted, every opponent still in is behind us. A hand the position opens is
+/// raised to the table's standard open, and any other folds (or checks, when it is free). `None`
+/// when the pot has been opened, when a raise is not open to us, or when the caller did not follow
+/// the hand: with no lines, an unopened pot cannot be told from a raised one.
+fn opening(spot: &Spot) -> Option<Decision> {
+    if !spot.board.is_empty() || spot.lines.is_empty() || spot.legal.raise.is_none() {
+        return None;
+    }
+    if spot
+        .lines
+        .iter()
+        .flatten()
+        .any(|act| act.street == Street::Preflop)
     {
-        let size = range
-            .min
-            .saturating_add((f64::from(spot.pot) * params.raise_share) as u32);
-        return Action::RaiseTo(size.clamp(range.min, range.max));
+        return None;
     }
-    match price_of(spot) {
-        None => Action::Check,
-        Some(price) if equity >= price => Action::Call,
-        Some(_) => Action::Fold,
+    let class = preflop::class_of(spot.hole);
+    let position = preflop::Position {
+        behind: spot.opponents,
+        in_position: spot.in_position,
+    };
+    let action = if preflop::opens(class, position) {
+        Action::RaiseTo(*ev::sizes(spot).first()?)
+    } else if spot.legal.call.is_none() {
+        Action::Check
+    } else {
+        Action::Fold
+    };
+    Some(Decision {
+        action,
+        equity: preflop::equity(class, spot.opponents),
+        price: price_of(spot),
+    })
+}
+
+/// The opponents, a bit each in the order of the ranges, who have not acted on this street yet
+/// and so still answer its bet. None when the caller did not follow the hand: with no lines,
+/// nobody can be told apart, and every opponent is taken to be in.
+fn answering(spot: &Spot, opponents: usize) -> u64 {
+    if spot.lines.is_empty() {
+        return 0;
     }
+    let street = Street::of(spot.board);
+    let mut answering = (0..opponents.min(u64::BITS as usize))
+        .filter(|&at| {
+            spot.lines
+                .get(at)
+                .is_none_or(|line| line.iter().all(|act| act.street != street))
+        })
+        .fold(0u64, |bits, at| bits | (1 << at));
+    // Before the flop, a bet of one big blind is a limp: the big blind has it in already and never
+    // folds to it, so one of the players still to act stays in rather than answering. The spot
+    // does not say which seat is the blind; the last of them in line order is taken, and the
+    // players with no act yet are read alike, from an empty line.
+    let bet = spot.committed + spot.legal.call.unwrap_or(0);
+    if street == Street::Preflop && bet <= spot.big_blind && answering != 0 {
+        answering &= !(1 << (u64::BITS - 1 - answering.leading_zeros()));
+    }
+    answering
 }
 
 /// Every pair of hole cards that avoids the `dead` cards, each with weight 1.

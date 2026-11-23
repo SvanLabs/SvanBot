@@ -12,7 +12,7 @@ fn session() -> Session {
     Session::new("SurSvan", ROSTER.map(String::from))
 }
 
-fn player(seat: usize, name: &str, stack: u32) -> Player {
+fn player(seat: usize, name: &str, stack: u64) -> Player {
     Player {
         seat,
         name: name.into(),

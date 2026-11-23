@@ -398,7 +398,7 @@ fn arena(fleet_dir: &Path) -> (Value, Vec<String>) {
     // own board (V11-29), so a newer run of one says nothing of the other's.
     if let Ok(champion) = fleet.champion() {
         let digest = champion.digest().to_string();
-        for league in [fleet::League::HeadsUp, fleet::League::SixMax] {
+        for league in fleet::League::ALL {
             if let Some(latest) = runs.iter().find(|run| run.league == league)
                 && latest.champion != digest
             {

@@ -8,3 +8,6 @@
 node_modules/
 .DS_Store
 /package-lock.json
+
+# What a bot run from a checkout writes beside it: its record of starts, read by the updater.
+crates/apps/svanbot/health/

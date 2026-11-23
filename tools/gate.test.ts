@@ -14,6 +14,7 @@ test("the commit tier runs the fast checks first and clippy last", () => {
     "secrets",
     "provenance",
     "headline",
+    "site",
     "layering",
     "clippy",
   ]);
@@ -25,6 +26,11 @@ test("the headline check joins the commit tier, so a stale README fails a commit
   expect(step("commit", "headline")?.argv).toEqual([process.execPath, "tools/headline.ts"]);
 });
 
+test("the site check joins the commit tier, so a broken link never reaches GitHub", () => {
+  // It reads the README and the site's pages and looks for files: as fast as the headline's check.
+  expect(step("commit", "site")?.argv).toEqual([process.execPath, "tools/site.ts"]);
+});
+
 test("the full tier adds the tests and the type check, then reports the disk budget", () => {
   expect(names("full")).toEqual([
     "fmt",
@@ -33,6 +39,7 @@ test("the full tier adds the tests and the type check, then reports the disk bud
     "secrets",
     "provenance",
     "headline",
+    "site",
     "layering",
     "clippy",
     "nextest",
@@ -122,7 +129,11 @@ test("fmt, biome and tsc check without building or writing", () => {
   const checks = ["fmt", "biome", "tsc"].map((name) => step("full", name));
   expect(checks).toEqual([
     { name: "fmt", argv: ["cargo", "fmt", "--all", "--check"], env: {} },
-    { name: "biome", argv: ["biome", "check", "tools", "crates/apps/svanbot/web"], env: {} },
+    {
+      name: "biome",
+      argv: ["biome", "check", "tools", "crates/apps/svanbot/web", "site"],
+      env: {},
+    },
     { name: "tsc", argv: ["tools/node_modules/.bin/tsc", "-p", "tools"], env: {} },
   ]);
 });

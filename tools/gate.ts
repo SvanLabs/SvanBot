@@ -2,7 +2,7 @@
 // by the pre-commit hook. The full tier runs before a push and adds the tests and the type check.
 // Run it under mise (`mise run commit`, `mise run full`), so every tool is the pinned one.
 //   bun tools/gate.ts commit   fmt, biome, the 500-line limit, the secret scan, provenance, the
-//                              README's headline, the layering check and clippy
+//                              README's headline, the site's links, the layering check and clippy
 //   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc, the tool tests and
 //                              the dashboard page's tests,
 //                              and last the disk budget of this clone's target/
@@ -22,6 +22,7 @@ const COMMIT = [
   "secrets",
   "provenance",
   "headline",
+  "site",
   "layering",
   "clippy",
 ];
@@ -54,11 +55,16 @@ function stepFor(name: string): Step {
     case "fmt":
       return { name, argv: ["cargo", "fmt", "--all", "--check"], env: {} };
     case "biome":
-      return { name, argv: ["biome", "check", "tools", "crates/apps/svanbot/web"], env: {} };
+      return {
+        name,
+        argv: ["biome", "check", "tools", "crates/apps/svanbot/web", "site"],
+        env: {},
+      };
     case "file-size":
     case "secrets":
     case "provenance":
     case "headline":
+    case "site":
     case "layering":
     case "disk":
       return { name, argv: [process.execPath, `tools/${name}.ts`], env: {} };

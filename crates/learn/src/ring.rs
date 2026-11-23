@@ -97,5 +97,5 @@ pub fn ring_seen(
         chips += won[us];
     }
     challenger.finished_deal();
-    chips / (seats as f64 * f64::from(game.blinds.big))
+    chips / (seats as f64 * game.blinds.big as f64)
 }

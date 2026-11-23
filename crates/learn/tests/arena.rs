@@ -206,3 +206,66 @@ fn the_learning_opponent_learns_across_a_bout_and_both_hands_of_a_deal_meet_it_t
         "it forgot between deals: {first:?} then {last:?}"
     );
 }
+
+/// A challenger that checks or calls, and notes the seat it held in every hand it finished.
+struct Counting<'a>(&'a RefCell<Vec<usize>>);
+
+impl svanbot_learn::paired::Challenger for Counting<'_> {
+    fn decide(&self, spot: &Spot, seed: u64) -> Action {
+        check_or_call(spot, seed)
+    }
+
+    fn finished_hand(
+        &self,
+        us: usize,
+        _lines: &[Vec<svanbot_core::spot::Act>],
+        _actions: &[svanbot_sim::table::Record],
+    ) {
+        self.0.borrow_mut().push(us);
+    }
+}
+
+#[test]
+fn a_ring_of_three_four_or_five_plays_each_deal_once_from_every_seat() {
+    use svanbot_learn::arena::{ring_bout_at, v10_ring_at};
+    for seats in 3..=5 {
+        let held = RefCell::new(Vec::new());
+        let won = ring_bout_at(&MATCH, seats, Archetype::Nit, 0, &Counting(&held));
+        assert_eq!(won.len(), BOUT as usize);
+        let held = held.into_inner();
+        assert_eq!(held.len(), seats * BOUT as usize, "{seats} seats");
+        for deal in held.chunks(seats) {
+            assert_eq!(deal, (0..seats).collect::<Vec<_>>(), "{seats} seats");
+        }
+        let held = RefCell::new(Vec::new());
+        v10_ring_at(&MATCH, seats, 3, &Counting(&held));
+        assert_eq!(
+            held.into_inner(),
+            (0..seats).collect::<Vec<_>>(),
+            "{seats} seats"
+        );
+    }
+}
+
+#[test]
+fn two_builds_are_compared_bout_by_bout_over_the_same_deals() {
+    use svanbot_learn::arena::compare;
+
+    // Bout sums are big blinds a hand summed over a bout's 50 deals: 5 and 10 more a bout is
+    // 0.1 and 0.2 bb a hand, a mean of 15,000 mbb/100 with a standard error of 0.05 bb a hand.
+    let found = compare(&[10.0, 20.0], &[15.0, 30.0]).unwrap();
+    assert_eq!(found.deals, 100);
+    assert!((found.mbb_per_100 - 15_000.0).abs() < 1e-6, "{found:?}");
+    assert!((found.ci95 - 9_800.0).abs() < 1e-6, "{found:?}");
+
+    let same = compare(&[3.0, -7.0, 1.5], &[3.0, -7.0, 1.5]).unwrap();
+    assert_eq!((same.mbb_per_100, same.ci95, same.deals), (0.0, 0.0, 150));
+}
+
+#[test]
+fn runs_of_different_lengths_are_not_compared() {
+    use svanbot_learn::arena::compare;
+
+    assert_eq!(compare(&[1.0, 2.0], &[1.0]), None);
+    assert_eq!(compare(&[], &[]), None);
+}

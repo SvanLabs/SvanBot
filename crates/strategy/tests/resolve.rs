@@ -13,7 +13,7 @@ use svanbot_strategy::resolve::{
 
 const SEED: u64 = 5;
 
-fn spot(hole: &str, board: &str, pot: u32, legal: Legal) -> Spot {
+fn spot(hole: &str, board: &str, pot: u64, legal: Legal) -> Spot {
     Spot {
         hole: hole.parse().unwrap(),
         board: board.parse().unwrap(),
@@ -30,7 +30,7 @@ fn spot(hole: &str, board: &str, pot: u32, legal: Legal) -> Spot {
     }
 }
 
-fn facing(call: u32, raise: Option<(u32, u32)>) -> Legal {
+fn facing(call: u64, raise: Option<(u64, u64)>) -> Legal {
     Legal {
         call: Some(call),
         raise: raise.map(|(min, max)| RaiseRange { min, max }),
@@ -83,8 +83,8 @@ fn every_re_solved_action_is_legal_and_the_same_seed_repeats_it() {
     let boards = ["Ks9d4c", "Ks9d4c7h", "Ks9d4c7h2s"];
     let mut rng = Rng::seeded(3);
     for round in 0..6 {
-        let pot = 40 + rng.below(600) as u32;
-        let stack = 100 + rng.below(3000) as u32;
+        let pot = 40 + rng.below(600);
+        let stack = 100 + rng.below(3000);
         let legal = if round % 2 == 0 {
             Legal {
                 call: None,
@@ -94,7 +94,7 @@ fn every_re_solved_action_is_legal_and_the_same_seed_repeats_it() {
                 }),
             }
         } else {
-            let call = (1 + rng.below(u64::from(pot) / 2) as u32).min(stack);
+            let call = (1 + rng.below(pot / 2)).min(stack);
             let raise = (stack > 2 * call).then_some(RaiseRange {
                 min: 2 * call,
                 max: stack,

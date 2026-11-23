@@ -12,10 +12,7 @@ use svanbot_runtime::record::Hand;
 use svanbot_runtime::store::Store;
 use svanbot_strategy::params::Params;
 
-const CHALLENGER: Params = Params {
-    raise_share: 0.9,
-    ..Params::DEFAULT
-};
+const CHALLENGER: Params = Params { exploit: 0.9 };
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("svanbot-probing-{}-{name}", std::process::id()));

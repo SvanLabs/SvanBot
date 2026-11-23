@@ -1,7 +1,7 @@
 //! The spot: a point where a bot must act, as the decision sees it.
 
 use crate::card::CardSet;
-use crate::rules::{Action, Legal, Street};
+use crate::rules::{Action, Chips, Legal, Street};
 
 /// What a decision knows when the bot must act.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -11,20 +11,20 @@ pub struct Spot {
     /// The community cards, zero to five.
     pub board: CardSet,
     /// The chips in the middle, the bets on this street included.
-    pub pot: u32,
+    pub pot: Chips,
     /// Chips already in the pot the bot could win by calling, excluding excess side-pot chips.
     /// `None` when the caller does not know the hand contributions.
-    pub callable_pot: Option<u32>,
+    pub callable_pot: Option<Chips>,
     /// The actions open to the bot.
     pub legal: Legal,
     /// How many opponents are still in the hand.
     pub opponents: usize,
     /// The bot's chips behind.
-    pub stack: u32,
+    pub stack: Chips,
     /// The chips the bot has put in on this street already: a raise-to is this plus what it adds.
-    pub committed: u32,
+    pub committed: Chips,
     /// The hand's big blind, the unit a pot is sized in.
-    pub big_blind: u32,
+    pub big_blind: Chips,
     /// Whether the bot acts last on the streets after the flop: of the seats still in, it is the
     /// last one round the table from the button's left.
     pub in_position: bool,
@@ -39,7 +39,7 @@ pub struct Spot {
 
 /// Chips already in the pot at or below the caller's final contribution, folded seats included.
 /// `totals` are the whole hand's contributions before the call, not just this street's bets.
-pub fn callable_pot(totals: &[u32], cap: u32) -> u32 {
+pub fn callable_pot(totals: &[Chips], cap: Chips) -> Chips {
     totals.iter().map(|&chips| chips.min(cap)).sum()
 }
 
@@ -83,7 +83,7 @@ pub enum ActKind {
     Call,
     /// A bet or raise: the chips it added, and the pot before it.
     Bet {
-        added: u32,
-        pot: u32,
+        added: Chips,
+        pot: Chips,
     },
 }

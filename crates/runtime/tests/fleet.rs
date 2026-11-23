@@ -16,11 +16,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 /// Numbers with no short decimal form: they must come back to the bit.
-const CHALLENGER: Params = Params {
-    exploit: 0.1 + 0.2,
-    value_margin: 1.0 / 3.0,
-    raise_share: 0.75,
-};
+const CHALLENGER: Params = Params { exploit: 0.1 + 0.2 };
 
 fn proposal() -> Proposal {
     Proposal {
@@ -48,7 +44,7 @@ fn a_champion_file_whose_numbers_do_not_hash_to_its_digest_is_refused() {
     fleet.promote(&CHALLENGER).unwrap();
     let path = dir.join("champion.json");
     let text = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(&path, text.replace("0.75", "0.76")).unwrap();
+    std::fs::write(&path, text.replace("0.30000000000000004", "0.3")).unwrap();
     assert!(fleet.champion().is_err());
 }
 

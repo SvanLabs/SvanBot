@@ -1,14 +1,14 @@
 //! What a live bot decides from: the table as this session sees it, read out as the pure
 //! `Spot` that the policy takes. Nothing here writes, and nothing here reads a clock.
 
-use svanbot_core::rules::{Legal, RaiseRange};
+use svanbot_core::rules::{Chips, Legal, RaiseRange};
 use svanbot_core::spot::Spot;
 
 use super::{HandSeen, Session};
 use crate::wire::{Player, Turn};
 
 impl HandSeen {
-    fn callable_pot(&self, turn: &Turn, hero: &Player) -> Option<u32> {
+    fn callable_pot(&self, turn: &Turn, hero: &Player) -> Option<Chips> {
         if turn.hand_id.as_ref().is_some_and(|id| id != &self.hand_id) {
             return None;
         }
@@ -26,7 +26,7 @@ impl HandSeen {
         // Even fresh opening stacks cannot account for dead money from a missing seat.
         (totals
             .iter()
-            .try_fold(0u32, |sum, chips| sum.checked_add(*chips))?
+            .try_fold(0u64, |sum, chips| sum.checked_add(*chips))?
             == turn.pot)
             .then(|| svanbot_core::spot::callable_pot(&totals, cap))
     }

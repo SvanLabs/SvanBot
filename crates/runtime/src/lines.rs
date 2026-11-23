@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use svanbot_core::card::{Card, CardSet};
-use svanbot_core::rules::Street;
+use svanbot_core::rules::{Chips, Street};
 use svanbot_core::spot::{Act, ActKind};
 
 use crate::wire::Inbound;
@@ -20,7 +20,7 @@ pub struct Lines {
     /// The board in the order it was dealt, for display; `board` is the set for equity.
     board_order: Vec<Card>,
     street: Option<Street>,
-    pot: u32,
+    pot: Chips,
     /// Whether a bet stands on this street. The blinds are one preflop.
     bet: bool,
     acts: BTreeMap<usize, Vec<Act>>,
@@ -29,9 +29,9 @@ pub struct Lines {
     events: Vec<(usize, Act)>,
     folded: BTreeSet<usize>,
     /// Each seat's chips in on this street.
-    committed: BTreeMap<usize, u32>,
-    small_blind: u32,
-    big_blind: u32,
+    committed: BTreeMap<usize, Chips>,
+    small_blind: Chips,
+    big_blind: Chips,
     dealer: usize,
 }
 
@@ -141,7 +141,7 @@ impl Lines {
     /// every seat dealt into the hand, folded or not, which places the blinds: the venue posts the
     /// small blind left of the dealer and the big blind two left, and heads up the dealer posts the
     /// small one (two left of the dealer would be the dealer itself).
-    pub fn committed(&self, seat: usize, dealt: &[usize]) -> u32 {
+    pub fn committed(&self, seat: usize, dealt: &[usize]) -> Chips {
         let acted = self.committed.get(&seat).copied().unwrap_or(0);
         if self.street != Some(Street::Preflop) {
             return acted;
@@ -179,7 +179,7 @@ impl Lines {
     }
 
     /// The hand's big blind.
-    pub fn big_blind(&self) -> u32 {
+    pub fn big_blind(&self) -> Chips {
         self.big_blind
     }
 
@@ -204,7 +204,7 @@ impl Lines {
     }
 
     /// The pot as the actions have counted it.
-    pub fn pot(&self) -> u32 {
+    pub fn pot(&self) -> Chips {
         self.pot
     }
 

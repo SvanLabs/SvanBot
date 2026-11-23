@@ -5,13 +5,10 @@ use svanbot_runtime::ledger::{Ledger, ORBIT};
 use svanbot_runtime::record::Hand;
 use svanbot_strategy::params::Params;
 
-const CHALLENGER: Params = Params {
-    exploit: 0.9,
-    ..Params::DEFAULT
-};
+const CHALLENGER: Params = Params { exploit: 0.9 };
 
 /// A hand at `table` that leaves our seat, 2, with `stack` chips, in the venue's own frames.
-fn hand(table: &str, number: u32, stack: u32) -> Hand {
+fn hand(table: &str, number: u32, stack: u64) -> Hand {
     Hand {
         hand_id: format!("h-{table}-{number}"),
         table_id: table.to_owned(),
@@ -108,7 +105,7 @@ fn a_probe_holds_one_arm_for_an_orbit_and_plays_by_its_parameter_set() {
 /// `challenger`, until a verdict or `orbits` run out.
 fn play(ledger: &mut Ledger, champion: i64, challenger: i64, orbits: u32) -> Option<Verdict> {
     let mut stack: i64 = 1_000_000;
-    ledger.on_hand(&hand("t1", 0, stack as u32));
+    ledger.on_hand(&hand("t1", 0, stack as u64));
     for n in 0..orbits * ORBIT {
         // A little noise, so the spread is not zero.
         let noise = i64::from(n % 3) * 20 - 20;
@@ -118,7 +115,7 @@ fn play(ledger: &mut Ledger, champion: i64, challenger: i64, orbits: u32) -> Opt
             } else {
                 champion
             };
-        ledger.on_hand(&hand("t1", n + 1, stack as u32));
+        ledger.on_hand(&hand("t1", n + 1, stack as u64));
         if ledger.verdict() != Some(Verdict::Running) {
             break;
         }

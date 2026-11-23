@@ -1,0 +1,48 @@
+# The GitHub Pages site (V11-39): `site/`, plain HTML and CSS, published from `main`. The Arena's
+# pinned run goes in beside it as `headline.json`, copied from `fleet/headline.json`, the file the
+# README's headline is written from, so the site and the README cannot tell two stories.
+#
+# It builds nothing and runs no code of ours: it checks the links (`tools/site.ts`, which the commit
+# tier also runs) and uploads the directory. Every action is pinned to a commit.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "fleet/headline.json", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push replaces one still queued.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: publish the site
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+      - name: check the links
+        run: bun tools/site.ts
+      - name: put the pinned run beside the page
+        run: |
+          mkdir -p target/site
+          cp -R site/. target/site/
+          cp fleet/headline.json target/site/headline.json
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: target/site
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

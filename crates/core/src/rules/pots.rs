@@ -3,7 +3,7 @@
 //! A bet nobody called comes back as a pot only its bettor reached, and chips above every seat
 //! still in come back to whoever put them in.
 
-use super::Hand;
+use super::{Chips, Hand};
 use crate::eval::Strength;
 
 impl Hand {
@@ -11,20 +11,20 @@ impl Hand {
     /// strength of a seat still in the hand at the showdown. It is never asked of a seat that
     /// folded, nor at all when one seat is left. A pot that splits unevenly gives its odd chips
     /// one each to its winners, from the first left of the button.
-    pub fn payouts(&self, strength: impl Fn(usize) -> Strength) -> Vec<u32> {
+    pub fn payouts(&self, strength: impl Fn(usize) -> Strength) -> Vec<Chips> {
         let n = self.seats.len();
         let in_hand: Vec<usize> = (0..n).filter(|&i| !self.seats[i].folded).collect();
         let strengths: Vec<Option<Strength>> = (0..n)
             .map(|i| (in_hand.len() > 1 && !self.seats[i].folded).then(|| strength(i)))
             .collect();
-        let mut levels: Vec<u32> = self.seats.iter().map(|seat| seat.total).collect();
+        let mut levels: Vec<Chips> = self.seats.iter().map(|seat| seat.total).collect();
         levels.sort_unstable();
         levels.dedup();
 
         let mut payouts = vec![0; n];
         let mut below = 0;
         for level in levels {
-            let shares: Vec<u32> = self
+            let shares: Vec<Chips> = self
                 .seats
                 .iter()
                 .map(|seat| seat.total.min(level) - seat.total.min(below))
@@ -43,7 +43,7 @@ impl Hand {
                 }
                 continue;
             }
-            let pot: u32 = shares.iter().sum();
+            let pot: Chips = shares.iter().sum();
             let best = reached.iter().map(|&i| strengths[i]).max().flatten();
             // From the first seat left of the button, round the table.
             let mut winners: Vec<usize> = reached
@@ -51,9 +51,9 @@ impl Hand {
                 .filter(|&i| strengths[i] == best)
                 .collect();
             winners.sort_by_key(|&i| (i + n - self.button - 1) % n);
-            let count = winners.len() as u32;
+            let count = winners.len() as Chips;
             for (k, &winner) in winners.iter().enumerate() {
-                payouts[winner] += pot / count + u32::from((k as u32) < pot % count);
+                payouts[winner] += pot / count + Chips::from((k as Chips) < pot % count);
             }
         }
         payouts

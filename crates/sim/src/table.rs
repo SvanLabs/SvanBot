@@ -9,7 +9,7 @@
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::eval::strength;
 use svanbot_core::rng::Rng;
-use svanbot_core::rules::{Action, Blinds, Hand, Legal, Street};
+use svanbot_core::rules::{Action, Blinds, Chips, Hand, Legal, Street};
 use svanbot_core::spot::{Act, Spot};
 
 /// The cards of one hand: each seat's hole cards, and the board in the order it comes.
@@ -48,9 +48,9 @@ pub struct Seen {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SeatSeen {
     /// The chips behind.
-    pub stack: u32,
+    pub stack: Chips,
     /// The chips in on this street, a blind included.
-    pub bet: u32,
+    pub bet: Chips,
     pub folded: bool,
 }
 
@@ -62,12 +62,12 @@ pub struct Record {
     /// The action as it was played: the nearest legal one to what was asked.
     pub action: Action,
     /// The seat's street bet after it; 0 for a fold or a check.
-    pub to: u32,
+    pub to: Chips,
     /// The pot, this street's bets included.
-    pub pot_before: u32,
+    pub pot_before: Chips,
     /// What the seat owed: the street's top bet less its own.
-    pub owed_before: u32,
-    pub bet_before: u32,
+    pub owed_before: Chips,
+    pub bet_before: Chips,
     /// Whether it put the seat's last chip in.
     pub all_in: bool,
 }
@@ -90,7 +90,7 @@ pub fn deal(seats: usize, rng: &mut Rng) -> Deal {
 /// or lost. `decide` is asked for the action of a seat at its spot.
 pub fn play(
     deal: &Deal,
-    stacks: &[u32],
+    stacks: &[Chips],
     button: usize,
     blinds: Blinds,
     mut decide: impl FnMut(usize, &Spot) -> Action,
@@ -107,7 +107,7 @@ pub fn play(
     let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
     paid.iter()
         .zip(hand.committed())
-        .map(|(&paid, put_in)| i64::from(paid) - i64::from(put_in))
+        .map(|(&paid, put_in)| (paid as i64) - (put_in as i64))
         .collect()
 }
 
@@ -127,7 +127,7 @@ pub const RUNOUTS: usize = 1_500;
 /// river is paid its share of the run-outs.
 pub fn play_corrected(
     deal: &Deal,
-    stacks: &[u32],
+    stacks: &[Chips],
     button: usize,
     blinds: Blinds,
     seed: u64,
@@ -142,7 +142,7 @@ pub fn play_corrected(
 /// that reads every seat, as v10.0.2 did, decides from. Only the sim can show it.
 pub fn play_seen(
     deal: &Deal,
-    stacks: &[u32],
+    stacks: &[Chips],
     button: usize,
     blinds: Blinds,
     seed: u64,
@@ -154,7 +154,7 @@ pub fn play_seen(
 /// Plays a corrected hand and delivers the public betting history after the last action.
 pub fn play_observed(
     deal: &Deal,
-    stacks: &[u32],
+    stacks: &[Chips],
     button: usize,
     blinds: Blinds,
     seed: u64,
@@ -167,7 +167,7 @@ pub fn play_observed(
     let mut won: Vec<f64> = paid
         .iter()
         .zip(hand.committed())
-        .map(|(&paid, put_in)| f64::from(paid) - f64::from(put_in))
+        .map(|(&paid, put_in)| (paid as f64) - (put_in as f64))
         .collect();
     // The cards that came with the betting over are met with the chips as they ended.
     if hand.is_showdown() && last != Street::River {
@@ -197,7 +197,7 @@ fn expected(hand: &Hand, deal: &Deal, shown: CardSet, rng: &mut Rng) -> Vec<f64>
     let mut pay = |full: CardSet| {
         let chips = hand.payouts(|seat| strength(deal.holes[seat] | full));
         for (total, chips) in paid.iter_mut().zip(chips) {
-            *total += f64::from(chips);
+            *total += chips as f64;
         }
         count += 1.0;
     };
@@ -237,7 +237,7 @@ fn expected(hand: &Hand, deal: &Deal, shown: CardSet, rng: &mut Rng) -> Vec<f64>
 /// and after.
 fn bet(
     deal: &Deal,
-    stacks: &[u32],
+    stacks: &[Chips],
     button: usize,
     blinds: Blinds,
     mut decide: impl FnMut(usize, &Spot, &Seen) -> Action,
@@ -262,7 +262,7 @@ fn bet(
         let board = deal.shown(street);
         let folded = hand.folded();
         let pot = hand.pot();
-        let bets: Vec<u32> = hand
+        let bets: Vec<Chips> = hand
             .committed()
             .iter()
             .zip(&street_start)

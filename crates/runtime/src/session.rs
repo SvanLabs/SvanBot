@@ -25,14 +25,14 @@ use crate::status::{Seat, Table};
 use std::collections::BTreeMap;
 
 use svanbot_core::card::CardSet;
-use svanbot_core::rules::Action;
+use svanbot_core::rules::{Action, Chips};
 use svanbot_core::spot::Spot;
 use svanbot_strategy::policy::{Decision, Trace};
 
 use crate::wire::{Frame, Inbound, Offer, Outbound, Player, Turn, VenueAction};
 
 /// The buy-in the session asks for: the venue's default.
-pub const BUY_IN: u32 = 2000;
+pub const BUY_IN: Chips = 2000;
 
 /// A fair-play incident: raised to the operator and kept, never dropped.
 #[derive(Clone, Debug, PartialEq, Eq)]

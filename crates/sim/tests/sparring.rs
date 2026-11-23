@@ -4,7 +4,7 @@ use svanbot_core::rules::{Action, Legal, RaiseRange, Street};
 use svanbot_core::spot::{Act, ActKind, Spot};
 use svanbot_sim::sparring::{Archetype, PERIOD, Sparring};
 
-fn spot(hole: &str, board: &str, pot: u32, call: Option<u32>) -> Spot {
+fn spot(hole: &str, board: &str, pot: u64, call: Option<u64>) -> Spot {
     Spot {
         hole: hole.parse().unwrap(),
         board: board.parse().unwrap(),

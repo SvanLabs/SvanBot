@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{Value, json};
+use svanbot_core::rules::Chips;
 
 /// The status file that belongs to the store at `store`: `SurSvan.db` has
 /// `SurSvan.status.json`.
@@ -116,8 +117,8 @@ pub struct Table {
     pub street: Option<String>,
     /// The board so far, in the venue's notation (`Ah`).
     pub board: Vec<String>,
-    pub pot: u32,
-    pub big_blind: u32,
+    pub pot: Chips,
+    pub big_blind: Chips,
     pub dealer: usize,
     /// Every seated player, lowest seat first.
     pub players: Vec<Seat>,
@@ -128,7 +129,7 @@ pub struct Table {
 pub struct Seat {
     pub seat: usize,
     pub name: String,
-    pub stack: u32,
+    pub stack: Chips,
     pub folded: bool,
 }
 
@@ -195,8 +196,8 @@ impl Status {
                     .iter()
                     .filter_map(|card| card.as_str().map(str::to_owned))
                     .collect(),
-                pot: whole(table, "pot")? as u32,
-                big_blind: whole(table, "big_blind")? as u32,
+                pot: whole(table, "pot")? as Chips,
+                big_blind: whole(table, "big_blind")? as Chips,
                 dealer: whole(table, "dealer")? as usize,
                 players: list(table, "players")?
                     .iter()
@@ -204,7 +205,7 @@ impl Status {
                         Ok(Seat {
                             seat: whole(seat, "seat")? as usize,
                             name: text(seat, "name")?,
-                            stack: whole(seat, "stack")? as u32,
+                            stack: whole(seat, "stack")? as Chips,
                             folded: seat["folded"].as_bool().unwrap_or(false),
                         })
                     })

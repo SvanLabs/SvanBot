@@ -40,6 +40,47 @@ if [ -f "$bundle.sha256" ]; then
 fi
 
 [ -d "$work/release" ] || { echo "install.sh: the bundle has no release/ to stage" >&2; exit 1; }
+
+# The instruction level the program was built for, against the one this CPU has. A program built
+# above its CPU dies the first time it reaches an instruction the CPU lacks, so it is refused here,
+# before anything is staged. A bundle that does not name its level was built for the x86-64
+# baseline, which every 64-bit CPU has. `SVANBOT_CPUINFO` stands in for /proc/cpuinfo in a test.
+level_of() {
+  case "$1" in
+    x86-64) echo 1 ;;
+    x86-64-v2) echo 2 ;;
+    x86-64-v3) echo 3 ;;
+    x86-64-v4) echo 4 ;;
+    *) echo 0 ;;
+  esac
+}
+flags=" $(grep -m1 '^flags' "${SVANBOT_CPUINFO:-/proc/cpuinfo}" | cut -d: -f2) "
+has_all() {
+  for flag in "$@"; do
+    case "$flags" in *" $flag "*) ;; *) return 1 ;; esac
+  done
+}
+cpu_level=1
+if has_all cx16 lahf_lm popcnt sse4_1 sse4_2 ssse3; then
+  cpu_level=2
+  if has_all avx avx2 bmi1 bmi2 f16c fma abm movbe xsave; then
+    cpu_level=3
+    if has_all avx512f avx512bw avx512cd avx512dq avx512vl; then cpu_level=4; fi
+  fi
+fi
+built_for=x86-64
+[ -f "$work/UPGRADE/cpu" ] && built_for=$(head -n1 "$work/UPGRADE/cpu")
+built_level=$(level_of "$built_for")
+[ "$built_level" -gt 0 ] || {
+  echo "install.sh: the bundle was built for $built_for, a level this installer does not know" >&2
+  exit 1
+}
+[ "$built_level" -le "$cpu_level" ] || {
+  machine=x86-64
+  [ "$cpu_level" -gt 1 ] && machine="x86-64-v$cpu_level"
+  echo "install.sh: the bundle was built for $built_for, and this CPU is $machine: refused" >&2
+  exit 1
+}
 [ -f "$work/UPGRADE/svanbot-release" ] || {
   echo "install.sh: the bundle has no svanbot-release to install" >&2
   exit 1

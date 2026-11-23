@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde_json::Value;
 use svanbot_core::card::{Card, CardSet};
-use svanbot_core::rules::RaiseRange;
+use svanbot_core::rules::{Chips, RaiseRange};
 
 use super::snapshot::{Resync, Snapshot, resync, snapshot};
 
@@ -13,7 +13,7 @@ use super::snapshot::{Resync, Snapshot, resync, snapshot};
 pub struct Player {
     pub seat: usize,
     pub name: String,
-    pub stack: u32,
+    pub stack: Chips,
 }
 
 /// The actions a `your_turn` frame offers, exactly as offered: the bot never plays an action
@@ -23,11 +23,11 @@ pub struct Offer {
     pub fold: bool,
     pub check: bool,
     /// The chips a call puts in. A short all-in call comes as a call.
-    pub call: Option<u32>,
+    pub call: Option<Chips>,
     /// The raise-to totals allowed, both included.
     pub raise: Option<RaiseRange>,
     /// Offered only when going all in is a raise distinct from the others.
-    pub all_in: Option<u32>,
+    pub all_in: Option<Chips>,
 }
 
 /// It is our turn: everything the venue says about the spot, and what an action must echo.
@@ -37,7 +37,7 @@ pub struct Turn {
     pub hand_id: Option<String>,
     pub turn_token: String,
     pub offer: Offer,
-    pub pot: u32,
+    pub pot: Chips,
     pub board: Vec<Card>,
     pub players: Vec<Player>,
 }
@@ -63,11 +63,11 @@ impl From<Inbound> for Frame {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Detail {
     /// `contribution_delta`: the chips the action put in.
-    pub added: Option<u32>,
+    pub added: Option<Chips>,
     /// `pot_before`.
-    pub pot_before: Option<u32>,
+    pub pot_before: Option<Chips>,
     /// `to_call_before`, 0 when nothing was to call.
-    pub to_call: Option<u32>,
+    pub to_call: Option<Chips>,
 }
 
 /// One frame from the venue.
@@ -91,8 +91,8 @@ pub enum Inbound {
         hand_id: String,
         seat: usize,
         dealer_seat: usize,
-        small_blind: u32,
-        big_blind: u32,
+        small_blind: Chips,
+        big_blind: Chips,
     },
     HoleCards {
         cards: Vec<Card>,
@@ -110,8 +110,8 @@ pub enum Inbound {
         /// The venue names the seat in the action itself, when it sends one.
         name: Option<String>,
         action: String,
-        amount: u32,
-        stack: u32,
+        amount: Chips,
+        stack: Chips,
         detail: Detail,
     },
     CommunityCards {
@@ -120,7 +120,7 @@ pub enum Inbound {
     /// Each seat's stack once the pot is paid, lowest seat first, and the pairs shown at the
     /// showdown. A mucked pair is not shown.
     HandResult {
-        final_stacks: Vec<(usize, u32)>,
+        final_stacks: Vec<(usize, Chips)>,
         shown: Vec<(usize, CardSet)>,
     },
     PlayerJoined(Player),
@@ -255,11 +255,8 @@ fn inbound(frame: &Value) -> Read<Inbound> {
     })
 }
 
-fn optional_chips(frame: &Value, key: &str) -> Option<u32> {
-    frame
-        .get(key)
-        .and_then(Value::as_u64)
-        .and_then(|n| u32::try_from(n).ok())
+fn optional_chips(frame: &Value, key: &str) -> Option<Chips> {
+    frame.get(key).and_then(Value::as_u64)
 }
 
 /// `shown_cards`, by seat: present only at a showdown, and never with a mucked pair.
@@ -301,11 +298,10 @@ pub(super) fn text_at(frame: &Value, key: &str) -> Read<String> {
         .ok_or_else(|| WireError(format!("`{key}` is not text: {value}")))
 }
 
-pub(super) fn chips_at(frame: &Value, key: &str) -> Read<u32> {
+pub(super) fn chips_at(frame: &Value, key: &str) -> Read<Chips> {
     let value = field(frame, key)?;
     value
         .as_u64()
-        .and_then(|n| u32::try_from(n).ok())
         .ok_or_else(|| WireError(format!("`{key}` is not a chip count: {value}")))
 }
 
@@ -368,7 +364,7 @@ pub(super) fn offer_at(frame: &Value) -> Read<Offer> {
     Ok(offer)
 }
 
-fn final_stacks(frame: &Value) -> Read<Vec<(usize, u32)>> {
+fn final_stacks(frame: &Value) -> Read<Vec<(usize, Chips)>> {
     let value = field(frame, "final_stacks")?;
     let stacks = value
         .as_object()

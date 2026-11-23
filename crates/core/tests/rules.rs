@@ -8,7 +8,7 @@ use svanbot_core::rules::{Action, Blinds, Hand, RaiseRange, Street};
 
 const VENUE: Blinds = Blinds { small: 10, big: 20 };
 
-fn hand(stacks: &[u32], button: usize) -> Hand {
+fn hand(stacks: &[u64], button: usize) -> Hand {
     Hand::new(stacks, button, VENUE)
 }
 
@@ -154,7 +154,7 @@ fn random_hands_keep_every_chip_and_accept_every_legal_action() {
     let mut rng = Rng::seeded(11);
     for _ in 0..3_000 {
         let seats = 2 + rng.below(5) as usize;
-        let stacks: Vec<u32> = (0..seats).map(|_| 1 + rng.below(3_000) as u32).collect();
+        let stacks: Vec<u64> = (0..seats).map(|_| 1 + rng.below(3_000)).collect();
         let mut hand = hand(&stacks, rng.below(seats as u64) as usize);
         let mut turns = 0;
         while let Some(legal) = hand.legal() {
@@ -171,14 +171,14 @@ fn random_hands_keep_every_chip_and_accept_every_legal_action() {
             }
             let action = match (rng.below(4), legal.call, legal.raise) {
                 (0, _, _) => Action::Fold,
-                (1, _, Some(range)) => Action::RaiseTo(
-                    range.min + rng.below(u64::from(range.max - range.min) + 1) as u32,
-                ),
+                (1, _, Some(range)) => {
+                    Action::RaiseTo(range.min + rng.below(range.max - range.min + 1))
+                }
                 (_, Some(_), _) => Action::Call,
                 (_, None, _) => Action::Check,
             };
             hand.act(action).unwrap();
-            let held: Vec<u32> = hand
+            let held: Vec<u64> = hand
                 .stacks()
                 .iter()
                 .zip(hand.committed())
@@ -198,7 +198,7 @@ fn random_hands_keep_every_chip_and_accept_every_legal_action() {
             })
             .collect();
         let payouts = hand.payouts(|seat| strengths[seat]);
-        assert_eq!(payouts.iter().sum::<u32>(), hand.pot());
+        assert_eq!(payouts.iter().sum::<u64>(), hand.pot());
     }
 }
 

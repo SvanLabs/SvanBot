@@ -18,7 +18,7 @@ pub const REFRESH: Duration = Duration::from_secs(5);
 
 /// What a counted hand won, in thousandths of a big blind, with the luck of our draws taken out.
 pub fn mbb(played: &Played) -> i64 {
-    ((played.net as f64 - played.luck) / f64::from(played.big_blind.max(1)) * 1000.0).round() as i64
+    ((played.net as f64 - played.luck) / played.big_blind.max(1) as f64 * 1000.0).round() as i64
 }
 
 struct Inner {

@@ -117,7 +117,7 @@ fn it_authenticates_joins_and_answers_its_turn() {
         ("t-1", Some(2), Some("h-1"), Some("flop"), 30, 20)
     );
     assert_eq!(table.board, ["Ah", "Kd", "7c"]);
-    let seats: Vec<(&str, u32)> = table
+    let seats: Vec<(&str, u64)> = table
         .players
         .iter()
         .map(|seat| (seat.name.as_str(), seat.stack))

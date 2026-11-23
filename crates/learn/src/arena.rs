@@ -11,7 +11,7 @@
 use svanbot_sim::sparring::{Archetype, Memory, Sparring};
 use svanbot_sim::v10::seat::V10;
 
-use crate::paired::{Challenger, Match, Verdict, duel_seen};
+use crate::paired::{Challenger, Match, Verdict, duel_seen, verdict};
 use crate::ring::{SIX_MAX, ring_seen};
 
 mod reader;
@@ -55,17 +55,30 @@ pub fn bout_against(
         .collect()
 }
 
-/// Plays 6-max bout `number` against five of `archetype`: its deals, each once from every seat
-/// ([`ring_seen`]), in order. Each seat has its own opponent, and a learning one watches the
-/// challenger's seat, not its own copies. Returns what the challenger won on each deal, in big blinds a hand.
+/// Plays 6-max bout `number` against five of `archetype`: [`ring_bout_at`] at a full table.
 pub fn ring_bout(
     game: &Match,
     archetype: Archetype,
     number: u64,
     challenger: &impl Challenger,
 ) -> Vec<f64> {
-    ring_deals(
+    ring_bout_at(game, SIX_MAX, archetype, number, challenger)
+}
+
+/// Plays bout `number` at a table of `seats` (three to six) against `seats - 1` of `archetype`:
+/// its deals, each once from every seat ([`ring_seen`]), in order. Each seat has its own opponent,
+/// and a learning one watches the challenger's seat, not its own copies. Returns what the
+/// challenger won on each deal, in big blinds a hand.
+pub fn ring_bout_at(
+    game: &Match,
+    seats: usize,
+    archetype: Archetype,
+    number: u64,
+    challenger: &impl Challenger,
+) -> Vec<f64> {
+    ring_deals_at(
         game,
+        seats,
         archetype,
         number * BOUT..(number + 1) * BOUT,
         challenger,
@@ -79,14 +92,25 @@ pub fn ring_deals(
     numbers: std::ops::Range<u64>,
     challenger: &impl Challenger,
 ) -> Vec<f64> {
-    let opponents: Vec<Sparring> = (0..SIX_MAX).map(|_| Sparring::new(archetype)).collect();
+    ring_deals_at(game, SIX_MAX, archetype, numbers, challenger)
+}
+
+/// Plays consecutive deals at a table of `seats` with the same sparring opponents.
+pub fn ring_deals_at(
+    game: &Match,
+    seats: usize,
+    archetype: Archetype,
+    numbers: std::ops::Range<u64>,
+    challenger: &impl Challenger,
+) -> Vec<f64> {
+    let opponents: Vec<Sparring> = (0..seats).map(|_| Sparring::new(archetype)).collect();
     numbers
         .map(|deal| {
             // Every rotation meets each opponent as it was when the deal began, as in [`bout`].
             let start: Vec<Memory> = opponents.iter().map(Sparring::memory).collect();
             ring_seen(
                 game,
-                SIX_MAX,
+                seats,
                 deal,
                 challenger,
                 &|seat, spot, _, seed| opponents[seat].decide(spot, seed, deal),
@@ -117,15 +141,41 @@ pub fn v10_duel(game: &Match, number: u64, challenger: &impl Challenger) -> f64 
 
 /// Plays deal `number` at a full table of v10.0.2, once from every seat ([`ring_seen`]).
 pub fn v10_ring(game: &Match, number: u64, challenger: &impl Challenger) -> f64 {
+    v10_ring_at(game, SIX_MAX, number, challenger)
+}
+
+/// Plays deal `number` at a table of `seats` with v10.0.2 in every other seat, once from every
+/// seat.
+pub fn v10_ring_at(game: &Match, seats: usize, number: u64, challenger: &impl Challenger) -> f64 {
     let v10 = V10::default();
     ring_seen(
         game,
-        SIX_MAX,
+        seats,
         number,
         challenger,
         &|seat, spot, seen, seed| v10.decide(seat, spot, seen, seed),
         |_| {},
     )
+}
+
+/// What a second build won over a first on the same bouts: `next` minus `base`, bout by bout,
+/// from two runs' recorded bout sums (big blinds a hand, summed over a bout). Two runs on one
+/// seed play the same deals with the same seeds, so the difference is paired and the luck that
+/// both builds met cancels. `None` when the runs are not the same bouts: an empty run, or two of
+/// different lengths.
+pub fn compare(base: &[f64], next: &[f64]) -> Option<Verdict> {
+    if base.is_empty() || base.len() != next.len() {
+        return None;
+    }
+    let per_deal: Vec<f64> = base
+        .iter()
+        .zip(next)
+        .map(|(base, next)| (next - base) / BOUT as f64)
+        .collect();
+    Some(Verdict {
+        deals: per_deal.len() * BOUT as usize,
+        ..verdict(&per_deal)
+    })
 }
 
 /// One line of the scoreboard: an opponent, and the verdict against it.

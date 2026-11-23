@@ -50,9 +50,11 @@ mod deciders;
 mod download;
 mod fit;
 mod paired;
+mod paired_compare;
 mod paired_reads;
 mod propose;
 mod ship;
+mod tables;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -88,6 +90,11 @@ fn main() -> ExitCode {
     // The dashboard is not a bot: it records no start.
     if std::env::args().nth(1).as_deref() == Some("dashboard") {
         return svanbot::dashboard::run(fleet_dir());
+    }
+    // Nor is writing the preflop tables: it prints them and exits.
+    if std::env::args().nth(1).as_deref() == Some("tables") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return tables::run(&args);
     }
     // Nor is the ship bar's check.
     if std::env::args().nth(1).as_deref() == Some("release-check") {

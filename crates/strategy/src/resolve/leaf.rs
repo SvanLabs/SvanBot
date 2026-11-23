@@ -13,7 +13,7 @@
 //! baseline's. The exploit budget pins that share of their choice to their model; the rest stays
 //! free to answer us.
 
-use svanbot_core::rules::Street;
+use svanbot_core::rules::{Chips, Street};
 
 use super::showdown::Showdown;
 use crate::action::{ActionModel, BUCKETS, Move, Situation};
@@ -75,7 +75,7 @@ pub struct Deep {
     /// The seat that acts first after the flop: 0 is us.
     pub first: usize,
     /// Our chips behind at the root. The villain is taken to cover us.
-    pub stack: u32,
+    pub stack: Chips,
     /// The share of the villain's choice pinned to their first, their model: the exploit budget.
     pub pin: f64,
 }
@@ -138,16 +138,16 @@ impl Leaves {
         &self,
         player: usize,
         pot: f64,
-        added: [u32; 2],
+        added: [Chips; 2],
         theirs: &[f64],
         choice: &mut Choice,
         (turn, positive): (u32, f64),
     ) -> Vec<f64> {
-        let paid = f64::from(added[player]);
+        let paid = added[player] as f64;
         let pairs = theirs.len();
         let (ends, scale) = self.sample(turn, pairs);
         let deep = self.deep.as_ref().and_then(|deep| {
-            let bet = (BET * pot).min(f64::from(deep.stack.saturating_sub(added[0])));
+            let bet = (BET * pot).min(deep.stack.saturating_sub(added[0]) as f64);
             (bet > 0.0).then_some((deep, bet))
         });
         let Some((deep, bet)) = deep else {

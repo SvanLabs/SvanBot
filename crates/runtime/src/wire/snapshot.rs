@@ -3,6 +3,7 @@
 
 use serde_json::Value;
 use svanbot_core::card::Card;
+use svanbot_core::rules::Chips;
 
 use super::inbound::{
     Frame, Offer, Player, Read, WireError, cards_at, chips_at, frame_of, offer_at, optional_text,
@@ -34,7 +35,7 @@ pub struct Hero {
 pub struct Snapshot {
     /// From the envelope; an action taken on this snapshot must echo it.
     pub hand_id: Option<String>,
-    pub pot: u32,
+    pub pot: Chips,
     pub board: Vec<Card>,
     /// The occupied seats only: an empty seat or one without a name is left out.
     pub seats: Vec<Seat>,
