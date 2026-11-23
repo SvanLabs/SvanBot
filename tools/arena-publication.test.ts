@@ -6,7 +6,9 @@ const workflow = Bun.YAML.parse(
   readFileSync(new URL("../.github/workflows/check.yml", import.meta.url), "utf8"),
 ) as { jobs: { publication: { steps: [{ run: string }] } } };
 
-function publish(scenario: string, required = "yes", artifact = "1") {
+const NIT = '[{"opponent":"nit","deals":100,"ci95":5,"mbb_per_100":-10}]';
+
+function publish(scenario: string, required = "yes", artifact = "1", rows = NIT) {
   const probe = `
 import json, os, sys
 from unittest.mock import patch
@@ -37,7 +39,7 @@ print(json.dumps({'status': status, 'writes': writes}))`;
       GITHUB_SERVER_URL: "https://github.com",
       GITHUB_RUN_ID: "2",
       ARTIFACT: `https://github.com/owner/repo/actions/runs/2/artifacts/${artifact}`,
-      ROWS: '[{"opponent":"nit","deals":100,"ci95":5,"mbb_per_100":-10}]',
+      ROWS: rows,
     },
   });
   if (result.exitCode !== 0) throw Error(result.stderr.toString());
@@ -56,6 +58,17 @@ test("a push during publication cannot earn a passing check", () => {
 
 test("a missing artifact cannot earn a passing check", () => {
   expect(publish("current", "yes", "")).toEqual({ status: "Missing run artifact", writes: [] });
+});
+
+test("the v10.0.2 row publishes, and a name that could break the table does not", () => {
+  const v10 = '[{"opponent":"v10.0.2","deals":100,"ci95":98090,"mbb_per_100":-85130}]';
+  const { status, writes } = publish("current", "yes", "1", v10);
+  expect(status).toBe(0);
+  expect(writes).toEqual([
+    ["PATCH", expect.stringContaining("| v10.0.2 | -85130 | 98090 | 100 |")],
+  ]);
+  const pipe = '[{"opponent":"nit | x","deals":100,"ci95":5,"mbb_per_100":-10}]';
+  expect(publish("current", "yes", "1", pipe).status).toBe("Invalid opponent name");
 });
 
 test("a non-behaviour head replaces a prior scoreboard without an artifact", () => {
