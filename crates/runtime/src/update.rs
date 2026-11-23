@@ -13,8 +13,9 @@
 //! A bot that systemd has **down** (inactive or failed) skips the first two steps: nothing is
 //! playing, so there is no hand to wait out and no process to retire. That is the **first start**
 //! on a fresh box, where `current` has never been set, and a bot the operator stopped. Its window
-//! points `current` and starts the bot. If the start fails, the bot is left as the window found
-//! it: down, with `current` back where it was, and nothing started in its place.
+//! points `current` and starts the bot. If the start fails, the bot is left down, as the window
+//! found it, with nothing started in its place and `current` back on the build it held. On a
+//! fresh box it held none, so it keeps the new build for the next try.
 //!
 //! Two things roll back, and both are checked from outside the process: a crash loop, three starts
 //! inside five minutes, which is the build failing to survive; and the harm guard, which a caller
@@ -95,7 +96,8 @@ impl fmt::Display for WindowError {
             Self::NeverCameUp { deadline_ms } => write!(
                 f,
                 "update: the bot was down and did not come up on the new build before \
-                 {deadline_ms}; it is stopped again, with `current` where it was"
+                 {deadline_ms}; it is stopped again, and `current` is back on the build it held, \
+                 if it held one"
             ),
             Self::CrashLoop => write!(
                 f,
