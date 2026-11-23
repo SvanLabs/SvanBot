@@ -41,9 +41,9 @@ test("the archive holds the staged release the updater verifies, and the files a
 });
 
 test("the bundle says the instruction level it was built for, so the installer can check it", () => {
-  expect(release.collect(fakeClone(), "2026.11.16", "x86-64-v2").get("UPGRADE/cpu")?.toString()).toBe(
-    "x86-64-v2\n",
-  );
+  expect(
+    release.collect(fakeClone(), "2026.11.16", "x86-64-v2").get("UPGRADE/cpu")?.toString(),
+  ).toBe("x86-64-v2\n");
   // The box is x86-64-v2, and that is what a release is built for unless told otherwise.
   expect(release.collect(fakeClone(), "2026.11.16").get("UPGRADE/cpu")?.toString()).toBe(
     `${release.CPU}\n`,

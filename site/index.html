@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SvanBot</title>
+  <meta name="description" content="A fleet of five no-limit hold'em bots that learns from every hand it plays, and changes how it plays only on evidence.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap bar">
+      <a class="brand" href="#top"><img src="icon.svg" alt="" width="28" height="28"> SvanBot</a>
+      <nav>
+        <a href="#arena">Arena</a>
+        <a href="#decides">How it decides</a>
+        <a href="#changes">How it changes</a>
+        <a href="#bar">Ship bar</a>
+        <a href="https://github.com/SvanLabs/SvanBot">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow">6-max no-limit hold'em · openpoker.ai · Rust, CPU only</p>
+        <h1>Five bots that learn from every hand, and change only on evidence.</h1>
+        <p class="lede">SvanBot plays on <a href="https://openpoker.ai">openpoker.ai</a> as five bots under one owner. Every decision is made in-process from the bot's own record of what it has seen. A new way to play reaches the table only after it has beaten the old one on the same cards.</p>
+        <div class="cta">
+          <a class="button" href="https://github.com/SvanLabs/SvanBot">Read the source</a>
+          <a class="button ghost" href="#arena">See the Arena</a>
+        </div>
+        <ul class="facts">
+          <li><strong>5</strong><span>bots, one owner</span></li>
+          <li><strong>6</strong><span>layers, four of them pure</span></li>
+          <li><strong>0</strong><span>third-party frameworks</span></li>
+          <li><strong>2</strong><span>leagues in the Arena</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="arena" class="band">
+      <div class="wrap">
+        <h2>The Arena's pinned run</h2>
+        <p>The champion against the pricer and the sparring archetypes, heads up. Each deal is played twice from mirrored seats so the luck of the cards cancels, and each bar is the 95% interval of what the champion won, in milli-big-blinds per 100 hands.</p>
+        <div id="board" class="board" aria-live="polite">
+          <p class="muted">The pinned run is published with the site. On a local copy, read it in the repo's <a href="https://github.com/SvanLabs/SvanBot#the-arena-headline">README</a>.</p>
+        </div>
+        <p id="provenance" class="muted small"></p>
+      </div>
+    </section>
+
+    <section id="decides">
+      <div class="wrap">
+        <h2>How a bot decides</h2>
+        <ol class="flow">
+          <li><span class="step">1</span><div><h3>The spot</h3><p>Our cards, the board, the pot, the legal actions, our position, and every opponent's line through the hand, by seat.</p></div></li>
+          <li><span class="step">2</span><div><h3>The ranges</h3><p>The action model gives each move a probability by street, by whether a bet is faced, and by hand strength. A range follows from a line by Bayes' rule, and each opponent's own read tilts it as evidence comes in.</p></div></li>
+          <li><span class="step">3</span><div><h3>The decision</h3><p>Heads up after the flop, <strong>the re-solve</strong> solves the rest of the street over both whole ranges by Discounted CFR. Everywhere else, <strong>the pricer</strong> values each legal action in chips over the deals it samples, including the pot a raise takes when the table folds.</p></div></li>
+          <li><span class="step">4</span><div><h3>The action</h3><p>The nearest legal action reaches the venue, echoing its hand and turn ids, inside the action clock. The work is an input: samples, iterations and a seed, never a clock.</p></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="changes" class="band">
+      <div class="wrap two">
+        <div>
+          <h2>How it changes</h2>
+          <p>The fleet plays by one parameter set, the champion, named by its digest. A challenger meets it first in a paired sim: the same deals from mirrored seats. Only a challenger whose whole interval is above zero reaches the canary.</p>
+          <p>The canary, SurSvan, then plays one arm an orbit for 3,000 live hands, with the luck of its own draws taken out. Cleared, the other four adopt the challenger between hands. Harmful, nobody plays it again.</p>
+        </div>
+        <div class="card">
+          <h3>Fair play is absolute</h3>
+          <ul class="ticks">
+            <li>Two stablemates never share a table. The seat guard sees every seat list and leaves at the first that seats one.</li>
+            <li>A shared hand is an incident: kept in the store, logged at crit.</li>
+            <li>Each bot's reads are its own, from its own store.</li>
+            <li>Only legal actions reach the venue.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="bar">
+      <div class="wrap">
+        <h2>The ship bar</h2>
+        <div class="stages">
+          <div class="card"><p class="eyebrow">Stage 1</p><h3>The Arena</h3><p>Heads up and 6-max, bout by bout, through an anytime-valid 95% confidence sequence. It passes once v10.0.2 is wholly beaten in both, and refuses at once if any row is wholly below zero, or at 48 hours of box CPU.</p></div>
+          <div class="card"><p class="eyebrow">Stage 2</p><h3>The canary</h3><p>SurSvan plays the release first. After 20,000 hands, the canary less the fleet must not be wholly below zero.</p></div>
+          <div class="card"><p class="eyebrow">Stage 3</p><h3>The operator</h3><p>The release is tagged, built by CI, checksummed, and installed canary first. The operator says when.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <h2>Six layers, four of them pure</h2>
+        <div class="layers" role="list">
+          <span class="layer pure" role="listitem">core</span><span class="arrow" aria-hidden="true">→</span>
+          <span class="layer pure" role="listitem">sim</span><span class="arrow" aria-hidden="true">→</span>
+          <span class="layer pure" role="listitem">strategy</span><span class="arrow" aria-hidden="true">→</span>
+          <span class="layer pure" role="listitem">learn</span><span class="arrow" aria-hidden="true">→</span>
+          <span class="layer world" role="listitem">runtime</span><span class="arrow" aria-hidden="true">→</span>
+          <span class="layer world" role="listitem">apps</span>
+        </div>
+        <p>A crate depends only on its own layer or a lower one. The four pure layers touch no network, no file, no store and no clock, so every sim plays again bit for bit. Two checks hold that on every commit.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap bar">
+      <span>SvanBot · MIT or Apache-2.0</span>
+      <span><a href="https://github.com/SvanLabs/SvanBot/issues/1040">The map, V11-00</a> · <a href="https://github.com/SvanLabs/SvanBot/blob/main/SECURITY.md">Security</a></span>
+    </div>
+  </footer>
+  <script src="site.js"></script>
+</body>
+</html>

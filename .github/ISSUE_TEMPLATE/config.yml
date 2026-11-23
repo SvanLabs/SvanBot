@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A security vulnerability
+    url: https://github.com/SvanLabs/SvanBot/security/advisories/new
+    about: Report it privately, never in a public issue (SECURITY.md).
+  - name: The venue's own documentation
+    url: https://docs.openpoker.ai/llms-full.txt
+    about: How openpoker.ai's game, client and export work. It comes before anything written here.

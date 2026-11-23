@@ -36,7 +36,10 @@ function install(cpu: string | undefined, flags: string) {
   const home = join(dir, "home");
   mkdirSync(home);
   const cpuinfo = join(dir, "cpuinfo");
-  writeFileSync(cpuinfo, `processor\t: 0\nflags\t\t: ${flags}\n\nprocessor\t: 1\nflags\t\t: ${flags}\n`);
+  writeFileSync(
+    cpuinfo,
+    `processor\t: 0\nflags\t\t: ${flags}\n\nprocessor\t: 1\nflags\t\t: ${flags}\n`,
+  );
   const run = Bun.spawnSync(["sh", INSTALL, bundle(dir, cpu), join(home, "tree")], {
     env: { HOME: home, PATH: process.env.PATH ?? "/usr/bin:/bin", SVANBOT_CPUINFO: cpuinfo },
   });
