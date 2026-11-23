@@ -20,3 +20,22 @@ fn the_fixed_archetypes_share_the_same_deals_in_the_paired_verdict() {
         "{stdout}"
     );
 }
+
+#[test]
+fn six_max_counts_each_rotated_deal_once_and_empty_reads_match() {
+    let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
+        .args(["paired", "reads", "6-max", "2", "1", "0"])
+        .env_clear()
+        .env(
+            "SVANBOT_HEALTH",
+            std::env::temp_dir().join(format!("svanbot-ring-reads-{}", std::process::id())),
+        )
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("reads on against off, 6-max: +0 mbb/100, 95% CI ±0, over 2 deals"),
+        "{stdout}"
+    );
+    assert_eq!(output.status.code(), Some(1));
+}

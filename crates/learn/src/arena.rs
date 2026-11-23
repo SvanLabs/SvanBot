@@ -64,8 +64,23 @@ pub fn ring_bout(
     number: u64,
     challenger: &impl Challenger,
 ) -> Vec<f64> {
+    ring_deals(
+        game,
+        archetype,
+        number * BOUT..(number + 1) * BOUT,
+        challenger,
+    )
+}
+
+/// Plays consecutive six-seat deals with the same sparring opponents.
+pub fn ring_deals(
+    game: &Match,
+    archetype: Archetype,
+    numbers: std::ops::Range<u64>,
+    challenger: &impl Challenger,
+) -> Vec<f64> {
     let opponents: Vec<Sparring> = (0..SIX_MAX).map(|_| Sparring::new(archetype)).collect();
-    (number * BOUT..(number + 1) * BOUT)
+    numbers
         .map(|deal| {
             // Every rotation meets each opponent as it was when the deal began, as in [`bout`].
             let start: Vec<Memory> = opponents.iter().map(Sparring::memory).collect();
