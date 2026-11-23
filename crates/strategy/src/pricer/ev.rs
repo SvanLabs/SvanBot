@@ -7,10 +7,6 @@
 //! leaves the pot to the rest; whoever calls adds the raise and goes to showdown. Re-raises are
 //! not answered after our own raise: it is priced as if the table only folds or calls.
 //!
-//! A call is different: the players still to act may re-raise behind it, as often as their model
-//! raises a bet among the times it goes on ([`Answer::raises`]). We then give the hand up, so a
-//! squeezed call is worth losing what it put in.
-//!
 //! The answers are summed over every way the table can split into folders and callers, so the
 //! value is exact for its deals rather than drawn again.
 
@@ -45,8 +41,6 @@ pub(super) fn continues(reference: f64, share: f64) -> f64 {
 pub(super) struct Answer {
     /// The chance they go on, calling or raising.
     pub goes_on: f64,
-    /// Of the times they go on, the share that are raises.
-    pub raises: f64,
 }
 
 /// Each opponent's answer, in each deal, to a bet at the model's reference size:
@@ -74,17 +68,9 @@ pub(super) fn references(
                         .get(hole)
                         .copied()
                         .unwrap_or(crate::action::BUCKETS / 2);
-                    let goes_on = 1.0 - model.prob(facing, bucket, Move::Fold);
-                    let raised: f64 = [Move::Small, Move::Medium, Move::Large]
-                        .into_iter()
-                        .map(|mv| model.prob(facing, bucket, mv))
-                        .sum();
-                    let raises = if goes_on > 0.0 {
-                        (raised / goes_on).min(1.0)
-                    } else {
-                        0.0
-                    };
-                    Answer { goes_on, raises }
+                    Answer {
+                        goes_on: 1.0 - model.prob(facing, bucket, Move::Fold),
+                    }
                 })
                 .collect()
         })
@@ -125,75 +111,6 @@ pub(super) fn raise(
                 deal.share_against(callers) * (pot + added + n * (added - call)) - added
             };
             total += chance * value;
-        }
-    }
-    total / (dealt.len().max(1)) as f64
-}
-
-/// What calling `call` is worth, on average over `dealt`, into a pot of `pot` where the street's
-/// bet is `bet`. An opponent in `answering` (a bit each) has not acted on this street yet: they
-/// answer the bet as they would a raise of it, folding, calling or re-raising, and a caller adds
-/// the bet. A re-raise from any of them squeezes us out, and the call is lost. The rest are in the
-/// pot already and stay to the showdown.
-pub(super) fn call(
-    dealt: &[Showdown],
-    references: &[Vec<Answer>],
-    answering: u64,
-    pot: Chips,
-    call: Chips,
-    bet: Chips,
-) -> f64 {
-    let (pot, call_chips, bet) = ((pot as f64), (call as f64), (bet as f64));
-    let share = bet / pot.max(1.0);
-    let mut total = 0.0;
-    for (deal, reference) in dealt.iter().zip(references) {
-        let opponents = reference.len() as u32;
-        let all = (1u64 << opponents) - 1;
-        let staying = all & !answering;
-        // Each answering player's chance to call and to re-raise, at this bet.
-        let answers: Vec<(f64, f64)> = reference
-            .iter()
-            .map(|answer| {
-                let goes_on = continues(answer.goes_on, share);
-                let raises = goes_on * answer.raises;
-                (goes_on - raises, raises)
-            })
-            .collect();
-        let mut unraised = 1.0;
-        for (at, &(_, raises)) in answers.iter().enumerate() {
-            if answering & (1 << at) != 0 {
-                unraised *= 1.0 - raises;
-            }
-        }
-        total -= (1.0 - unraised) * call_chips;
-        // Each subset of the answering players that calls while the rest fold, with its chance.
-        let mut callers = answering;
-        loop {
-            let mut chance = 1.0;
-            for (at, &(calls, raises)) in answers.iter().enumerate() {
-                if answering & (1 << at) != 0 {
-                    let folds = 1.0 - calls - raises;
-                    chance *= if callers & (1 << at) != 0 {
-                        calls
-                    } else {
-                        folds
-                    };
-                }
-            }
-            if chance > 0.0 {
-                let n = f64::from(callers.count_ones());
-                let against = staying | callers;
-                let share_won = if against == 0 {
-                    1.0
-                } else {
-                    deal.share_against(against)
-                };
-                total += chance * (share_won * (pot + call_chips + n * bet) - call_chips);
-            }
-            if callers == 0 {
-                break;
-            }
-            callers = (callers - 1) & answering;
         }
     }
     total / (dealt.len().max(1)) as f64

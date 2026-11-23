@@ -2,7 +2,14 @@
 
 v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final`.
 
-## 11.1.0: unreleased
+## 11.1.1: unreleased
+
+- A call is priced against every opponent still in the hand again (V11-42). Pricing it against
+  the players behind as they fold, call or squeeze lost to v10.0.2 at 6-max: v11.1.0 − main was
+  −18,640 ±16,727 mbb/100, and this build −8,227 ±16,449, over the same 2,000 deals. Raises keep
+  their fold equity, and unopened pots their opening range.
+
+## 11.1.0: released 2026-11-23
 
 Win rate against the field, at every table size (V11-39).
 

@@ -87,33 +87,14 @@ pub fn price_of(spot: &Spot) -> Option<f64> {
 }
 
 /// The action worth the most chips from here on ([`ev`]). The passive action is worth our share
-/// of the pot it is played into; a raise must beat it outright, so a tie stays passive, and a
-/// free check is never folded.
+/// of the pot it is played into, a call against every opponent still in the hand (V11-42); a raise
+/// must beat it outright, so a tie stays passive, and a free check is never folded.
 fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64) -> Action {
-    let sizes = ev::sizes(spot);
-    let answering = answering(spot, models.len());
-    // Each opponent's fold chances, built only when a raise or an answered call will read them.
-    let references = if !sizes.is_empty() || (spot.legal.call.is_some() && answering != 0) {
-        ev::references(spot, dealt, models, &ranked(spot.board))
-    } else {
-        Vec::new()
-    };
     let (mut best, mut worth) = match spot.legal.call {
         None => (Action::Check, equity * (spot.pot as f64)),
         Some(call) => {
             let pot = spot.callable_pot.unwrap_or(spot.pot);
-            let called = if answering == 0 {
-                equity * ((pot as f64) + (call as f64)) - (call as f64)
-            } else {
-                ev::call(
-                    dealt,
-                    &references,
-                    answering,
-                    pot,
-                    call,
-                    spot.committed + call,
-                )
-            };
+            let called = equity * ((pot as f64) + (call as f64)) - (call as f64);
             if called >= 0.0 {
                 (Action::Call, called)
             } else {
@@ -121,7 +102,10 @@ fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64)
             }
         }
     };
+    let sizes = ev::sizes(spot);
     if !sizes.is_empty() {
+        // Each opponent's fold chances, built only when there is a raise to price.
+        let references = ev::references(spot, dealt, models, &ranked(spot.board));
         let call = spot.legal.call.unwrap_or(0);
         for to in sizes {
             let raised = ev::raise(dealt, &references, spot.pot, call, to - spot.committed);
@@ -167,32 +151,6 @@ fn opening(spot: &Spot) -> Option<Decision> {
         equity: preflop::equity(class, spot.opponents),
         price: price_of(spot),
     })
-}
-
-/// The opponents, a bit each in the order of the ranges, who have not acted on this street yet
-/// and so still answer its bet. None when the caller did not follow the hand: with no lines,
-/// nobody can be told apart, and every opponent is taken to be in.
-fn answering(spot: &Spot, opponents: usize) -> u64 {
-    if spot.lines.is_empty() {
-        return 0;
-    }
-    let street = Street::of(spot.board);
-    let mut answering = (0..opponents.min(u64::BITS as usize))
-        .filter(|&at| {
-            spot.lines
-                .get(at)
-                .is_none_or(|line| line.iter().all(|act| act.street != street))
-        })
-        .fold(0u64, |bits, at| bits | (1 << at));
-    // Before the flop, a bet of one big blind is a limp: the big blind has it in already and never
-    // folds to it, so one of the players still to act stays in rather than answering. The spot
-    // does not say which seat is the blind; the last of them in line order is taken, and the
-    // players with no act yet are read alike, from an empty line.
-    let bet = spot.committed + spot.legal.call.unwrap_or(0);
-    if street == Street::Preflop && bet <= spot.big_blind && answering != 0 {
-        answering &= !(1 << (u64::BITS - 1 - answering.leading_zeros()));
-    }
-    answering
 }
 
 /// Every pair of hole cards that avoids the `dead` cards, each with weight 1.
