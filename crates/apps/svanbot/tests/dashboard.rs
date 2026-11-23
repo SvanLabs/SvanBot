@@ -212,7 +212,15 @@ fn a_status_that_cannot_be_read_is_a_problem_in_the_fleet() {
 #[test]
 fn the_page_its_script_and_its_styles_are_served_and_every_view_is_the_page() {
     let (addr, _dir) = serve("static");
-    for path in ["/", "/release", "/scoreboard", "/bot/SurSvan", "/?x=1"] {
+    for path in [
+        "/",
+        "/release",
+        "/scoreboard",
+        "/bot/SurSvan",
+        "/bot/SurSvan/dossier",
+        "/dossier",
+        "/?x=1",
+    ] {
         let (status, body) = get(addr, path);
         assert_eq!(status, 200, "{path}");
         assert!(body.contains("<title>SvanBot</title>"), "{path}: {body}");
@@ -227,6 +235,14 @@ fn the_page_its_script_and_its_styles_are_served_and_every_view_is_the_page() {
     let (status, body) = get(addr, "/replay.js");
     assert_eq!(status, 200);
     assert!(body.contains("export function handPage"), "{body}");
+    // So is the dossier, and a dossier path with a name no bot could have is no page.
+    let (status, body) = get(addr, "/dossier.js");
+    assert_eq!(status, 200);
+    assert!(body.contains("export function dossierPage"), "{body}");
+    let (status, _) = get(addr, "/bot/..%2F/dossier");
+    assert_eq!(status, 404);
+    let (status, _) = get(addr, "/bot/SurSvan/dossier/extra");
+    assert_eq!(status, 404);
     let (status, _) = get(addr, "/dom.js");
     assert_eq!(status, 200);
     let (status, body) = get(addr, "/app.css");

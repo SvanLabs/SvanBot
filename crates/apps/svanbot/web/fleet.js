@@ -195,6 +195,13 @@ export function route(path) {
   if (hand) {
     return { view: "hand", bot: hand[1], hand: hand[2] };
   }
+  const dossier = /^\/bot\/([A-Za-z0-9_-]{1,64})\/dossier$/.exec(path);
+  if (dossier) {
+    return { view: "dossier", bot: dossier[1] };
+  }
+  if (path === "/dossier") {
+    return { view: "dossiers" };
+  }
   const bot = /^\/bot\/([A-Za-z0-9_-]{1,64})$/.exec(path);
   if (bot) {
     return { view: "bot", bot: bot[1] };
