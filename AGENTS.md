@@ -7,14 +7,15 @@ glossary does, and add a term there the moment a new one settles.
 
 ## Where v11 stands
 
-v11 is written from scratch on the branch `v11` (`docs/adr/0002-v11-from-scratch.md`). The work is
+v11 is written from scratch, on `main` (`docs/adr/0002-v11-from-scratch.md`). The work is
 charted on GitHub as the map **V11-00** and its tickets **V11-01** to **V11-16**. Every change
 starts from a ticket. v10 is reference only: read it with `git show archive/v10/final:<path>`, and
 write the v11 version fresh, test-first.
 
-`main` is v10, and the live fleet updates from it. Branch from `v11`, and open every PR with
-`--base v11`. Name branches `v11-<nn>-<slug>` after the ticket, for example `v11-02-foundation`: git
-cannot hold a `v11/…` branch beside the `v11` branch.
+`main` is v11 (operator, 2026-11-23). v10 is the branch `v10` and the tag `archive/v10/final`.
+The live v10 fleet's checkout still fetches `main`, and since the two share no history, v10's
+updater refuses to move onto it; `SVANBOT_UPDATE_BRANCH=v10` points it back at v10. Branch from
+`main`, and open every PR with `--base main`. Name branches `v11-<nn>-<slug>` after the ticket, for example `v11-02-foundation`.
 
 **The venue's docs come first.** <https://docs.openpoker.ai/llms-full.txt> is the most important
 document in this project. The venue client, fair play, the export and the game rules are all
@@ -44,7 +45,7 @@ tier runs both:
 The commit-msg hook refuses a message without a `Generated-by:` line. Cargo builds into
 `target/dev` at low priority, on four jobs.
 
-CI (`.github/workflows/check.yml`) runs the same tiers on every pull request into `v11`: the
+CI (`.github/workflows/check.yml`) runs the same tiers on every pull request into `main`: the
 commit tier, the test tier and cargo-deny, side by side. A PR merges only when all three are green.
 
 ## Hooks and rules

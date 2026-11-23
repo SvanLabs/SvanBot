@@ -54,7 +54,7 @@ export function refusal(command: string, env: Record<string, string | undefined>
       const forced = args.some((arg) => /^(-f|--force|--force-with-lease(=.*)?)$/.test(arg));
       const refs = args.filter((arg) => !arg.startsWith("-") && arg !== "push");
       if (refs.some((ref) => /^\+?([^:]*:)?(refs\/heads\/)?main$/.test(ref))) {
-        return "main is v10, and the live fleet updates from it: v11 work is pushed to its own branch and merged into v11 by a pull request.";
+        return "main is pushed to only by a merged pull request: push the work to its own branch and open one into main.";
       }
       if (forced || refs.some((ref) => ref.startsWith("+"))) {
         return "A push never rewrites a branch here: no force. Add a commit, or open a new branch.";

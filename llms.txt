@@ -1,10 +1,10 @@
 # SvanBot v11
 
 > SvanBot plays 6-max no-limit hold'em on openpoker.ai with five bots under one owner. v11 is a
-> Rust workspace written from scratch on the branch `v11`: six layers, pure poker logic below a
-> runtime that owns the venue, the store and the clock. `main` is v10, which the live fleet runs.
+> Rust workspace written from scratch, on `main`: six layers, pure poker logic below a
+> runtime that owns the venue, the store and the clock. v10 is the branch `v10`.
 
-Read these in this order. Paths are relative to the repository root on the branch `v11`.
+Read these in this order. Paths are relative to the repository root on `main`.
 
 ## Start here
 

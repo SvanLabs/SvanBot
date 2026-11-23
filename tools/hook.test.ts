@@ -29,7 +29,7 @@ test("a push to main is refused, however it is spelled", () => {
     "git push --force-with-lease origin +v11:refs/heads/main",
     "cd /repo && git push origin main",
   ]) {
-    expect(refusal(command, {})).toContain("main is v10");
+    expect(refusal(command, {})).toContain("merged pull request");
   }
 });
 

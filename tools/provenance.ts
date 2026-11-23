@@ -1,7 +1,7 @@
 // Provenance: every commit names the system that produced it, in a `Generated-by: <tool>/<model>`
 // line (the model may be left out when it is not known). This checks the declaration, not who
 // wrote the code: the line is self-reported, and only review makes it true.
-//   bun tools/provenance.ts [range]          checks each commit in range (default origin/v11..HEAD)
+//   bun tools/provenance.ts [range]          checks each commit in range (default origin/main..HEAD)
 //   bun tools/provenance.ts --message FILE   checks one commit message: the commit-msg hook
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -48,7 +48,7 @@ if (import.meta.main) {
     process.exit(0);
   }
   const root = join(import.meta.dir, "..");
-  const problems = unattributed(commitsIn(first ?? "origin/v11..HEAD", root));
+  const problems = unattributed(commitsIn(first ?? "origin/main..HEAD", root));
   for (const problem of problems) console.log(problem);
   process.exit(problems.length > 0 ? 1 : 0);
 }

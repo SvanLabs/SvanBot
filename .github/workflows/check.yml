@@ -6,11 +6,11 @@ name: check
 
 on:
   pull_request:
-    branches: [v11]
+    branches: [main, v11]
   push:
-    branches: [v11]
+    branches: [main, v11]
   # Advisories arrive with no change of ours. GitHub runs a schedule only from the default branch,
-  # so this starts when v11 becomes it.
+  # so this runs from main.
   schedule:
     - cron: "23 5 * * 1"
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # provenance reads every commit since origin/v11
+          fetch-depth: 0 # provenance reads every commit since origin/main
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
       - run: bun install --cwd tools --frozen-lockfile
       # Our own crates are cached too, keyed by the lockfile and toolchain, and saved only from v11.
@@ -41,7 +41,7 @@ jobs:
         with:
           workspaces: ". -> target/dev"
           cache-workspace-crates: true
-          save-if: ${{ github.ref == 'refs/heads/v11' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: bun tools/gate.ts commit
 
   test:
@@ -56,7 +56,7 @@ jobs:
         with:
           workspaces: ". -> target/dev"
           cache-workspace-crates: true
-          save-if: ${{ github.ref == 'refs/heads/v11' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: bun tools/gate.ts test
 
   deny:
@@ -142,7 +142,7 @@ jobs:
           {
             echo ""
             echo "This run is not the README's headline. To pin it, download the \`arena\` artifact"
-            echo "and run \`bun tools/headline.ts --pin <downloaded>/arena.json\` on \`v11\`."
+            echo "and run \`bun tools/headline.ts --pin <downloaded>/arena.json\` on \`main\`."
           } >> "$GITHUB_STEP_SUMMARY"
       - id: upload
         if: steps.behaviour.outputs.run == 'yes'
