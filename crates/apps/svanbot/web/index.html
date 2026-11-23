@@ -3,26 +3,32 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="color-scheme" content="dark" />
     <title>SvanBot</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
     <header class="strip" aria-live="polite">
-      <a class="brand" href="/">
-        <svg viewBox="0 0 32 32" aria-hidden="true">
-          <circle class="chip-face" cx="16" cy="16" r="11" />
-          <circle class="chip-ring" cx="16" cy="16" r="14" />
-          <path
-            class="chip-suit"
-            d="M16 8c3 4 7 6 7 10a4 4 0 0 1-6 3l1 3h-4l1-3a4 4 0 0 1-6-3c0-4 4-6 7-10z"
-          />
-        </svg>
-        SvanBot
+      <a class="brand" href="/" aria-label="SvanBot control room">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32">
+            <path
+              class="brand-suit"
+              d="M16 5c3.6 4.6 9 7.4 9 12.2a5 5 0 0 1-8 4l1.4 4.8h-4.8l1.4-4.8a5 5 0 0 1-8-4C7 12.4 12.4 9.6 16 5z"
+            />
+          </svg>
+          <i>11</i>
+        </span>
+        <span class="brand-text">
+          <b>SvanBot</b>
+          <small>Control room / v11</small>
+        </span>
       </a>
-      <nav aria-label="Pages">
+      <nav id="bots" class="bot-tabs" aria-label="Bots"></nav>
+      <nav class="pages" aria-label="Pages">
         <a href="/">Fleet</a>
-        <a href="/scoreboard">Scoreboard</a>
+        <a href="/dossier">Opponents</a>
+        <a href="/scoreboard">Arena</a>
         <a href="/release">Release</a>
       </nav>
       <span id="count" class="muted"></span>

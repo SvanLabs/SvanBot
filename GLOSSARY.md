@@ -320,7 +320,8 @@ _Avoid_: live feed, telemetry loop, beat
 **Dashboard**:
 The loopback-only page and server that read every bot's status and push the fleet live. It shows
 the fleet; it never plays. Both are our own code, and the page is compiled into the `svanbot`
-binary.
+binary. Its page is laid out after v10's control room: a tab per bot, hero tiles, the signal rail,
+and each bot's table drawn live, with the fleet race ranking the bots by win rate.
 _Avoid_: UI, control panel, admin console
 
 **Event stream**:
