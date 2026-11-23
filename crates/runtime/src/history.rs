@@ -74,13 +74,7 @@ pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
 
 /// The bot's reads from its own stored `hands`, oldest first (`docs/adr/0004-reads-are-per-bot.md`).
 pub fn reads(hands: &[Hand], me: &str) -> Reads {
-    let mut reads = Reads::default();
-    for hand in hands {
-        for witness in witnesses(hand, me) {
-            reads.observe(witness);
-        }
-    }
-    reads
+    Reads::from_witnesses(hands.iter().flat_map(|hand| witnesses(hand, me)))
 }
 
 /// The status's view of `reads`: one dossier row per opponent, by name, aggregates only.

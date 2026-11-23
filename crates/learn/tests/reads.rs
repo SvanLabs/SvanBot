@@ -121,6 +121,26 @@ fn each_name_has_its_own_read_in_alphabetical_order() {
 }
 
 #[test]
+fn a_bulk_load_reads_the_same_as_hand_by_hand() {
+    // A switch at 30 for alpha, and a steady beta: the change point and the restarted read too.
+    let hands: Vec<Witness> = (0..60)
+        .flat_map(|number| {
+            [
+                hand("alpha_bot", number >= 30, None, None),
+                hand("beta_bot", false, Some(number % 3 == 0), Some(false)),
+            ]
+        })
+        .collect();
+    let mut one_by_one = Reads::default();
+    for witness in hands.clone() {
+        one_by_one.observe(witness);
+    }
+    let bulk = Reads::from_witnesses(hands);
+    assert_eq!(bulk, one_by_one);
+    assert_eq!(bulk.get("alpha_bot").unwrap().change(), Some(30));
+}
+
+#[test]
 fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
     // beta checks every hand: a fixed read that tilts their model toward checking.
     let reads = fixed("Beta_Bot", 60);

@@ -46,6 +46,8 @@ pub struct Opponent {
     read: Read,
     /// Actions in the read: those from the change on.
     actions: u32,
+    /// Hands counted into the read so far.
+    counted: usize,
 }
 
 impl Opponent {
@@ -60,26 +62,38 @@ impl Opponent {
             change: None,
             read: Read::default(),
             actions: 0,
+            counted: 0,
         }
     }
 
     fn observe(&mut self, witness: Witness) {
+        self.push(witness);
+        self.settle();
+    }
+
+    /// Adds a hand without classifying: a bulk load classifies once, at the end.
+    fn push(&mut self, witness: Witness) {
         self.tallies.push(witness.aggressive);
         self.vs_us.extend(witness.vs_us);
         self.vs_others.extend(witness.vs_others);
         self.hands.push(witness.actions);
+    }
+
+    /// Classifies the hands so far, and brings the read up to date with the change point. Each
+    /// classification reads the whole series, which is why a bulk load settles only once.
+    fn settle(&mut self) {
         let (class, change) = classify(&self.tallies, &self.vs_us, &self.vs_others);
         let change = change.map(|change| change.at);
         if change != self.change {
             // The read restarts where the present strategy began.
             self.read = Read::default();
             self.actions = 0;
-            for hand in &self.hands[change.unwrap_or(0)..] {
-                count(&mut self.read, &mut self.actions, hand);
-            }
-        } else if let Some(last) = self.hands.last() {
-            count(&mut self.read, &mut self.actions, last);
+            self.counted = change.unwrap_or(0);
         }
+        for hand in &self.hands[self.counted..] {
+            count(&mut self.read, &mut self.actions, hand);
+        }
+        self.counted = self.hands.len();
         self.class = class;
         self.change = change;
     }
@@ -146,10 +160,26 @@ pub struct Reads {
 impl Reads {
     /// Takes one hand's witness of one opponent.
     pub fn observe(&mut self, witness: Witness) {
+        self.entry(&witness.name).observe(witness);
+    }
+
+    /// The reads `witnesses` give, oldest first: the same as observing them one by one, but each
+    /// opponent is classified once, at the end, so a store's worth of hands loads in linear time.
+    pub fn from_witnesses(witnesses: impl IntoIterator<Item = Witness>) -> Self {
+        let mut reads = Self::default();
+        for witness in witnesses {
+            reads.entry(&witness.name).push(witness);
+        }
+        for opponent in reads.opponents.values_mut() {
+            opponent.settle();
+        }
+        reads
+    }
+
+    fn entry(&mut self, name: &str) -> &mut Opponent {
         self.opponents
-            .entry(witness.name.to_lowercase())
-            .or_insert_with(|| Opponent::new(witness.name.clone()))
-            .observe(witness);
+            .entry(name.to_lowercase())
+            .or_insert_with(|| Opponent::new(name.to_owned()))
     }
 
     pub fn get(&self, name: &str) -> Option<&Opponent> {
