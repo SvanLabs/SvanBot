@@ -30,9 +30,12 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # The box's target-cpu=native comes from .cargo/config.toml, which a release must not take: the
+  # A target-cpu=native in a cargo config would not travel, and a release must not take one: the
   # bundle is a fixed instruction level, built portably.
   RUSTFLAGS: ""
+  # Where every build in the project goes, and where `tools/release.ts` reads the programs from.
+  # Nothing else sets it: the gate's `cargo()` wrapper does, and this job calls cargo directly.
+  CARGO_TARGET_DIR: target/dev
   # The tag being released: the pushed tag, or the one `workflow_dispatch` names.
   TAG: ${{ inputs.tag || github.ref_name }}
 

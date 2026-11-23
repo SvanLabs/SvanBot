@@ -268,10 +268,17 @@ fn bet(
             .zip(&street_start)
             .map(|(total, start)| total - start)
             .collect();
+        let totals = hand.committed();
+        let before = totals[seat];
         let spot = Spot {
             hole: deal.holes[seat],
             board,
             pot,
+            // What a call can win: each seat's chips up to what ours will be, so a short call
+            // is never priced against a side pot it cannot win.
+            callable_pot: legal
+                .call
+                .map(|call| svanbot_core::spot::callable_pot(&totals, before + call)),
             legal,
             opponents: folded.iter().filter(|&&out| !out).count() - 1,
             stack: hand.stacks()[seat],
@@ -303,7 +310,6 @@ fn bet(
             record: record.clone(),
         };
         let action = nearest(decide(seat, &spot, &seen), legal);
-        let before = hand.committed()[seat];
         if hand.act(action).is_err() {
             break;
         }

@@ -81,6 +81,7 @@ fn spot(hole: &str, board: &str, pot: u32, call: u32, opponents: usize) -> Spot 
         },
         opponents,
         stack: 2000,
+        callable_pot: None,
         committed: 0,
         big_blind: 20,
         in_position: false,
