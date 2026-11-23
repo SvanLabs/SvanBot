@@ -22,14 +22,17 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use svanbot_runtime::fleet::{self, ArenaRun};
-use svanbot_runtime::release::version_cmp;
-use svanbot_runtime::slot::Slots;
 use svanbot_runtime::status::Fleet;
 use svanbot_runtime::store::Store;
 use svanbot_strategy::policy::{Branch, Ranged, Trace};
 
 mod page;
+mod release;
+mod season;
 mod stream;
+
+use release::release;
+pub use season::Season;
 
 /// Where the dashboard listens and what it reads.
 pub struct Config {
@@ -41,6 +44,8 @@ pub struct Config {
     pub fleet_dir: PathBuf,
     /// The install tree, whose slots say what is running.
     pub lib_dir: PathBuf,
+    /// The season board the watcher last read from the venue (`season::watch`).
+    pub season: Season,
 }
 
 impl Config {
@@ -374,6 +379,7 @@ fn fleet_now(config: &Config) -> Value {
         "problems": fleet.problems,
         "release": release(&config.lib_dir),
         "arena": runs,
+        "season": config.season.get(),
     })
 }
 
@@ -427,32 +433,6 @@ fn with_clock(mut fleet: Value) -> String {
     fleet.to_string()
 }
 
-/// What is installed and where the slots point: the "what's running" panel.
-fn release(lib_dir: &Path) -> Value {
-    let slots = Slots::in_dir(lib_dir);
-    let version = |slot: Option<PathBuf>| {
-        slot.and_then(|dir| {
-            dir.file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-    };
-    let mut installed: Vec<String> = std::fs::read_dir(lib_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        // A slot is a symlink and a staged release is not installed: neither is a build.
-        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| name != "staged")
-        .collect();
-    installed.sort_by(|a, b| version_cmp(a, b));
-    json!({
-        "current": version(slots.current()),
-        "previous": version(slots.previous()),
-        "installed": installed,
-    })
-}
-
 /// Runs the subcommand from the environment, for `svanbot dashboard`. `fleet_dir` is the binary's
 /// (`crate::fleet_dir`), which knows how `SVANBOT_FLEET` moves the fleet away from the stores.
 pub fn run(fleet_dir: PathBuf) -> ExitCode {
@@ -470,11 +450,18 @@ pub fn run(fleet_dir: PathBuf) -> ExitCode {
     };
     let addr =
         std::env::var("SVANBOT_DASHBOARD_ADDR").unwrap_or_else(|_| "127.0.0.1:5000".to_owned());
+    // The season board is the venue's public leaderboard; `SVANBOT_SEASON=off` keeps the
+    // dashboard off the network altogether.
+    let season = Season::default();
+    if std::env::var("SVANBOT_SEASON").as_deref() != Ok("off") {
+        season::watch(season.clone(), data_dir.clone());
+    }
     let server = match Server::bind(Config {
         addr: addr.clone(),
         data_dir: data_dir.clone(),
         fleet_dir,
         lib_dir,
+        season,
     }) {
         Ok(server) => server,
         Err(error) => {

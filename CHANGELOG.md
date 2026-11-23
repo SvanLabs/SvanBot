@@ -2,7 +2,26 @@
 
 v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final`.
 
-## 11.1.1: unreleased
+## 11.1.4: unreleased
+
+- The dashboard's control room is a board (V11-44): panels in three columns that the reader
+  arranges, hides and folds, shown a view at a time (Live, Opponents, Results, Learning, System,
+  All), as v10's were. Each bot's table shows what the bot reads of each opponent at it, in an
+  arena, felt or midnight look. New panels: the season board from the venue's public leaderboard,
+  a bot's season standing, opponent intel, highlights, the activity log, notes, and the Arena's
+  latest runs. The page redraws only what changed, so a note being typed or an open fallback
+  survives the stream. `SVANBOT_SEASON=off` keeps the dashboard off the network.
+
+## 11.1.3: released 2026-11-23
+
+- The dashboard reads like v10's control room (V11-44): a tab per bot, the workspace bar, hero
+  tiles, the signal rail, every bot's table live, and the fleet race.
+
+## 11.1.2: released 2026-11-23
+
+- The dashboard is a dark poker console, with each bot's table drawn on the felt (V11-44).
+
+## 11.1.1: released 2026-11-23
 
 - A call is priced against every opponent still in the hand again (V11-42). Pricing it against
   the players behind as they fold, call or squeeze lost to v10.0.2 at 6-max: v11.1.0 − main was

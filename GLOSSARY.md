@@ -50,6 +50,11 @@ _Avoid_: villain, enemy, rival
 One leaderboard period at the venue. Ranks, hand counts and the hand-history export all reset with it.
 _Avoid_: round, epoch
 
+**Season board**:
+The venue's public leaderboard for the season, as the dashboard keeps it: the top 20 and every
+bot of ours wherever it ranks, with the season's time left. Read once a minute, with no key.
+_Avoid_: ladder, standings table
+
 ### Fair play
 
 **Shared table**:
@@ -321,7 +326,9 @@ _Avoid_: live feed, telemetry loop, beat
 The loopback-only page and server that read every bot's status and push the fleet live. It shows
 the fleet; it never plays. Both are our own code, and the page is compiled into the `svanbot`
 binary. Its page is laid out after v10's control room: a tab per bot, hero tiles, the signal rail,
-and each bot's table drawn live, with the fleet race ranking the bots by win rate.
+then a board of panels the reader arranges and views a slice of at a time: each bot's table drawn
+live, the fleet race ranking the bots by win rate, the season board, opponent intel and the
+activity log (what changed while the page was open).
 _Avoid_: UI, control panel, admin console
 
 **Event stream**:

@@ -79,8 +79,9 @@ impl std::error::Error for RestError {}
 pub struct Rest {
     agent: Agent,
     base: String,
-    /// `Bearer <key>`. Never printed: `Debug` leaves it out.
-    bearer: String,
+    /// `Bearer <key>`, or none for the venue's public endpoints. Never printed: `Debug` leaves it
+    /// out.
+    bearer: Option<String>,
     limiter: Limiter,
     /// The largest reply body read, in bytes.
     max_body: u64,
@@ -104,10 +105,20 @@ impl Rest {
         Self {
             agent: agent(Duration::from_secs(30)),
             base: base.trim_end_matches('/').to_owned(),
-            bearer: format!("Bearer {key}"),
+            bearer: Some(format!("Bearer {key}")),
             limiter,
             max_body: 10 * 1024 * 1024,
             sleep: Box::new(std::thread::sleep),
+        }
+    }
+
+    /// The client for the venue's public endpoints at `base`, which need no key (the season's
+    /// dates and its leaderboard): the same limiter, retries and body cap, and no Authorization
+    /// header.
+    pub fn public(base: &str, limiter: Limiter) -> Self {
+        Self {
+            bearer: None,
+            ..Self::new(base, "", limiter)
         }
     }
 
@@ -134,10 +145,12 @@ impl Rest {
         loop {
             let wait = self.limiter.admit(Instant::now());
             (self.sleep)(wait);
-            let mut reply = self
-                .agent
-                .get(&url)
-                .header("Authorization", &self.bearer)
+            let request = self.agent.get(&url);
+            let request = match &self.bearer {
+                Some(bearer) => request.header("Authorization", bearer),
+                None => request,
+            };
+            let mut reply = request
                 .call()
                 .map_err(|e| RestError::Transport(e.to_string()))?;
             let status = reply.status().as_u16();

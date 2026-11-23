@@ -69,6 +69,25 @@ fn roomy() -> Limiter {
 }
 
 #[test]
+fn a_public_client_carries_no_key_at_all() {
+    // The season's leaderboard and its dates need no auth ("Season"), and the dashboard that reads
+    // them holds no bot's key: a public client sends no Authorization header.
+    let (base, served) = venue(vec![reply("200 OK", &[], &json!([]))]);
+    let mut rest = Rest::public(&base, roomy());
+    assert_eq!(
+        rest.get("/season/leaderboard?min_hands=10").unwrap(),
+        json!([])
+    );
+    let heads = served.join().unwrap();
+    assert!(
+        heads[0].starts_with("get /api/season/leaderboard?min_hands=10 "),
+        "{}",
+        heads[0]
+    );
+    assert!(!heads[0].contains("authorization"), "{}", heads[0]);
+}
+
+#[test]
 fn retry_after_is_honoured_and_server_errors_back_off_but_a_refusal_is_final() {
     assert_eq!(retry_wait(429, Some("7"), 0), Some(Duration::from_secs(7)));
     assert_eq!(

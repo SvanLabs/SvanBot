@@ -25,13 +25,18 @@ export function initials(name) {
   return (letters.slice(0, 2) || "··").toUpperCase();
 }
 
+/** The table's looks, as v10 offered them: the arena's charcoal, a green felt, or midnight. */
+export const THEMES = ["arena", "felt", "midnight"];
+
 /**
  * A bot's table as an arena table: the rail and the felt, a seat a player round it with their
  * initials, name, stack and whether they are still in, our seat at the foot and lit, card backs
  * in front of everyone still in, the dealer's button, and the board and the pot (in chips and big
- * blinds) in the middle.
+ * blinds) in the middle. With `opponents`, the bot's own dossier, each opponent's plate says what
+ * the bot reads of them.
  */
-export function felt(table) {
+export function felt(table, { opponents = null, theme = "arena" } = {}) {
+  const reads = opponents === null ? null : new Map(opponents.map((row) => [row.name, row.class]));
   const players = [...table.players].sort((a, b) => a.seat - b.seat);
   const ours = Math.max(
     0,
@@ -62,6 +67,13 @@ export function felt(table) {
           h("span", { class: "stack" }, chips(player.stack)),
         ),
         us ? h("span", { class: "you" }, "you") : null,
+        !us && reads !== null
+          ? h(
+              "span",
+              { class: `read-tag ${reads.get(player.name) ?? "none"}` },
+              reads.get(player.name) ?? "no read",
+            )
+          : null,
       ),
       h("span", { class: "state" }, player.folded ? "folded" : "in hand"),
       player.seat === table.dealer ? h("span", { class: "dealer", title: "dealer" }, "D") : null,
@@ -71,7 +83,7 @@ export function felt(table) {
   return h(
     "div",
     {
-      class: "felt",
+      class: `felt theme-${THEMES.includes(theme) ? theme : "arena"}`,
       role: "img",
       "aria-label": `${table.street ?? "between hands"}, pot ${table.pot}`,
     },
