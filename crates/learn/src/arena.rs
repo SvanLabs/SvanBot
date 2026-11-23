@@ -10,7 +10,7 @@
 
 use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
-use svanbot_sim::sparring::{Archetype, Sparring};
+use svanbot_sim::sparring::{Archetype, Memory, Sparring};
 use svanbot_sim::v10::seat::V10;
 
 use crate::paired::{Match, Verdict, duel_seen, duel_with};
@@ -27,18 +27,28 @@ pub fn bout(
     number: u64,
     challenger: &impl Fn(&Spot, u64) -> Action,
 ) -> Vec<f64> {
-    let opponent = Sparring::new(archetype);
+    bout_against(game, &Sparring::new(archetype), number, challenger)
+}
+
+/// [`bout`], against `opponent` as it stands: what it learns stays in it after the bout.
+pub fn bout_against(
+    game: &Match,
+    opponent: &Sparring,
+    number: u64,
+    challenger: &impl Fn(&Spot, u64) -> Action,
+) -> Vec<f64> {
     (number * BOUT..(number + 1) * BOUT)
         .map(|deal| {
-            // Both mirrored hands meet the opponent as it was before this deal: the learning one
-            // would otherwise carry the first hand's bets into the second, and the deal's two
-            // hands would no longer cancel the cards.
+            // Both mirrored hands meet the opponent as it was when this deal began: the learning
+            // one would otherwise carry the first hand's bets into the second, and the deal's two
+            // hands would no longer cancel the cards. What the deal taught it stays for the next.
+            let start = opponent.memory();
             duel_with(
                 game,
                 deal,
                 challenger,
                 &|spot, seed| opponent.decide(spot, seed, deal),
-                || opponent.reset(),
+                || opponent.recall(start),
             )
         })
         .collect()
@@ -56,6 +66,8 @@ pub fn ring_bout(
     let opponents: Vec<Sparring> = (0..SIX_MAX).map(|_| Sparring::new(archetype)).collect();
     (number * BOUT..(number + 1) * BOUT)
         .map(|deal| {
+            // Every rotation meets each opponent as it was when the deal began, as in [`bout`].
+            let start: Vec<Memory> = opponents.iter().map(Sparring::memory).collect();
             ring_with(
                 game,
                 SIX_MAX,
@@ -63,8 +75,8 @@ pub fn ring_bout(
                 challenger,
                 &|seat, spot, seed| opponents[seat].decide(spot, seed, deal),
                 |us| {
-                    for opponent in &opponents {
-                        opponent.reset();
+                    for (opponent, &memory) in opponents.iter().zip(&start) {
+                        opponent.recall(memory);
                         opponent.watch(us);
                     }
                 },
