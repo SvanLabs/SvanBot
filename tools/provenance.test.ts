@@ -2,7 +2,14 @@
 // that produced them out. Who authored a commit does not matter: v11's own commits are authored by
 // svanlabs[bot], so an exemption for bot authors would exempt everything.
 import { expect, test } from "bun:test";
-import { unattributed } from "./provenance";
+import { rangeFor, unattributed } from "./provenance";
+
+test("a pull request is checked since the branch it merges into, anything else since main", () => {
+  expect(rangeFor("v11")).toBe("origin/v11..HEAD");
+  expect(rangeFor(undefined)).toBe("origin/main..HEAD");
+  // A push run sets the variable, empty.
+  expect(rangeFor("")).toBe("origin/main..HEAD");
+});
 
 const commit = (sha: string, message: string, parents = 1) => ({ sha, message, parents });
 
