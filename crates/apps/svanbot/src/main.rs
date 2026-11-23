@@ -50,6 +50,7 @@ mod deciders;
 mod download;
 mod fit;
 mod paired;
+mod paired_compare;
 mod paired_reads;
 mod propose;
 mod ship;

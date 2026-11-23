@@ -217,6 +217,13 @@ impl ArenaRun {
         self.as_value().to_string()
     }
 
+    /// A run read back from the text [`ArenaRun::as_text`] wrote: the file `svanbot arena`
+    /// hands an operator.
+    pub fn from_text(text: &str) -> Result<Self, String> {
+        let value: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        Self::from_json(&value)
+    }
+
     fn from_json(value: &Value) -> Result<Self, String> {
         let number = |value: &Value, key: &str| -> Result<f64, String> {
             value[key]

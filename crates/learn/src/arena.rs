@@ -11,7 +11,7 @@
 use svanbot_sim::sparring::{Archetype, Memory, Sparring};
 use svanbot_sim::v10::seat::V10;
 
-use crate::paired::{Challenger, Match, Verdict, duel_seen};
+use crate::paired::{Challenger, Match, Verdict, duel_seen, verdict};
 use crate::ring::{SIX_MAX, ring_seen};
 
 mod reader;
@@ -126,6 +126,26 @@ pub fn v10_ring(game: &Match, number: u64, challenger: &impl Challenger) -> f64 
         &|seat, spot, seen, seed| v10.decide(seat, spot, seen, seed),
         |_| {},
     )
+}
+
+/// What a second build won over a first on the same bouts: `next` minus `base`, bout by bout,
+/// from two runs' recorded bout sums (big blinds a hand, summed over a bout). Two runs on one
+/// seed play the same deals with the same seeds, so the difference is paired and the luck that
+/// both builds met cancels. `None` when the runs are not the same bouts: an empty run, or two of
+/// different lengths.
+pub fn compare(base: &[f64], next: &[f64]) -> Option<Verdict> {
+    if base.is_empty() || base.len() != next.len() {
+        return None;
+    }
+    let per_deal: Vec<f64> = base
+        .iter()
+        .zip(next)
+        .map(|(base, next)| (next - base) / BOUT as f64)
+        .collect();
+    Some(Verdict {
+        deals: per_deal.len() * BOUT as usize,
+        ..verdict(&per_deal)
+    })
 }
 
 /// One line of the scoreboard: an opponent, and the verdict against it.
