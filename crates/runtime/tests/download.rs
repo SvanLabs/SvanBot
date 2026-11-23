@@ -1,5 +1,5 @@
-//! The season download (V11-13) against a stand-in venue: pages into the store as history,
-//! duplicates kept once, and a second run resuming where the first stopped.
+//! The season download (V11-13, V11-38) against a stand-in venue: the season's export into the
+//! store as history, duplicates kept once, and a second run reading the season whole again.
 // The stand-in venue is a socket server, and each store is a file in a temporary directory.
 #![allow(clippy::disallowed_types, clippy::disallowed_methods)]
 
@@ -10,10 +10,10 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use svanbot_runtime::download::{PAGE, download};
+use svanbot_runtime::download::{MAX_BODY, PAGE, TIMEOUT, download};
 use svanbot_runtime::limit::Limiter;
 use svanbot_runtime::record::Hand;
-use svanbot_runtime::rest::{EMPTY_PAGE_TRIES, Rest};
+use svanbot_runtime::rest::Rest;
 use svanbot_runtime::store::{Source, Store};
 
 fn venue(pages: Vec<Value>) -> (String, thread::JoinHandle<Vec<String>>) {
@@ -63,8 +63,8 @@ fn hands(ids: std::ops::Range<u32>) -> Value {
 }
 
 #[test]
-fn it_pages_the_history_into_the_store_and_resumes_where_it_stopped() {
-    let (store, _) = store("resume");
+fn it_reads_the_season_export_into_the_store_and_reads_it_whole_again() {
+    let (store, _) = store("export");
     // Live play already kept one of these hands: the download keeps that first copy.
     let live = Hand {
         hand_id: "h-3".into(),
@@ -74,21 +74,18 @@ fn it_pages_the_history_into_the_store_and_resumes_where_it_stopped() {
     };
     store.append_hand(&live, Source::Live, 1).unwrap();
     let full = PAGE;
-    let pages = vec![
-        json!({ "hands": hands(0..full) }),
-        json!({ "hands": [{"id": 9999}, {"no_id": true}] }),
-    ];
-    let (base, served) = venue(pages);
+    let export = "/api/portfolio/bots/a-1/hand-history/export?format=json";
+    // The bot's id first, then the export: a list a page, newest first, this season only.
+    let (base, served) = venue(vec![
+        json!({ "agent_id": "a-1", "name": "SurSvan" }),
+        hands(0..full),
+        json!([{"id": 9999}, {"no_id": true}]),
+    ]);
     let summary = download(&mut rest(&base), &store, || 5).unwrap();
     let paths = served.join().unwrap();
-    assert_eq!(
-        paths[0],
-        format!("/api/me/hand-history?limit={full}&offset=0")
-    );
-    assert_eq!(
-        paths[1],
-        format!("/api/me/hand-history?limit={full}&offset={full}")
-    );
+    assert_eq!(paths[0], "/api/me");
+    assert_eq!(paths[1], format!("{export}&limit={full}&offset=0"));
+    assert_eq!(paths[2], format!("{export}&limit={full}&offset={full}"));
     assert_eq!(summary.pages, 2);
     assert_eq!(
         (summary.added, summary.known, summary.skipped),
@@ -99,13 +96,40 @@ fn it_pages_the_history_into_the_store_and_resumes_where_it_stopped() {
     let kept = store.hands().unwrap();
     assert_eq!(kept.len() as u32, full + 1);
     assert!(kept.iter().any(|hand| hand.hand_id == "9999"));
-    // The second run starts at the offset the first reached, and finds nothing new.
-    let (base, served) = venue((0..EMPTY_PAGE_TRIES).map(|_| json!([])).collect());
+    // A second run reads the season from its newest hand again, since every new hand moves the
+    // offsets, and keeps nothing twice.
+    let (base, served) = venue(vec![json!({ "agent_id": "a-1" }), hands(0..2)]);
     let again = download(&mut rest(&base), &store, || 6).unwrap();
     let paths = served.join().unwrap();
-    assert!(
-        paths[0].ends_with(&format!("offset={}", summary.offset)),
-        "{paths:?}"
+    assert_eq!(paths[1], format!("{export}&limit={full}&offset=0"));
+    assert_eq!((again.pages, again.added, again.known), (1, 0, 2));
+}
+
+#[test]
+fn a_season_larger_than_ten_mebibytes_is_read_whole() {
+    // A season's export is 30 MB; the client's usual limit is 10 MiB.
+    let pad = "x".repeat(1024);
+    let page = Value::Array(
+        (0..11_000)
+            .map(|id| json!({"hand_id": format!("h-{id}"), "pad": pad}))
+            .collect(),
     );
-    assert_eq!((again.pages, again.added), (0, 0));
+    let (store, _) = store("large");
+    let (base, served) = venue(vec![json!({ "agent_id": "a-1" }), page.clone()]);
+    assert!(download(&mut rest(&base), &store, || 5).is_err());
+    served.join().unwrap();
+    let (base, served) = venue(vec![json!({ "agent_id": "a-1" }), page]);
+    let mut large = rest(&base).with_large_replies(TIMEOUT, MAX_BODY);
+    let summary = download(&mut large, &store, || 6).unwrap();
+    served.join().unwrap();
+    assert_eq!(summary.added, 11_000);
+}
+
+#[test]
+fn a_profile_without_an_id_stops_the_download() {
+    let (store, _) = store("no-id");
+    let (base, served) = venue(vec![json!({ "name": "SurSvan" })]);
+    assert!(download(&mut rest(&base), &store, || 5).is_err());
+    served.join().unwrap();
+    assert!(store.hands().unwrap().is_empty());
 }

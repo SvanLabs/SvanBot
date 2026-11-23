@@ -8,7 +8,7 @@
 use std::fs::{File, TryLockError};
 use std::process::ExitCode;
 
-use svanbot_runtime::download::{download, limiter};
+use svanbot_runtime::download::{MAX_BODY, TIMEOUT, download, limiter};
 use svanbot_runtime::rest::{API, Rest};
 
 use crate::{now_ms, open_store, store_path};
@@ -62,11 +62,8 @@ pub(crate) fn run() -> ExitCode {
         }
     }
     let base = std::env::var("SVANBOT_API").unwrap_or_else(|_| API.to_owned());
-    let mut rest = Rest::new(&base, &key, limiter());
-    eprintln!(
-        "svanbot download: {me} from offset {}",
-        store.download_offset().unwrap_or(0)
-    );
+    let mut rest = Rest::new(&base, &key, limiter()).with_large_replies(TIMEOUT, MAX_BODY);
+    eprintln!("svanbot download: {me}: this season's export, newest hand first");
     match download(&mut rest, &store, now_ms) {
         Ok(summary) => {
             eprintln!(
@@ -76,7 +73,7 @@ pub(crate) fn run() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("svanbot download: {me}: stopped: {error}; rerun to resume");
+            eprintln!("svanbot download: {me}: stopped: {error}; rerun to read it again");
             ExitCode::from(1)
         }
     }

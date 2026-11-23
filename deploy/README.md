@@ -237,11 +237,13 @@ is live.
 
 ## The season download
 
-`svanbot download` fills a bot's store with its season hand history, then exits. It uses the
-bot's own key, 200 hands a page, at most 30 requests a minute, and honours `Retry-After`. A lock
-beside the stores lets only one bot download at a time. Stopped part-way, it resumes from the
-offset the store recorded. A hand the store already holds keeps its first copy, so it can run
-while the bot plays.
+`svanbot download` fills a bot's store with its season hand history, then exits. It reads the
+season's export, the same download as the site's analytics page, with the bot's own key: one
+request a season, about 75 seconds for 14 000 hands (the export answers nothing past offset
+10 000, so it is never paged). It honours `Retry-After`. A lock beside the stores lets only one
+bot download at a time. Every run reads the
+season from its newest hand, and a hand the store already holds keeps its first copy, so it can
+run while the bot plays, and a stopped run is simply run again.
 
 ```sh
 for name in <name> <name> ...; do

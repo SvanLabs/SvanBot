@@ -82,6 +82,8 @@ pub struct Rest {
     /// `Bearer <key>`. Never printed: `Debug` leaves it out.
     bearer: String,
     limiter: Limiter,
+    /// The largest reply body read, in bytes.
+    max_body: u64,
     sleep: Box<dyn FnMut(Duration)>,
 }
 
@@ -99,18 +101,23 @@ impl Rest {
     /// The client for `key` at `base` (usually [`API`]), paced by `limiter`: the endpoint's limit
     /// for this key, such as 30 a minute for the hand history.
     pub fn new(base: &str, key: &str, limiter: Limiter) -> Self {
-        let agent = Agent::config_builder()
-            .http_status_as_error(false)
-            .timeout_global(Some(Duration::from_secs(30)))
-            .build()
-            .into();
         Self {
-            agent,
+            agent: agent(Duration::from_secs(30)),
             base: base.trim_end_matches('/').to_owned(),
             bearer: format!("Bearer {key}"),
             limiter,
+            max_body: 10 * 1024 * 1024,
             sleep: Box::new(std::thread::sleep),
         }
+    }
+
+    /// Gives each request `timeout` instead of 30 seconds, and reads a body of up to `max_body`
+    /// bytes instead of 10 MiB: for a reply as large as a season's export.
+    #[must_use]
+    pub fn with_large_replies(mut self, timeout: Duration, max_body: u64) -> Self {
+        self.agent = agent(timeout);
+        self.max_body = max_body;
+        self
     }
 
     /// Waits with `sleep` instead of the thread's sleep, so a test can see every wait.
@@ -137,6 +144,8 @@ impl Rest {
             if (200..300).contains(&status) {
                 let text = reply
                     .body_mut()
+                    .with_config()
+                    .limit(self.max_body)
                     .read_to_string()
                     .map_err(|e| RestError::Body(e.to_string()))?;
                 return serde_json::from_str(&text).map_err(|e| RestError::Body(e.to_string()));
@@ -226,4 +235,13 @@ where
         self.done = true;
         Ok(None)
     }
+}
+
+/// A client that reads every status as a reply, and gives up on a request after `timeout`.
+fn agent(timeout: Duration) -> Agent {
+    Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_global(Some(timeout))
+        .build()
+        .into()
 }
