@@ -37,7 +37,13 @@ fn clone(name: &str) -> PathBuf {
         assert!(status.success(), "git {args:?}");
     };
     git(&["init", "--quiet"]);
-    git(&["commit", "--quiet", "--allow-empty", "--message", "the release"]);
+    git(&[
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "--message",
+        "the release",
+    ]);
     git(&["tag", "v11.0.0"]);
     dir
 }
@@ -117,7 +123,10 @@ fn with_no_arena_run_from_the_tags_commit_both_leagues_are_refused() {
     let dir = clone("no-run");
     let (code, printed) = check(&dir, &["v11.0.0"], &[]);
     assert_eq!(code, Some(1), "{printed}");
-    assert!(printed.contains("refused: no heads-up run from "), "{printed}");
+    assert!(
+        printed.contains("refused: no heads-up run from "),
+        "{printed}"
+    );
     assert!(printed.contains("refused: no 6-max run from "), "{printed}");
     assert!(!printed.contains("clears the ship bar"), "{printed}");
 }
@@ -126,12 +135,21 @@ fn with_no_arena_run_from_the_tags_commit_both_leagues_are_refused() {
 fn the_canary_stage_needs_a_release_a_canary_and_the_canary_on_that_release() {
     let dir = clone("canary-taken");
     let (_, printed) = check(&dir, &["HEAD", "fleet"], &[]);
-    assert!(printed.contains("refused: HEAD names no release"), "{printed}");
+    assert!(
+        printed.contains("refused: HEAD names no release"),
+        "{printed}"
+    );
     let (_, printed) = check(&dir, &["v11.0.0", "fleet"], &[]);
     assert!(printed.contains("needs SVANBOT_CANARY"), "{printed}");
     // A store that never ran the release: the window has not opened.
-    store(&dir, "SurSvan").append_played(&played("h-1"), TEN_O_CLOCK).unwrap();
-    let (code, printed) = check(&dir, &["v11.0.0", "fleet"], &[("SVANBOT_CANARY", "SurSvan")]);
+    store(&dir, "SurSvan")
+        .append_played(&played("h-1"), TEN_O_CLOCK)
+        .unwrap();
+    let (code, printed) = check(
+        &dir,
+        &["v11.0.0", "fleet"],
+        &[("SVANBOT_CANARY", "SurSvan")],
+    );
     assert_eq!(code, Some(1), "{printed}");
     assert!(
         printed.contains("refused: SurSvan has not taken 11.0.0"),
@@ -143,10 +161,16 @@ fn the_canary_stage_needs_a_release_a_canary_and_the_canary_on_that_release() {
 fn the_canary_stage_reads_the_window_from_the_stores_and_refuses_it_short_of_its_hands() {
     let dir = clone("canary-window");
     let canary = store(&dir, "SurSvan");
-    canary.append_played(&played("h-0"), TEN_O_CLOCK - 1).unwrap();
+    canary
+        .append_played(&played("h-0"), TEN_O_CLOCK - 1)
+        .unwrap();
     canary.mark_release("11.0.0", TEN_O_CLOCK).unwrap();
-    canary.append_played(&played("h-1"), TEN_O_CLOCK + 1_000).unwrap();
-    canary.append_played(&played("h-2"), TEN_O_CLOCK + 3_600_000).unwrap();
+    canary
+        .append_played(&played("h-1"), TEN_O_CLOCK + 1_000)
+        .unwrap();
+    canary
+        .append_played(&played("h-2"), TEN_O_CLOCK + 3_600_000)
+        .unwrap();
     let mate = store(&dir, "Svanar");
     for (id, started_at) in [
         ("x-1", "2026-11-23T10:30:00Z"),
@@ -157,7 +181,11 @@ fn the_canary_stage_reads_the_window_from_the_stores_and_refuses_it_short_of_its
         mate.append_hand(&exported(id, started_at), Source::History, 0)
             .unwrap();
     }
-    let (code, printed) = check(&dir, &["v11.0.0", "fleet"], &[("SVANBOT_CANARY", "SurSvan")]);
+    let (code, printed) = check(
+        &dir,
+        &["v11.0.0", "fleet"],
+        &[("SVANBOT_CANARY", "SurSvan")],
+    );
     assert_eq!(code, Some(1), "{printed}");
     assert!(
         printed.contains("Svanar: 1 export hands in the window, 0 unread"),
