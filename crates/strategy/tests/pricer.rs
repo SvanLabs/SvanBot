@@ -251,14 +251,14 @@ fn a_bet_is_worth_the_pot_it_takes_when_everyone_folds() {
 }
 
 #[test]
-fn a_call_is_priced_against_the_players_left_to_act_as_they_answer_it() {
+fn a_call_is_priced_against_every_opponent_still_in_the_hand() {
     use svanbot_core::rules::Street;
     use svanbot_core::spot::{Act, ActKind};
     use svanbot_strategy::action::{ActionModel, BUCKETS, Counts, Move, Situation};
     use svanbot_strategy::pricer::price_lines;
     // One player opened to three blinds; three are still to act, and this table folds 95% of
-    // the time to any bet, whatever it holds. Against four players who all stay, nines fall
-    // short of the price; against the opener and the few who call behind, they are worth it.
+    // the time to any bet. A call is priced against all four, as if they stay (V11-42): pricing
+    // it against the opener alone lost chips to v10.0.2 at 6-max. Against four, nines fall short.
     let mut counts = Counts::default();
     for situation in Situation::all() {
         for bucket in 0..BUCKETS {
@@ -281,7 +281,7 @@ fn a_call_is_priced_against_the_players_left_to_act_as_they_answer_it() {
     at.lines = vec![vec![opened], vec![], vec![], vec![]];
     let decision = price_lines(&at, &[&table; 4], BUDGET);
     assert!(decision.equity < 0.4, "{decision:?}");
-    assert_eq!(decision.action, Action::Call, "{decision:?}");
+    assert_eq!(decision.action, Action::Fold, "{decision:?}");
 }
 
 /// A table whose players, facing a bet, fold, call or raise big at these rates, whatever they
@@ -308,8 +308,8 @@ fn a_call_is_folded_when_the_players_behind_reraise_it() {
     use svanbot_core::rules::Street;
     use svanbot_core::spot::{Act, ActKind};
     use svanbot_strategy::pricer::price_lines;
-    // The same open as above, but the three players still to act re-raise half the time they are
-    // bet into. A call that is squeezed out loses what it put in, so nines are folded.
+    // The same open, with three still to act who re-raise half the time they are bet into: a call
+    // is priced against all four, and nines are folded.
     let table = facing_table(0.5, 0.0, 0.5);
     let mut at = spot("9h9s", "", 90, facing(60, None), 4);
     let opened = Act {
@@ -328,9 +328,8 @@ fn a_limp_is_priced_against_the_blinds_who_have_its_bet_in_already() {
     use svanbot_core::rules::Street;
     use svanbot_core::spot::{Act, ActKind};
     use svanbot_strategy::pricer::price_lines;
-    // One player limped; four are behind, and they fold 98% of the time to a bet. A limp is not a
-    // bet they can fold to — the big blind already has it in — so 7-2 offsuit is not taken
-    // heads up against the limper: it meets the whole table, and folds.
+    // One player limped and four are behind, folding 98% of the time to a bet. A limp is priced
+    // against all five, as the big blind never folds to it, so 7-2 offsuit folds.
     let table = facing_table(0.98, 0.02, 0.0);
     let mut at = spot("7h2s", "", 50, facing(20, None), 5);
     let limped = Act {
