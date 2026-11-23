@@ -109,8 +109,43 @@ fn each_seat_s_line_has_its_street_board_facing_and_size() {
     );
     assert!(lines.folded(5) && !lines.folded(4));
     // The river: each seat's chips in on the street, and the big blind of the hand.
-    assert_eq!((lines.committed(0), lines.committed(5)), (400, 0));
+    let dealt = [0, 2, 4, 5];
+    assert_eq!(
+        (lines.committed(0, &dealt), lines.committed(5, &dealt)),
+        (400, 0)
+    );
     assert_eq!(lines.big_blind(), 20);
+}
+
+#[test]
+fn a_posted_blind_counts_in_what_its_seat_has_put_in_before_the_flop() {
+    // The venue posts the small blind left of the dealer and the big blind two left; heads up
+    // the dealer posts the small one. A raise-to is committed plus what the seat adds.
+    let frame = |value: serde_json::Value| parse(&value.to_string()).unwrap();
+    let start = |dealer: u32| {
+        frame(json!({"type": "hand_start", "hand_id": "h", "seat": 2, "dealer_seat": dealer,
+                     "blinds": {"small_blind": 10, "big_blind": 20}}))
+    };
+    let mut lines = Lines::default();
+    lines.on(&start(5));
+    let dealt = [0, 2, 4, 5];
+    let posted: Vec<u32> = dealt
+        .iter()
+        .map(|&seat| lines.committed(seat, &dealt))
+        .collect();
+    assert_eq!(posted, [10, 20, 0, 0]);
+    lines.on(&frame(json!({"type": "player_action", "seat": 0, "action": "call",
+                           "amount": 20, "stack": 1980, "contribution_delta": 10})));
+    assert_eq!(lines.committed(0, &dealt), 20);
+    lines.on(&frame(json!({"type": "community_cards", "street": "flop",
+                           "cards": ["Ks", "9d", "4c"]})));
+    assert_eq!(lines.committed(2, &dealt), 0);
+    // Heads up, the dealer is the small blind.
+    lines.on(&start(4));
+    assert_eq!(
+        (lines.committed(4, &[2, 4]), lines.committed(2, &[2, 4])),
+        (10, 20)
+    );
 }
 
 #[test]

@@ -228,7 +228,6 @@ fn bet(
     let mut stood = Vec::new();
     let mut hand = Hand::new(stacks, button, blinds);
     let mut lines: Vec<Vec<Act>> = vec![Vec::new(); seats];
-    let mut committed = vec![0; seats];
     let mut street = hand.street();
     let mut record = Vec::new();
     // What each seat had in when the street began: before the flop nothing, so a blind is a bet.
@@ -239,12 +238,17 @@ fn bet(
         if hand.street() != street {
             stood.push((hand.clone(), street, hand.street()));
             street = hand.street();
-            committed.fill(0);
             street_start = hand.committed();
         }
         let board = deal.shown(street);
         let folded = hand.folded();
         let pot = hand.pot();
+        let bets: Vec<u32> = hand
+            .committed()
+            .iter()
+            .zip(&street_start)
+            .map(|(total, start)| total - start)
+            .collect();
         let spot = Spot {
             hole: deal.holes[seat],
             board,
@@ -252,7 +256,8 @@ fn bet(
             legal,
             opponents: folded.iter().filter(|&&out| !out).count() - 1,
             stack: hand.stacks()[seat],
-            committed: committed[seat],
+            // The street bet, a posted blind included: a raise-to is this plus what it adds.
+            committed: bets[seat],
             big_blind: blinds.big,
             in_position: (0..seats)
                 .filter(|&other| !folded[other])
@@ -266,12 +271,6 @@ fn bet(
                 .filter(|&other| other != seat && !folded[other])
                 .collect(),
         };
-        let bets: Vec<u32> = hand
-            .committed()
-            .iter()
-            .zip(&street_start)
-            .map(|(total, start)| total - start)
-            .collect();
         let seen = Seen {
             button,
             board: deal.board[..board.len()].to_vec(),
@@ -305,7 +304,6 @@ fn bet(
             all_in: put_in && hand.stacks()[seat] == 0,
         });
         let added = hand.committed()[seat] - before;
-        committed[seat] += added;
         lines[seat].push(Act {
             street,
             board,

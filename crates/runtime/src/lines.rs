@@ -27,6 +27,7 @@ pub struct Lines {
     folded: BTreeSet<usize>,
     /// Each seat's chips in on this street.
     committed: BTreeMap<usize, u32>,
+    small_blind: u32,
     big_blind: u32,
     dealer: usize,
 }
@@ -45,6 +46,7 @@ impl Lines {
                     street: Some(Street::Preflop),
                     pot: small_blind + big_blind,
                     bet: true,
+                    small_blind: *small_blind,
                     big_blind: *big_blind,
                     dealer: *dealer_seat,
                     ..Self::default()
@@ -125,9 +127,39 @@ impl Lines {
         self.acts.keys().copied()
     }
 
-    /// The seat's chips in on this street, from its actions. Preflop blinds are not counted.
-    pub fn committed(&self, seat: usize) -> u32 {
-        self.committed.get(&seat).copied().unwrap_or(0)
+    /// The seat's chips in on this street, its posted blind included before the flop. `dealt` is
+    /// every seat dealt into the hand, folded or not, which places the blinds: the venue posts the
+    /// small blind left of the dealer and the big blind two left, and heads up the dealer posts the
+    /// small one (two left of the dealer would be the dealer itself).
+    pub fn committed(&self, seat: usize, dealt: &[usize]) -> u32 {
+        let acted = self.committed.get(&seat).copied().unwrap_or(0);
+        if self.street != Some(Street::Preflop) {
+            return acted;
+        }
+        let mut order: Vec<usize> = dealt.to_vec();
+        order.sort_unstable();
+        order.dedup();
+        // Seat order from the dealer's left round to the dealer.
+        order.sort_by_key(|&at| (at + 6 - self.dealer % 6 - 1) % 6);
+        let (small, big) = match order.as_slice() {
+            [first, second] if order.contains(&self.dealer) => {
+                if *second == self.dealer {
+                    (*second, *first)
+                } else {
+                    (*first, *second)
+                }
+            }
+            [first, second, ..] => (*first, *second),
+            _ => return acted,
+        };
+        let posted = if seat == small {
+            self.small_blind
+        } else if seat == big {
+            self.big_blind
+        } else {
+            0
+        };
+        acted + posted
     }
 
     /// How late `seat` acts after the flop: the button's left is 0, and the button is last.

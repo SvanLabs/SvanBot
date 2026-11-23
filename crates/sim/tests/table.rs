@@ -278,3 +278,28 @@ fn an_opponent_sees_the_whole_table_and_the_hand_in_order() {
     };
     assert_eq!(seen.record, [raise, call]);
 }
+
+#[test]
+fn a_blind_counts_in_what_its_seat_has_put_in_before_the_flop() {
+    // Three seats, the button 0: seat 1 posts the small blind, seat 2 the big. A raise is sized
+    // as committed plus what the seat adds, so a posted blind must be in committed.
+    let cards = deal(3, &mut Rng::seeded(3));
+    let mut seen = Vec::new();
+    play(&cards, &[2000; 3], 0, BLINDS, |seat, spot| {
+        seen.push((seat, spot.board.len(), spot.committed));
+        check_or_call(spot)
+    });
+    assert_eq!(&seen[..3], &[(0, 0, 0), (1, 0, 10), (2, 0, 20)]);
+    assert!(
+        seen[3..].iter().all(|&(_, _, committed)| committed == 0),
+        "{seen:?}"
+    );
+    // Heads up, the button posts the small blind.
+    let cards = deal(2, &mut Rng::seeded(3));
+    let mut seen = Vec::new();
+    play(&cards, &[2000; 2], 0, BLINDS, |seat, spot| {
+        seen.push((seat, spot.committed));
+        check_or_call(spot)
+    });
+    assert_eq!(&seen[..2], &[(0, 10), (1, 20)]);
+}
