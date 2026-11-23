@@ -1,9 +1,9 @@
-//! The ship bar's Arena stage (V11-22): a release is let through only on runs played from the
-//! tag's own commit, under the fleet's champion, that play again as recorded, that beat v10.0.2
-//! heads up over a million hands, and where no opponent beats the policy.
+//! The ship bar's Arena stage (V11-22, V11-40): a release is let through only on runs played from
+//! the tag's own commit, under the fleet's champion, that play again as recorded, where the policy
+//! is read above v10.0.2 in both leagues and below no opponent.
 
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, League};
-use svanbot_runtime::ship::{self, V10_DEALS};
+use svanbot_runtime::ship;
 
 const COMMIT: &str = "4c06087aa11b22c33d44e55f66a77b88c99d00e1";
 const CHAMPION: &str = "00000000000000aa";
@@ -31,22 +31,34 @@ fn run(league: League, rows: Vec<ArenaRow>) -> ArenaRun {
     }
 }
 
-/// A heads-up run and a 6-max run that clear every clause.
+/// A row of `bouts` bouts that won about `per_bout` each, alternately `wobble` above and below,
+/// with its win rate their total.
+fn wobbling(opponent: &str, bouts: usize, per_bout: f64, wobble: f64) -> ArenaRow {
+    let mut row = row(opponent, bouts, per_bout, 0.0);
+    for (k, bout) in row.bouts.iter_mut().enumerate() {
+        *bout += if k % 2 == 0 { wobble } else { -wobble };
+    }
+    row.mbb_per_100 = row.bouts.iter().sum::<f64>() / row.deals as f64 * 100_000.0;
+    row
+}
+
+/// A heads-up run and a 6-max run that clear every clause: v10.0.2 read above zero in both, and
+/// the nit, though not told from zero, is no regression.
 fn passing() -> Vec<ArenaRun> {
     vec![
         run(
             League::HeadsUp,
             vec![
-                row("pricer", 20, 0.5, 300.0),
-                row("v10.0.2", V10_DEALS / 50, 0.25, 100.0),
-                row("nit", 20, 0.1, 300.0),
+                wobbling("pricer", 40, 20.0, 5.0),
+                wobbling("v10.0.2", 40, 10.0, 5.0),
+                wobbling("nit", 40, 1.0, 50.0),
             ],
         ),
         run(
             League::SixMax,
             vec![
-                row("pricer", 20, 0.5, 300.0),
-                row("v10.0.2", 20, -2.0, 9_000.0),
+                wobbling("pricer", 40, 20.0, 5.0),
+                wobbling("v10.0.2", 40, 10.0, 5.0),
             ],
         ),
     ]
@@ -118,50 +130,103 @@ fn a_row_whose_numbers_are_not_its_bouts_is_refused() {
     runs[0].rows[0].bouts.pop();
     assert_eq!(
         failures(&runs),
-        ["the heads-up pricer row has 19 bouts for 1000 deals"]
+        ["the heads-up pricer row has 39 bouts for 2000 deals"]
+    );
+}
+
+/// The one refusal `runs` gets, which must start with `prefix`.
+fn refused_with(runs: &[ArenaRun], prefix: &str) {
+    let refused = failures(runs);
+    assert!(
+        refused.len() == 1 && refused[0].starts_with(prefix),
+        "{refused:?}"
     );
 }
 
 #[test]
-fn v10_must_be_beaten_heads_up_over_a_million_hands_with_the_interval_above_zero() {
-    let mut runs = passing();
-    runs[0].rows[1] = row("v10.0.2", V10_DEALS / 50 - 1, 0.25, 100.0);
-    assert_eq!(
-        failures(&runs),
-        ["v10.0.2 heads up: 499950 deals, short of 500000"]
-    );
-    let mut runs = passing();
-    runs[0].rows[1].ci95 = 600.0;
-    assert_eq!(
-        failures(&runs),
-        ["v10.0.2 heads up: +500 mbb/100 ±600, the interval is not above zero"]
-    );
-    let mut runs = passing();
-    runs[0].rows.remove(1);
-    assert_eq!(failures(&runs), ["the heads-up run has no v10.0.2 row"]);
+fn v10_must_be_read_above_zero_in_both_leagues() {
+    for league in [0, 1] {
+        let name = ["heads-up", "6-max"][league];
+        let mut runs = passing();
+        runs[league].rows[1] = wobbling("v10.0.2", 40, 1.0, 50.0);
+        refused_with(
+            &runs,
+            &format!("v10.0.2 in the {name} league is not yet told from zero: +2000 mbb/100 ±"),
+        );
+        let mut runs = passing();
+        runs[league].rows[1] = wobbling("v10.0.2", 40, -10.0, 5.0);
+        refused_with(
+            &runs,
+            &format!("v10.0.2 beats the policy in the {name} league: -20000 mbb/100 ±"),
+        );
+        let mut runs = passing();
+        runs[league].rows.remove(1);
+        assert_eq!(
+            failures(&runs),
+            [format!("the {name} run has no v10.0.2 row")]
+        );
+    }
 }
 
 #[test]
-fn an_opponent_beating_the_policy_in_either_league_is_a_regression() {
+fn a_v10_row_short_of_its_bouts_is_not_yet_read() {
     let mut runs = passing();
-    runs[1].rows[0] = row("pricer", 20, -0.5, 300.0);
+    runs[1].rows[1] = wobbling("v10.0.2", ship::MIN_BOUTS - 1, 10.0, 5.0);
     assert_eq!(
         failures(&runs),
-        ["regression: the pricer beats the policy at 6-max, -1000 mbb/100 ±300"]
+        ["v10.0.2 in the 6-max league is not yet read: 29 of the 30 bouts a row needs"]
     );
-    // The 6-max v10.0.2 row is shown, never required: losing it is not a regression.
+}
+
+#[test]
+fn an_opponent_read_below_zero_in_either_league_is_a_regression() {
     let mut runs = passing();
-    runs[1].rows[1] = row("v10.0.2", 20, -2.0, 100.0);
-    assert_eq!(failures(&runs), Vec::<String>::new());
+    runs[1].rows[0] = wobbling("pricer", 40, -20.0, 5.0);
+    refused_with(
+        &runs,
+        "regression: the pricer beats the policy at 6-max, -40000 mbb/100 ±",
+    );
 }
 
 #[test]
 fn the_newest_run_of_a_league_from_the_commit_is_the_one_read() {
     let mut runs = passing();
     let mut older = runs[1].clone();
-    older.rows[0] = row("pricer", 20, -0.5, 300.0);
+    older.rows[0] = wobbling("pricer", 40, -20.0, 5.0);
     runs.push(older);
     assert_eq!(failures(&runs), Vec::<String>::new());
+}
+
+#[test]
+fn a_row_is_read_above_or_below_zero_only_when_its_sequence_leaves_zero_out() {
+    // +0.4 big blinds a hand, give or take 0.1 a bout: far from zero at any look.
+    assert_eq!(
+        ship::reading(&wobbling("nit", 40, 20.0, 5.0)),
+        ship::Reading::Above
+    );
+    assert_eq!(
+        ship::reading(&wobbling("nit", 40, -20.0, 5.0)),
+        ship::Reading::Below
+    );
+    // A mean of zero, and a mean well inside its wobble, cannot be told from zero.
+    assert_eq!(
+        ship::reading(&wobbling("nit", 40, 0.0, 10.0)),
+        ship::Reading::Undecided
+    );
+    assert_eq!(
+        ship::reading(&wobbling("nit", 40, 1.0, 50.0)),
+        ship::Reading::Undecided
+    );
+}
+
+#[test]
+fn a_row_says_nothing_before_its_spread_is_known() {
+    let short = wobbling("nit", ship::MIN_BOUTS - 1, 20.0, 5.0);
+    assert_eq!(ship::reading(&short), ship::Reading::Undecided);
+    assert_eq!(
+        ship::reading(&wobbling("nit", ship::MIN_BOUTS, 20.0, 5.0)),
+        ship::Reading::Above
+    );
 }
 
 #[test]

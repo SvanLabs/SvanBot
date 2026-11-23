@@ -5,9 +5,12 @@
 //! - was played from the tag's own commit, under the fleet's champion
 //! - plays again as recorded: [`REPLAYS`] bouts drawn from the run's seed come out bit for bit as
 //!   stored, and each row's win rate is its bouts' total
-//! - beats v10.0.2 heads up over [`V10_DEALS`] deals (a million hands), its 95% interval wholly
-//!   above zero. The 6-max v10.0.2 row is shown, never required.
-//! - has no regression: no other row, in either league, has its 95% interval wholly below zero.
+//! - beats v10.0.2: its row is read above zero ([`reading`]), heads up and at 6-max alike, since
+//!   nearly every live hand is 6-handed (V11-40)
+//! - has no regression: no other row, in either league, is read below zero.
+//!
+//! A row is read through an anytime-valid confidence sequence, so the run that feeds the bar
+//! (`svanbot arena ship`) may stop the moment it is decided rather than at a fixed count.
 //!
 //! The **canary stage** runs before the fleet takes the release ([`canary`]).
 //!
@@ -16,17 +19,65 @@
 use svanbot_core::rng::Rng;
 use svanbot_learn::arena::BOUT;
 use svanbot_learn::paired::verdict;
+use svanbot_learn::probe::Sequence;
 
 use crate::fleet::{ArenaRow, ArenaRun, League};
 
+pub mod sample;
 pub mod window;
 
-/// The heads-up deals against v10.0.2 a release must be measured over: a deal is two hands, so
-/// this is a million.
-pub const V10_DEALS: usize = 500_000;
+pub use sample::{Bar, Bout, CAP_HOURS, judge, sample};
 
 /// The bouts of each run the ship bar plays again.
 pub const REPLAYS: usize = 3;
+
+/// Bouts a row needs before it is read: the sequence estimates the spread as it goes, and over
+/// fewer the estimate is too rough to lean on (as a probe waits `MIN_ORBITS`).
+pub const MIN_BOUTS: usize = 30;
+
+/// The bouts the sequence is tightest around: about where an edge a tenth of v11.0.2's over
+/// v10.0.2 heads up is decided (V11-40).
+const TUNED_BOUTS: f64 = 200.0;
+
+/// Where a row stands against zero, read through a confidence sequence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reading {
+    /// The policy wins: the whole interval is above zero.
+    Above,
+    /// The policy loses: the whole interval is below zero.
+    Below,
+    /// Too few bouts, or an interval that still holds zero.
+    Undecided,
+}
+
+/// Reads `row` through the anytime-valid 95% confidence sequence (`learn::probe::Sequence`), one
+/// observation a bout. A bout is the unit because bouts share nothing, while the deals inside one
+/// meet the same learning opponent. Valid at every look, so a run may stop the moment it reads.
+pub fn reading(row: &ArenaRow) -> Reading {
+    match interval(row) {
+        Some((mean, radius)) if mean - radius > 0.0 => Reading::Above,
+        Some((mean, radius)) if mean + radius < 0.0 => Reading::Below,
+        _ => Reading::Undecided,
+    }
+}
+
+/// The row's win rate and its sequence's half-width, in mbb/100: none short of [`MIN_BOUTS`].
+fn interval(row: &ArenaRow) -> Option<(f64, f64)> {
+    if row.bouts.len() < MIN_BOUTS {
+        return None;
+    }
+    let mut sequence = Sequence::new(TUNED_BOUTS);
+    for won in &row.bouts {
+        sequence.observe(won / BOUT as f64 * MBB_PER_100);
+    }
+    Some((sequence.mean(), sequence.radius(0.05)))
+}
+
+/// A read row's numbers as a reader sees them.
+fn line(row: &ArenaRow) -> String {
+    let (mean, radius) = interval(row).unwrap_or((row.mbb_per_100, f64::INFINITY));
+    format!("{mean:+.0} mbb/100 ±{radius:.0} over {} deals", row.deals)
+}
 
 /// The v10.0.2 row's name, as `sim::v10::seat::NAME` gives it.
 const V10: &str = "v10.0.2";
@@ -119,29 +170,34 @@ fn replays(
         .collect()
 }
 
-/// The v10.0.2 clause, heads up, and the regression clause, in either league.
+/// The v10.0.2 clause and the regression clause, in either league.
 fn bar(run: &ArenaRun) -> Vec<String> {
     let mut failed = Vec::new();
     let league = run.league.name();
-    if run.league == League::HeadsUp {
-        match run.rows.iter().find(|row| row.opponent == V10) {
-            None => failed.push(format!("the {league} run has no {V10} row")),
-            Some(row) if row.deals < V10_DEALS => failed.push(format!(
-                "{V10} heads up: {} deals, short of {V10_DEALS}",
-                row.deals
+    match run.rows.iter().find(|row| row.opponent == V10) {
+        None => failed.push(format!("the {league} run has no {V10} row")),
+        Some(row) if row.bouts.len() < MIN_BOUTS => failed.push(format!(
+            "{V10} in the {league} league is not yet read: {} of the {MIN_BOUTS} bouts a row needs",
+            row.bouts.len()
+        )),
+        Some(row) => match reading(row) {
+            Reading::Above => {}
+            Reading::Below => failed.push(format!(
+                "{V10} beats the policy in the {league} league: {}",
+                line(row)
             )),
-            Some(row) if row.mbb_per_100 - row.ci95 <= 0.0 => failed.push(format!(
-                "{V10} heads up: {:+.0} mbb/100 ±{:.0}, the interval is not above zero",
-                row.mbb_per_100, row.ci95
+            Reading::Undecided => failed.push(format!(
+                "{V10} in the {league} league is not yet told from zero: {}",
+                line(row)
             )),
-            Some(_) => {}
-        }
+        },
     }
     for row in run.rows.iter().filter(|row| row.opponent != V10) {
-        if row.mbb_per_100 + row.ci95 < 0.0 {
+        if reading(row) == Reading::Below {
             failed.push(format!(
-                "regression: the {} beats the policy at {league}, {:+.0} mbb/100 ±{:.0}",
-                row.opponent, row.mbb_per_100, row.ci95
+                "regression: the {} beats the policy at {league}, {}",
+                row.opponent,
+                line(row)
             ));
         }
     }

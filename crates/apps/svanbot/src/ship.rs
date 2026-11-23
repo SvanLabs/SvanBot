@@ -5,7 +5,8 @@
 //! - `svanbot release-check <tag>`: the Arena stage, before the tag is pushed. The tag, or any
 //!   name git has for a commit, is looked up in the clone the command runs in. The newest run of
 //!   each league from that commit must be under the fleet's champion, play again as recorded,
-//!   beat v10.0.2 heads up, and show no regression (`svanbot_runtime::ship::arena`). The bouts it
+//!   beat v10.0.2 in both leagues, and show no regression (`svanbot_runtime::ship::arena`), the
+//!   rows read as `svanbot arena ship` played them. The bouts it
 //!   plays again are played here, by the same code `svanbot arena` played them with
 //!   ([`play_bout`]), so run it from a build of the tag.
 //! - `svanbot release-check <tag> fleet`: the Arena stage and then the canary stage, before
