@@ -15,6 +15,7 @@ fn bare() -> Spot {
         },
         opponents: 0,
         stack: 0,
+        callable_pot: None,
         committed: 0,
         big_blind: 0,
         in_position: false,

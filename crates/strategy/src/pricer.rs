@@ -70,12 +70,12 @@ pub fn price(
     }
 }
 
-/// The share of the pot a call costs: `call / (pot + call)`, the price the equity is measured
-/// against. `None` when there is nothing to call.
+/// The share a call costs: `call / (callable pot + call)`. Without known contributions use the
+/// ordinary pot price. `None` when there is nothing to call.
 pub fn price_of(spot: &Spot) -> Option<f64> {
-    spot.legal
-        .call
-        .map(|call| f64::from(call) / f64::from(spot.pot + call))
+    spot.legal.call.map(|call| {
+        f64::from(call) / (f64::from(spot.callable_pot.unwrap_or(spot.pot)) + f64::from(call))
+    })
 }
 
 fn choose(spot: &Spot, equity: f64, params: &Params) -> Action {

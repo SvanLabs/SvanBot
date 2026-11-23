@@ -103,6 +103,8 @@ pub struct Session {
     /// A fair-play `leave_table` is out: the bot is on its way off this table.
     leaving: bool,
     players: BTreeMap<usize, Player>,
+    /// Pre-deal stacks from a join or a paid hand, consumed at the next hand start.
+    opening: BTreeMap<usize, Player>,
     hand: Option<HandSeen>,
     actions_sent: u64,
     /// The last turn token played: a token is good for one action only.
@@ -118,6 +120,7 @@ struct HandSeen {
     hand_id: String,
     hole: CardSet,
     folded: Vec<usize>,
+    opening: BTreeMap<usize, Player>,
 }
 
 impl Session {
@@ -133,6 +136,7 @@ impl Session {
             seat: None,
             leaving: false,
             players: BTreeMap::new(),
+            opening: BTreeMap::new(),
             hand: None,
             actions_sent: 0,
             played_token: None,
@@ -204,6 +208,7 @@ impl Session {
         self.seat = None;
         self.leaving = false;
         self.players.clear();
+        self.opening.clear();
         self.hand = None;
     }
 
@@ -235,6 +240,16 @@ impl Session {
     /// Applies one frame that is not an authority to act.
     fn apply(&mut self, frame: Inbound) -> Step {
         self.lines.on(&frame);
+        // Even if hand_start was missed, these frames prove the pending pre-deal stacks
+        // are no longer evidence for a future deal. Only the payout can refresh them.
+        if matches!(
+            frame,
+            Inbound::HoleCards { .. }
+                | Inbound::PlayerAction { .. }
+                | Inbound::CommunityCards { .. }
+        ) {
+            self.opening.clear();
+        }
         match frame {
             Inbound::TableJoined {
                 table_id,
@@ -244,18 +259,24 @@ impl Session {
                 self.forget_table();
                 self.table_id = table_id;
                 self.seat = Some(seat);
+                self.opening = players.iter().cloned().map(|p| (p.seat, p)).collect();
                 self.seat_list(players)
             }
-            Inbound::PlayerJoined(player) => self.seat_list(vec![player]),
+            Inbound::PlayerJoined(player) => {
+                self.opening.insert(player.seat, player.clone());
+                self.seat_list(vec![player])
+            }
             // Our own seat left, by our leave or the venue's: there is no table to come back to.
             Inbound::PlayerLeft { seat } if self.seat == Some(seat) => self.rejoin(),
             Inbound::PlayerLeft { seat } => {
+                self.opening.remove(&seat);
                 self.players.remove(&seat);
                 Step::default()
             }
             Inbound::HandStart { hand_id, .. } => {
                 self.unacked = None;
                 self.hand = Some(HandSeen {
+                    opening: std::mem::take(&mut self.opening),
                     hand_id,
                     ..HandSeen::default()
                 });
@@ -283,7 +304,15 @@ impl Session {
                 }
                 Step::default()
             }
-            Inbound::HandResult { .. } => {
+            Inbound::HandResult { final_stacks, .. } => {
+                self.opening = final_stacks
+                    .into_iter()
+                    .filter_map(|(seat, stack)| {
+                        let mut player = self.players.get(&seat)?.clone();
+                        player.stack = stack;
+                        Some((seat, player))
+                    })
+                    .collect();
                 self.hand = None;
                 Step::default()
             }
@@ -361,6 +390,16 @@ impl Session {
         turn: Turn,
         decide: impl FnOnce(&Spot) -> D,
     ) -> Step {
+        self.opening.clear();
+        if let (Some(id), Some(hand)) = (&turn.hand_id, &mut self.hand)
+            && id != &hand.hand_id
+        {
+            // A start was missed. Later legacy turns must not reuse the old hand's evidence.
+            *hand = HandSeen {
+                hand_id: id.clone(),
+                ..HandSeen::default()
+            };
+        }
         let left = self.seat_list(turn.players.clone());
         let stablemate = self.stablemate();
         let hand = self.hand.clone().unwrap_or_default();
