@@ -221,7 +221,7 @@ drops. The page names opponents and shows their stacks, so it is never the publi
 install -m 644 deploy/svanbot-dashboard.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now svanbot-dashboard
-ssh -N -L 8080:127.0.0.1:8080 <box>   # then open http://127.0.0.1:8080
+ssh -N -L 5000:127.0.0.1:5000 <box>   # then open http://127.0.0.1:5000
 ```
 
 The service reads three variables, with the defaults the unit sets:
@@ -230,7 +230,7 @@ The service reads three variables, with the defaults the unit sets:
 |----------|---------|------------|
 | `SVANBOT_DATA` | `~/.local/share/svanbot` | Every bot's store and status file. |
 | `SVANBOT_LIB` | `~/.local/lib/svanbot` | The install tree, whose slots the Release page shows. |
-| `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:8080` | Where it listens. Keep it on loopback. |
+| `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:5000` | Where it listens. Keep it on loopback. |
 
 The page is three hand-written files compiled into the `svanbot` binary, and the server is our
 own, on the standard library: nothing else is installed, built or run on the box for it. The

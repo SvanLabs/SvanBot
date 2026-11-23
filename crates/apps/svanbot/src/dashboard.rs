@@ -10,7 +10,7 @@
 //!
 //! `SVANBOT_DATA` is the directory of every bot's store and status, `~/.local/share/svanbot`
 //! unless set. `SVANBOT_LIB` is the install tree, `~/.local/lib/svanbot` unless set.
-//! `SVANBOT_DASHBOARD_ADDR` is `127.0.0.1:8080` unless set.
+//! `SVANBOT_DASHBOARD_ADDR` is `127.0.0.1:5000` unless set.
 
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -469,7 +469,7 @@ pub fn run(fleet_dir: PathBuf) -> ExitCode {
         return ExitCode::from(2);
     };
     let addr =
-        std::env::var("SVANBOT_DASHBOARD_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
+        std::env::var("SVANBOT_DASHBOARD_ADDR").unwrap_or_else(|_| "127.0.0.1:5000".to_owned());
     let server = match Server::bind(Config {
         addr: addr.clone(),
         data_dir: data_dir.clone(),
