@@ -27,8 +27,11 @@ export function botTabs(fleet, current, nowMs) {
   );
 }
 
-/** The workspace bar: where the reader is, the venue's tag, and when the fleet was last heard. */
-export function workspace(place, nowMs) {
+/**
+ * The workspace bar: where the reader is, the venue's tag, the page's tools, and when the fleet
+ * was last heard.
+ */
+export function workspace(place, nowMs, tools) {
   const at = new Date(nowMs);
   const clock = [at.getHours(), at.getMinutes(), at.getSeconds()]
     .map((part) => String(part).padStart(2, "0"))
@@ -44,7 +47,12 @@ export function workspace(place, nowMs) {
       h("b", {}, place),
       h("span", { class: "env" }, "openpoker · virtual chips"),
     ),
-    h("span", { class: "updated" }, `Updated ${clock}`),
+    h(
+      "div",
+      { class: "workspace-end" },
+      tools,
+      h("span", { class: "updated" }, `Updated ${clock}`),
+    ),
   );
 }
 
@@ -64,8 +72,11 @@ export function rail(lead, note, cells) {
   );
 }
 
-/** One bot's live table, as the fleet overview shows it: a header, the table, and a footer. */
-export function tableCard(status, nowMs) {
+/**
+ * One bot's live table, as the fleet overview shows it: a header, the table with what this bot
+ * reads of each opponent at it, and a footer.
+ */
+export function tableCard(status, nowMs, theme = "arena") {
   const view = botView(status, nowMs);
   const rate = winRate(status.play);
   const won = (status.play?.won_mbb ?? 0) / 1_000;
@@ -91,7 +102,7 @@ export function tableCard(status, nowMs) {
       sparkline(status.play),
     ),
     status.table
-      ? felt(status.table)
+      ? felt(status.table, { opponents: status.opponents ?? [], theme })
       : h("div", { class: "felt-empty" }, status.connected ? "Between tables" : "Offline"),
     h(
       "footer",

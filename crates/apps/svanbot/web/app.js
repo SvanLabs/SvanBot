@@ -1,329 +1,117 @@
-// The dashboard's page (V11-11): one event stream in, one view out. Everything it shows comes
-// through `fleet.js`, and every name on it is set as text, never as markup: an opponent chooses
-// their own name.
+// The dashboard's page (V11-11, V11-44): one event stream in, one view out. Everything it shows
+// comes through `fleet.js`, and every name on it is set as text, never as markup: an opponent
+// chooses their own name. The fleet and each bot are control rooms (`control.js`): boards of
+// panels the reader arranges, folds and views a slice of at a time, remembered in this browser.
 
+import { changes } from "./activity.js";
+import { hide, move, reconcile, show, store } from "./board.js";
+import {
+  BOT_LAYOUT,
+  BOT_VIEWS,
+  botRoom,
+  FLEET_LAYOUT,
+  FLEET_VIEWS,
+  fleetRoom,
+  when,
+} from "./control.js";
 import { facts, h, panel, table } from "./dom.js";
 import { dossierIndex, dossierPage } from "./dossier.js";
-import { chips, felt, summary, tiles } from "./felt.js";
 import {
   arenaLeagues,
   arenaRun,
   arenaSpan,
-  botView,
   byWinRate,
-  chart,
-  duration,
   fleetProblems,
   freshness,
   isFleet,
   mbbText,
-  rateText,
   route,
-  running,
   whisker,
-  winRate,
 } from "./fleet.js";
+import { patch } from "./patch.js";
 import { handPage } from "./replay.js";
-import { botTabs, fleetRace, rail, tableCard, workspace } from "./room.js";
+import { botTabs } from "./room.js";
 
-function when(ms, nowMs) {
-  return ms === null || ms === undefined ? "never" : `${duration(nowMs - ms)} ago`;
+/** Each room's views and default arrangement. */
+const ROOMS = {
+  fleet: { views: FLEET_VIEWS, layout: FLEET_LAYOUT },
+  bot: { views: BOT_VIEWS, layout: BOT_LAYOUT },
+};
+
+/** What the reader chose, remembered in this browser: a room's view, arrangement and folds. */
+const reader = {
+  arranging: false,
+  theme: store.read("svanbot.theme", "arena"),
+  view: (room) => store.read(`svanbot.view.${room}`, ROOMS[room].views[0].id),
+  layout: (room) => reconcile(store.read(`svanbot.layout.${room}`, null), ROOMS[room].layout),
+  collapsed: (room) => {
+    const folded = store.read(`svanbot.collapsed.${room}`, []);
+    return Array.isArray(folded) ? folded : [];
+  },
+  note: (key) => {
+    const text = store.read(`svanbot.note.${key}`, "");
+    return typeof text === "string" ? text : "";
+  },
+};
+
+/** A room's reader state, as its board takes it. */
+function uiOf(room) {
+  return {
+    view: reader.view(room),
+    layout: reader.layout(room),
+    collapsed: reader.collapsed(room),
+    arranging: reader.arranging,
+    theme: reader.theme,
+    note: reader.note,
+  };
 }
 
-/** What needs attention, worst first, or nothing. */
-function problemList(problems) {
-  return problems.length > 0
-    ? h(
-        "ul",
-        { class: "problems" },
-        problems.map((problem) => h("li", { class: problem.tone }, problem.text)),
-      )
-    : null;
+/** The room of the page in view, if it is one. */
+function roomOf(path) {
+  const at = route(path);
+  return at.view === "bot" ? "bot" : at.view === "fleet" ? "fleet" : null;
 }
 
-/** The fleet overview: the fleet in tiles and on the rail, then every bot's table live. */
-function fleetView(fleet, nowMs, problems) {
-  const online = fleet.bots.filter((bot) => bot.connected).length;
-  const builds = [...new Set(fleet.bots.map((bot) => bot.version).filter(Boolean))];
-  const champions = [...new Set(fleet.bots.map((bot) => bot.play?.champion).filter(Boolean))];
-  const reading = fleet.bots.filter((bot) => bot.reads_in_play).length;
-  const incidents = fleet.bots.reduce((sum, bot) => sum + (bot.incidents ?? 0), 0);
-  return [
-    workspace("Fleet overview", nowMs),
-    h(
-      "div",
-      { class: "overview" },
-      h(
-        "p",
-        { class: "status-line" },
-        h("span", { class: `dot ${online === fleet.bots.length ? "ok" : "warn"}` }),
-        h("b", {}, "Fleet"),
-        ` · ${online} of ${fleet.bots.length} bots online`,
-      ),
-      summary(fleet),
-    ),
-    rail("SV11 signal", "What the fleet plays by, as each bot reports it", [
-      ["Build", builds.join(", ") || "—", builds.length > 1 ? "mixed builds" : "one build"],
-      [
-        "Champion",
-        champions.map((digest) => digest.slice(0, 8)).join(", ") || "—",
-        "the parameter set in play",
-      ],
-      ["Reads in play", `${reading} of ${fleet.bots.length}`, "per-opponent reads, per bot"],
-      ["Incidents", String(incidents), incidents === 0 ? "none recorded" : "see each bot"],
-    ]),
-    problemList(problems),
-    h("h1", {}, "Fleet"),
-    h(
-      "div",
-      { class: "tables" },
-      fleet.bots.map((status) => tableCard(status, nowMs)),
-    ),
-    h(
-      "div",
-      { class: "board-row" },
-      h(
-        "section",
-        { class: "card" },
-        h("h2", {}, "Fleet race"),
-        h("p", { class: "subtle" }, "Each bot's win rate over its counted hands, best first"),
-        fleetRace(fleet),
-      ),
-      h(
-        "section",
-        { class: "card" },
-        h("h2", {}, "Opponents"),
-        h(
-          "p",
-          {},
-          "Each bot reads its opponents on its own, from its own store. ",
-          h("a", { href: "/dossier" }, "Open the dossiers"),
-          ".",
+/**
+ * Applies one of the reader's actions on the room in view, and redraws: a view chosen, a panel
+ * moved, hidden, brought back or folded, arranging begun or done, the table's look, a reset.
+ */
+export function act(action, data = {}) {
+  const room = roomOf(location.pathname);
+  if (action === "theme") {
+    reader.theme = data.theme;
+    store.write("svanbot.theme", data.theme);
+  } else if (action === "arrange") {
+    reader.arranging = !reader.arranging;
+  } else if (room !== null) {
+    const layout = reader.layout(room);
+    const folded = reader.collapsed(room);
+    const keep = (key, value) => store.write(`svanbot.${key}.${room}`, value);
+    const panels = [...layout.left, ...layout.center, ...layout.right];
+    ({
+      view: () => keep("view", data.view),
+      move: () => keep("layout", move(layout, data.id, data.dir)),
+      hide: () => keep("layout", hide(layout, data.id)),
+      unhide: () => keep("layout", show(layout, data.id, ROOMS[room].layout)),
+      fold: () =>
+        keep(
+          "collapsed",
+          folded.includes(data.id) ? folded.filter((id) => id !== data.id) : [...folded, data.id],
         ),
-      ),
-    ),
-  ];
-}
-
-/** The line chart of a bot's latest hands, with its numbers in a table under it. */
-function ledgerChart(play) {
-  const totals = running(play.recent);
-  if (totals.length === 0) {
-    return h("p", { class: "muted" }, "No counted hands yet.");
-  }
-  const [width, height] = [300, 80];
-  const { points, zero } = chart(totals, width, height);
-  const last = totals[totals.length - 1];
-  const label = `Running total over the latest ${totals.length} counted hands: ${last.toFixed(1)} big blinds, between ${Math.min(0, ...totals).toFixed(1)} and ${Math.max(0, ...totals).toFixed(1)}.`;
-  return [
-    h(
-      "svg",
-      {
-        class: "chart",
-        viewBox: `0 0 ${width} ${height}`,
-        preserveAspectRatio: "none",
-        role: "img",
-        "aria-label": label,
+      "fold-all": () => keep("collapsed", panels),
+      "unfold-all": () => keep("collapsed", []),
+      reset: () => {
+        keep("layout", ROOMS[room].layout);
+        keep("collapsed", []);
       },
-      h("title", {}, label),
-      h("line", { x1: 0, x2: width, y1: zero, y2: zero }),
-      h("polyline", { points }),
-    ),
-    h(
-      "details",
-      {},
-      h("summary", {}, "The chart as a table"),
-      h(
-        "div",
-        { class: "scroll", tabindex: 0 },
-        table(
-          "Latest counted hands, oldest first, luck of our own draws taken out",
-          [
-            ["Hand", "number"],
-            ["Won (bb)", "number"],
-            ["Running (bb)", "number"],
-          ],
-          play.recent.map((mbb, at) =>
-            h(
-              "tr",
-              {},
-              h("td", { class: "number" }, String(at + 1)),
-              h("td", { class: "number" }, (mbb / 1_000).toFixed(2)),
-              h("td", { class: "number" }, totals[at].toFixed(2)),
-            ),
-          ),
-        ),
-      ),
-    ),
-  ];
+    })[action]?.();
+  }
+  render();
 }
 
-/** One bot's page: six panels at most. */
-function botPage(fleet, name, nowMs) {
-  const status = fleet.bots.find((bot) => bot.bot === name);
-  if (!status) {
-    return [h("h1", {}, name), h("p", {}, "This bot has written no status.")];
-  }
-  const view = botView(status, nowMs);
-  const seats = status.table;
-  const ours = seats?.players.find((player) => player.seat === seats.seat);
-  const rate = winRate(status.play);
-  return [
-    workspace(status.bot, nowMs),
-    h(
-      "div",
-      { class: "overview" },
-      h(
-        "p",
-        { class: "status-line" },
-        h("span", { class: `dot ${view.tone}` }),
-        h("b", {}, status.bot),
-        ` · ${view.detail} · `,
-        h("a", { href: `/bot/${encodeURIComponent(status.bot)}/dossier` }, "Dossier"),
-      ),
-      tiles([
-        [
-          "Table stack",
-          ours ? chips(ours.stack) : "—",
-          ours && seats.big_blind > 0
-            ? `${Number((ours.stack / seats.big_blind).toFixed(1))} BB behind`
-            : "not seated",
-        ],
-        [
-          "Win rate",
-          rateText(rate),
-          `over ${chips(status.play.counted)} counted hands`,
-          rate === null ? "" : rate >= 0 ? "up" : "down",
-        ],
-        ["Hands played", chips(status.hands), `${status.run_incidents} incidents this run`],
-      ]),
-    ),
-    rail("SV11 signal", "What this bot plays by, as it reports it", [
-      ["Street", seats?.street ?? "between hands", seats ? `pot ${chips(seats.pot)}` : "no table"],
-      ["Build", status.version || "a checkout", `up ${when(status.started_ms, nowMs)}`],
-      [
-        "Champion",
-        (status.play.champion || "unknown").slice(0, 8),
-        status.play.probe ?? "no probe running",
-      ],
-      [
-        "Reads",
-        status.reads_in_play ? "in play" : "held",
-        `${(status.opponents ?? []).length} opponents read`,
-      ],
-    ]),
-    h("h1", {}, status.bot, " ", h("span", { class: `pill ${view.tone}` }, view.label)),
-    h(
-      "div",
-      { class: "grid room" },
-      panel(
-        "Now",
-        h("p", {}, view.detail),
-        facts([
-          ["Status written", when(status.updated_ms, nowMs)],
-          ["Last hand", when(status.last_hand_ms, nowMs)],
-          ["Last error", status.last_error ?? "none"],
-          ["Incidents", `${status.run_incidents} this run, ${status.incidents} in all`],
-        ]),
-      ),
-      panel(
-        "Table",
-        seats === null
-          ? h("p", { class: "muted" }, "Not at a table.")
-          : [
-              felt(seats),
-              facts([
-                ["Table", seats.id],
-                ["Street", seats.street ?? "between hands"],
-                ["Board", seats.board.length > 0 ? seats.board.join(" ") : "none"],
-                ["Pot", String(seats.pot)],
-              ]),
-              table(
-                "Seats",
-                [
-                  ["Seat", "number"],
-                  ["Player", null],
-                  ["Stack", "number"],
-                  ["", null],
-                ],
-                seats.players.map((seat) =>
-                  h(
-                    "tr",
-                    { class: seat.folded ? "folded" : null },
-                    h("td", { class: "number" }, String(seat.seat)),
-                    h("td", {}, seat.name, seat.seat === seats.seat ? " (us)" : ""),
-                    h("td", { class: "number" }, String(seat.stack)),
-                    h(
-                      "td",
-                      {},
-                      seat.folded ? "folded" : seat.seat === seats.dealer ? "button" : "",
-                    ),
-                  ),
-                ),
-              ),
-            ],
-      ),
-      panel(
-        "Ledger",
-        facts([
-          ["Win rate", rateText(winRate(status.play))],
-          ["Counted hands", String(status.play.counted)],
-          ["Kept hands", String(status.hands)],
-        ]),
-        ledgerChart(status.play),
-      ),
-      panel(
-        "Plays by",
-        facts([
-          ["Champion", h("code", {}, status.play.champion || "unknown")],
-          ["Probe", status.play.probe ?? "none running"],
-        ]),
-      ),
-      panel(
-        "Process",
-        facts([
-          ["Build", status.version || "a checkout"],
-          ["Started", when(status.started_ms, nowMs)],
-          ["Process", String(status.pid)],
-        ]),
-      ),
-      panel("Traced hands", tracedHands(name)),
-    ),
-  ];
-}
-
-/** The newest hands this bot traced, each linking to its own page. */
-function tracedHands(bot) {
-  const hands = state.hands;
-  if (hands === null) {
-    return h("p", { class: "muted" }, "Reading the store…");
-  }
-  if (hands.error) {
-    return h("p", { class: "worst fail" }, hands.error);
-  }
-  if (hands.length === 0) {
-    return h("p", { class: "muted" }, "No traced hands yet.");
-  }
-  const nowMs = Date.now();
-  return table(
-    "Newest first",
-    [
-      ["Hand", null],
-      ["Table", null],
-      ["Decisions", "number"],
-      ["Recorded", null],
-    ],
-    hands.map((hand) =>
-      h(
-        "tr",
-        {},
-        h("td", {}, h("a", { href: `/bot/${bot}/hand/${hand.hand_id}` }, hand.hand_id)),
-        h("td", {}, hand.table_id),
-        h("td", { class: "number" }, String(hand.decisions)),
-        h("td", {}, when(hand.recorded_ms, nowMs)),
-      ),
-    ),
-  );
+/** A note is saved as it is typed; the page does not redraw for it. */
+export function note(key, text) {
+  store.write(`svanbot.note.${key}`, text);
 }
 
 /** The release page: what is installed, where the slots point, and what each bot runs. */
@@ -542,7 +330,12 @@ const state = {
   handsFor: null,
   trace: null,
   traceFor: null,
+  // What changed while the page was open, newest first: the activity log.
+  log: [],
 };
+
+/** The most events the log keeps. */
+const LOG_KEPT = 300;
 
 /** The server's sentence for a refusal, or `fallback` when it sent none: a detail is never markup. */
 export function textOf(body, fallback) {
@@ -641,9 +434,17 @@ function render() {
     if (here) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
+  const room = (name) => ({
+    fleet: state.fleet,
+    nowMs,
+    problems,
+    log: state.log,
+    hands: state.hands,
+    ui: uiOf(name),
+  });
   const pages = {
     hand: () => handPage(state, at.bot, at.hand),
-    bot: () => botPage(state.fleet, at.bot, nowMs),
+    bot: () => botRoom(room("bot"), at.bot),
     dossier: () =>
       dossierPage(
         state.fleet.bots.find((bot) => bot.bot === at.bot),
@@ -653,18 +454,10 @@ function render() {
     release: () => releasePage(state.fleet, nowMs),
     scoreboard: () => scoreboardPage(state.fleet),
   };
-  const view = (pages[at.view] ?? (() => fleetView(state.fleet, nowMs, problems)))();
-  // Redraw only what changed: a redraw every second would take the focus and the scroll from
-  // whoever is reading the table. An open table fallback stays open across a redraw.
-  const shown = document.getElementById("view");
-  const next = h("main", {}, view);
-  const details = next.querySelector("details");
-  if (details) {
-    details.open = shown.querySelector("details")?.open ?? false;
-  }
-  if (next.innerHTML !== shown.innerHTML) {
-    shown.replaceChildren(...next.childNodes);
-  }
+  const view = (pages[at.view] ?? (() => fleetRoom(room("fleet"))))();
+  // Redraw only what changed (`patch.js`): a redraw every second must not take the focus, the
+  // scroll, an open fallback or a note being typed from the reader.
+  patch(document.getElementById("view"), h("main", {}, view));
 }
 
 function take(text) {
@@ -674,11 +467,26 @@ function take(text) {
     state.offset = message.server_ms - state.lastMessageMs;
   }
   if (isFleet(message)) {
+    state.log = [...changes(state.fleet, message), ...state.log].slice(0, LOG_KEPT);
     state.fleet = message;
   }
   state.streamError = null;
   render();
 }
+
+// The reader's actions, by delegation: a click on anything carrying `data-act`, and a note typed.
+document.addEventListener?.("click", (event) => {
+  const target = event.target.closest?.("[data-act]");
+  if (target) {
+    act(target.dataset.act, { ...target.dataset });
+  }
+});
+document.addEventListener?.("input", (event) => {
+  const key = event.target.dataset?.note;
+  if (key) {
+    note(key, event.target.value);
+  }
+});
 
 const stream = new EventSource("/api/events");
 stream.addEventListener("fleet", (event) => take(event.data));

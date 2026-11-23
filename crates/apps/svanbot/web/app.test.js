@@ -3,68 +3,7 @@
 // name is written as text, never as markup.
 import { beforeAll, expect, test } from "bun:test";
 
-/** An element that keeps its attributes and children, and reads back as text or as markup. */
-class Node {
-  constructor(tag) {
-    this.tag = tag;
-    this.attrs = {};
-    this.children = [];
-    this.open = false;
-  }
-  setAttribute(name, value) {
-    this.attrs[name] = value;
-  }
-  append(...children) {
-    this.children.push(...children);
-  }
-  replaceChildren(...children) {
-    this.children = children;
-  }
-  get childNodes() {
-    return this.children;
-  }
-  set className(value) {
-    this.attrs.class = value;
-  }
-  get className() {
-    return this.attrs.class ?? "";
-  }
-  set textContent(value) {
-    this.children = [String(value)];
-  }
-  get textContent() {
-    return this.children
-      .map((child) => (typeof child === "string" ? child : child.textContent))
-      .join("");
-  }
-  get innerHTML() {
-    return this.children
-      .map((child) => {
-        if (typeof child === "string") {
-          return child.replaceAll("&", "&amp;").replaceAll("<", "&lt;");
-        }
-        const attrs = Object.entries(child.attrs)
-          .map(([name, value]) => ` ${name}="${value}"`)
-          .join("");
-        return `<${child.tag}${attrs}${child.open ? " open" : ""}>${child.innerHTML}</${child.tag}>`;
-      })
-      .join("");
-  }
-  all(tag, found = []) {
-    for (const child of this.children) {
-      if (typeof child !== "string") {
-        if (child.tag === tag) {
-          found.push(child);
-        }
-        child.all(tag, found);
-      }
-    }
-    return found;
-  }
-  querySelector(tag) {
-    return this.all(tag)[0] ?? null;
-  }
-}
+import { byClass, Node, standIn } from "./testdom.js";
 
 const ids = {
   view: new Node("main"),
@@ -101,6 +40,7 @@ function fleet() {
   return {
     server_ms: NOW,
     problems: [],
+    season: null,
     release: { current: "11.0.0", previous: "10.9.0", installed: ["10.9.0", "11.0.0"] },
     arena: [
       {
@@ -123,6 +63,16 @@ function fleet() {
       {
         ...base,
         bot: "SurSvan",
+        opponents: [
+          {
+            name: "someone",
+            class: "fixed",
+            change: null,
+            hands: 90,
+            actions: 140,
+            earned_pct: 35,
+          },
+        ],
         table: {
           id: "t-17",
           seat: 2,
@@ -153,8 +103,7 @@ function show(path) {
 
 beforeAll(async () => {
   globalThis.document = {
-    createElement: (tag) => new Node(tag),
-    createElementNS: (_, tag) => new Node(tag),
+    ...standIn,
     getElementById: (id) => ids[id],
     querySelector: (tag) => ids.view.querySelector(tag),
   };
@@ -192,19 +141,6 @@ test("the fleet page has one card a bot and the strip names the worst problem", 
   expect(view.textContent).toContain("+1.5 bb/100");
   expect(view.querySelector("a").attrs.href).toBe("/bot/SurSvan");
 });
-
-/** Every element under `node` whose class list holds `name`. */
-function byClass(node, name, found = []) {
-  for (const child of node.children) {
-    if (typeof child !== "string") {
-      if ((child.attrs.class ?? "").split(" ").includes(name)) {
-        found.push(child);
-      }
-      byClass(child, name, found);
-    }
-  }
-  return found;
-}
 
 test("a fleet card draws its live table: seats with plates, our seat, the button, the board, the pot", () => {
   const view = show("/");
@@ -254,16 +190,127 @@ test("the top bar has a tab a bot, and the bot in view is lit", () => {
   expect(tabs.map((tab) => tab.attrs["aria-current"] ?? null)).toEqual(["page", null]);
 });
 
-test("a bot's page has six panels, its table, and a chart with its numbers in a table", () => {
+/** The titles of the panels on the board, in order, column by column. */
+function titles(view) {
+  return byClass(view, "widget").map((panel) => panel.querySelector("h2").textContent);
+}
+
+test("a bot's room opens on Live, and All shows every panel", async () => {
+  const { act } = await import("./app.js");
   const view = show("/bot/SurSvan");
-  expect(view.all("section").map((panel) => panel.querySelector("h2").textContent)).toEqual([
+  expect(titles(view)).toEqual([
     "Now",
+    "Highlights",
+    "Season standing",
     "Table",
     "Ledger",
-    "Plays by",
-    "Process",
     "Traced hands",
+    "Activity",
+    "Notes",
   ]);
+  const tabs = byClass(view, "view-tabs")[0].all("button");
+  expect(tabs.map((tab) => tab.textContent)).toEqual([
+    "Live",
+    "Opponents",
+    "Results",
+    "Learning",
+    "System",
+    "All",
+  ]);
+  act("view", { view: "all" });
+  expect(titles(view)).toEqual([
+    "Now",
+    "Highlights",
+    "Season standing",
+    "Plays by",
+    "Opponent intel",
+    "Table",
+    "Ledger",
+    "Traced hands",
+    "Activity",
+    "Notes",
+    "Season race",
+    "Process",
+    "Arena",
+  ]);
+  // The reads beside the table they are about.
+  act("view", { view: "opponents" });
+  expect(titles(view)).toEqual(["Opponent intel", "Table", "Notes"]);
+  act("view", { view: "live" });
+});
+
+test("the reader arranges, folds and hides panels, and a reset puts the board back", async () => {
+  const { act } = await import("./app.js");
+  const view = show("/bot/SurSvan");
+  act("arrange");
+  expect(byClass(view, "move").length).toBeGreaterThan(0);
+  act("move", { id: "notes", dir: "up" });
+  const right = () => titles(byClass(view, "right")[0]);
+  expect(right()).toEqual(["Notes", "Activity"]);
+  act("fold", { id: "ledger" });
+  const ledger = () =>
+    byClass(view, "widget").find((panel) => panel.attrs["data-widget"] === "ledger");
+  expect(ledger().attrs["data-collapsed"]).toBe("true");
+  expect(byClass(ledger(), "chart").length).toBe(0);
+  act("hide", { id: "traced" });
+  expect(titles(view)).not.toContain("Traced hands");
+  expect(byClass(view, "tray")[0].textContent).toContain("Traced hands");
+  act("reset");
+  expect(right()).toEqual(["Activity", "Notes"]);
+  expect(titles(view)).toContain("Traced hands");
+  expect(ledger().attrs["data-collapsed"]).toBe(undefined);
+  act("arrange");
+  expect(byClass(view, "move").length).toBe(0);
+});
+
+test("the felt says what the bot reads of each opponent at its table, in the look chosen", async () => {
+  const { act } = await import("./app.js");
+  const view = show("/bot/SurSvan");
+  const [felt] = byClass(view, "felt");
+  expect(felt.attrs.class).toBe("felt theme-arena");
+  const tags = byClass(felt, "read-tag").map((tag) => tag.textContent);
+  expect(tags).toEqual(["no read", "fixed"]);
+  act("theme", { theme: "midnight" });
+  expect(byClass(view, "felt")[0].attrs.class).toBe("felt theme-midnight");
+  act("theme", { theme: "arena" });
+});
+
+test("the season shows on the fleet's board and as each bot's rank", () => {
+  const next = fleet();
+  next.season = {
+    number: 17,
+    remaining_s: 7_200,
+    read_ms: NOW,
+    registered: 900,
+    ranked: 400,
+    leader: 10_000,
+    rows: [
+      { rank: 1, name: "leader", score: 10_000, hands: 500, won: 100, rebuys: 0, ours: false },
+      { rank: 3, name: "SurSvan", score: 5_000, hands: 400, won: 90, rebuys: 0, ours: true },
+    ],
+  };
+  globalThis.location.pathname = "/";
+  listeners.fleet({ data: JSON.stringify(next) });
+  expect(ids.view.textContent).toContain("Season 17");
+  expect(ids.view.textContent).toContain("#3 SurSvan");
+  globalThis.location.pathname = "/bot/SurSvan";
+  listeners.fleet({ data: JSON.stringify(next) });
+  const [tiles] = byClass(ids.view, "summary");
+  expect(tiles.textContent).toContain("#3");
+  expect(ids.view.textContent).toContain("5,000 behind leader");
+});
+
+test("the activity log tells each hand a bot counts while the page is open", () => {
+  show("/");
+  const next = fleet();
+  next.bots[0].play = { ...next.bots[0].play, counted: 201, recent: [1_000, -3_000, 500, 2_000] };
+  listeners.fleet({ data: JSON.stringify(next) });
+  const [log] = byClass(ids.view, "log");
+  expect(log.all("li")[0].textContent).toContain("SurSvanwon 2.0 bb");
+});
+
+test("a bot's table, and a chart with its numbers in a table", () => {
+  const view = show("/bot/SurSvan");
   expect(view.textContent).toContain("Ah Kd 7c 2s");
   expect(view.textContent).toContain("SurSvan (us)");
   const svg = view.querySelector("svg");

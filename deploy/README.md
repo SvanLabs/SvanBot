@@ -229,18 +229,28 @@ systemctl --user enable --now svanbot-dashboard
 ssh -N -L 5000:127.0.0.1:5000 <box>   # then open http://127.0.0.1:5000
 ```
 
-The service reads three variables, with the defaults the unit sets:
+The service reads these variables, with the defaults the unit sets:
 
 | Variable | Default | What it is |
 |----------|---------|------------|
 | `SVANBOT_DATA` | `~/.local/share/svanbot` | Every bot's store and status file. |
 | `SVANBOT_LIB` | `~/.local/lib/svanbot` | The install tree, whose slots the Release page shows. |
 | `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:5000` | Where it listens. Keep it on loopback. |
+| `SVANBOT_SEASON` | on | `off` keeps the dashboard off the network: no season board. |
 
-The page is three hand-written files compiled into the `svanbot` binary, and the server is our
-own, on the standard library: nothing else is installed, built or run on the box for it. The
-pages are the fleet (`/`), one bot (`/bot/<name>`) and the release (`/release`): what is
-installed, where `current` and `previous` point, and the build and champion each bot runs.
+The page is hand-written files compiled into the `svanbot` binary, and the server is our own, on
+the standard library: nothing else is installed, built or run on the box for it. The fleet (`/`)
+and each bot (`/bot/<name>`) are control rooms laid out after v10's: a tab per bot, hero tiles, the
+signal rail, then a board of panels in three columns. The tabs above the board show a slice of it
+(Live, Opponents, Results, Learning, System, All). **Arrange** moves and hides panels, and each
+panel folds. The table's look (arena, felt, midnight), the arrangement, the folds and the notes
+are kept in the reader's browser only. The activity log is what changed while the page was open.
+The release page (`/release`) shows what is installed, where `current` and `previous` point, and
+the build and champion each bot runs.
+
+The season board is the venue's public leaderboard (`GET /season/current` and
+`GET /season/leaderboard`, no key), read once a minute on a thread of its own: the top 20 and
+every bot of ours wherever it ranks. A failed read keeps the last board and says so.
 
 A stopped bot keeps its last status file, so its card says `No recent status` rather than
 disappearing. That is the intended reading: the dashboard shows what was last known, not only what

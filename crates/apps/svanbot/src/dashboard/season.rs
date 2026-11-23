@@ -21,7 +21,10 @@ pub struct Season(Arc<Mutex<Value>>);
 impl Season {
     /// The board as it stands.
     pub fn get(&self) -> Value {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Replaces the board.

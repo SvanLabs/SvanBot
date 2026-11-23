@@ -44,7 +44,11 @@ fn the_board_is_the_top_of_the_leaderboard_and_every_bot_of_ours_wherever_it_ran
         row(4, "filler", 7000, 100),
         row(5, "Svanar", 6000, 90),
     ]);
-    let ours = ["SurSvan".to_owned(), "Svanar".to_owned(), "Unranked".to_owned()];
+    let ours = [
+        "SurSvan".to_owned(),
+        "Svanar".to_owned(),
+        "Unranked".to_owned(),
+    ];
     let board = board(&current(), &leaderboard, &ours, 3).unwrap();
     assert_eq!(board["number"], 1);
     assert_eq!(board["ends"], "2026-03-31T00:00:00+00:00");
