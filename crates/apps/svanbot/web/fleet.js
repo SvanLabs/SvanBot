@@ -221,7 +221,7 @@ export function arenaRun(runs) {
 }
 
 /** The Arena's leagues in the order the scoreboard shows them (V11-29). */
-const LEAGUES = ["heads-up", "6-max"];
+const LEAGUES = ["heads-up", "3-handed", "4-handed", "5-handed", "6-max"];
 
 /**
  * The Arena's runs as one board a league, heads up first, each league's runs newest first. The

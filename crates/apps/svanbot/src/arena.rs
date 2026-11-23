@@ -4,10 +4,11 @@
 //! `svanbot arena ship [seed] [iterations]` plays both leagues until the ship bar is decided
 //! instead of for a fixed count ([`crate::arena_ship`]).
 //!
-//! `svanbot arena [6-max] <bouts> [seed] [iterations] [out.json]`: each bout is 50 deals. Heads
-//! up, each deal is played twice from mirrored seats; with `6-max` it is played six times, the
-//! policy in each seat of a full table against five of the opponent (`learn::ring`). Either way
-//! the luck of the cards is taken out. The two leagues are recorded apart and never pooled.
+//! `svanbot arena [league] <bouts> [seed] [iterations] [out.json]`: each bout is 50 deals. The
+//! league is `3-handed`, `4-handed`, `5-handed` or `6-max`, and heads up without one. Heads up,
+//! each deal is played twice from mirrored seats; at a bigger table it is played once from every
+//! seat, the policy against the opponent in all the others (`learn::ring`). Either way the luck
+//! of the cards is taken out. Each league is recorded apart and never pooled.
 //! With `iterations` the re-solve runs that many on every spot; without, the compute budget sizes
 //! them by the pot, as in live play. The scoreboard is printed, and written as JSON to `out.json`
 //! when one is named, with the commit in `SVANBOT_COMMIT` and the seed, so the run can be played
@@ -20,11 +21,11 @@
 use std::process::ExitCode;
 
 use svanbot_learn::arena::{
-    BOUT, BoutReader, Row, bout, ring_bout, scoreboard, v10_duel, v10_ring,
+    BOUT, BoutReader, Row, bout, ring_bout_at, scoreboard, v10_duel, v10_ring_at,
 };
 use svanbot_learn::paired::{Match, duel_seen, verdict};
 use svanbot_learn::reads::Reads;
-use svanbot_learn::ring::{SIX_MAX, ring_seen};
+use svanbot_learn::ring::ring_seen;
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_sim::sparring::Archetype;
 use svanbot_strategy::params::Params;
@@ -80,10 +81,7 @@ pub(crate) fn play_bout(
     params: &Params,
     fixed: Option<u64>,
 ) -> Vec<f64> {
-    let seats = match league {
-        League::HeadsUp => 2,
-        League::SixMax => SIX_MAX,
-    };
+    let seats = league.seats();
     let challenger = &BoutReader::new(deciders::reading_policy(
         params,
         fixed,
@@ -92,15 +90,13 @@ pub(crate) fn play_bout(
     ));
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;
+    // Heads up is the mirrored duel; every bigger table is the ring at its own size.
     match (league, opponent) {
         (League::HeadsUp, Opponent::Sparring(archetype)) => {
             bout(game, archetype, number, challenger)
         }
         (League::HeadsUp, Opponent::V10) => {
             deals.map(|deal| v10_duel(game, deal, challenger)).collect()
-        }
-        (League::SixMax, Opponent::V10) => {
-            deals.map(|deal| v10_ring(game, deal, challenger)).collect()
         }
         (League::HeadsUp, Opponent::Pricer) => deals
             .map(|deal| {
@@ -113,14 +109,17 @@ pub(crate) fn play_bout(
                 )
             })
             .collect(),
-        (League::SixMax, Opponent::Sparring(archetype)) => {
-            ring_bout(game, archetype, number, challenger)
+        (_, Opponent::V10) => deals
+            .map(|deal| v10_ring_at(game, seats, deal, challenger))
+            .collect(),
+        (_, Opponent::Sparring(archetype)) => {
+            ring_bout_at(game, seats, archetype, number, challenger)
         }
-        (League::SixMax, Opponent::Pricer) => deals
+        (_, Opponent::Pricer) => deals
             .map(|deal| {
                 ring_seen(
                     game,
-                    SIX_MAX,
+                    seats,
                     deal,
                     challenger,
                     &|_, spot, _, seed| pricer(spot, seed),
@@ -134,13 +133,15 @@ pub(crate) fn play_bout(
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let (league, args) = match args.first().map(String::as_str) {
         Some("ship") => return crate::arena_ship::run(&args[1..]),
-        Some("6-max") => (League::SixMax, &args[1..]),
+        Some(name) if League::named(name).is_some() => {
+            (League::named(name).unwrap_or(League::HeadsUp), &args[1..])
+        }
         _ => (League::HeadsUp, args),
     };
     let number = |at: usize| args.get(at).map(|text| text.parse::<u64>());
     let (Some(Ok(bouts)), seed, fixed) = (number(0), number(1), number(2)) else {
         eprintln!(
-            "svanbot arena: usage: svanbot arena [6-max] <bouts> [seed] [iterations] [out.json]"
+            "svanbot arena: usage: svanbot arena [3-handed|4-handed|5-handed|6-max] <bouts> [seed] [iterations] [out.json]"
         );
         return ExitCode::from(2);
     };

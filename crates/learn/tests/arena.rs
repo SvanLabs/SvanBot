@@ -207,6 +207,46 @@ fn the_learning_opponent_learns_across_a_bout_and_both_hands_of_a_deal_meet_it_t
     );
 }
 
+/// A challenger that checks or calls, and notes the seat it held in every hand it finished.
+struct Counting<'a>(&'a RefCell<Vec<usize>>);
+
+impl svanbot_learn::paired::Challenger for Counting<'_> {
+    fn decide(&self, spot: &Spot, seed: u64) -> Action {
+        check_or_call(spot, seed)
+    }
+
+    fn finished_hand(
+        &self,
+        us: usize,
+        _lines: &[Vec<svanbot_core::spot::Act>],
+        _actions: &[svanbot_sim::table::Record],
+    ) {
+        self.0.borrow_mut().push(us);
+    }
+}
+
+#[test]
+fn a_ring_of_three_four_or_five_plays_each_deal_once_from_every_seat() {
+    use svanbot_learn::arena::{ring_bout_at, v10_ring_at};
+    for seats in 3..=5 {
+        let held = RefCell::new(Vec::new());
+        let won = ring_bout_at(&MATCH, seats, Archetype::Nit, 0, &Counting(&held));
+        assert_eq!(won.len(), BOUT as usize);
+        let held = held.into_inner();
+        assert_eq!(held.len(), seats * BOUT as usize, "{seats} seats");
+        for deal in held.chunks(seats) {
+            assert_eq!(deal, (0..seats).collect::<Vec<_>>(), "{seats} seats");
+        }
+        let held = RefCell::new(Vec::new());
+        v10_ring_at(&MATCH, seats, 3, &Counting(&held));
+        assert_eq!(
+            held.into_inner(),
+            (0..seats).collect::<Vec<_>>(),
+            "{seats} seats"
+        );
+    }
+}
+
 #[test]
 fn two_builds_are_compared_bout_by_bout_over_the_same_deals() {
     use svanbot_learn::arena::compare;

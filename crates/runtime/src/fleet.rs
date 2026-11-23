@@ -125,31 +125,64 @@ impl Proposal {
 /// Runs kept in `arena.json` for each league: the newest, and the ones before it, for the trend.
 pub const ARENA_HISTORY: usize = 12;
 
-/// Which Arena league a run was played in (V11-29). The two measure different things: heads up
-/// is the re-solve after the flop, 6-max the multiway path. They are kept side by side and
-/// never pooled.
+/// Which Arena league a run was played in (V11-29, V11-39): one table size each. They measure
+/// different things — heads up is the re-solve after the flop, and every bigger table the
+/// pricer's multiway path at a different count of players behind — so they are kept side by side
+/// and never pooled. The ship bar reads heads up and 6-max.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum League {
     HeadsUp,
+    ThreeHanded,
+    FourHanded,
+    FiveHanded,
     SixMax,
 }
 
 impl League {
-    /// The league's name in `arena.json` and on the scoreboard.
+    /// Every league, smallest table first.
+    pub const ALL: [Self; 5] = [
+        Self::HeadsUp,
+        Self::ThreeHanded,
+        Self::FourHanded,
+        Self::FiveHanded,
+        Self::SixMax,
+    ];
+
+    /// The league's name in `arena.json`, on the scoreboard and on `svanbot arena`'s line.
     pub const fn name(self) -> &'static str {
         match self {
             Self::HeadsUp => "heads-up",
+            Self::ThreeHanded => "3-handed",
+            Self::FourHanded => "4-handed",
+            Self::FiveHanded => "5-handed",
             Self::SixMax => "6-max",
         }
+    }
+
+    /// The seats at the league's table.
+    pub const fn seats(self) -> usize {
+        match self {
+            Self::HeadsUp => 2,
+            Self::ThreeHanded => 3,
+            Self::FourHanded => 4,
+            Self::FiveHanded => 5,
+            Self::SixMax => 6,
+        }
+    }
+
+    /// The league called `name`, or `None` when no league is.
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|league| league.name() == name)
     }
 
     /// The league of a stored run. A run stored before 6-max has no league, and was heads up.
     fn from_json(value: &Value) -> Result<Self, String> {
         match value.as_str() {
             None if value.is_null() => Ok(Self::HeadsUp),
-            Some("heads-up") => Ok(Self::HeadsUp),
-            Some("6-max") => Ok(Self::SixMax),
-            _ => Err(format!("no Arena league is called {value}")),
+            Some(name) => {
+                Self::named(name).ok_or_else(|| format!("no Arena league is called {value}"))
+            }
+            None => Err(format!("no Arena league is called {value}")),
         }
     }
 }
@@ -356,7 +389,7 @@ impl Fleet {
         runs.retain(|held| !same(held));
         runs.insert(0, run.clone());
         // Newest first, so the first ARENA_HISTORY of a league are the ones it keeps.
-        let mut kept = [0usize; 2];
+        let mut kept = [0usize; League::ALL.len()];
         runs.retain(|held| {
             let count = &mut kept[held.league as usize];
             *count += 1;

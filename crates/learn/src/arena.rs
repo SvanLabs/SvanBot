@@ -55,17 +55,30 @@ pub fn bout_against(
         .collect()
 }
 
-/// Plays 6-max bout `number` against five of `archetype`: its deals, each once from every seat
-/// ([`ring_seen`]), in order. Each seat has its own opponent, and a learning one watches the
-/// challenger's seat, not its own copies. Returns what the challenger won on each deal, in big blinds a hand.
+/// Plays 6-max bout `number` against five of `archetype`: [`ring_bout_at`] at a full table.
 pub fn ring_bout(
     game: &Match,
     archetype: Archetype,
     number: u64,
     challenger: &impl Challenger,
 ) -> Vec<f64> {
-    ring_deals(
+    ring_bout_at(game, SIX_MAX, archetype, number, challenger)
+}
+
+/// Plays bout `number` at a table of `seats` (three to six) against `seats - 1` of `archetype`:
+/// its deals, each once from every seat ([`ring_seen`]), in order. Each seat has its own opponent,
+/// and a learning one watches the challenger's seat, not its own copies. Returns what the
+/// challenger won on each deal, in big blinds a hand.
+pub fn ring_bout_at(
+    game: &Match,
+    seats: usize,
+    archetype: Archetype,
+    number: u64,
+    challenger: &impl Challenger,
+) -> Vec<f64> {
+    ring_deals_at(
         game,
+        seats,
         archetype,
         number * BOUT..(number + 1) * BOUT,
         challenger,
@@ -79,14 +92,25 @@ pub fn ring_deals(
     numbers: std::ops::Range<u64>,
     challenger: &impl Challenger,
 ) -> Vec<f64> {
-    let opponents: Vec<Sparring> = (0..SIX_MAX).map(|_| Sparring::new(archetype)).collect();
+    ring_deals_at(game, SIX_MAX, archetype, numbers, challenger)
+}
+
+/// Plays consecutive deals at a table of `seats` with the same sparring opponents.
+pub fn ring_deals_at(
+    game: &Match,
+    seats: usize,
+    archetype: Archetype,
+    numbers: std::ops::Range<u64>,
+    challenger: &impl Challenger,
+) -> Vec<f64> {
+    let opponents: Vec<Sparring> = (0..seats).map(|_| Sparring::new(archetype)).collect();
     numbers
         .map(|deal| {
             // Every rotation meets each opponent as it was when the deal began, as in [`bout`].
             let start: Vec<Memory> = opponents.iter().map(Sparring::memory).collect();
             ring_seen(
                 game,
-                SIX_MAX,
+                seats,
                 deal,
                 challenger,
                 &|seat, spot, _, seed| opponents[seat].decide(spot, seed, deal),
@@ -117,10 +141,16 @@ pub fn v10_duel(game: &Match, number: u64, challenger: &impl Challenger) -> f64 
 
 /// Plays deal `number` at a full table of v10.0.2, once from every seat ([`ring_seen`]).
 pub fn v10_ring(game: &Match, number: u64, challenger: &impl Challenger) -> f64 {
+    v10_ring_at(game, SIX_MAX, number, challenger)
+}
+
+/// Plays deal `number` at a table of `seats` with v10.0.2 in every other seat, once from every
+/// seat.
+pub fn v10_ring_at(game: &Match, seats: usize, number: u64, challenger: &impl Challenger) -> f64 {
     let v10 = V10::default();
     ring_seen(
         game,
-        SIX_MAX,
+        seats,
         number,
         challenger,
         &|seat, spot, seen, seed| v10.decide(seat, spot, seen, seed),

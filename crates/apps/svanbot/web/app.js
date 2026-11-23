@@ -317,6 +317,12 @@ function scoreboardBody(fleet) {
 const PLAYED = {
   "heads-up":
     "by playing each deal from both seats, heads up against the pricer and the sparring archetypes",
+  "3-handed":
+    "by playing each deal from every seat of a table of three, against two of the pricer, v10.0.2 or one sparring archetype",
+  "4-handed":
+    "by playing each deal from every seat of a table of four, against three of the pricer, v10.0.2 or one sparring archetype",
+  "5-handed":
+    "by playing each deal from every seat of a table of five, against four of the pricer, v10.0.2 or one sparring archetype",
   "6-max":
     "by playing each deal from every seat of a full table, against five of the pricer or of one sparring archetype",
 };
@@ -335,7 +341,7 @@ function leagueBoard({ league, runs }) {
     h(
       "h2",
       {},
-      league === "6-max" ? "6-max " : "Heads up ",
+      league === "heads-up" ? "Heads up " : `${league} `,
       h(
         "span",
         { class: "muted mono" },
