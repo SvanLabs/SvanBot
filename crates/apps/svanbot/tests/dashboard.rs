@@ -9,7 +9,7 @@ use std::thread;
 
 use serde_json::Value;
 use support::{get, scratch, send, serve, status};
-use svanbot::dashboard::{Config, Server};
+use svanbot::dashboard::{Config, Season, Server};
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_runtime::status::status_path;
 use svanbot_strategy::params::Params;
@@ -84,6 +84,7 @@ fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
         data_dir: data,
         fleet_dir: elsewhere,
         lib_dir: lib,
+        season: Season::default(),
     })
     .unwrap();
     let addr = server.addr();
@@ -91,6 +92,35 @@ fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
     let (_, body) = get(addr, "/api/fleet");
     let fleet: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(fleet["arena"][0]["commit"], "def5678");
+}
+
+#[test]
+fn the_fleet_carries_the_season_board_the_watcher_last_read_and_null_before_it() {
+    // The season comes from the venue once a minute (`svanbot_runtime::season`); the fleet
+    // carries the last board read, so the stream pushes a change of rank like any other change.
+    let dir = scratch("season");
+    let data = dir.join("data");
+    let lib = dir.join("lib");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::create_dir_all(&lib).unwrap();
+    let season = Season::default();
+    let server = Server::bind(Config {
+        addr: "127.0.0.1:0".into(),
+        data_dir: data,
+        fleet_dir: dir.join("fleet"),
+        lib_dir: lib,
+        season: season.clone(),
+    })
+    .unwrap();
+    let addr = server.addr();
+    thread::spawn(move || server.run());
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(fleet["season"], Value::Null);
+    season.set(serde_json::json!({"number": 7, "rows": []}));
+    let (_, body) = get(addr, "/api/fleet");
+    let fleet: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(fleet["season"]["number"], 7);
 }
 
 #[test]
@@ -279,6 +309,7 @@ fn the_dashboard_refuses_a_public_address() {
         data_dir: dir.clone(),
         fleet_dir: dir.join("fleet"),
         lib_dir: dir,
+        season: Season::default(),
     })
     .err()
     .expect("a public address is refused");

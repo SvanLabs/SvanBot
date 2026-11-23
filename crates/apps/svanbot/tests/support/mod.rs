@@ -80,6 +80,7 @@ pub fn serve(name: &str) -> (SocketAddr, PathBuf) {
         data_dir: data,
         fleet_dir,
         lib_dir: lib,
+        season: svanbot::dashboard::Season::default(),
     })
     .unwrap();
     let addr = server.addr();
