@@ -28,6 +28,7 @@ pub mod record;
 pub mod release;
 pub mod rest;
 pub mod session;
+pub mod ship;
 pub mod slot;
 pub mod status;
 pub mod store;
