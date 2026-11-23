@@ -1,14 +1,20 @@
 //! The season's hand history, downloaded into one bot's store (V11-13).
 //!
-//! It reads `GET /api/me/hand-history` with the bot's own key, 200 hands a page, through a
-//! [`Rest`] paced to the endpoint's 30 requests a minute that honours `Retry-After`. After each page
-//! the store records how far it got, so a stopped download resumes there. Each hand is kept as
-//! the venue sent it, as `Source::History`, and a hand the store already holds, from live play or
-//! an earlier page, keeps its first copy.
+//! It reads the season's export, `GET /api/portfolio/bots/{agent_id}/hand-history/export` with
+//! `format=json` (V11-38), with the bot's own key and the id `GET /api/me` gives it, [`PAGE`]
+//! hands a page, through a [`Rest`] that honours `Retry-After`. The export is the site's analytics
+//! download: this season's hands only, newest first, the same fields as `/me/hand-history`. That
+//! older endpoint walks every season the bot ever played, 200 hands a page at about ten seconds
+//! each, where the export gives this season in a few pages.
 //!
-//! The venue's docs do not give the page's shape, so a page may be a list, or an object holding
-//! the list under `hands`, `items`, `data`, `results` or `history`. A hand is named by its
-//! `hand_id`, or else its `id`.
+//! Every run reads the season from its newest hand: a new hand moves every offset by one, and a
+//! new season starts them again, so no offset from an earlier run names the same hand. The store
+//! still records how far each run got. Each hand is kept as the venue sent it, as
+//! `Source::History`, and a hand the store already holds, from live play or an earlier run, keeps
+//! its first copy.
+//!
+//! A page is a list, or an object holding the list under `hands`, `items`, `data`, `results` or
+//! `history`. A hand is named by its `hand_id`, or else its `id`.
 
 use std::time::Duration;
 
@@ -19,11 +25,25 @@ use crate::record::Hand;
 use crate::rest::{Rest, RestError};
 use crate::store::{Source, Store, StoreError};
 
-/// The endpoint.
-pub const PATH: &str = "/me/hand-history";
+/// The profile, which names the bot's `agent_id`.
+pub const ME: &str = "/me";
 
-/// Hands per page: the endpoint's maximum.
-pub const PAGE: u32 = 200;
+/// The season's export of the bot `agent_id`, as JSON.
+pub fn export_path(agent_id: &str) -> String {
+    format!("/portfolio/bots/{agent_id}/hand-history/export?format=json")
+}
+
+/// Hands per page: more than a season holds, so a season is one request. The export gives an
+/// empty reply from offset 10 000 on (measured on 2026-11-23), so a season of more than 10 000
+/// hands cannot be paged; from offset 0 it gives any number. An empty reply is an error here,
+/// never the end, so a season cut short is never taken for a whole one.
+pub const PAGE: u32 = 50_000;
+
+/// How long the one request may take: a season of 14 000 hands is 30 MB and about 75 seconds.
+pub const TIMEOUT: Duration = Duration::from_secs(600);
+
+/// The largest export read: a season of 14 000 hands is 30 MB, so this holds about 100 000.
+pub const MAX_BODY: u64 = 256 * 1024 * 1024;
 
 /// The endpoint's limit per key: 30 requests a minute, with a second's margin on the window.
 pub fn limiter() -> Limiter {
@@ -49,6 +69,8 @@ pub struct Summary {
 pub enum DownloadError {
     Rest(RestError),
     Store(StoreError),
+    /// The profile named no `agent_id`, so there is no export to read.
+    NoAgentId,
 }
 
 impl std::fmt::Display for DownloadError {
@@ -56,6 +78,7 @@ impl std::fmt::Display for DownloadError {
         match self {
             Self::Rest(error) => write!(f, "{error}"),
             Self::Store(error) => write!(f, "{error}"),
+            Self::NoAgentId => write!(f, "the profile at {ME} names no agent_id"),
         }
     }
 }
@@ -74,19 +97,17 @@ impl From<StoreError> for DownloadError {
     }
 }
 
-/// Downloads the hand history into `store`, from where the last download stopped. `now_ms`
-/// stamps each record.
+/// Downloads this season's hand history into `store`, from its newest hand. `now_ms` stamps each
+/// record.
 pub fn download(
     rest: &mut Rest,
     store: &Store,
     mut now_ms: impl FnMut() -> i64,
 ) -> Result<Summary, DownloadError> {
-    let start = store.download_offset()?;
-    let mut summary = Summary {
-        offset: start,
-        ..Summary::default()
-    };
-    let mut pager = rest.pages(PATH, PAGE, items).from(start);
+    let profile = rest.get(ME)?;
+    let agent_id = text(&profile, &["agent_id"]).ok_or(DownloadError::NoAgentId)?;
+    let mut summary = Summary::default();
+    let mut pager = rest.pages(&export_path(&agent_id), PAGE, items);
     while let Some(page) = pager.next_page()? {
         summary.pages += 1;
         for item in &page {
