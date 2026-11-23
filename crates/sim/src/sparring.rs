@@ -58,6 +58,14 @@ pub const PERIOD: u64 = 20;
 /// Deals sampled for an archetype's equity.
 const SAMPLES: u64 = 256;
 
+/// What a learning opponent has seen of us: our last actions it looked at, and how many were
+/// bets or raises.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Memory {
+    pub acts: u32,
+    pub bets: u32,
+}
+
 /// One sparring opponent. The learning archetype remembers what it has seen of us, so one
 /// opponent is one table's worth of hands, played in order.
 #[derive(Clone, Debug)]
@@ -96,10 +104,17 @@ impl Sparring {
         }
     }
 
-    /// Forgets what it has seen of us, as a fresh opponent would. Both hands of a paired deal
-    /// face the same opponent, so the deal still cancels the luck of the cards.
-    pub fn reset(&self) {
-        self.seen.set((0, 0));
+    /// What it has seen of us so far: the learning archetype's whole memory.
+    pub fn memory(&self) -> Memory {
+        let (acts, bets) = self.seen.get();
+        Memory { acts, bets }
+    }
+
+    /// Puts its memory back to `memory`. The Arena saves it when a deal starts and recalls it
+    /// before each of the deal's hands, so they all meet the same opponent, and the next deal
+    /// meets it with what the deal taught it.
+    pub fn recall(&self, memory: Memory) {
+        self.seen.set((memory.acts, memory.bets));
     }
 
     /// The opponent's action at `spot`, in hand number `hand` of its table, drawing from `seed`.

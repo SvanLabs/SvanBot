@@ -23,6 +23,11 @@ export function unattributed(commits: readonly Commit[]): string[] {
 const FIELD = "\x1f";
 const RECORD = "\x1e";
 
+/** The commits to check: on a pull request, those since the branch it merges into, else since main. */
+export function rangeFor(baseRef: string | undefined): string {
+  return `origin/${baseRef || "main"}..HEAD`;
+}
+
 function commitsIn(range: string, root: string): Commit[] {
   const format = `--format=%H${FIELD}%P${FIELD}%B${RECORD}`;
   const log = Bun.spawnSync(["git", "log", format, range], { cwd: root });
@@ -48,7 +53,7 @@ if (import.meta.main) {
     process.exit(0);
   }
   const root = join(import.meta.dir, "..");
-  const problems = unattributed(commitsIn(first ?? "origin/main..HEAD", root));
+  const problems = unattributed(commitsIn(first ?? rangeFor(process.env.GITHUB_BASE_REF), root));
   for (const problem of problems) console.log(problem);
   process.exit(problems.length > 0 ? 1 : 0);
 }
