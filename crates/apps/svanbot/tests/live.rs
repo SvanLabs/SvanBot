@@ -32,6 +32,7 @@ fn status() -> Status {
         last_error: None,
         play: Play::default(),
         opponents: Vec::new(),
+        reads_in_play: false,
     }
 }
 

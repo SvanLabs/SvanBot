@@ -60,7 +60,18 @@ fn status(bot: &str, updated_ms: i64) -> Status {
             actions: 412,
             earned_pct: 62,
         }],
+        reads_in_play: true,
     }
+}
+
+#[test]
+fn a_status_that_does_not_say_its_reads_are_in_play_holds_them() {
+    // The dossier tells an earned share apart from a spent one by this: a status from before the
+    // flag, or one that leaves it out, is a bot whose reads decide nothing.
+    let mut value = status("SurSvan", 2_000).to_json();
+    assert_eq!(value["reads_in_play"], true);
+    value.as_object_mut().unwrap().remove("reads_in_play");
+    assert!(!Status::from_json(&value).unwrap().reads_in_play);
 }
 
 #[test]

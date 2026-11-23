@@ -352,6 +352,7 @@ fn start_status(me: &str, store: &Store, probing: &Probing<'_>) -> Result<Live, 
         last_error: None,
         play,
         opponents: Vec::new(),
+        reads_in_play: svanbot_learn::reads::IN_PLAY,
     };
     Live::start(status_path(&store_path(me)?), status).map_err(|e| e.to_string())
 }

@@ -36,8 +36,25 @@ export function dossierPage(status, name) {
     "is how much of the bot's exploit budget the read may spend (the class's cap times n / (n + ",
     `${HALF})), not a measured harm.`,
   );
+  // Reads stay held until their sim says playing by them wins; a status that does not say they
+  // are in play is a bot whose reads decide nothing.
+  const held =
+    status.reads_in_play === true
+      ? null
+      : h(
+          "p",
+          {},
+          "Reads are held: each opponent is read and classed, and the bot still plays them as it ",
+          "would with no read, so the earned share is what a read would spend once reads come ",
+          "into play. It decides nothing yet.",
+        );
   if (opponents.length === 0) {
-    return [title, copy, h("p", {}, "This bot has no reads yet: it has played no named opponent.")];
+    return [
+      title,
+      copy,
+      held,
+      h("p", {}, "This bot has no reads yet: it has played no named opponent."),
+    ].filter(Boolean);
   }
   opponents.sort((a, b) => a.name.localeCompare(b.name));
   const rows = opponents.map((row) =>
@@ -55,6 +72,7 @@ export function dossierPage(status, name) {
   return [
     title,
     copy,
+    held,
     panel(
       "Opponents",
       table(
@@ -70,7 +88,7 @@ export function dossierPage(status, name) {
         rows,
       ),
     ),
-  ];
+  ].filter(Boolean);
 }
 
 /** Every bot's dossier, by name, with how many opponents each reads. */

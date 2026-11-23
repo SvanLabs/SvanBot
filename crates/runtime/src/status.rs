@@ -52,6 +52,9 @@ pub struct Status {
     pub play: Play,
     /// Each opponent as this bot reads them, by name: aggregates only, never the raw counts.
     pub opponents: Vec<Dossier>,
+    /// Whether the reads decide in play (`svanbot_learn::reads::IN_PLAY`), or are held: kept and
+    /// shown, with each earned share one the read would spend, not one it does.
+    pub reads_in_play: bool,
 }
 
 /// One bot's view of one opponent (`GLOSSARY.md`: dossier), as the status carries it.
@@ -175,6 +178,7 @@ impl Status {
                 "actions": dossier.actions,
                 "earned_pct": dossier.earned_pct,
             })).collect::<Vec<_>>(),
+            "reads_in_play": self.reads_in_play,
         })
     }
 
@@ -248,6 +252,8 @@ impl Status {
                     .collect::<Result<_, String>>()?,
                 Err(_) => Vec::new(),
             },
+            // A status that does not say so is a bot whose reads decide nothing.
+            reads_in_play: value["reads_in_play"].as_bool().unwrap_or(false),
         })
     }
 

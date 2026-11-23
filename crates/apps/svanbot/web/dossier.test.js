@@ -76,6 +76,16 @@ test("a bot with no status, and one with no reads yet, say so", () => {
   );
 });
 
+test("held reads say the earned share is not spent, and reads in play do not", () => {
+  const held = page(dossier.dossierPage(status([row()]), "SurSvan")).textContent;
+  expect(held).toContain("Reads are held");
+  expect(held).toContain("decides nothing yet");
+  const playing = page(
+    dossier.dossierPage({ ...status([row()]), reads_in_play: true }, "SurSvan"),
+  ).textContent;
+  expect(playing).not.toContain("Reads are held");
+});
+
 test("each opponent is a row in name order, with class, hands, actions, band and earned share", () => {
   const view = page(
     dossier.dossierPage(
