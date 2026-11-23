@@ -8,11 +8,13 @@
 //! - It checks when the check is free, and it never folds then.
 
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
-use svanbot_core::rules::Action;
+use svanbot_core::rules::{Action, Street};
 use svanbot_core::spot::Spot;
-use svanbot_sim::equity::sampled;
+use svanbot_sim::equity::{Showdown, equity_over, showdowns};
 
-use crate::action::{ActionModel, Seen, range};
+use crate::action::{ActionModel, Seen, range, ranked};
+
+mod ev;
 use crate::params::Params;
 
 /// The work a decision may do, passed in so the decision never reads the clock: how many deals
@@ -74,9 +76,16 @@ pub fn price_lines(
         .collect();
     let mut ranges: Vec<&[(CardSet, f64)]> = read.iter().map(Vec::as_slice).collect();
     ranges.resize(spot.opponents.max(1), &uniform);
-    let equity = sampled(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
+    let dealt = showdowns(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
+    let equity = equity_over(&dealt);
+    // A line with no model of its own answers a raise as the baseline's sound opponent would.
+    let baseline = ActionModel::baseline();
+    let folding: Vec<&ActionModel> = (0..ranges.len())
+        .map(|at| models.get(at).copied().unwrap_or(&baseline))
+        .collect();
+    let _ = params;
     Decision {
-        action: choose(spot, equity, params),
+        action: choose(spot, &dealt, &folding, equity),
         equity,
         price: price_of(spot),
     }
@@ -90,21 +99,65 @@ pub fn price_of(spot: &Spot) -> Option<f64> {
     })
 }
 
-fn choose(spot: &Spot, equity: f64, params: &Params) -> Action {
-    let fair = 1.0 / (spot.opponents.max(1) + 1) as f64;
-    if let Some(range) = spot.legal.raise
-        && equity > fair + (1.0 - fair) * params.value_margin
-    {
-        let size = range
-            .min
-            .saturating_add((f64::from(spot.pot) * params.raise_share) as u32);
-        return Action::RaiseTo(size.clamp(range.min, range.max));
+/// The action worth the most chips from here on ([`ev`]). The passive action is worth our share
+/// of the pot it is played into; a raise must beat it outright, so a tie stays passive, and a
+/// free check is never folded.
+fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64) -> Action {
+    let sizes = ev::sizes(spot);
+    let answering = answering(spot, models.len());
+    let references = (!sizes.is_empty() || (spot.legal.call.is_some() && answering != 0))
+        .then(|| ev::references(spot, dealt, models, &ranked(spot.board)))
+        .unwrap_or_default();
+    let (mut best, mut worth) = match spot.legal.call {
+        None => (Action::Check, equity * f64::from(spot.pot)),
+        Some(call) => {
+            let pot = spot.callable_pot.unwrap_or(spot.pot);
+            let called = if answering == 0 {
+                equity * (f64::from(pot) + f64::from(call)) - f64::from(call)
+            } else {
+                ev::call(
+                    dealt,
+                    &references,
+                    answering,
+                    pot,
+                    call,
+                    spot.committed + call,
+                )
+            };
+            if called >= 0.0 {
+                (Action::Call, called)
+            } else {
+                (Action::Fold, 0.0)
+            }
+        }
+    };
+    if !sizes.is_empty() {
+        let call = spot.legal.call.unwrap_or(0);
+        for to in sizes {
+            let raised = ev::raise(dealt, &references, spot.pot, call, to - spot.committed);
+            if raised > worth {
+                (best, worth) = (Action::RaiseTo(to), raised);
+            }
+        }
     }
-    match price_of(spot) {
-        None => Action::Check,
-        Some(price) if equity >= price => Action::Call,
-        Some(_) => Action::Fold,
+    best
+}
+
+/// The opponents, a bit each in the order of the ranges, who have not acted on this street yet
+/// and so still answer its bet. None when the caller did not follow the hand: with no lines,
+/// nobody can be told apart, and every opponent is taken to be in.
+fn answering(spot: &Spot, opponents: usize) -> u32 {
+    if spot.lines.is_empty() {
+        return 0;
     }
+    let street = Street::of(spot.board);
+    (0..opponents.min(31))
+        .filter(|&at| {
+            spot.lines
+                .get(at)
+                .is_none_or(|line| line.iter().all(|act| act.street != street))
+        })
+        .fold(0, |bits, at| bits | (1 << at))
 }
 
 /// Every pair of hole cards that avoids the `dead` cards, each with weight 1.

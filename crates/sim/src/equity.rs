@@ -47,25 +47,77 @@ pub fn sampled(
     samples: u64,
     seed: u64,
 ) -> f64 {
+    equity_over(&showdowns(hero, ranges, board, samples, seed))
+}
+
+/// Hero's equity over deals [`showdowns`] drew, every opponent in: what [`sampled`] gives for
+/// the same draws, to the bit.
+pub fn equity_over(dealt: &[Showdown]) -> f64 {
+    let units: u64 = dealt.iter().map(Showdown::hero_units).sum();
+    units as f64 / (WHOLE * (dealt.len() as u64).max(1)) as f64
+}
+
+/// One sampled deal of [`showdowns`]: the cards each opponent was dealt, and the strength of every
+/// hand on the full board, hero's first and then the opponents' in the order of their ranges.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Showdown {
+    pub holes: Vec<CardSet>,
+    pub strengths: Vec<Strength>,
+}
+
+impl Showdown {
+    /// Hero's share of the pot against the opponents in `against` (a bit an opponent, in the order
+    /// of [`Showdown::holes`]), the others out of the hand: 1 when no opponent left in beats hero,
+    /// split among ties, 0 when one does.
+    pub fn share_against(&self, against: u32) -> f64 {
+        let hero = self.strengths[0];
+        let mut tied = 1;
+        for (at, &strength) in self.strengths[1..].iter().enumerate() {
+            if against & (1 << at) != 0 {
+                if strength > hero {
+                    return 0.0;
+                }
+                tied += usize::from(strength == hero);
+            }
+        }
+        1.0 / tied as f64
+    }
+
+    fn hero_units(&self) -> u64 {
+        let mut units = vec![0; self.strengths.len()];
+        share(&self.strengths, &mut units);
+        units[0]
+    }
+}
+
+/// The deals [`sampled`] draws, one [`Showdown`] each: every opponent's cards drawn by weight from
+/// their range, and the board run out. A deal a range could not be dealt around is left out.
+pub fn showdowns(
+    hero: CardSet,
+    ranges: &[&[(CardSet, f64)]],
+    board: CardSet,
+    samples: u64,
+    seed: u64,
+) -> Vec<Showdown> {
     let ranges: Vec<Weighted> = ranges.iter().map(|range| Weighted::new(range)).collect();
-    let mut units = 0u64;
-    let mut dealt = 0u64;
+    let mut dealt = Vec::with_capacity(samples as usize);
     for block in 0..BLOCKS {
         let mut rng = Rng::stream(seed, block);
         let count = samples / BLOCKS + u64::from(block < samples % BLOCKS);
         for _ in 0..count {
-            if let Some(share) = deal_once(hero, &ranges, board, &mut rng) {
-                units += share;
-                dealt += 1;
-            }
+            dealt.extend(deal_once(hero, &ranges, board, &mut rng));
         }
     }
-    units as f64 / (WHOLE * dealt.max(1)) as f64
+    dealt
 }
 
-/// Hero's share of one seeded deal, in units, or `None` if a range could not be dealt around the
-/// cards already out.
-fn deal_once(hero: CardSet, ranges: &[Weighted], board: CardSet, rng: &mut Rng) -> Option<u64> {
+/// One seeded deal, or `None` if a range could not be dealt around the cards already out.
+fn deal_once(
+    hero: CardSet,
+    ranges: &[Weighted],
+    board: CardSet,
+    rng: &mut Rng,
+) -> Option<Showdown> {
     let mut dead = hero | board;
     let mut opponents = Vec::with_capacity(ranges.len());
     for range in ranges {
@@ -87,9 +139,10 @@ fn deal_once(hero: CardSet, ranges: &[Weighted], board: CardSet, rng: &mut Rng) 
     let key = Key::of(full);
     let mut strengths = vec![add(key, hero).strength()];
     strengths.extend(opponents.iter().map(|&cards| add(key, cards).strength()));
-    let mut units = vec![0; strengths.len()];
-    share(&strengths, &mut units);
-    Some(units[0])
+    Some(Showdown {
+        holes: opponents,
+        strengths,
+    })
 }
 
 /// Hole cards drawn by weight, through the running total of the weights.

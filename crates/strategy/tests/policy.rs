@@ -178,6 +178,48 @@ fn each_opponent_is_read_by_their_own_model_and_the_trace_names_their_class_and_
 }
 
 #[test]
+fn a_read_that_folds_to_any_bet_is_bet_into_at_a_table_of_three() {
+    // Two opponents checked a flop our 7-2 missed. Read by the population's model they call
+    // a bet often enough that we check; read as players who fold to any bet, we bet.
+    let board = "AhKsQh";
+    let mut spot = spot("7c2d", board, 400, 0, 2);
+    spot.legal = Legal {
+        call: None,
+        raise: Some(RaiseRange { min: 20, max: 2000 }),
+    };
+    let checked = Act {
+        street: Street::Flop,
+        board: board.parse().unwrap(),
+        facing: false,
+        kind: ActKind::Check,
+    };
+    spot.lines = vec![vec![checked], vec![checked]];
+    spot.seats = vec![1, 3];
+    let mut counts = Counts::default();
+    for situation in Situation::all() {
+        for bucket in 0..BUCKETS {
+            let mv = if situation.facing {
+                Move::Fold
+            } else {
+                Move::Check
+            };
+            counts.add(situation, bucket, mv, 1.0);
+        }
+    }
+    let folds = ActionModel::from_counts(&counts, 0.0);
+    let personal = [1, 3].map(|seat| Personal {
+        seat,
+        model: folds.clone(),
+        class: Class::Fixed,
+        trust: Some(0.5),
+    });
+    let plain = decide_read(&spot, None, &[], &Params::DEFAULT, BUDGET, 60);
+    let read = decide_read(&spot, None, &personal, &Params::DEFAULT, BUDGET, 60);
+    assert_eq!(plain.action, Action::Check, "{plain:?}");
+    assert!(matches!(read.action, Action::RaiseTo(_)), "{read:?}");
+}
+
+#[test]
 fn a_held_read_decides_exactly_as_no_read_and_the_trace_names_only_its_class() {
     // Reads that have not cleared their gate: each line is read by the population's model, so the
     // decision is the one with no reads at all, bit for bit. The trace still names each class.
