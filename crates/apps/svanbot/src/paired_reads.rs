@@ -59,7 +59,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             return measure_ring(&game, archetype, warm, deals, &params);
         }
         let reads = warm_up(&game, archetype, 0..warm, &off);
-        let read = reads.get(OPPONENT);
+        let read = reads.personal(&[(0, OPPONENT)], &ActionModel::baseline(), params.exploit);
         let on = deciders::reader(&params, None, &reads);
         let results = measure(warm..warm + deals, |deal| {
             reads_on_off(&game, archetype, deal..deal + 1, &on, &off)[0]
@@ -68,8 +68,8 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             "reads on against off, {}: {}, read {} at {:.0}% of the budget",
             archetype.name(),
             line(&verdict(&results)),
-            read.map_or("nothing", |read| read.class().name()),
-            read.map_or(0.0, |read| read.earned() * 100.0)
+            read[0].class.name(),
+            read[0].trust.unwrap_or_default() * 100.0
         );
         results
     };

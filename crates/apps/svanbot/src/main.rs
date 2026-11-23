@@ -201,10 +201,8 @@ fn main() -> ExitCode {
                 let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
                 // The parameter set of the hand in play: the champion's, or a probe's arm.
                 let params = probing.borrow().params();
-                // Each opponent is named with their read's class, and read by the population's
-                // model (the fitted one if it passed `svanbot fit`, else the baseline): tilted
-                // toward their own read once reads are in play (`reads::IN_PLAY`), as it is not
-                // until `svanbot paired reads` passes.
+                // Each eligible opponent has their own read, built from this bot's hands.
+                // Everyone else uses the fitted population model or the baseline.
                 let named: Vec<(usize, &str)> = players
                     .iter()
                     .filter(|player| spot.seats.contains(&player.seat))

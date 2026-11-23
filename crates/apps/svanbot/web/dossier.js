@@ -40,7 +40,11 @@ export function dossierPage(status, name) {
   // are in play is a bot whose reads decide nothing.
   const held =
     status.reads_in_play === true
-      ? null
+      ? h(
+          "p",
+          {},
+          "The bot uses a read only for a fixed opponent who raised more than 40% of at least 30 preflop bets faced.",
+        )
       : h(
           "p",
           {},
