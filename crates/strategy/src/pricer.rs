@@ -177,13 +177,22 @@ fn answering(spot: &Spot, opponents: usize) -> u64 {
         return 0;
     }
     let street = Street::of(spot.board);
-    (0..opponents.min(31))
+    let mut answering = (0..opponents.min(u64::BITS as usize))
         .filter(|&at| {
             spot.lines
                 .get(at)
                 .is_none_or(|line| line.iter().all(|act| act.street != street))
         })
-        .fold(0, |bits, at| bits | (1 << at))
+        .fold(0u64, |bits, at| bits | (1 << at));
+    // Before the flop, a bet of one big blind is a limp: the big blind has it in already and never
+    // folds to it, so one of the players still to act stays in rather than answering. The spot
+    // does not say which seat is the blind; the last of them in line order is taken, and the
+    // players with no act yet are read alike, from an empty line.
+    let bet = spot.committed + spot.legal.call.unwrap_or(0);
+    if street == Street::Preflop && bet <= spot.big_blind && answering != 0 {
+        answering &= !(1 << (u64::BITS - 1 - answering.leading_zeros()));
+    }
+    answering
 }
 
 /// Every pair of hole cards that avoids the `dead` cards, each with weight 1.

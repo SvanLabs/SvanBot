@@ -284,6 +284,66 @@ fn a_call_is_priced_against_the_players_left_to_act_as_they_answer_it() {
     assert_eq!(decision.action, Action::Call, "{decision:?}");
 }
 
+/// A table whose players, facing a bet, fold, call or raise big at these rates, whatever they
+/// hold, and otherwise check.
+fn facing_table(fold: f64, call: f64, raise: f64) -> svanbot_strategy::action::ActionModel {
+    use svanbot_strategy::action::{ActionModel, BUCKETS, Counts, Move, Situation};
+    let mut counts = Counts::default();
+    for situation in Situation::all() {
+        for bucket in 0..BUCKETS {
+            if situation.facing {
+                counts.add(situation, bucket, Move::Fold, fold);
+                counts.add(situation, bucket, Move::Call, call);
+                counts.add(situation, bucket, Move::Large, raise);
+            } else {
+                counts.add(situation, bucket, Move::Check, 1.0);
+            }
+        }
+    }
+    ActionModel::from_counts(&counts, 0.0)
+}
+
+#[test]
+fn a_call_is_folded_when_the_players_behind_reraise_it() {
+    use svanbot_core::rules::Street;
+    use svanbot_core::spot::{Act, ActKind};
+    use svanbot_strategy::pricer::price_lines;
+    // The same open as above, but the three players still to act re-raise half the time they are
+    // bet into. A call that is squeezed out loses what it put in, so nines are folded.
+    let table = facing_table(0.5, 0.0, 0.5);
+    let mut at = spot("9h9s", "", 90, facing(60, None), 4);
+    let opened = Act {
+        street: Street::Preflop,
+        board: CardSet::EMPTY,
+        facing: true,
+        kind: ActKind::Bet { added: 60, pot: 30 },
+    };
+    at.lines = vec![vec![opened], vec![], vec![], vec![]];
+    let decision = price_lines(&at, &[&table; 4], BUDGET);
+    assert_eq!(decision.action, Action::Fold, "{decision:?}");
+}
+
+#[test]
+fn a_limp_is_priced_against_the_blinds_who_have_its_bet_in_already() {
+    use svanbot_core::rules::Street;
+    use svanbot_core::spot::{Act, ActKind};
+    use svanbot_strategy::pricer::price_lines;
+    // One player limped; four are behind, and they fold 98% of the time to a bet. A limp is not a
+    // bet they can fold to — the big blind already has it in — so 7-2 offsuit is not taken
+    // heads up against the limper: it meets the whole table, and folds.
+    let table = facing_table(0.98, 0.02, 0.0);
+    let mut at = spot("7h2s", "", 50, facing(20, None), 5);
+    let limped = Act {
+        street: Street::Preflop,
+        board: CardSet::EMPTY,
+        facing: true,
+        kind: ActKind::Call,
+    };
+    at.lines = vec![vec![limped], vec![], vec![], vec![], vec![]];
+    let decision = price_lines(&at, &[&table; 5], BUDGET);
+    assert_eq!(decision.action, Action::Fold, "{decision:?}");
+}
+
 #[test]
 fn a_big_river_bet_from_a_player_who_bets_big_only_when_strong_folds_top_pair() {
     use svanbot_core::rules::Street;

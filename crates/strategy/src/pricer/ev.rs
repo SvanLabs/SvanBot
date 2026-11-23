@@ -5,7 +5,11 @@
 //! each folds or calls on the cards they were dealt, folding as often as their action model
 //! folds that bucket to a bet, and more often the bigger the bet ([`continues`]). Whoever folds
 //! leaves the pot to the rest; whoever calls adds the raise and goes to showdown. Re-raises are
-//! not answered here: a raise is priced as if the table only folds or calls.
+//! not answered after our own raise: it is priced as if the table only folds or calls.
+//!
+//! A call is different: the players still to act may re-raise behind it, as often as their model
+//! raises a bet among the times it goes on ([`Answer::raises`]). We then give the hand up, so a
+//! squeezed call is worth losing what it put in.
 //!
 //! The answers are summed over every way the table can split into folders and callers, so the
 //! value is exact for its deals rather than drawn again.
@@ -36,14 +40,23 @@ pub(super) fn continues(reference: f64, share: f64) -> f64 {
     reference.powf((share / REFERENCE_SHARE).powf(STEEPNESS))
 }
 
-/// Each opponent's chance, in each deal, of continuing against a bet at the model's reference
-/// size: `[deal][opponent]`.
+/// How one opponent answers a bet at the model's reference size, on the cards they were dealt.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Answer {
+    /// The chance they go on, calling or raising.
+    pub goes_on: f64,
+    /// Of the times they go on, the share that are raises.
+    pub raises: f64,
+}
+
+/// Each opponent's answer, in each deal, to a bet at the model's reference size:
+/// `[deal][opponent]`.
 pub(super) fn references(
     spot: &Spot,
     dealt: &[Showdown],
     models: &[&ActionModel],
     ranked: &BTreeMap<CardSet, usize>,
-) -> Vec<Vec<f64>> {
+) -> Vec<Vec<Answer>> {
     let facing = Situation {
         street: Street::of(spot.board),
         facing: true,
@@ -61,7 +74,17 @@ pub(super) fn references(
                         .get(hole)
                         .copied()
                         .unwrap_or(crate::action::BUCKETS / 2);
-                    1.0 - model.prob(facing, bucket, Move::Fold)
+                    let goes_on = 1.0 - model.prob(facing, bucket, Move::Fold);
+                    let raised: f64 = [Move::Small, Move::Medium, Move::Large]
+                        .into_iter()
+                        .map(|mv| model.prob(facing, bucket, mv))
+                        .sum();
+                    let raises = if goes_on > 0.0 {
+                        (raised / goes_on).min(1.0)
+                    } else {
+                        0.0
+                    };
+                    Answer { goes_on, raises }
                 })
                 .collect()
         })
@@ -73,7 +96,7 @@ pub(super) fn references(
 /// whole of it for the player who bet, a little less than the whole for anyone yet to act.
 pub(super) fn raise(
     dealt: &[Showdown],
-    references: &[Vec<f64>],
+    references: &[Vec<Answer>],
     pot: Chips,
     call: Chips,
     added: Chips,
@@ -82,7 +105,10 @@ pub(super) fn raise(
     let share = (added - call) / (pot + call).max(1.0);
     let mut total = 0.0;
     for (deal, reference) in dealt.iter().zip(references) {
-        let goes_on: Vec<f64> = reference.iter().map(|&r| continues(r, share)).collect();
+        let goes_on: Vec<f64> = reference
+            .iter()
+            .map(|answer| continues(answer.goes_on, share))
+            .collect();
         let opponents = goes_on.len();
         for callers in 0u64..(1 << opponents) {
             let mut chance = 1.0;
@@ -106,11 +132,12 @@ pub(super) fn raise(
 
 /// What calling `call` is worth, on average over `dealt`, into a pot of `pot` where the street's
 /// bet is `bet`. An opponent in `answering` (a bit each) has not acted on this street yet: they
-/// answer the bet as they would a raise of it, folding or calling, and a caller adds the bet. The
-/// rest are in the pot already and stay to the showdown.
+/// answer the bet as they would a raise of it, folding, calling or re-raising, and a caller adds
+/// the bet. A re-raise from any of them squeezes us out, and the call is lost. The rest are in the
+/// pot already and stay to the showdown.
 pub(super) fn call(
     dealt: &[Showdown],
-    references: &[Vec<f64>],
+    references: &[Vec<Answer>],
     answering: u64,
     pot: Chips,
     call: Chips,
@@ -123,14 +150,34 @@ pub(super) fn call(
         let opponents = reference.len() as u32;
         let all = (1u64 << opponents) - 1;
         let staying = all & !answering;
-        // Each subset of the answering players that calls, with its chance.
+        // Each answering player's chance to call and to re-raise, at this bet.
+        let answers: Vec<(f64, f64)> = reference
+            .iter()
+            .map(|answer| {
+                let goes_on = continues(answer.goes_on, share);
+                let raises = goes_on * answer.raises;
+                (goes_on - raises, raises)
+            })
+            .collect();
+        let mut unraised = 1.0;
+        for (at, &(_, raises)) in answers.iter().enumerate() {
+            if answering & (1 << at) != 0 {
+                unraised *= 1.0 - raises;
+            }
+        }
+        total -= (1.0 - unraised) * call_chips;
+        // Each subset of the answering players that calls while the rest fold, with its chance.
         let mut callers = answering;
         loop {
             let mut chance = 1.0;
-            for (at, &r) in reference.iter().enumerate() {
+            for (at, &(calls, raises)) in answers.iter().enumerate() {
                 if answering & (1 << at) != 0 {
-                    let p = continues(r, share);
-                    chance *= if callers & (1 << at) != 0 { p } else { 1.0 - p };
+                    let folds = 1.0 - calls - raises;
+                    chance *= if callers & (1 << at) != 0 {
+                        calls
+                    } else {
+                        folds
+                    };
                 }
             }
             if chance > 0.0 {
