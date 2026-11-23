@@ -69,11 +69,13 @@ fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
             champion: "00000000000000aa".into(),
             seed: 3,
             league: League::HeadsUp,
+            iterations: None,
             rows: vec![ArenaRow {
                 opponent: "maniac".into(),
                 deals: 100,
                 mbb_per_100: 50.0,
                 ci95: 10.0,
+                bouts: Vec::new(),
             }],
         })
         .unwrap();
@@ -166,6 +168,7 @@ fn each_league_is_checked_for_the_champion_in_play() {
             champion: fleet.champion().unwrap().digest().to_string(),
             seed: 7,
             league: League::SixMax,
+            iterations: None,
             rows: Vec::new(),
         })
         .unwrap();

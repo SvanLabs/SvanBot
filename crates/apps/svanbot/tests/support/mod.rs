@@ -63,11 +63,13 @@ pub fn serve(name: &str) -> (SocketAddr, PathBuf) {
             champion,
             seed: 7,
             league: League::HeadsUp,
+            iterations: None,
             rows: vec![ArenaRow {
                 opponent: "nit".into(),
                 deals: 400,
                 mbb_per_100: 12_345.6,
                 ci95: 2_000.4,
+                bouts: Vec::new(),
             }],
         })
         .unwrap();
