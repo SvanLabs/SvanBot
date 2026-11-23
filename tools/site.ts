@@ -10,8 +10,10 @@ import { dirname, join, relative } from "node:path";
 /** The links a Markdown or HTML text names: Markdown targets, and `href`/`src` attributes. */
 export function links(text: string): string[] {
   const found: string[] = [];
-  for (const match of text.matchAll(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) found.push(match[1]);
-  for (const match of text.matchAll(/\b(?:href|src)="([^"]+)"/g)) found.push(match[1]);
+  for (const match of text.matchAll(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g))
+    if (match[1]) found.push(match[1]);
+  for (const match of text.matchAll(/\b(?:href|src)="([^"]+)"/g))
+    if (match[1]) found.push(match[1]);
   return found;
 }
 
@@ -20,7 +22,7 @@ function target(link: string): string | undefined {
   if (/^[a-z][a-z0-9+.-]*:/i.test(link) || link.startsWith("#") || link.startsWith("//")) {
     return undefined;
   }
-  const path = link.split("#")[0].split("?")[0];
+  const path = link.split("#")[0]?.split("?")[0] ?? "";
   return path === "" ? undefined : decodeURIComponent(path);
 }
 
