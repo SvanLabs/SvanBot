@@ -232,6 +232,22 @@ impl Reads {
             .collect()
     }
 
+    /// The reads a decision in play takes: [`Reads::personal`] once reads are [`IN_PLAY`], and
+    /// [`Reads::held`] until then. Live play and the Arena read by this; the reads' own sim reads
+    /// by [`Reads::personal`], since it is what measures whether they may come into play.
+    pub fn deciding(
+        &self,
+        seated: &[(usize, &str)],
+        population: &ActionModel,
+        exploit: f64,
+    ) -> Vec<Personal> {
+        if IN_PLAY {
+            self.personal(seated, population, exploit)
+        } else {
+            self.held(seated, population)
+        }
+    }
+
     /// The opponents `seated`, each named with their class but read by `population`: reads that
     /// have not cleared their gate are kept and shown, and decide nothing ([`IN_PLAY`]).
     pub fn held(&self, seated: &[(usize, &str)], population: &ActionModel) -> Vec<Personal> {

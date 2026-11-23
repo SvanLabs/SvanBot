@@ -20,6 +20,7 @@ use svanbot_learn::arena::{
     BOUT, BoutReader, Row, bout, ring_bout, scoreboard, v10_duel, v10_ring,
 };
 use svanbot_learn::paired::{Match, duel_seen, verdict};
+use svanbot_learn::reads::Reads;
 use svanbot_learn::ring::{SIX_MAX, ring_seen};
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_sim::sparring::Archetype;
@@ -80,7 +81,12 @@ pub(crate) fn play_bout(
         League::HeadsUp => 2,
         League::SixMax => SIX_MAX,
     };
-    let challenger = &BoutReader::new(deciders::reading_policy(params, fixed, seats));
+    let challenger = &BoutReader::new(deciders::reading_policy(
+        params,
+        fixed,
+        seats,
+        Reads::deciding,
+    ));
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;
     match (league, opponent) {
