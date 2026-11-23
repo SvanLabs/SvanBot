@@ -129,11 +129,7 @@ fn a_run_of_a_champion_the_fleet_no_longer_plays_is_a_problem_in_the_fleet() {
     let (addr, dir) = serve("arena-promoted");
     // The promotion: a champion the run's line was not played with.
     Fleet::in_dir(dir.join("data/fleet"))
-        .promote(&Params {
-            exploit: 0.9,
-            raise_share: 0.9,
-            ..Params::DEFAULT
-        })
+        .promote(&Params { exploit: 0.9 })
         .unwrap();
     let (_, body) = get(addr, "/api/fleet");
     let fleet: Value = serde_json::from_str(&body).unwrap();
@@ -155,13 +151,7 @@ fn each_league_is_checked_for_the_champion_in_play() {
     // shows the old champion, and the page has to say so though the newest run is current.
     let (addr, dir) = serve("arena-promoted-league");
     let fleet = Fleet::in_dir(dir.join("data/fleet"));
-    fleet
-        .promote(&Params {
-            exploit: 0.9,
-            raise_share: 0.9,
-            ..Params::DEFAULT
-        })
-        .unwrap();
+    fleet.promote(&Params { exploit: 0.9 }).unwrap();
     fleet
         .record_arena(&ArenaRun {
             commit: "abc1234".into(),

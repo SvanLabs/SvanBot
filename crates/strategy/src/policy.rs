@@ -236,7 +236,7 @@ pub fn decide_read(
             }
         }
         None => {
-            let priced = pricer::price_lines(spot, &models, budget, params);
+            let priced = pricer::price_lines(spot, &models, budget);
             Decision {
                 action: priced.action,
                 drawn: None,

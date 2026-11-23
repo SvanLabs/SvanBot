@@ -110,7 +110,7 @@ default.
 ```sh
 # The learner: a paired sim of a challenger against the champion. Above the champion, it is
 # proposed as a promotion; `--probe` proposes it as evidence only, whatever the sim said.
-svanbot propose --deals 2000 value_margin=0.35
+svanbot propose --deals 2000 exploit=0.4
 svanbot propose --deals 2000                    # the search: each number a step down and up
 journalctl --user -u svanbot@SurSvan | grep probe   # started, ended, promoted
 ```

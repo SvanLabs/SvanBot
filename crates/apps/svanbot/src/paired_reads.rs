@@ -158,7 +158,7 @@ fn measure_ring(
         seed,
     };
     let off = |spot: &Spot, seed| {
-        svanbot_strategy::pricer::price(spot, Some(&population), budget(seed), params).action
+        svanbot_strategy::pricer::decide(spot, Some(&population), budget(seed)).action
     };
     let observer = BoutReader::new(|spot, seed, _reads| off(spot, seed));
     ring_deals(game, archetype, 0..warm, &observer);
@@ -174,7 +174,7 @@ fn measure_ring(
             .collect();
         let personal = reads.personal(&seated, &population, params.exploit);
         let models: Vec<_> = personal.iter().map(|read| &read.model).collect();
-        price_lines(spot, &models, budget(seed), params).action
+        price_lines(spot, &models, budget(seed)).action
     };
     let results = measure(warm..warm + deals, |deal| {
         ring_deals(game, archetype, deal..deal + 1, &on)[0]

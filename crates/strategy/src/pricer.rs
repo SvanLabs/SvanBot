@@ -15,7 +15,6 @@ use svanbot_sim::equity::{Showdown, equity_over, showdowns};
 use crate::action::{ActionModel, Seen, range, ranked};
 
 mod ev;
-use crate::params::Params;
 use crate::preflop;
 
 /// The work a decision may do, passed in so the decision never reads the clock: how many deals
@@ -40,30 +39,15 @@ pub struct Decision {
 /// The pricer's decision at `spot`, with each opponent's range from `model` and their line, or
 /// uniform when there is no model or no line.
 pub fn decide(spot: &Spot, model: Option<&ActionModel>, budget: Budget) -> Decision {
-    price(spot, model, budget, &Params::DEFAULT)
-}
-
-/// [`decide`] by the margins of `params`.
-pub fn price(
-    spot: &Spot,
-    model: Option<&ActionModel>,
-    budget: Budget,
-    params: &Params,
-) -> Decision {
     match model {
-        Some(model) => price_lines(spot, &vec![model; spot.lines.len()], budget, params),
-        None => price_lines(spot, &[], budget, params),
+        Some(model) => price_lines(spot, &vec![model; spot.lines.len()], budget),
+        None => price_lines(spot, &[], budget),
     }
 }
 
-/// [`price`] with each opponent's line read by its own model: `models[i]` reads `spot.lines[i]`.
+/// [`decide`] with each opponent's line read by its own model: `models[i]` reads `spot.lines[i]`.
 /// A line without a model is read as uniform.
-pub fn price_lines(
-    spot: &Spot,
-    models: &[&ActionModel],
-    budget: Budget,
-    params: &Params,
-) -> Decision {
+pub fn price_lines(spot: &Spot, models: &[&ActionModel], budget: Budget) -> Decision {
     if let Some(decision) = opening(spot) {
         return decision;
     }
@@ -87,7 +71,6 @@ pub fn price_lines(
     let folding: Vec<&ActionModel> = (0..ranges.len())
         .map(|at| models.get(at).copied().unwrap_or(&baseline))
         .collect();
-    let _ = params;
     Decision {
         action: choose(spot, &dealt, &folding, equity),
         equity,

@@ -230,7 +230,6 @@ fn answering(answer: svanbot_strategy::action::Move) -> svanbot_strategy::action
 #[test]
 fn a_bet_is_worth_the_pot_it_takes_when_everyone_folds() {
     use svanbot_strategy::action::Move;
-    use svanbot_strategy::params::Params;
     use svanbot_strategy::pricer::price_lines;
     // 7-2 offsuit missed the board and checking wins it rarely; against two players who fold to
     // any bet, a bet takes the whole pot every time.
@@ -240,14 +239,14 @@ fn a_bet_is_worth_the_pot_it_takes_when_everyone_folds() {
     };
     let at = spot("7c2d", "AhKsQh", 400, free, 2);
     let folds = answering(Move::Fold);
-    let decision = price_lines(&at, &[&folds, &folds], BUDGET, &Params::DEFAULT);
+    let decision = price_lines(&at, &[&folds, &folds], BUDGET);
     assert!(
         matches!(decision.action, Action::RaiseTo(_)),
         "{decision:?}"
     );
     // Against two who never fold, the same bet only puts chips behind a losing hand.
     let calls = answering(Move::Call);
-    let decision = price_lines(&at, &[&calls, &calls], BUDGET, &Params::DEFAULT);
+    let decision = price_lines(&at, &[&calls, &calls], BUDGET);
     assert_eq!(decision.action, Action::Check, "{decision:?}");
 }
 
@@ -256,7 +255,6 @@ fn a_call_is_priced_against_the_players_left_to_act_as_they_answer_it() {
     use svanbot_core::rules::Street;
     use svanbot_core::spot::{Act, ActKind};
     use svanbot_strategy::action::{ActionModel, BUCKETS, Counts, Move, Situation};
-    use svanbot_strategy::params::Params;
     use svanbot_strategy::pricer::price_lines;
     // One player opened to three blinds; three are still to act, and this table folds 95% of
     // the time to any bet, whatever it holds. Against four players who all stay, nines fall
@@ -281,7 +279,7 @@ fn a_call_is_priced_against_the_players_left_to_act_as_they_answer_it() {
         kind: ActKind::Bet { added: 60, pot: 30 },
     };
     at.lines = vec![vec![opened], vec![], vec![], vec![]];
-    let decision = price_lines(&at, &[&table; 4], BUDGET, &Params::DEFAULT);
+    let decision = price_lines(&at, &[&table; 4], BUDGET);
     assert!(decision.equity < 0.4, "{decision:?}");
     assert_eq!(decision.action, Action::Call, "{decision:?}");
 }
