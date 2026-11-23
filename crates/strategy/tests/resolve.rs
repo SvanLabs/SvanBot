@@ -336,3 +336,28 @@ fn nothing_floats_a_villain_held_to_folding_the_river_and_not_one_free_to_answer
     );
     assert!(free < held - 0.2, "against one free to answer, {free}");
 }
+
+#[test]
+fn checking_back_the_unbeatable_river_hand_collects_exactly_the_current_pot() {
+    let mut river = spot(
+        "AhKh",
+        "QhJhTh2c3d",
+        400,
+        Legal {
+            call: None,
+            raise: Some(RaiseRange { min: 20, max: 2000 }),
+        },
+    );
+    river.in_position = true;
+    let solved = resolve(&river, None, 0.0, 20, SEED).unwrap();
+    let check = solved
+        .strategy
+        .iter()
+        .position(|(action, _)| *action == Abstract::Check)
+        .unwrap();
+    assert!(
+        (solved.values[check] - 400.0).abs() < 1e-9,
+        "check was worth {} chips",
+        solved.values[check]
+    );
+}

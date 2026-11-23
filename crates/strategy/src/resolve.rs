@@ -89,7 +89,12 @@ pub fn resolve(
         _ => vec![1.0; pairs.len()],
     };
     let call = spot.legal.call.unwrap_or(0);
-    let tree = Tree::new(spot.pot.saturating_sub(call), call, spot.stack);
+    let tree = Tree::new(
+        spot.pot.saturating_sub(call),
+        call,
+        spot.stack,
+        spot.in_position,
+    );
     let ends = runout::runouts(spot.board, &mut Rng::stream(seed, 1))
         .into_iter()
         .map(|full| Showdown::new(&pairs, full))

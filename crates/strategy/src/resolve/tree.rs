@@ -66,7 +66,7 @@ struct State {
 impl Tree {
     /// The tree from our turn: `base` in the pot, facing `call`, with `stack` behind. The villain
     /// is taken to cover us.
-    pub fn new(base: u32, call: u32, stack: u32) -> Self {
+    pub fn new(base: u32, call: u32, stack: u32, in_position: bool) -> Self {
         let mut tree = Self {
             base,
             nodes: Vec::new(),
@@ -77,7 +77,7 @@ impl Tree {
                 player: 0,
                 added: [0, call],
                 bets: u32::from(call > 0),
-                checked: false,
+                checked: in_position && call == 0,
             },
             caps,
         );
