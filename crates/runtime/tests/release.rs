@@ -223,6 +223,22 @@ fn the_newest_of_a_set_of_versions_is_the_one_a_window_should_take() {
 }
 
 #[test]
+fn a_dated_build_never_outranks_a_release() {
+    // Builds before v11 were named for their day, `2026.11.16-1`, and that year outranks any
+    // release number. On 2026-11-23 a version-less update took one over 11.0.2 (V11-37). The
+    // dated scheme is retired: a release wins over any dated build, and dated builds still rank
+    // among themselves when nothing else is installed.
+    assert_eq!(
+        newest(["11.0.1", "2026.11.16-1", "11.0.2", "2026.11.16"]).as_deref(),
+        Some("11.0.2")
+    );
+    assert_eq!(
+        newest(["2026.11.9", "2026.11.16"]).as_deref(),
+        Some("2026.11.16")
+    );
+}
+
+#[test]
 fn a_set_of_versions_with_nothing_in_it_has_no_newest() {
     assert_eq!(newest(std::iter::empty::<&str>()), None);
 }

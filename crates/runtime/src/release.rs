@@ -188,6 +188,10 @@ pub fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 
 /// The newest of `versions`, or `None` for an empty set: the build a window with no version named
 /// should take.
+///
+/// A dated build (`2026.11.16-1`, the naming before v11) is retired: its year outranks any
+/// release number, so it ranks below every release, and only among dated builds by its date
+/// (V11-37).
 pub fn newest<I, S>(versions: I) -> Option<String>
 where
     I: IntoIterator<Item = S>,
@@ -195,8 +199,20 @@ where
 {
     versions
         .into_iter()
-        .max_by(|a, b| version_cmp(a.as_ref(), b.as_ref()))
+        .max_by(|a, b| {
+            let (a, b) = (a.as_ref(), b.as_ref());
+            dated(b).cmp(&dated(a)).then_with(|| version_cmp(a, b))
+        })
         .map(|version| version.as_ref().to_owned())
+}
+
+/// Whether `version` is a dated build: its first part is a year, which no release number reaches.
+fn dated(version: &str) -> bool {
+    version
+        .split('.')
+        .next()
+        .and_then(|year| year.parse::<u64>().ok())
+        .is_some_and(|year| year >= 1000)
 }
 
 /// One version as the things to compare: each dot-separated part is a number where it is all
