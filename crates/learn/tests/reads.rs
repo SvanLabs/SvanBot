@@ -163,8 +163,14 @@ fn a_held_read_names_its_class_and_decides_nothing() {
 
 #[test]
 fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
-    // beta checks every hand: a fixed read that tilts their model toward checking.
-    let reads = fixed("Beta_Bot", 60);
+    // Beta raises every preflop bet. The seat receives the tilted action model.
+    let reads = Reads::from_witnesses((0..60).map(|_| Witness {
+        actions: vec![Seen {
+            situation: facing(),
+            ..seen(Move::Large)
+        }],
+        ..hand("Beta_Bot", true, None, None)
+    }));
     let population = ActionModel::baseline();
     let seated = [(1, "beta_bot"), (4, "gamma_bot")];
     let personal = reads.personal(&seated, &population, 0.5);
@@ -176,8 +182,8 @@ fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
         "{:?}",
         beta.trust
     );
-    let check = |model: &ActionModel| model.marginal(open(), Move::Check);
-    assert!(check(&beta.model) > check(&population));
+    let raise = |model: &ActionModel| model.marginal(facing(), Move::Large);
+    assert!(raise(&beta.model) > raise(&population));
     // Never seen: unknown, trusted with nothing, read by the population.
     assert_eq!(
         (gamma.seat, gamma.class, gamma.trust),
