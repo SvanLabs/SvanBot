@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::ops::Range;
 
 use svanbot_core::rules::Action;
-use svanbot_core::spot::{ActKind, Spot};
+use svanbot_core::spot::{Act, ActKind, Spot};
 use svanbot_sim::sparring::{Archetype, Sparring};
 use svanbot_strategy::action::Seen;
 
@@ -29,21 +29,26 @@ pub fn warm_up(
     challenger: &impl Fn(&Spot, u64) -> Action,
 ) -> Reads {
     let opponent = Sparring::new(archetype);
-    // The opponent's line at the challenger's latest decision of each hand.
-    let lines: RefCell<Vec<Vec<svanbot_core::spot::Act>>> = RefCell::new(Vec::new());
-    let watching = |spot: &Spot, seed: u64| {
-        if let (Some(line), Some(last)) = (spot.lines.first(), lines.borrow_mut().last_mut()) {
-            last.clone_from(line);
-        }
-        challenger(spot, seed)
-    };
+    let lines: RefCell<Vec<Vec<Act>>> = RefCell::new(Vec::new());
     for number in numbers {
+        let start = opponent.memory();
         duel_with(
             game,
             number,
-            &watching,
-            &|spot, seed| opponent.decide(spot, seed, number),
-            || lines.borrow_mut().push(Vec::new()),
+            challenger,
+            &|spot, seed| {
+                let action = opponent.decide(spot, seed, number);
+                lines
+                    .borrow_mut()
+                    .last_mut()
+                    .expect("hand started")
+                    .push(Act::played(spot, action));
+                action
+            },
+            || {
+                opponent.recall(start);
+                lines.borrow_mut().push(Vec::new());
+            },
         );
     }
     let mut reads = Reads::default();
@@ -78,12 +83,13 @@ pub fn reads_on_off(
         .map(|number| {
             let against = |challenger: &dyn Fn(&Spot, u64) -> Action| {
                 let opponent = Sparring::new(archetype);
+                let start = opponent.memory();
                 duel_with(
                     game,
                     number,
                     &|spot, seed| challenger(spot, seed),
                     &|spot, seed| opponent.decide(spot, seed, number),
-                    || {},
+                    || opponent.recall(start),
                 )
             };
             against(on) - against(off)

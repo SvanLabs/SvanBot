@@ -1,7 +1,7 @@
 //! The spot: a point where a bot must act, as the decision sees it.
 
 use crate::card::CardSet;
-use crate::rules::{Legal, Street};
+use crate::rules::{Action, Legal, Street};
 
 /// What a decision knows when the bot must act.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,6 +43,27 @@ pub struct Act {
     /// Whether a bet faced them.
     pub facing: bool,
     pub kind: ActKind,
+}
+
+impl Act {
+    /// Records a legal action at its spot using only information visible to the table.
+    pub fn played(spot: &Spot, action: Action) -> Self {
+        let street = Street::of(spot.board);
+        Self {
+            street,
+            board: spot.board,
+            facing: spot.legal.call.is_some() || street == Street::Preflop,
+            kind: match action {
+                Action::Fold => ActKind::Fold,
+                Action::Check => ActKind::Check,
+                Action::Call => ActKind::Call,
+                Action::RaiseTo(to) => ActKind::Bet {
+                    added: to - spot.committed,
+                    pot: spot.pot,
+                },
+            },
+        }
+    }
 }
 
 /// What a player did.

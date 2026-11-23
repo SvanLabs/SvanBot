@@ -10,7 +10,7 @@ use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::eval::strength;
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Blinds, Hand, Legal, Street};
-use svanbot_core::spot::{Act, ActKind, Spot};
+use svanbot_core::spot::{Act, Spot};
 
 /// The cards of one hand: each seat's hole cards, and the board in the order it comes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -303,19 +303,7 @@ fn bet(
             bet_before: bets[seat],
             all_in: put_in && hand.stacks()[seat] == 0,
         });
-        let added = hand.committed()[seat] - before;
-        lines[seat].push(Act {
-            street,
-            board,
-            // The blinds are a bet before the flop, as the venue's frames have it.
-            facing: legal.call.is_some() || street == Street::Preflop,
-            kind: match action {
-                Action::Fold => ActKind::Fold,
-                Action::Check => ActKind::Check,
-                Action::Call => ActKind::Call,
-                Action::RaiseTo(_) => ActKind::Bet { added, pot },
-            },
-        });
+        lines[seat].push(Act::played(&spot, action));
     }
     (hand, street, stood)
 }

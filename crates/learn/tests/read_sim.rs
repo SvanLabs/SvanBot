@@ -37,6 +37,20 @@ fn a_warm_up_reads_the_calling_station_as_one_fixed_opponent() {
 }
 
 #[test]
+fn the_warm_up_counts_folds_that_end_the_hand() {
+    use svanbot_core::rules::Street;
+    use svanbot_strategy::action::{Move, Situation};
+
+    let reads = warm_up(&MATCH, Archetype::Nit, 0..4, &bettor);
+    let read = reads.get(OPPONENT).unwrap().read();
+    let facing = Situation {
+        street: Street::Preflop,
+        facing: true,
+    };
+    assert!(read.frequency(facing, Move::Fold, 0.0, 1.0) > 0.0);
+}
+
+#[test]
 fn the_same_decider_on_both_sides_wins_nothing_from_reads() {
     let results = reads_on_off(&MATCH, Archetype::Nit, 100..110, &bettor, &bettor);
     assert_eq!(results.len(), 10);
