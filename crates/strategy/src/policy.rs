@@ -136,7 +136,9 @@ pub struct Personal {
     /// The population's model tilted toward their read ([`crate::read::personal`]).
     pub model: ActionModel,
     pub class: Class,
-    pub trust: f64,
+    /// The share of the exploit budget the read earned, or `None` when it is held and decides
+    /// nothing: the line is then read by the population's model.
+    pub trust: Option<f64>,
 }
 
 /// What the pricer decided from: our equity against the opponents' ranges, the price of the call
@@ -248,8 +250,12 @@ pub fn decide_read(
                         equity: priced.equity,
                         // What the pricer compared against, not a second reading of the spot.
                         price: priced.price,
-                        exploit: (gated || reads.iter().flatten().any(|read| read.trust > 0.0))
-                            .then_some(params.exploit),
+                        exploit: (gated
+                            || reads
+                                .iter()
+                                .flatten()
+                                .any(|read| read.trust.is_some_and(|trust| trust > 0.0)))
+                        .then_some(params.exploit),
                         ranges: read_ranges(spot, population, &reads, spot.opponents.max(1)),
                     }),
                 }),
@@ -285,7 +291,7 @@ fn read_ranges(
                     _ => vec![1.0 / BUCKETS as f64; BUCKETS],
                 },
                 class: read.map(|read| read.class),
-                trust: read.map(|read| read.trust),
+                trust: read.and_then(|read| read.trust),
             }
         })
         .collect()

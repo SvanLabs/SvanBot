@@ -20,6 +20,7 @@ fn spot(hole: &str, board: &str, pot: u32, legal: Legal, opponents: usize) -> Sp
         legal,
         opponents,
         stack: 2000,
+        callable_pot: None,
         committed: 0,
         big_blind: 20,
         in_position: false,
@@ -32,6 +33,44 @@ fn facing(call: u32, raise: Option<(u32, u32)>) -> Legal {
     Legal {
         call: Some(call),
         raise: raise.map(|(min, max)| RaiseRange { min, max }),
+    }
+}
+
+#[test]
+fn short_call_cannot_win_the_deep_stacks_side_pot() {
+    use svanbot_core::rules::Blinds;
+    use svanbot_sim::table::{deal, play};
+
+    let cards = deal(3, &mut Rng::seeded(1));
+    for bet in [100, 1000] {
+        let mut decision = None;
+        play(
+            &cards,
+            &[1000, 1000, 100],
+            0,
+            Blinds { small: 10, big: 20 },
+            |seat, spot| match seat {
+                0 => Action::RaiseTo(bet),
+                1 => Action::Call,
+                _ => {
+                    assert_eq!(spot.legal.call, Some(80));
+                    let d = decide(
+                        spot,
+                        None,
+                        Budget {
+                            samples: 5,
+                            seed: 4,
+                        },
+                    );
+                    decision = Some(d);
+                    d.action
+                }
+            },
+        );
+        let d = decision.unwrap();
+        assert_eq!(d.price, Some(80.0 / 300.0), "{d:?}");
+        assert_eq!(d.equity, 0.2, "{d:?}");
+        assert_eq!(d.action, Action::Fold);
     }
 }
 
@@ -117,6 +156,7 @@ fn every_decision_is_legal_and_the_same_seed_repeats_it() {
             legal,
             opponents: 1 + rng.below(5) as usize,
             stack: 2000,
+            callable_pot: None,
             committed: 0,
             big_blind: 20,
             in_position: false,

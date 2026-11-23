@@ -97,13 +97,17 @@ fn ranges_json(ranges: &[Ranged]) -> String {
                 Some(seat) => seat.to_string(),
                 None => "null".to_owned(),
             };
-            // The class and trust are there only when the opponent's own read decided the range.
-            let read = match (ranged.class, ranged.trust) {
-                (Some(class), Some(trust)) => {
-                    format!(r#","class":"{}","trust":{}"#, class.name(), number(trust))
-                }
-                _ => String::new(),
-            };
+            // The class is there when the opponent has a read, and the trust only when that read
+            // decided the range: a held read names its class and spends nothing.
+            let class = ranged
+                .class
+                .map(|class| format!(r#","class":"{}""#, class.name()))
+                .unwrap_or_default();
+            let trust = ranged
+                .trust
+                .map(|trust| format!(r#","trust":{}"#, number(trust)))
+                .unwrap_or_default();
+            let read = format!("{class}{trust}");
             format!(
                 r#"{{"seat":{seat},"masses":{}{read}}}"#,
                 numbers(&ranged.masses)

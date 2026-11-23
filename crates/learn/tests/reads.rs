@@ -141,6 +141,27 @@ fn a_bulk_load_reads_the_same_as_hand_by_hand() {
 }
 
 #[test]
+fn a_held_read_names_its_class_and_decides_nothing() {
+    // Reads that have not cleared their gate are kept and classed, but every line is still read
+    // by the population: the class goes to the trace, and no trust does.
+    let reads = fixed("Beta_Bot", 60);
+    let population = ActionModel::baseline();
+    let held = reads.held(&[(1, "beta_bot"), (4, "gamma_bot")], &population);
+    assert_eq!(held.len(), 2);
+    assert_eq!(
+        (held[0].seat, held[0].class, held[0].trust),
+        (1, Class::Fixed, None)
+    );
+    assert_eq!(
+        (held[1].seat, held[1].class, held[1].trust),
+        (4, Class::Unknown, None)
+    );
+    for read in &held {
+        assert_eq!(read.model, population);
+    }
+}
+
+#[test]
 fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
     // beta checks every hand: a fixed read that tilts their model toward checking.
     let reads = fixed("Beta_Bot", 60);
@@ -150,13 +171,17 @@ fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
     assert_eq!(personal.len(), 2);
     let (beta, gamma) = (&personal[0], &personal[1]);
     assert_eq!((beta.seat, beta.class), (1, Class::Fixed));
-    assert!((beta.trust - 2.0 / 3.0).abs() < 1e-9, "{}", beta.trust);
+    assert!(
+        (beta.trust.unwrap() - 2.0 / 3.0).abs() < 1e-9,
+        "{:?}",
+        beta.trust
+    );
     let check = |model: &ActionModel| model.marginal(open(), Move::Check);
     assert!(check(&beta.model) > check(&population));
     // Never seen: unknown, trusted with nothing, read by the population.
     assert_eq!(
         (gamma.seat, gamma.class, gamma.trust),
-        (4, Class::Unknown, 0.0)
+        (4, Class::Unknown, Some(0.0))
     );
     assert_eq!(gamma.model, population);
     // No exploit budget leaves every model the population's.

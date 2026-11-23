@@ -15,6 +15,12 @@ use svanbot_strategy::read::{Class, Read, Trust, personal};
 
 use crate::adapt::classify;
 
+/// Whether reads decide in play, live and in the Arena. They stay held until `svanbot paired
+/// reads` passes: its whole interval above zero and the exploit gate cleared (V11-35). A change
+/// that turns this on is a behaviour change, and its PR quotes that passing line. Held, the bot
+/// plays exactly as it would with no reads at all.
+pub const IN_PLAY: bool = false;
+
 /// What one hand showed of one opponent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Witness {
@@ -213,15 +219,45 @@ impl Reads {
                         seat,
                         model: personal(population, opponent.read(), trust),
                         class,
-                        trust: opponent.earned(),
+                        trust: Some(opponent.earned()),
                     }
                 }
                 None => Personal {
                     seat,
                     model: population.clone(),
                     class: Class::Unknown,
-                    trust: 0.0,
+                    trust: Some(0.0),
                 },
+            })
+            .collect()
+    }
+
+    /// The reads a decision in play takes: [`Reads::personal`] once reads are [`IN_PLAY`], and
+    /// [`Reads::held`] until then. Live play and the Arena read by this; the reads' own sim reads
+    /// by [`Reads::personal`], since it is what measures whether they may come into play.
+    pub fn deciding(
+        &self,
+        seated: &[(usize, &str)],
+        population: &ActionModel,
+        exploit: f64,
+    ) -> Vec<Personal> {
+        if IN_PLAY {
+            self.personal(seated, population, exploit)
+        } else {
+            self.held(seated, population)
+        }
+    }
+
+    /// The opponents `seated`, each named with their class but read by `population`: reads that
+    /// have not cleared their gate are kept and shown, and decide nothing ([`IN_PLAY`]).
+    pub fn held(&self, seated: &[(usize, &str)], population: &ActionModel) -> Vec<Personal> {
+        seated
+            .iter()
+            .map(|&(seat, name)| Personal {
+                seat,
+                model: population.clone(),
+                class: self.get(name).map_or(Class::Unknown, Opponent::class),
+                trust: None,
             })
             .collect()
     }

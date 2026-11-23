@@ -149,6 +149,14 @@ test("a range read by its opponent's own read names their class and the budget i
   expect(text).not.toContain("Seat 4:");
 });
 
+test("a held read names its class and says it decided nothing", () => {
+  const text = replay.decisionView(
+    priced({ ranges: [{ seat: 3, masses: [1, 0, 0, 0, 0, 0, 0, 0], class: "fixed" }] }),
+  ).textContent;
+  expect(text).toContain("Seat 3: fixed, read held");
+  expect(text).not.toContain("of the budget");
+});
+
 test("a decision with no action names still says which index was taken", async () => {
   const text = replay.decisionView(resolved({ actions: undefined })).textContent;
   expect(text).toContain("took action 2 of 3");

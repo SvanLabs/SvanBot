@@ -59,10 +59,14 @@ export function decisionView(decision) {
   );
 }
 
-/** The seat, and when the opponent's own read decided the range, its class and earned budget. */
+/**
+ * The seat, and when the opponent has a read, its class: with the budget it earned when the read
+ * decided the range, or "read held" when reads have not cleared their gate and decided nothing.
+ */
 function rangeLabel(range) {
   const seat = seatLabel(range.seat);
-  if (typeof range.class !== "string" || typeof range.trust !== "number") return seat;
+  if (typeof range.class !== "string") return seat;
+  if (typeof range.trust !== "number") return `${seat}: ${range.class}, read held`;
   return `${seat}: ${range.class}, ${Math.round(range.trust * 100)}% of the budget`;
 }
 
