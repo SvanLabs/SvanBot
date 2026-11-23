@@ -12,6 +12,9 @@ pub struct Spot {
     pub board: CardSet,
     /// The chips in the middle, the bets on this street included.
     pub pot: u32,
+    /// Chips already in the pot the bot could win by calling, excluding excess side-pot chips.
+    /// `None` when the caller does not know the hand contributions.
+    pub callable_pot: Option<u32>,
     /// The actions open to the bot.
     pub legal: Legal,
     /// How many opponents are still in the hand.
@@ -32,6 +35,12 @@ pub struct Spot {
     /// of the opponent whose line is `lines[i]`. A reader matches a seat to the table, so a trace
     /// names its opponents by seat rather than by a position in a list. One entry per line.
     pub seats: Vec<usize>,
+}
+
+/// Chips already in the pot at or below the caller's final contribution, folded seats included.
+/// `totals` are the whole hand's contributions before the call, not just this street's bets.
+pub fn callable_pot(totals: &[u32], cap: u32) -> u32 {
+    totals.iter().map(|&chips| chips.min(cap)).sum()
 }
 
 /// One action a player took, as the table saw it.

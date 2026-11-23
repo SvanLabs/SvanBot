@@ -71,6 +71,10 @@ impl Session {
         snapshot: Snapshot,
         decide: impl FnOnce(&Spot) -> D,
     ) -> Step {
+        if snapshot.hand_id.is_some() || snapshot.pot != 0 {
+            // Current stacks in a live hand are not opening stacks for the next one.
+            self.opening.clear();
+        }
         match &snapshot.hand_id {
             None => self.hand = None,
             Some(id) => {

@@ -5,7 +5,32 @@ use svanbot_core::rules::{Legal, RaiseRange};
 use svanbot_core::spot::Spot;
 
 use super::{HandSeen, Session};
-use crate::wire::Turn;
+use crate::wire::{Player, Turn};
+
+impl HandSeen {
+    fn callable_pot(&self, turn: &Turn, hero: &Player) -> Option<u32> {
+        if turn.hand_id.as_ref().is_some_and(|id| id != &self.hand_id) {
+            return None;
+        }
+        let contributed = |player: &Player| {
+            let opening = self.opening.get(&player.seat)?;
+            (opening.name == player.name).then_some(())?;
+            opening.stack.checked_sub(player.stack)
+        };
+        let cap = contributed(hero)?.checked_add(turn.offer.call?)?;
+        let totals: Vec<_> = turn
+            .players
+            .iter()
+            .map(contributed)
+            .collect::<Option<_>>()?;
+        // Even fresh opening stacks cannot account for dead money from a missing seat.
+        (totals
+            .iter()
+            .try_fold(0u32, |sum, chips| sum.checked_add(*chips))?
+            == turn.pot)
+            .then(|| svanbot_core::spot::callable_pot(&totals, cap))
+    }
+}
 
 impl Session {
     pub(super) fn spot(&self, turn: &Turn, hand: &HandSeen) -> Spot {
@@ -38,6 +63,7 @@ impl Session {
             hole: hand.hole,
             board: turn.board.iter().copied().collect(),
             pot: turn.pot,
+            callable_pot: mine.and_then(|hero| hand.callable_pot(turn, hero)),
             legal: Legal {
                 call: turn.offer.call,
                 raise,
