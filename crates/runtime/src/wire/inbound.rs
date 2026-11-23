@@ -107,6 +107,8 @@ pub enum Inbound {
     /// Any seat's action. The amount is 0 for a check or a fold.
     PlayerAction {
         seat: usize,
+        /// The venue names the seat in the action itself, when it sends one.
+        name: Option<String>,
         action: String,
         amount: u32,
         stack: u32,
@@ -214,6 +216,7 @@ fn inbound(frame: &Value) -> Read<Inbound> {
         },
         "player_action" => Inbound::PlayerAction {
             seat: seat_at(frame, "seat")?,
+            name: optional_text(frame, "name"),
             action: text_at(frame, "action")?,
             // `null` for a check or a fold, as the docs' "Null Fields" say.
             amount: match frame.get("amount") {

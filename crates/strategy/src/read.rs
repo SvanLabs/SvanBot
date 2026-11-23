@@ -34,6 +34,8 @@ impl Trust {
 /// How an opponent adapts, and so how far their reads are trusted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Class {
+    /// Not enough evidence to say how they adapt: no read.
+    Unknown,
     /// Plays one strategy: full reads.
     Fixed,
     /// Changed strategy: reads restart from the change.
@@ -46,6 +48,7 @@ impl Class {
     /// The budget share this class earns.
     pub fn budget(self) -> f64 {
         match self {
+            Self::Unknown => 0.0,
             Self::Fixed | Self::Switching => 1.0,
             Self::Learning => 0.25,
         }

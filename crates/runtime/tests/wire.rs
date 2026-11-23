@@ -130,6 +130,7 @@ fn a_check_or_fold_has_a_null_amount_which_reads_as_zero() {
         fold,
         Inbound::PlayerAction {
             seat: 0,
+            name: Some("alpha_bot".into()),
             action: "fold".into(),
             amount: 0,
             stack: 1960,

@@ -1,0 +1,161 @@
+//! One bot's reads of the opponents it has played: each opponent's actions and how they answered
+//! bets, keyed by the venue name the hand named them with. A read is never shared between bots
+//! (`docs/adr/0004-reads-are-per-bot.md`).
+//!
+//! An opponent's class comes from [`classify`] over their hands in order. A switching opponent's
+//! read restarts at the change, and an unknown one earns nothing. What a read earns is the class's
+//! share of the budget, times `n / (n + half)` for its `n` observations ([`Trust::DEFAULT`]'s
+//! half-trust point), the same weight [`personal`](svanbot_strategy::read::personal) tilts by.
+
+use std::collections::BTreeMap;
+
+use svanbot_strategy::action::{Seen, Situation};
+use svanbot_strategy::read::{Class, Read, Trust};
+
+use crate::adapt::classify;
+
+/// What one hand showed of one opponent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Witness {
+    /// The venue name the hand gave the seat. A hand that names no seat has no witness.
+    pub name: String,
+    /// The opponent's actions in the hand, oldest first.
+    pub actions: Vec<Seen>,
+    /// Whether the opponent bet or raised in the hand: the per-hand tally the change point reads.
+    pub aggressive: bool,
+    /// Whether they folded to one of our bets, when they faced one. The first answer in the hand
+    /// stands: the response test asks how they answer us, not how often.
+    pub vs_us: Option<bool>,
+    /// Whether they folded to someone else's bet, when they faced one.
+    pub vs_others: Option<bool>,
+}
+
+/// One opponent as this bot has seen them: their hands in order, and the read they give.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Opponent {
+    name: String,
+    /// Each hand's actions, oldest first.
+    hands: Vec<Vec<Seen>>,
+    tallies: Vec<bool>,
+    vs_us: Vec<bool>,
+    vs_others: Vec<bool>,
+    class: Class,
+    /// The hand their present strategy began at, for a switching opponent.
+    change: Option<usize>,
+    read: Read,
+    /// Actions in the read: those from the change on.
+    actions: u32,
+}
+
+impl Opponent {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            hands: Vec::new(),
+            tallies: Vec::new(),
+            vs_us: Vec::new(),
+            vs_others: Vec::new(),
+            class: Class::Unknown,
+            change: None,
+            read: Read::default(),
+            actions: 0,
+        }
+    }
+
+    fn observe(&mut self, witness: Witness) {
+        self.tallies.push(witness.aggressive);
+        self.vs_us.extend(witness.vs_us);
+        self.vs_others.extend(witness.vs_others);
+        self.hands.push(witness.actions);
+        let (class, change) = classify(&self.tallies, &self.vs_us, &self.vs_others);
+        let change = change.map(|change| change.at);
+        if change != self.change {
+            // The read restarts where the present strategy began.
+            self.read = Read::default();
+            self.actions = 0;
+            for hand in &self.hands[change.unwrap_or(0)..] {
+                count(&mut self.read, &mut self.actions, hand);
+            }
+        } else if let Some(last) = self.hands.last() {
+            count(&mut self.read, &mut self.actions, last);
+        }
+        self.class = class;
+        self.change = change;
+    }
+
+    /// The venue name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn class(&self) -> Class {
+        self.class
+    }
+
+    /// The hand their present strategy began at, when they switched.
+    pub fn change(&self) -> Option<usize> {
+        self.change
+    }
+
+    /// Hands seen.
+    pub fn hands(&self) -> usize {
+        self.hands.len()
+    }
+
+    /// Actions in the read.
+    pub fn actions(&self) -> u32 {
+        self.actions
+    }
+
+    /// The read: their moves from the change on.
+    pub fn read(&self) -> &Read {
+        &self.read
+    }
+
+    /// The share of the budget the read has earned over all its actions.
+    pub fn earned(&self) -> f64 {
+        self.class.budget() * weight(self.actions)
+    }
+
+    /// The share of the budget the read has earned at `situation`.
+    pub fn trust(&self, situation: Situation) -> f64 {
+        self.class.budget() * weight(self.read.n(situation))
+    }
+}
+
+fn count(read: &mut Read, actions: &mut u32, hand: &[Seen]) {
+    for seen in hand {
+        read.observe(seen);
+        *actions += 1;
+    }
+}
+
+fn weight(n: u32) -> f64 {
+    let n = f64::from(n);
+    n / (n + Trust::DEFAULT.half)
+}
+
+/// Every opponent this bot has seen, by venue name.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Reads {
+    opponents: BTreeMap<String, Opponent>,
+}
+
+impl Reads {
+    /// Takes one hand's witness of one opponent.
+    pub fn observe(&mut self, witness: Witness) {
+        self.opponents
+            .entry(witness.name.clone())
+            .or_insert_with(|| Opponent::new(witness.name.clone()))
+            .observe(witness);
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Opponent> {
+        self.opponents.get(name)
+    }
+
+    /// Every opponent, by name.
+    pub fn opponents(&self) -> impl Iterator<Item = &Opponent> {
+        self.opponents.values()
+    }
+}

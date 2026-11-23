@@ -24,6 +24,9 @@ pub struct Lines {
     /// Whether a bet stands on this street. The blinds are one preflop.
     bet: bool,
     acts: BTreeMap<usize, Vec<Act>>,
+    /// Every action in the order it came, with its seat, for a reader that needs the table's
+    /// turn order as well as each seat's own line.
+    events: Vec<(usize, Act)>,
     folded: BTreeSet<usize>,
     /// Each seat's chips in on this street.
     committed: BTreeMap<usize, u32>,
@@ -97,12 +100,14 @@ impl Lines {
                     (None, ActKind::Check) => false,
                     (None, ActKind::Bet { .. }) => self.bet,
                 };
-                self.acts.entry(*seat).or_default().push(Act {
+                let act = Act {
                     street,
                     board: self.board,
                     facing,
                     kind,
-                });
+                };
+                self.acts.entry(*seat).or_default().push(act);
+                self.events.push((*seat, act));
                 self.pot = pot + added;
                 *self.committed.entry(*seat).or_default() += added;
                 match kind {
@@ -125,6 +130,11 @@ impl Lines {
     /// Every seat that has acted, lowest first.
     pub fn seats(&self) -> impl Iterator<Item = usize> + '_ {
         self.acts.keys().copied()
+    }
+
+    /// Every action in the hand, in the order it came, with the seat that took it.
+    pub fn events(&self) -> impl Iterator<Item = (usize, Act)> + '_ {
+        self.events.iter().copied()
     }
 
     /// The seat's chips in on this street, its posted blind included before the flop. `dealt` is

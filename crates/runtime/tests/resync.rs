@@ -141,6 +141,7 @@ fn the_actor_replays_then_acts_on_the_snapshots_token_once() {
             47,
             Inbound::PlayerAction {
                 seat: 0,
+                name: Some("alpha_bot".into()),
                 action: "fold".into(),
                 amount: 0,
                 stack: 1940,
@@ -189,6 +190,7 @@ fn a_resync_traces_the_decision_it_plays_once() {
             47,
             Inbound::PlayerAction {
                 seat: 0,
+                name: Some("alpha_bot".into()),
                 action: "fold".into(),
                 amount: 0,
                 stack: 1940,

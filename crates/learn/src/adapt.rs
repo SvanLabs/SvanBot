@@ -87,9 +87,15 @@ pub fn responds_to_us(vs_us: &[bool], vs_others: &[bool]) -> bool {
 
 /// The opponent's class from their per-hand tallies and their folds to our bets and to others'.
 /// A switch also gives where the new strategy began, so their reads can restart there.
+///
+/// A series too short for the change-point test is [`Class::Unknown`] — unless the response test
+/// has enough evidence and fires, which still says they learn.
 pub fn classify(tallies: &[bool], vs_us: &[bool], vs_others: &[bool]) -> (Class, Option<Change>) {
     if responds_to_us(vs_us, vs_others) {
         return (Class::Learning, None);
+    }
+    if tallies.len() < 2 * MIN_SIDE {
+        return (Class::Unknown, None);
     }
     match change_point(tallies, CHANGE_THRESHOLD, MIN_SIDE) {
         Some(change) => (Class::Switching, Some(change)),

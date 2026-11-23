@@ -33,6 +33,17 @@ fn a_steady_player_is_fixed_and_a_switch_is_found_near_where_it_happened() {
 }
 
 #[test]
+fn a_thin_opponent_is_unknown_not_fixed() {
+    let mut rng = Rng::seeded(14);
+    // One tally short of the change point's minimum, and no response to us.
+    let thin = series(&mut rng, &[(0.3, 2 * MIN_SIDE - 1)]);
+    let others = series(&mut rng, &[(0.5, 2 * MIN_SIDE)]);
+    // The same series, so the response test cannot fire and the tallies are the only evidence.
+    let vs_us = others.clone();
+    assert_eq!(classify(&thin, &vs_us, &others).0, Class::Unknown);
+}
+
+#[test]
 fn a_player_who_learns_to_fold_to_our_bets_is_learning() {
     let mut rng = Rng::seeded(12);
     let tallies = series(&mut rng, &[(0.3, 600)]);
