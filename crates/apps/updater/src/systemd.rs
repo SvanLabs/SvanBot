@@ -40,6 +40,25 @@ impl Systemd {
         Ok(output.success())
     }
 
+    /// Whether systemd has the unit down, inactive or failed, so that no process of the bot is
+    /// running. A systemctl that cannot be run or cannot reach the user manager says nothing on
+    /// stdout, which reads as not down: the window then waits for a bot that may be playing.
+    pub(crate) fn is_down(&self) -> bool {
+        match Command::new("systemctl")
+            .args(["--user", "is-active", &self.unit])
+            .output()
+        {
+            Ok(output) => down_in(&String::from_utf8_lossy(&output.stdout)),
+            Err(error) => {
+                eprintln!(
+                    "svanbot-release: systemctl --user is-active {}: {error}",
+                    self.unit
+                );
+                false
+            }
+        }
+    }
+
     fn systemctl(&self, verb: &str) -> io::Result<()> {
         let output = Command::new("systemctl")
             .args(["--user", verb, &self.unit])
@@ -53,5 +72,36 @@ impl Systemd {
             self.unit,
             said.trim()
         )))
+    }
+}
+
+/// Whether `state`, the word `systemctl is-active` prints, is a unit with no process running.
+///
+/// `is-active` exits non-zero for every state but `active`, so its exit code cannot tell a unit
+/// that is down from one between two restarts; the word it prints can.
+fn down_in(state: &str) -> bool {
+    matches!(state.trim(), "inactive" | "failed")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::down_in;
+
+    #[test]
+    fn only_an_inactive_or_failed_unit_is_down() {
+        // A unit that is not installed reads `inactive` too, and is as down as one that stopped.
+        assert!(down_in("inactive\n"));
+        assert!(down_in("failed\n"));
+        // Anything else may have a process holding a seat, and the window waits for it: a unit
+        // between restarts (`activating`), one stopping, and a systemctl that could not say.
+        for state in [
+            "active\n",
+            "activating\n",
+            "deactivating\n",
+            "reloading\n",
+            "",
+        ] {
+            assert!(!down_in(state), "{state:?}");
+        }
     }
 }

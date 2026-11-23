@@ -320,6 +320,12 @@ _Avoid_: version, install
 Going back to the previous slot, or the previous champion, when the new one fails.
 _Avoid_: revert, downgrade
 
+**First start**:
+The update of a bot that is not running, such as the canary on a fresh box. There is no hand to
+wait out, so the bot is started on the new build, and a start that fails leaves it stopped as it
+was found.
+_Avoid_: bootstrap, cold start
+
 **Gate**:
 The checks a change must pass before it merges, run in tiers from quick to full.
 _Avoid_: CI, pipeline, checks
