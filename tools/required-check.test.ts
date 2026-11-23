@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 type Job = { needs?: string[]; steps: [{ run: string }] };
 const workflow = Bun.YAML.parse(
   readFileSync(new URL("../.github/workflows/check.yml", import.meta.url), "utf8"),
-) as { jobs: Record<string, Job> };
+) as { jobs: Record<string, Job> & { check: Job } };
 
 const GREEN = {
   EVENT: "pull_request",
