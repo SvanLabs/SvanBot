@@ -100,6 +100,25 @@ fn a_premium_hand_opens_a_full_table_to_two_and_a_half_blinds() {
 }
 
 #[test]
+fn an_unopened_pot_is_opened_or_folded_by_the_seat_and_its_chart() {
+    // Nobody has acted yet: every opponent still in is behind us. Five behind is UTG, two behind
+    // and in position is the button.
+    let seat = |hole: &str, behind: usize, in_position: bool| {
+        let mut at = spot(hole, "", 30, facing(20, Some((40, 2000))), behind);
+        at.lines = vec![vec![]; behind];
+        at.in_position = in_position;
+        decide(&at, None, BUDGET).action
+    };
+    assert_eq!(seat("AhKs", 5, false), Action::RaiseTo(50));
+    assert_eq!(seat("7h2s", 5, false), Action::Fold);
+    assert_eq!(seat("Kh9s", 5, false), Action::Fold);
+    assert_eq!(seat("Kh9s", 2, true), Action::RaiseTo(50));
+    // Heads up the button opens most hands; the same hand folds in the small blind of six.
+    assert_eq!(seat("8h5s", 1, true), Action::RaiseTo(50));
+    assert_eq!(seat("8h5s", 1, false), Action::Fold);
+}
+
+#[test]
 fn a_weak_hand_folds_to_a_big_bet() {
     // 7-2 offsuit on a board it missed, facing a pot-sized bet: it needs a third of the pot.
     let decision = decide(
