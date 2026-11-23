@@ -60,6 +60,18 @@ debug = "line-tables-only"
 [profile.dev.package.svanbot-strategy]
 opt-level = 3
 
+# So are the hand evaluator, the sim's equity sampling and the learner, and every paired sim and
+# Arena run spends its time in them. No release build runs on this box, so the dev build is the
+# one the sims and the ship bar's Arena runs are played with.
+[profile.dev.package.svanbot-core]
+opt-level = 3
+
+[profile.dev.package.svanbot-sim]
+opt-level = 3
+
+[profile.dev.package.svanbot-learn]
+opt-level = 3
+
 # The third-party crates a pure layer (core, sim, strategy, learn) may take, each with its reason.
 # `tools/layering.ts` rejects any other. A crate earns a place here only if it does no I/O, reads no
 # clock and keeps results the same for the same inputs.
