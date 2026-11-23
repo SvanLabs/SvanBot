@@ -5,8 +5,8 @@ use svanbot_core::spot::{Act, ActKind, Spot};
 use svanbot_strategy::action::{ActionModel, BUCKETS, Counts, Move, Situation};
 use svanbot_strategy::params::Params;
 use svanbot_strategy::policy::{Branch, Personal, decide, decide_drawn, decide_read};
-use svanbot_strategy::read::Class;
 use svanbot_strategy::pricer::{self, Budget};
+use svanbot_strategy::read::Class;
 use svanbot_strategy::resolve::{Abstract, resolve};
 
 #[test]

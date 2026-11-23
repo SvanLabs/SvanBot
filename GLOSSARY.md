@@ -42,7 +42,8 @@ Another bot on the roster, seen from one bot's point of view.
 _Avoid_: sibling, teammate, friend
 
 **Opponent**:
-Any player at the venue who is not on the roster.
+Any player at the venue who is not on the roster, known by their venue name: a seat is where they
+sit in one hand, and the name is who they are across hands.
 _Avoid_: villain, enemy, rival
 
 **Season**:
@@ -148,7 +149,9 @@ The actions opponents take no longer match what the action model predicts.
 _Avoid_: decay, staleness
 
 **Adaptivity class**:
-Whether an opponent plays a fixed strategy, switches between strategies, or learns from how we play.
+Whether an opponent plays a fixed strategy, switches between strategies, or learns from how we play;
+**unknown** until there is enough of them to tell, and an unknown opponent's read earns none of the
+exploit budget.
 _Avoid_: opponent type, style
 
 **Sparring archetype**:
@@ -373,7 +376,8 @@ check refuses a pin whose commit the repository does not hold.
 _Avoid_: publish, set
 
 **Dossier**:
-Everything SvanBot knows about one opponent, in one place.
+One bot's view of one opponent, in one place: their class, change point, hands seen, actions read
+and the share of the exploit budget their read has earned. Each bot keeps its own (ADR 0004).
 _Avoid_: profile page, file
 
 **Decision trace**:

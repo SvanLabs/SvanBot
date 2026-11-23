@@ -7,7 +7,7 @@ use svanbot_core::eval::strength;
 use svanbot_core::rules::Street;
 use svanbot_core::spot::{Act, ActKind};
 use svanbot_learn::fit::Outcome;
-use svanbot_runtime::history::{observed, reads, witnesses};
+use svanbot_runtime::history::{dossiers, observed, reads, witnesses};
 use svanbot_runtime::lines::Lines;
 use svanbot_runtime::record::Hand;
 use svanbot_runtime::wire::parse;
@@ -62,7 +62,12 @@ fn frames() -> Vec<String> {
 /// Seat 2 is us. Seat 0 raises, seat 5 folds to it, seat 4 calls, then on the flop seat 0 bets,
 /// seat 4 folds and on the turn we bet and seat 0 folds. The names come only from the actions.
 fn named_frames() -> Vec<String> {
-    let action = |seat: u32, name: Option<&str>, action: &str, added: u32, pot: u32, to_call: u32| {
+    let action = |seat: u32,
+                  name: Option<&str>,
+                  action: &str,
+                  added: u32,
+                  pot: u32,
+                  to_call: u32| {
         json!({"type": "player_action", "seat": seat, "name": name, "action": action,
                "amount": if added == 0 { serde_json::Value::Null } else { json!(added) },
                "stack": 1000, "contribution_delta": added, "pot_before": pot,
@@ -146,6 +151,17 @@ fn a_bot_s_stored_hands_give_its_reads_of_each_named_opponent() {
     assert_eq!(reads.get("alpha_bot").unwrap().hands(), 2);
     assert_eq!(reads.get("alpha_bot").unwrap().actions(), 6);
     assert!(reads.get("SurSvan").is_none());
+    // The status carries each one as aggregates: two hands are too few to say how they adapt.
+    let rows = dossiers(&reads);
+    assert_eq!(rows.len(), 3);
+    assert_eq!(
+        (rows[0].name.as_str(), rows[0].class.as_str(), rows[0].hands),
+        ("alpha_bot", "unknown", 2)
+    );
+    assert_eq!(
+        (rows[0].actions, rows[0].earned_pct, rows[0].change),
+        (6, 0, None)
+    );
 }
 
 #[test]

@@ -35,6 +35,7 @@ pub fn status(bot: &str, updated_ms: i64) -> Status {
         last_hand_ms: Some(900),
         last_error: None,
         play: Play::default(),
+        opponents: Vec::new(),
     }
 }
 

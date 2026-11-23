@@ -121,7 +121,10 @@ fn a_range_read_by_its_opponent_s_own_read_keeps_their_class_and_trust() {
     assert!(store.append_hand(&hand, Source::Live, 1_000).unwrap());
     let kept = store.traces("h-read").unwrap().expect("a traced hand");
     let ranged = &kept[0].priced.as_ref().unwrap().ranges[0];
-    assert_eq!((ranged.class, ranged.trust), (Some(Class::Switching), Some(0.62)));
+    assert_eq!(
+        (ranged.class, ranged.trust),
+        (Some(Class::Switching), Some(0.62))
+    );
     // A range the population read keeps neither.
     let plain = traced_hand("h-plain", &[Branch::Priced]);
     assert!(store.append_hand(&plain, Source::Live, 2_000).unwrap());

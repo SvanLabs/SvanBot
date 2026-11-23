@@ -134,7 +134,10 @@ fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
     let check = |model: &ActionModel| model.marginal(open(), Move::Check);
     assert!(check(&beta.model) > check(&population));
     // Never seen: unknown, trusted with nothing, read by the population.
-    assert_eq!((gamma.seat, gamma.class, gamma.trust), (4, Class::Unknown, 0.0));
+    assert_eq!(
+        (gamma.seat, gamma.class, gamma.trust),
+        (4, Class::Unknown, 0.0)
+    );
     assert_eq!(gamma.model, population);
     // No exploit budget leaves every model the population's.
     for read in reads.personal(&seated, &population, 0.0) {

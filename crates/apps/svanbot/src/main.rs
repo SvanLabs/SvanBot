@@ -49,6 +49,7 @@ mod deciders;
 mod download;
 mod fit;
 mod paired;
+mod paired_reads;
 mod propose;
 mod ship;
 
@@ -61,16 +62,16 @@ use std::time::Duration;
 use svanbot::live::{self, Live};
 use svanbot::now_ms;
 use svanbot_learn::probe::Decided;
+use svanbot_learn::reads::Reads;
 use svanbot_runtime::client::{
     Bot, ClientError, Config, Event, PlayOutcome, VENUE, fresh_seed, play_with_stop,
 };
 use svanbot_runtime::fleet::{self, Fleet};
 use svanbot_runtime::health::{self, Health};
+use svanbot_runtime::history::{self, witnesses};
 use svanbot_runtime::probing::Probing;
 use svanbot_runtime::status::{Play, Status, status_path};
 use svanbot_runtime::store::{Source, Store};
-use svanbot_learn::reads::Reads;
-use svanbot_runtime::history::{self, witnesses};
 use svanbot_strategy::action::ActionModel;
 use svanbot_strategy::policy::decide_read;
 use svanbot_strategy::pricer::Budget;
@@ -183,6 +184,7 @@ fn main() -> ExitCode {
         }
     };
     let _refresh = Live::spawn_refresh(&live, live::REFRESH);
+    live.opponents(history::dossiers(&reads.borrow()));
     // The decision and the hand's end both reach the ledger, one after the other.
     let probing = RefCell::new(probing);
     let mut bot = Bot::new(&config);
@@ -214,14 +216,8 @@ fn main() -> ExitCode {
                     .collect();
                 let population = model.as_ref().unwrap_or(&baseline);
                 let personal = reads.borrow().personal(&named, population, params.exploit);
-                let decision = decide_read(
-                    spot,
-                    model.as_ref(),
-                    &personal,
-                    &params,
-                    budget,
-                    iterations,
-                );
+                let decision =
+                    decide_read(spot, model.as_ref(), &personal, &params, budget, iterations);
                 if let Some(drawn) = &decision.drawn {
                     probing.borrow_mut().decided(Decided {
                         strategy: drawn.strategy.clone(),
@@ -248,6 +244,7 @@ fn main() -> ExitCode {
                         for witness in witnesses(hand, &config.me) {
                             reads.borrow_mut().observe(witness);
                         }
+                        live.opponents(history::dossiers(&reads.borrow()));
                     }
                     _ => {}
                 }
@@ -357,6 +354,7 @@ fn start_status(me: &str, store: &Store, probing: &Probing<'_>) -> Result<Live, 
         last_hand_ms: totals.last_hand_ms,
         last_error: None,
         play,
+        opponents: Vec::new(),
     };
     Live::start(status_path(&store_path(me)?), status).map_err(|e| e.to_string())
 }

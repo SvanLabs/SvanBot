@@ -16,6 +16,7 @@ use svanbot_strategy::action::Seen;
 
 use crate::lines::Lines;
 use crate::record::Hand;
+use crate::status::Dossier;
 use crate::wire::{Inbound, parse};
 
 /// The opponents' sides of `hand`, numbered `number` so the gate can count them as one hand.
@@ -80,6 +81,21 @@ pub fn reads(hands: &[Hand], me: &str) -> Reads {
         }
     }
     reads
+}
+
+/// The status's view of `reads`: one dossier row per opponent, by name, aggregates only.
+pub fn dossiers(reads: &Reads) -> Vec<Dossier> {
+    reads
+        .opponents()
+        .map(|opponent| Dossier {
+            name: opponent.name().to_owned(),
+            class: opponent.class().name().to_owned(),
+            change: opponent.change().map(|at| at as u64),
+            hands: opponent.hands() as u64,
+            actions: u64::from(opponent.actions()),
+            earned_pct: (opponent.earned() * 100.0).round() as u32,
+        })
+        .collect()
 }
 
 /// The opponents `hand` names, with what each did and how each answered bets. Our own seat is

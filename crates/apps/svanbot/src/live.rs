@@ -9,7 +9,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use svanbot_runtime::ledger::Played;
-use svanbot_runtime::status::{Status, Table};
+use svanbot_runtime::status::{Dossier, Status, Table};
 
 use crate::now_ms;
 
@@ -97,6 +97,11 @@ impl Live {
             status.play.probe = probe;
             status.play.champion = champion;
         });
+    }
+
+    /// How the bot reads each opponent now: the dossier page's rows.
+    pub fn opponents(&self, rows: Vec<Dossier>) {
+        self.update(|status| status.opponents = rows);
     }
 
     /// A fair-play incident was raised.

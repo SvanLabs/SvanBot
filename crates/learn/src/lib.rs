@@ -16,6 +16,7 @@ pub mod exploit;
 pub mod fit;
 pub mod paired;
 pub mod prior;
-pub mod reads;
 pub mod probe;
+pub mod read_sim;
+pub mod reads;
 pub mod ring;
