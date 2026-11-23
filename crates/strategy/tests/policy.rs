@@ -154,7 +154,7 @@ fn each_opponent_is_read_by_their_own_model_and_the_trace_names_their_class_and_
         seat: 3,
         model: calls_only_the_nuts(),
         class: Class::Fixed,
-        trust: 0.62,
+        trust: Some(0.62),
     }];
     let decision = decide_read(&spot, None, &personal, &Params::DEFAULT, BUDGET, 60);
     let trace = decision.trace.unwrap();
@@ -175,4 +175,41 @@ fn each_opponent_is_read_by_their_own_model_and_the_trace_names_their_class_and_
         decide_read(&spot, None, &[], &Params::DEFAULT, BUDGET, 60),
         decide_drawn(&spot, None, &Params::DEFAULT, Budget { ..BUDGET }, 60)
     );
+}
+
+#[test]
+fn a_held_read_decides_exactly_as_no_read_and_the_trace_names_only_its_class() {
+    // Reads that have not cleared their gate: each line is read by the population's model, so the
+    // decision is the one with no reads at all, bit for bit. The trace still names each class.
+    let board = "AhKs9d4c2s";
+    let mut spot = spot("7c7d", board, 600, 200, 2);
+    let called = Act {
+        street: Street::River,
+        board: board.parse().unwrap(),
+        facing: true,
+        kind: ActKind::Call,
+    };
+    spot.lines = vec![vec![called], vec![called]];
+    spot.seats = vec![1, 3];
+    let held = [1, 3].map(|seat| Personal {
+        seat,
+        model: ActionModel::baseline(),
+        class: Class::Fixed,
+        trust: None,
+    });
+    let read = decide_read(&spot, None, &held, &Params::DEFAULT, BUDGET, 60);
+    let none = decide_drawn(&spot, None, &Params::DEFAULT, BUDGET, 60);
+    assert_eq!(read.action, none.action);
+    let (read, none) = (
+        read.trace.unwrap().priced.unwrap(),
+        none.trace.unwrap().priced.unwrap(),
+    );
+    assert_eq!(read.equity.to_bits(), none.equity.to_bits());
+    assert_eq!(read.price, none.price);
+    // Nothing exploited: a held read spends none of the budget.
+    assert_eq!(read.exploit, None);
+    for (held, plain) in read.ranges.iter().zip(&none.ranges) {
+        assert_eq!(held.masses, plain.masses);
+        assert_eq!((held.class, held.trust), (Some(Class::Fixed), None));
+    }
 }

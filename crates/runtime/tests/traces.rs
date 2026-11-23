@@ -134,6 +134,19 @@ fn a_range_read_by_its_opponent_s_own_read_keeps_their_class_and_trust() {
 }
 
 #[test]
+fn a_held_read_keeps_its_class_with_no_trust() {
+    // A read that has not cleared its gate names the opponent's class and decided nothing.
+    let path = scratch("held").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    let mut hand = traced_hand("h-held", &[Branch::Priced]);
+    hand.traced[0].priced.as_mut().unwrap().ranges[0].class = Some(Class::Fixed);
+    assert!(store.append_hand(&hand, Source::Live, 1_000).unwrap());
+    let kept = store.traces("h-held").unwrap().expect("a traced hand");
+    let ranged = &kept[0].priced.as_ref().unwrap().ranges[0];
+    assert_eq!((ranged.class, ranged.trust), (Some(Class::Fixed), None));
+}
+
+#[test]
 fn a_hand_with_no_traces_is_untraced_rather_than_empty() {
     // A hand played before the trace existed is not a hand that made no decisions, and the
     // replayer must tell the two apart.
