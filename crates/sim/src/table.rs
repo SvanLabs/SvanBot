@@ -95,9 +95,14 @@ pub fn play(
     blinds: Blinds,
     mut decide: impl FnMut(usize, &Spot) -> Action,
 ) -> Vec<i64> {
-    let (hand, _, _) = bet(deal, stacks, button, blinds, |seat, spot, _| {
-        decide(seat, spot)
-    });
+    let (hand, _, _) = bet(
+        deal,
+        stacks,
+        button,
+        blinds,
+        |seat, spot, _| decide(seat, spot),
+        |_, _| {},
+    );
     let all = deal.shown(Street::River);
     let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
     paid.iter()
@@ -143,7 +148,20 @@ pub fn play_seen(
     seed: u64,
     decide: impl FnMut(usize, &Spot, &Seen) -> Action,
 ) -> Vec<f64> {
-    let (hand, last, mut stood) = bet(deal, stacks, button, blinds, decide);
+    play_observed(deal, stacks, button, blinds, seed, decide, |_, _| {})
+}
+
+/// Plays a corrected hand and delivers the public betting history after the last action.
+pub fn play_observed(
+    deal: &Deal,
+    stacks: &[u32],
+    button: usize,
+    blinds: Blinds,
+    seed: u64,
+    decide: impl FnMut(usize, &Spot, &Seen) -> Action,
+    finished: impl FnOnce(&[Vec<Act>], &[Record]),
+) -> Vec<f64> {
+    let (hand, last, mut stood) = bet(deal, stacks, button, blinds, decide, finished);
     let all = deal.shown(Street::River);
     let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
     let mut won: Vec<f64> = paid
@@ -223,6 +241,7 @@ fn bet(
     button: usize,
     blinds: Blinds,
     mut decide: impl FnMut(usize, &Spot, &Seen) -> Action,
+    finished: impl FnOnce(&[Vec<Act>], &[Record]),
 ) -> (Hand, Street, Vec<(Hand, Street, Street)>) {
     let seats = stacks.len();
     let mut stood = Vec::new();
@@ -305,6 +324,7 @@ fn bet(
         });
         lines[seat].push(Act::played(&spot, action));
     }
+    finished(&lines, &record);
     (hand, street, stood)
 }
 

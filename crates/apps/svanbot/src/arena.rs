@@ -16,13 +16,14 @@
 
 use std::process::ExitCode;
 
-use svanbot_core::rules::Action;
-use svanbot_core::spot::Spot;
-use svanbot_learn::arena::{BOUT, Row, bout, ring_bout, scoreboard, v10_duel, v10_ring};
-use svanbot_learn::paired::{Match, duel, verdict};
-use svanbot_learn::ring::{SIX_MAX, ring};
+use svanbot_learn::arena::{
+    BOUT, BoutReader, Row, bout, ring_bout, scoreboard, v10_duel, v10_ring,
+};
+use svanbot_learn::paired::{Match, duel_seen, verdict};
+use svanbot_learn::ring::{SIX_MAX, ring_seen};
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_sim::sparring::Archetype;
+use svanbot_strategy::params::Params;
 
 use crate::deciders;
 
@@ -72,8 +73,14 @@ pub(crate) fn play_bout(
     league: League,
     opponent: Opponent,
     number: u64,
-    challenger: &impl Fn(&Spot, u64) -> Action,
+    params: &Params,
+    fixed: Option<u64>,
 ) -> Vec<f64> {
+    let seats = match league {
+        League::HeadsUp => 2,
+        League::SixMax => SIX_MAX,
+    };
+    let challenger = &BoutReader::new(deciders::reading_policy(params, fixed, seats));
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;
     match (league, opponent) {
@@ -87,16 +94,29 @@ pub(crate) fn play_bout(
             deals.map(|deal| v10_ring(game, deal, challenger)).collect()
         }
         (League::HeadsUp, Opponent::Pricer) => deals
-            .map(|deal| duel(game, deal, challenger, &pricer))
+            .map(|deal| {
+                duel_seen(
+                    game,
+                    deal,
+                    challenger,
+                    &|_, spot, _, seed| pricer(spot, seed),
+                    || {},
+                )
+            })
             .collect(),
         (League::SixMax, Opponent::Sparring(archetype)) => {
             ring_bout(game, archetype, number, challenger)
         }
         (League::SixMax, Opponent::Pricer) => deals
             .map(|deal| {
-                ring(game, SIX_MAX, deal, challenger, &|_, spot, seed| {
-                    pricer(spot, seed)
-                })
+                ring_seen(
+                    game,
+                    SIX_MAX,
+                    deal,
+                    challenger,
+                    &|_, spot, _, seed| pricer(spot, seed),
+                    |_| {},
+                )
             })
             .collect(),
     }
@@ -129,7 +149,6 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         }
     };
     let game = deciders::game(seed.unwrap_or(1));
-    let challenger = deciders::challenger(&champion, fixed);
     let mut rows = Vec::new();
     for opponent in Opponent::all() {
         // Thread `k` plays bouts k, k + THREADS, …; put back in order, the verdict is the
@@ -137,14 +156,14 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         let played: Vec<Vec<(u64, Vec<f64>)>> = std::thread::scope(|scope| {
             let workers: Vec<_> = (0..THREADS)
                 .map(|k| {
-                    let (game, challenger) = (&game, &challenger);
+                    let (game, champion) = (&game, &champion);
                     scope.spawn(move || {
                         (k..bouts)
                             .step_by(THREADS as usize)
                             .map(|number| {
                                 (
                                     number,
-                                    play_bout(game, league, opponent, number, challenger),
+                                    play_bout(game, league, opponent, number, champion, fixed),
                                 )
                             })
                             .collect()

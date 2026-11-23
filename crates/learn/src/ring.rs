@@ -10,9 +10,9 @@
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
-use svanbot_sim::table::{Seen, deal, play_seen};
+use svanbot_sim::table::{Seen, deal, play_observed};
 
-use crate::paired::Match;
+use crate::paired::{Challenger, Match};
 
 /// Seats at a full 6-max table: the venue's game.
 pub const SIX_MAX: usize = 6;
@@ -63,7 +63,7 @@ pub fn ring_seen(
     game: &Match,
     seats: usize,
     number: u64,
-    challenger: &impl Fn(&Spot, u64) -> Action,
+    challenger: &impl Challenger,
     opponent: &impl Fn(usize, &Spot, &Seen, u64) -> Action,
     reset: impl Fn(usize),
 ) -> f64 {
@@ -78,7 +78,7 @@ pub fn ring_seen(
         let mut seeds: Vec<Rng> = (0..seats)
             .map(|seat| Rng::stream(game.seed ^ DECISIONS, block + seat as u64))
             .collect();
-        let won = play_seen(
+        let won = play_observed(
             &cards,
             &stacks,
             0,
@@ -87,13 +87,15 @@ pub fn ring_seen(
             |at, spot, seen| {
                 let seed = seeds[at].next_u64();
                 if at == us {
-                    challenger(spot, seed)
+                    challenger.decide(spot, seed)
                 } else {
                     opponent(at, spot, seen, seed)
                 }
             },
+            |lines, actions| challenger.finished_hand(us, lines, actions),
         );
         chips += won[us];
     }
+    challenger.finished_deal();
     chips / (seats as f64 * f64::from(game.blinds.big))
 }

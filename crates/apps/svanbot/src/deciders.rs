@@ -4,8 +4,8 @@
 
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
+use svanbot_learn::arena::opponent_name;
 use svanbot_learn::paired::Match;
-use svanbot_learn::read_sim::OPPONENT;
 use svanbot_learn::reads::Reads;
 use svanbot_strategy::action::ActionModel;
 use svanbot_strategy::params::Params;
@@ -45,14 +45,25 @@ pub(crate) fn challenger(
 }
 
 /// [`challenger`] reading the sim's opponent by `reads`, as live play reads each opponent by
-/// theirs: every seat the spot names is the warm-up's [`OPPONENT`].
+/// theirs. Heads up the villain follows the challenger through the mirror.
 pub(crate) fn reader<'a>(
     params: &'a Params,
     fixed: Option<u64>,
     reads: &'a Reads,
 ) -> impl Fn(&Spot, u64) -> Action + 'a {
+    let decide = reading_policy(params, fixed, 2);
+    move |spot, seed| decide(spot, seed, reads)
+}
+
+/// The Arena and the frozen comparison use the same policy and the same names for the seats.
+pub(crate) fn reading_policy(
+    params: &Params,
+    fixed: Option<u64>,
+    seats: usize,
+) -> impl Fn(&Spot, u64, &Reads) -> Action + '_ {
+    let names: Vec<_> = (0..seats).map(|seat| opponent_name(seats, seat)).collect();
     let baseline = ActionModel::baseline();
-    move |spot, seed| {
+    move |spot, seed, reads| {
         let iterations = match fixed {
             Some(fixed) => u32::try_from(fixed).unwrap_or(u32::MAX),
             None => iterations_for(spot.pot, spot.big_blind, spot.board.len()),
@@ -61,7 +72,11 @@ pub(crate) fn reader<'a>(
             samples: SAMPLES,
             seed,
         };
-        let named: Vec<(usize, &str)> = spot.seats.iter().map(|&seat| (seat, OPPONENT)).collect();
+        let named: Vec<(usize, &str)> = spot
+            .seats
+            .iter()
+            .map(|&seat| (seat, names[seat].as_str()))
+            .collect();
         let personal = reads.personal(&named, &baseline, params.exploit);
         policy::decide_read(spot, None, &personal, params, budget, iterations).action
     }

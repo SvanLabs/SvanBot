@@ -29,6 +29,26 @@ fn check_or_call(spot: &Spot, _: u64) -> Action {
 }
 
 #[test]
+fn an_arena_challenger_learns_between_deals_and_freezes_its_read_across_the_mirror() {
+    use svanbot_learn::arena::BoutReader;
+    use svanbot_learn::read_sim::OPPONENT;
+    use svanbot_learn::reads::Reads;
+
+    let counts = RefCell::new(Vec::new());
+    let challenger = BoutReader::new(|spot: &Spot, seed, reads: &Reads| {
+        counts
+            .borrow_mut()
+            .push(reads.get(OPPONENT).map_or(0, |r| r.hands()));
+        check_or_call(spot, seed)
+    });
+    bout(&MATCH, Archetype::Station, 0, &challenger);
+    let counts = counts.into_inner();
+    assert_eq!(counts.first(), Some(&0));
+    assert_eq!(counts.last(), Some(&98));
+    assert!(counts.iter().all(|n| n % 2 == 0));
+}
+
+#[test]
 fn a_seat_that_always_folds_breaks_even_with_the_nit() {
     // The nit folds its small blind and we fold ours: 10 each way on every deal.
     let results = bout(&MATCH, Archetype::Nit, 0, &folds);
@@ -56,6 +76,28 @@ fn a_seat_that_always_folds_breaks_even_with_five_nits() {
         results.iter().all(|result| result.abs() < 1e-9),
         "{results:?}"
     );
+}
+
+#[test]
+fn a_ring_bout_keeps_each_opponents_read_across_deals() {
+    use svanbot_learn::arena::{BoutReader, opponent_name};
+    use svanbot_learn::reads::Reads;
+    use svanbot_learn::ring::SIX_MAX;
+
+    let last = RefCell::new(Vec::new());
+    let challenger = BoutReader::new(|spot: &Spot, seed, reads: &Reads| {
+        *last.borrow_mut() = reads
+            .opponents()
+            .map(|r| (r.name().to_owned(), r.hands()))
+            .collect();
+        folds(spot, seed)
+    });
+    ring_bout(&MATCH, Archetype::Nit, 0, &challenger);
+    // Before the final deal, each seat has been an opponent in five rotations of 49 deals.
+    let expected: Vec<_> = (0..SIX_MAX)
+        .map(|seat| (opponent_name(SIX_MAX, seat), 245))
+        .collect();
+    assert_eq!(last.into_inner(), expected);
 }
 
 #[test]

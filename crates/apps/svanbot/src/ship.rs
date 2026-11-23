@@ -56,8 +56,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             row.opponent
         );
         let game = deciders::game(run.seed);
-        let challenger = deciders::challenger(&champion, run.iterations);
-        play_bout(&game, run.league, opponent, bout, &challenger)
+        play_bout(&game, run.league, opponent, bout, &champion, run.iterations)
             .iter()
             .sum()
     };

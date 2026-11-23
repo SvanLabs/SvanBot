@@ -8,8 +8,22 @@
 
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Blinds};
-use svanbot_core::spot::Spot;
-use svanbot_sim::table::{Seen, deal, play_seen};
+use svanbot_core::spot::{Act, Spot};
+use svanbot_sim::table::{Record, Seen, deal, play_observed};
+
+/// The challenger in a paired game. A bout can learn between deals while every rotation
+/// within one deal plays from the same read.
+pub trait Challenger {
+    fn decide(&self, spot: &Spot, seed: u64) -> Action;
+    fn finished_hand(&self, _us: usize, _lines: &[Vec<Act>], _actions: &[Record]) {}
+    fn finished_deal(&self) {}
+}
+
+impl<F: Fn(&Spot, u64) -> Action> Challenger for F {
+    fn decide(&self, spot: &Spot, seed: u64) -> Action {
+        self(spot, seed)
+    }
+}
 
 /// What every deal of a paired sim shares: the blinds, the stack each seat starts each hand
 /// with, and the seed.
@@ -59,7 +73,7 @@ pub fn duel_with(
 pub fn duel_seen(
     game: &Match,
     number: u64,
-    challenger: &impl Fn(&Spot, u64) -> Action,
+    challenger: &impl Challenger,
     champion: &impl Fn(usize, &Spot, &Seen, u64) -> Action,
     reset: impl Fn(),
 ) -> f64 {
@@ -70,7 +84,7 @@ pub fn duel_seen(
     for seat in 0..2 {
         reset();
         let mut seeds = Rng::stream(game.seed ^ DECISIONS, 2 * number + seat as u64);
-        let won = play_seen(
+        let won = play_observed(
             &cards,
             &[game.stack; 2],
             0,
@@ -79,14 +93,16 @@ pub fn duel_seen(
             |at, spot, seen| {
                 let seed = seeds.next_u64();
                 if at == seat {
-                    challenger(spot, seed)
+                    challenger.decide(spot, seed)
                 } else {
                     champion(at, spot, seen, seed)
                 }
             },
+            |lines, actions| challenger.finished_hand(seat, lines, actions),
         );
         chips += won[seat];
     }
+    challenger.finished_deal();
     chips / (2.0 * f64::from(game.blinds.big))
 }
 
