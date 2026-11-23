@@ -223,6 +223,30 @@ impl ActionModel {
         Self { probs }
     }
 
+    /// Mix a share of each situation's actions drawn independently of hole cards
+    /// into each strength bucket. The supplied probabilities sum to one per situation.
+    pub(crate) fn mixed(
+        &self,
+        share: impl Fn(Situation) -> f64,
+        frequency: impl Fn(Situation, Move) -> f64,
+    ) -> Self {
+        let mut mixed = self.clone();
+        for situation in Situation::all() {
+            let share = share(situation);
+            if share > 0.0 {
+                for &mv in situation.moves() {
+                    let p = frequency(situation, mv);
+                    for bucket in 0..BUCKETS {
+                        let at = situation.index() * BUCKETS + bucket;
+                        let old = self.probs[at][mv.index()];
+                        mixed.probs[at][mv.index()] = old + share * (p - old);
+                    }
+                }
+            }
+        }
+        mixed
+    }
+
     /// This model with each move's probability at each situation multiplied by `tilt`, then
     /// normalised again over the open moves. A tilt of 1 everywhere leaves it as it is.
     pub fn tilted(&self, tilt: impl Fn(Situation, Move) -> f64) -> Self {

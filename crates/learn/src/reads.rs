@@ -5,11 +5,12 @@
 //! An opponent's class comes from [`classify`] over their hands in order. A switching opponent's
 //! read restarts at the change, and an unknown one earns nothing. What a read earns is the class's
 //! share of the budget, times `n / (n + half)` for its `n` observations ([`Trust::DEFAULT`]'s
-//! half-trust point), the same weight [`personal`](svanbot_strategy::read::personal) tilts by.
+//! half-trust point). Frequent preflop raisers may spend this share in the paired trial.
 
 use std::collections::BTreeMap;
 
-use svanbot_strategy::action::{ActionModel, Seen, Situation};
+use svanbot_core::rules::Street;
+use svanbot_strategy::action::{ActionModel, Move, Seen, Situation};
 use svanbot_strategy::policy::Personal;
 use svanbot_strategy::read::{Class, Read, Trust, personal};
 
@@ -102,6 +103,22 @@ impl Opponent {
         self.counted = self.hands.len();
         self.class = class;
         self.change = change;
+    }
+
+    /// A fixed opponent who raises over 40% of the time when facing a preflop bet.
+    /// Require enough opportunities to distinguish repeated raises from a short run of cards.
+    fn raises_frequently(&self) -> bool {
+        let situation = Situation {
+            street: Street::Preflop,
+            facing: true,
+        };
+        self.class == Class::Fixed
+            && self.read.n(situation) >= crate::adapt::MIN_SIDE as u32
+            && [Move::Small, Move::Medium, Move::Large]
+                .into_iter()
+                .map(|mv| self.read.frequency(situation, mv, 0.0, 0.0))
+                .sum::<f64>()
+                > 0.4
     }
 
     /// The venue name.
@@ -198,8 +215,8 @@ impl Reads {
     }
 
     /// The decision's reads of the opponents `seated` (seat, venue name): each one's model is
-    /// `population` tilted toward their read, as far as `exploit` times their class's share allows.
-    /// One never seen is unknown, trusted with nothing, and read by `population`.
+    /// based on their own frequencies if they regularly raise preflop bets. Other opponents
+    /// retain their class and use the population model with zero trust.
     pub fn personal(
         &self,
         seated: &[(usize, &str)],
@@ -209,7 +226,7 @@ impl Reads {
         seated
             .iter()
             .map(|&(seat, name)| match self.get(name) {
-                Some(opponent) => {
+                Some(opponent) if opponent.raises_frequently() => {
                     let class = opponent.class();
                     let trust = Trust {
                         budget: exploit * class.budget(),
@@ -222,10 +239,10 @@ impl Reads {
                         trust: Some(opponent.earned()),
                     }
                 }
-                None => Personal {
+                opponent => Personal {
                     seat,
                     model: population.clone(),
-                    class: Class::Unknown,
+                    class: opponent.map_or(Class::Unknown, Opponent::class),
                     trust: Some(0.0),
                 },
             })

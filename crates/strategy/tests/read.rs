@@ -92,3 +92,13 @@ fn trust_grows_with_the_evidence_and_shrinks_with_the_budget() {
     let damped = shift(&many, Class::Learning.budget());
     assert!(damped > 0.0 && damped < shift(&many, Class::Fixed.budget()));
 }
+
+#[test]
+fn a_card_independent_component_dampens_the_strength_signal_by_its_share() {
+    let base = population();
+    // At 30 observations the read earns half its budget. When half the moves
+    // come from a card-independent frequency, half the original gap remains.
+    let mixed = personal(&base, &folder(15, 30), Trust::DEFAULT);
+    let gap = |model: &ActionModel| fold_at(model, 0) - fold_at(model, BUCKETS - 1);
+    assert!((gap(&mixed) - 0.5 * gap(&base)).abs() < 1e-12);
+}

@@ -3,11 +3,9 @@
 //! allow.
 //!
 //! A read counts the opponent's moves per situation. Their frequency at a situation is shrunk
-//! toward the population's with a prior strength, then the population model is tilted toward it
-//! by the factor `(theirs / population) ^ w`, where `w = budget * n / (n + k)`: the data-biased
-//! response's trust in `n` observations, capped by the exploit budget
-//! (`docs/research/2026-11/03-opponent-response.md`, option 1). No evidence, or a budget of 0,
-//! leaves the population model as it is.
+//! toward the population's with a prior strength. At each strength bucket, a share
+//! `budget * n / (n + half)` of the moves follows that frequency independently of the cards.
+//! The remaining share follows the population's strength-dependent model.
 
 use crate::action::{ActionModel, Move, Seen, Situation};
 
@@ -98,18 +96,22 @@ impl Read {
     }
 }
 
-/// The action model for one opponent: `population` tilted toward their read, as far as `trust`
-/// allows.
+/// Mix the observed frequencies into every strength bucket within the evidence and budget.
 pub fn personal(population: &ActionModel, read: &Read, trust: Trust) -> ActionModel {
-    population.tilted(|situation, mv| {
-        let n = f64::from(read.n(situation));
-        let weight = trust.budget.clamp(0.0, 1.0) * n / (n + trust.half);
-        let base = population.marginal(situation, mv);
-        if weight == 0.0 || base <= 0.0 {
-            return 1.0;
-        }
-        (read.frequency(situation, mv, base, trust.prior) / base).powf(weight)
-    })
+    population.mixed(
+        |situation| {
+            let n = f64::from(read.n(situation));
+            trust.budget.clamp(0.0, 1.0) * n / (n + trust.half)
+        },
+        |situation, mv| {
+            read.frequency(
+                situation,
+                mv,
+                population.marginal(situation, mv),
+                trust.prior,
+            )
+        },
+    )
 }
 
 fn situation_index(situation: Situation) -> usize {
