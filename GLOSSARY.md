@@ -42,7 +42,8 @@ Another bot on the roster, seen from one bot's point of view.
 _Avoid_: sibling, teammate, friend
 
 **Opponent**:
-Any player at the venue who is not on the roster.
+Any player at the venue who is not on the roster, known by their venue name: a seat is where they
+sit in one hand, and the name is who they are across hands.
 _Avoid_: villain, enemy, rival
 
 **Season**:
@@ -139,6 +140,11 @@ An opponent's own departure from the prior, learned from their hands alone. One 
 own, never pooled across stablemates.
 _Avoid_: profile, note, tag
 
+**Held**:
+Said of reads that have not yet shown, in a paired sim, that playing by them wins. A held read is
+kept, classed and shown, and the decision reads that opponent as it would with no read at all.
+_Avoid_: disabled, off, shadow
+
 **Evidence**:
 The opponent's hands at spots like the current one. A read counts for only as much as its evidence.
 _Avoid_: sample, data
@@ -148,7 +154,9 @@ The actions opponents take no longer match what the action model predicts.
 _Avoid_: decay, staleness
 
 **Adaptivity class**:
-Whether an opponent plays a fixed strategy, switches between strategies, or learns from how we play.
+Whether an opponent plays a fixed strategy, switches between strategies, or learns from how we play;
+**unknown** until there is enough of them to tell, and an unknown opponent's read earns none of the
+exploit budget.
 _Avoid_: opponent type, style
 
 **Sparring archetype**:
@@ -379,7 +387,8 @@ check refuses a pin whose commit the repository does not hold.
 _Avoid_: publish, set
 
 **Dossier**:
-Everything SvanBot knows about one opponent, in one place.
+One bot's view of one opponent, in one place: their class, change point, hands seen, actions read
+and the share of the exploit budget their read has earned. Each bot keeps its own (ADR 0004).
 _Avoid_: profile page, file
 
 **Decision trace**:
@@ -399,8 +408,8 @@ The action a re-solve's mixed strategy picked: the mix, the values, and the inde
 _Avoid_: sampled, rolled, picked
 
 **Exploit gate**:
-The test a fit must pass before a bot reads by it. A model that failed it is not in the process at
-all, so the trace's `exploit` is `None` and the **baseline** read the spot.
+The test of how much playing by a set of opponent reads could cost against adapting opponents.
+The reads pass when the one-sided 95% upper bound on their paired loss per hand is below the cap.
 _Avoid_: threshold, approval
 
 **Public TV**:

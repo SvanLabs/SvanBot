@@ -50,6 +50,24 @@ pub struct Status {
     pub last_error: Option<String>,
     /// What the bot plays by and what its hands have won.
     pub play: Play,
+    /// Each opponent as this bot reads them, by name: aggregates only, never the raw counts.
+    pub opponents: Vec<Dossier>,
+}
+
+/// One bot's view of one opponent (`GLOSSARY.md`: dossier), as the status carries it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Dossier {
+    /// The venue name.
+    pub name: String,
+    /// The adaptivity class: `unknown`, `fixed`, `switching` or `learning`.
+    pub class: String,
+    /// The hand their present strategy began at, when they switched.
+    pub change: Option<u64>,
+    pub hands: u64,
+    /// Actions in their read.
+    pub actions: u64,
+    /// The share of the exploit budget their read has earned, in whole percent.
+    pub earned_pct: u32,
 }
 
 /// What a bot plays by and what its ledger holds, as the dashboard shows it. Winnings are in
@@ -149,6 +167,14 @@ impl Status {
                 "won_mbb": self.play.won_mbb,
                 "recent": self.play.recent,
             },
+            "opponents": self.opponents.iter().map(|dossier| json!({
+                "name": dossier.name,
+                "class": dossier.class,
+                "change": dossier.change,
+                "hands": dossier.hands,
+                "actions": dossier.actions,
+                "earned_pct": dossier.earned_pct,
+            })).collect::<Vec<_>>(),
         })
     }
 
@@ -204,6 +230,23 @@ impl Status {
                 recent: list(play, "recent")
                     .map(|recent| recent.iter().filter_map(Value::as_i64).collect())
                     .unwrap_or_default(),
+            },
+            // A status from before reads were in play names no opponents.
+            opponents: match list(value, "opponents") {
+                Ok(rows) => rows
+                    .iter()
+                    .map(|row| {
+                        Ok(Dossier {
+                            name: text(row, "name")?,
+                            class: text(row, "class")?,
+                            change: whole(row, "change").ok(),
+                            hands: whole(row, "hands")?,
+                            actions: whole(row, "actions")?,
+                            earned_pct: whole(row, "earned_pct")? as u32,
+                        })
+                    })
+                    .collect::<Result<_, String>>()?,
+                Err(_) => Vec::new(),
             },
         })
     }

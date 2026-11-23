@@ -349,7 +349,15 @@ fn trace_value(trace: &Trace) -> Value {
 fn ranges_value(ranges: &[Ranged]) -> Vec<Value> {
     ranges
         .iter()
-        .map(|ranged| json!({ "seat": ranged.seat, "masses": ranged.masses }))
+        .map(|ranged| {
+            // The class and trust are `null` when the population's model read the opponent.
+            json!({
+                "seat": ranged.seat,
+                "masses": ranged.masses,
+                "class": ranged.class.map(|class| class.name()),
+                "trust": ranged.trust,
+            })
+        })
         .collect()
 }
 

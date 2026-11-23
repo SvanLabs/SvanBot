@@ -8,13 +8,14 @@
 //! they can run in any order on any number of threads. *A bout is not a session*: a session is a
 //! bot's stay at a table (`GLOSSARY.md`), and only live play has those.
 
-use svanbot_core::rules::Action;
-use svanbot_core::spot::Spot;
 use svanbot_sim::sparring::{Archetype, Memory, Sparring};
 use svanbot_sim::v10::seat::V10;
 
-use crate::paired::{Match, Verdict, duel_seen, duel_with};
-use crate::ring::{SIX_MAX, ring_seen, ring_with};
+use crate::paired::{Challenger, Match, Verdict, duel_seen};
+use crate::ring::{SIX_MAX, ring_seen};
+
+mod reader;
+pub use reader::{BoutReader, opponent_name};
 
 /// Deals in a bout.
 pub const BOUT: u64 = 50;
@@ -25,7 +26,7 @@ pub fn bout(
     game: &Match,
     archetype: Archetype,
     number: u64,
-    challenger: &impl Fn(&Spot, u64) -> Action,
+    challenger: &impl Challenger,
 ) -> Vec<f64> {
     bout_against(game, &Sparring::new(archetype), number, challenger)
 }
@@ -35,7 +36,7 @@ pub fn bout_against(
     game: &Match,
     opponent: &Sparring,
     number: u64,
-    challenger: &impl Fn(&Spot, u64) -> Action,
+    challenger: &impl Challenger,
 ) -> Vec<f64> {
     (number * BOUT..(number + 1) * BOUT)
         .map(|deal| {
@@ -43,11 +44,11 @@ pub fn bout_against(
             // one would otherwise carry the first hand's bets into the second, and the deal's two
             // hands would no longer cancel the cards. What the deal taught it stays for the next.
             let start = opponent.memory();
-            duel_with(
+            duel_seen(
                 game,
                 deal,
                 challenger,
-                &|spot, seed| opponent.decide(spot, seed, deal),
+                &|_, spot, _, seed| opponent.decide(spot, seed, deal),
                 || opponent.recall(start),
             )
         })
@@ -55,25 +56,25 @@ pub fn bout_against(
 }
 
 /// Plays 6-max bout `number` against five of `archetype`: its deals, each once from every seat
-/// ([`ring_with`]), in order. Each seat has its own opponent, and a learning one watches the
+/// ([`ring_seen`]), in order. Each seat has its own opponent, and a learning one watches the
 /// challenger's seat, not its own copies. Returns what the challenger won on each deal, in big blinds a hand.
 pub fn ring_bout(
     game: &Match,
     archetype: Archetype,
     number: u64,
-    challenger: &impl Fn(&Spot, u64) -> Action,
+    challenger: &impl Challenger,
 ) -> Vec<f64> {
     let opponents: Vec<Sparring> = (0..SIX_MAX).map(|_| Sparring::new(archetype)).collect();
     (number * BOUT..(number + 1) * BOUT)
         .map(|deal| {
             // Every rotation meets each opponent as it was when the deal began, as in [`bout`].
             let start: Vec<Memory> = opponents.iter().map(Sparring::memory).collect();
-            ring_with(
+            ring_seen(
                 game,
                 SIX_MAX,
                 deal,
                 challenger,
-                &|seat, spot, seed| opponents[seat].decide(spot, seed, deal),
+                &|seat, spot, _, seed| opponents[seat].decide(spot, seed, deal),
                 |us| {
                     for (opponent, &memory) in opponents.iter().zip(&start) {
                         opponent.recall(memory);
@@ -88,7 +89,7 @@ pub fn ring_bout(
 /// Plays deal `number` heads up against v10.0.2 ([`V10`]), from mirrored seats. v10 keeps
 /// nothing between hands, so a deal stands alone and needs no bout. Returns what the challenger
 /// won, in big blinds a hand.
-pub fn v10_duel(game: &Match, number: u64, challenger: &impl Fn(&Spot, u64) -> Action) -> f64 {
+pub fn v10_duel(game: &Match, number: u64, challenger: &impl Challenger) -> f64 {
     let v10 = V10::default();
     duel_seen(
         game,
@@ -100,7 +101,7 @@ pub fn v10_duel(game: &Match, number: u64, challenger: &impl Fn(&Spot, u64) -> A
 }
 
 /// Plays deal `number` at a full table of v10.0.2, once from every seat ([`ring_seen`]).
-pub fn v10_ring(game: &Match, number: u64, challenger: &impl Fn(&Spot, u64) -> Action) -> f64 {
+pub fn v10_ring(game: &Match, number: u64, challenger: &impl Challenger) -> f64 {
     let v10 = V10::default();
     ring_seen(
         game,

@@ -212,12 +212,13 @@ impl Session {
         self.hand = None;
     }
 
-    /// Answers one frame. `decide` is asked only at our turn, with the spot as the session sees it.
+    /// Answers one frame. `decide` is asked only at our turn, with the spot as the session sees it
+    /// and the seats and names from the same turn or snapshot ([`Session::on_frame`] without them).
     /// A frame whose `table_seq` is not past the watermark was applied already, and is ignored.
-    pub fn on_frame<D: Into<Decision>>(
+    pub fn on_frame_with_players<D: Into<Decision>>(
         &mut self,
         frame: impl Into<Frame>,
-        decide: impl FnOnce(&Spot) -> D,
+        decide: impl FnOnce(&Spot, &[Player]) -> D,
     ) -> Step {
         let Frame { table_seq, inbound } = frame.into();
         if let Inbound::Resync(resync) = inbound {
@@ -388,7 +389,7 @@ impl Session {
     fn your_turn<D: Into<Decision>>(
         &mut self,
         turn: Turn,
-        decide: impl FnOnce(&Spot) -> D,
+        decide: impl FnOnce(&Spot, &[Player]) -> D,
     ) -> Step {
         self.opening.clear();
         if let (Some(id), Some(hand)) = (&turn.hand_id, &mut self.hand)
@@ -420,7 +421,7 @@ impl Session {
         // part in a hand a stablemate is in.
         let decided = match stablemate {
             Some(_) => None,
-            None => Some(decide(&self.spot(&turn, &hand)).into()),
+            None => Some(decide(&self.spot(&turn, &hand), &turn.players).into()),
         };
         let action = match &decided {
             Some(decision) => offered(decision.action, &turn.offer),

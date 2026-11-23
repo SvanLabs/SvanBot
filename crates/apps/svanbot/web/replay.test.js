@@ -116,7 +116,7 @@ test("a priced decision says its price, and that the baseline exploits nothing",
 
 test("a priced decision reads by an exploit budget when a fit passed the gate", async () => {
   const text = replay.decisionView(priced({ exploit: 0.4 })).textContent;
-  expect(text).toContain("exploit 0.40");
+  expect(text).toContain("configured exploit budget 0.40");
 });
 
 test("a range names the seat it read, so it matches the table", async () => {
@@ -132,6 +132,29 @@ test("a range with no seat says so rather than numbering the opponents itself", 
   ).textContent;
   expect(text).toContain("Seat unknown");
   expect(text).not.toContain("Opponent 1");
+});
+
+test("a range read by its opponent's own read names their class and the budget it earned", () => {
+  const text = replay.decisionView(
+    priced({
+      ranges: [
+        { seat: 3, masses: [1, 0, 0, 0, 0, 0, 0, 0], class: "fixed", trust: 0.62 },
+        { seat: 4, masses: [1, 0, 0, 0, 0, 0, 0, 0] },
+      ],
+    }),
+  ).textContent;
+  expect(text).toContain("Seat 3: fixed, 62% of the budget");
+  // The population's read names no class.
+  expect(text).toContain("Seat 4");
+  expect(text).not.toContain("Seat 4:");
+});
+
+test("a held read names its class and says it decided nothing", () => {
+  const text = replay.decisionView(
+    priced({ ranges: [{ seat: 3, masses: [1, 0, 0, 0, 0, 0, 0, 0], class: "fixed" }] }),
+  ).textContent;
+  expect(text).toContain("Seat 3: fixed, read held");
+  expect(text).not.toContain("of the budget");
 });
 
 test("a decision with no action names still says which index was taken", async () => {

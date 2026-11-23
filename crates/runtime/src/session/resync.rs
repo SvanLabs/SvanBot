@@ -33,7 +33,7 @@ impl Session {
     pub(super) fn resync<D: Into<Decision>>(
         &mut self,
         resync: Resync,
-        decide: impl FnOnce(&Spot) -> D,
+        decide: impl FnOnce(&Spot, &[Player]) -> D,
     ) -> Step {
         self.resyncing = false;
         if !resync.player {
@@ -69,7 +69,7 @@ impl Session {
     pub(super) fn install<D: Into<Decision>>(
         &mut self,
         snapshot: Snapshot,
-        decide: impl FnOnce(&Spot) -> D,
+        decide: impl FnOnce(&Spot, &[Player]) -> D,
     ) -> Step {
         if snapshot.hand_id.is_some() || snapshot.pot != 0 {
             // Current stacks in a live hand are not opening stacks for the next one.

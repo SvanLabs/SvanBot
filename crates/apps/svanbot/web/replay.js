@@ -54,9 +54,20 @@ export function decisionView(decision) {
     h("p", { class: "muted" }, cardsText(decision)),
     priced ? null : facts(decision.values.map((value, at) => actionRow(decision, at, value))),
     ...(decision.ranges ?? []).map((range) =>
-      facts([[seatLabel(range.seat), range.masses.map((mass) => mass.toFixed(2)).join(" ")]]),
+      facts([[rangeLabel(range), range.masses.map((mass) => mass.toFixed(2)).join(" ")]]),
     ),
   );
+}
+
+/**
+ * The seat, and when the opponent has a read, its class: with the budget it earned when the read
+ * decided the range, or "read held" when reads have not cleared their gate and decided nothing.
+ */
+function rangeLabel(range) {
+  const seat = seatLabel(range.seat);
+  if (typeof range.class !== "string") return seat;
+  if (typeof range.trust !== "number") return `${seat}: ${range.class}, read held`;
+  return `${seat}: ${range.class}, ${Math.round(range.trust * 100)}% of the budget`;
 }
 
 /**

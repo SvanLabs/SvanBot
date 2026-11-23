@@ -1,0 +1,22 @@
+//! The paired reads command measures each shared deal once across the fixed archetypes.
+#![allow(clippy::disallowed_types)]
+
+use std::process::Command;
+
+#[test]
+fn the_fixed_archetypes_share_the_same_deals_in_the_paired_verdict() {
+    let health = std::env::temp_dir().join(format!("svanbot-paired-reads-{}", std::process::id()));
+    let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
+        .args(["paired", "reads", "2", "1", "0"])
+        .env_clear()
+        .env("SVANBOT_HEALTH", health)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.lines().any(|line| {
+            line.starts_with("reads on against off, heads up:") && line.contains("over 2 deals")
+        }),
+        "{stdout}"
+    );
+}

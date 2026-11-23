@@ -33,6 +33,15 @@ impl HandSeen {
 }
 
 impl Session {
+    /// [`Session::on_frame_with_players`] for a decision that needs only the spot.
+    pub fn on_frame<D: Into<svanbot_strategy::policy::Decision>>(
+        &mut self,
+        frame: impl Into<crate::wire::Frame>,
+        decide: impl FnOnce(&Spot) -> D,
+    ) -> super::Step {
+        self.on_frame_with_players(frame, |spot, _| decide(spot))
+    }
+
     pub(super) fn spot(&self, turn: &Turn, hand: &HandSeen) -> Spot {
         let me = self.me.to_lowercase();
         let mine = turn

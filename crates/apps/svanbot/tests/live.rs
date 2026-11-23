@@ -31,6 +31,7 @@ fn status() -> Status {
         last_hand_ms: None,
         last_error: None,
         play: Play::default(),
+        opponents: Vec::new(),
     }
 }
 

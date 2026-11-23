@@ -17,4 +17,6 @@ pub mod fit;
 pub mod paired;
 pub mod prior;
 pub mod probe;
+pub mod read_sim;
+pub mod reads;
 pub mod ring;

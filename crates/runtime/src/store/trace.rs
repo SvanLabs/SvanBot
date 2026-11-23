@@ -6,6 +6,7 @@
 use svanbot_core::card::CardSet;
 use svanbot_core::rules::Street;
 use svanbot_strategy::policy::{Abstract, Branch, PricedTrace, Ranged, ResolvedTrace, Trace};
+use svanbot_strategy::read::Class;
 
 use rusqlite::{Transaction, params};
 
@@ -96,7 +97,21 @@ fn ranges_json(ranges: &[Ranged]) -> String {
                 Some(seat) => seat.to_string(),
                 None => "null".to_owned(),
             };
-            format!(r#"{{"seat":{seat},"masses":{}}}"#, numbers(&ranged.masses))
+            // The class is there when the opponent has a read, and the trust only when that read
+            // decided the range: a held read names its class and spends nothing.
+            let class = ranged
+                .class
+                .map(|class| format!(r#","class":"{}""#, class.name()))
+                .unwrap_or_default();
+            let trust = ranged
+                .trust
+                .map(|trust| format!(r#","trust":{}"#, number(trust)))
+                .unwrap_or_default();
+            let read = format!("{class}{trust}");
+            format!(
+                r#"{{"seat":{seat},"masses":{}{read}}}"#,
+                numbers(&ranged.masses)
+            )
         })
         .collect();
     format!("[{}]", items.join(","))
@@ -133,6 +148,10 @@ pub(super) fn trace_from(street: &str, branch: &str, json: &str) -> Result<Trace
                             .as_u64()
                             .and_then(|seat| usize::try_from(seat).ok()),
                         masses: floats(&row["masses"]),
+                        // A trace written before reads were in play has neither, and reads back
+                        // as the population's.
+                        class: row["class"].as_str().and_then(Class::named),
+                        trust: row["trust"].as_f64(),
                     })
                     .collect()
             })

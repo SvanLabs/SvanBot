@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use svanbot_runtime::status::{Fleet, Play, Seat, Status, Table, status_path};
+use svanbot_runtime::status::{Dossier, Fleet, Play, Seat, Status, Table, status_path};
 
 /// A fresh, empty directory for one test.
 fn scratch(name: &str) -> PathBuf {
@@ -52,7 +52,22 @@ fn status(bot: &str, updated_ms: i64) -> Status {
         last_hand_ms: Some(900),
         last_error: None,
         play: Play::default(),
+        opponents: vec![Dossier {
+            name: "alpha_bot".into(),
+            class: "switching".into(),
+            change: Some(140),
+            hands: 300,
+            actions: 412,
+            earned_pct: 62,
+        }],
     }
+}
+
+#[test]
+fn a_status_from_before_reads_has_no_opponents() {
+    let mut value = status("SurSvan", 2_000).to_json();
+    value.as_object_mut().unwrap().remove("opponents");
+    assert!(Status::from_json(&value).unwrap().opponents.is_empty());
 }
 
 #[test]

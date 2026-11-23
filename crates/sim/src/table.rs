@@ -10,7 +10,7 @@ use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::eval::strength;
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Blinds, Hand, Legal, Street};
-use svanbot_core::spot::{Act, ActKind, Spot};
+use svanbot_core::spot::{Act, Spot};
 
 /// The cards of one hand: each seat's hole cards, and the board in the order it comes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -95,9 +95,14 @@ pub fn play(
     blinds: Blinds,
     mut decide: impl FnMut(usize, &Spot) -> Action,
 ) -> Vec<i64> {
-    let (hand, _, _) = bet(deal, stacks, button, blinds, |seat, spot, _| {
-        decide(seat, spot)
-    });
+    let (hand, _, _) = bet(
+        deal,
+        stacks,
+        button,
+        blinds,
+        |seat, spot, _| decide(seat, spot),
+        |_, _| {},
+    );
     let all = deal.shown(Street::River);
     let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
     paid.iter()
@@ -143,7 +148,20 @@ pub fn play_seen(
     seed: u64,
     decide: impl FnMut(usize, &Spot, &Seen) -> Action,
 ) -> Vec<f64> {
-    let (hand, last, mut stood) = bet(deal, stacks, button, blinds, decide);
+    play_observed(deal, stacks, button, blinds, seed, decide, |_, _| {})
+}
+
+/// Plays a corrected hand and delivers the public betting history after the last action.
+pub fn play_observed(
+    deal: &Deal,
+    stacks: &[u32],
+    button: usize,
+    blinds: Blinds,
+    seed: u64,
+    decide: impl FnMut(usize, &Spot, &Seen) -> Action,
+    finished: impl FnOnce(&[Vec<Act>], &[Record]),
+) -> Vec<f64> {
+    let (hand, last, mut stood) = bet(deal, stacks, button, blinds, decide, finished);
     let all = deal.shown(Street::River);
     let paid = hand.payouts(|seat| strength(deal.holes[seat] | all));
     let mut won: Vec<f64> = paid
@@ -223,6 +241,7 @@ fn bet(
     button: usize,
     blinds: Blinds,
     mut decide: impl FnMut(usize, &Spot, &Seen) -> Action,
+    finished: impl FnOnce(&[Vec<Act>], &[Record]),
 ) -> (Hand, Street, Vec<(Hand, Street, Street)>) {
     let seats = stacks.len();
     let mut stood = Vec::new();
@@ -309,20 +328,9 @@ fn bet(
             bet_before: bets[seat],
             all_in: put_in && hand.stacks()[seat] == 0,
         });
-        let added = hand.committed()[seat] - before;
-        lines[seat].push(Act {
-            street,
-            board,
-            // The blinds are a bet before the flop, as the venue's frames have it.
-            facing: legal.call.is_some() || street == Street::Preflop,
-            kind: match action {
-                Action::Fold => ActKind::Fold,
-                Action::Check => ActKind::Check,
-                Action::Call => ActKind::Call,
-                Action::RaiseTo(_) => ActKind::Bet { added, pot },
-            },
-        });
+        lines[seat].push(Act::played(&spot, action));
     }
+    finished(&lines, &record);
     (hand, street, stood)
 }
 

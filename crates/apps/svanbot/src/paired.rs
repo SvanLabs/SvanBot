@@ -19,6 +19,9 @@ use crate::deciders;
 const THREADS: u64 = 4;
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
+    if args.first().map(String::as_str) == Some("reads") {
+        return crate::paired_reads::run(&args[1..]);
+    }
     let number = |at: usize| args.get(at).map(|text| text.parse::<u64>());
     let (Some(Ok(deals)), seed, fixed) = (number(0), number(1), number(2)) else {
         eprintln!("svanbot paired: usage: svanbot paired <deals> [seed] [iterations]");

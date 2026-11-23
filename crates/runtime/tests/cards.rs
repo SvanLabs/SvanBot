@@ -144,6 +144,8 @@ fn trace(branch: Branch) -> Trace {
                 ranges: vec![Ranged {
                     seat: Some(2),
                     masses: vec![0.0, 0.0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1],
+                    class: None,
+                    trust: None,
                 }],
             }),
         },
@@ -160,6 +162,8 @@ fn trace(branch: Branch) -> Trace {
                 ranges: vec![Ranged {
                     seat: Some(2),
                     masses: vec![0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    class: None,
+                    trust: None,
                 }],
             }),
             priced: None,

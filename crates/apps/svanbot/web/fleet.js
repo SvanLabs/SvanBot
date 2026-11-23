@@ -298,7 +298,7 @@ export function chipsText(chips) {
 export function exploitText(exploit) {
   return exploit === null || exploit === undefined
     ? "baseline read, no exploit"
-    : `exploit ${exploit.toFixed(2)}`;
+    : `configured exploit budget ${exploit.toFixed(2)}`;
 }
 
 /** A hand's decisions as streets, in the order the streets came, each keeping its own order. */

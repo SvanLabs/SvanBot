@@ -13,6 +13,7 @@ use svanbot_runtime::record::{Hand, PENDING_LIMIT, Recorder};
 use svanbot_runtime::store::{Source, Store};
 use svanbot_runtime::wire::parse_frame;
 use svanbot_strategy::policy::{Abstract, Branch, PricedTrace, Ranged, ResolvedTrace, Trace};
+use svanbot_strategy::read::Class;
 
 /// A trace the policy might have made, as the store keeps it.
 fn trace(branch: Branch) -> Trace {
@@ -30,6 +31,8 @@ fn trace(branch: Branch) -> Trace {
                 ranges: vec![Ranged {
                     seat: Some(2),
                     masses: vec![0.0, 0.0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1],
+                    class: None,
+                    trust: None,
                 }],
             }),
         },
@@ -46,6 +49,8 @@ fn trace(branch: Branch) -> Trace {
                 ranges: vec![Ranged {
                     seat: Some(2),
                     masses: vec![0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    class: None,
+                    trust: None,
                 }],
             }),
             priced: None,
@@ -101,6 +106,44 @@ fn a_range_keeps_its_seat_through_the_store_and_says_unknown_when_there_was_none
     assert!(store.append_hand(&unsure, Source::Live, 2_000).unwrap());
     let kept = store.traces("h-noseat").unwrap().expect("a traced hand");
     assert_eq!(kept[0].priced.as_ref().unwrap().ranges[0].seat, None);
+}
+
+#[test]
+fn a_range_read_by_its_opponent_s_own_read_keeps_their_class_and_trust() {
+    let path = scratch("reads").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    let mut hand = traced_hand("h-read", &[Branch::Priced]);
+    {
+        let ranged = &mut hand.traced[0].priced.as_mut().unwrap().ranges[0];
+        ranged.class = Some(Class::Switching);
+        ranged.trust = Some(0.62);
+    }
+    assert!(store.append_hand(&hand, Source::Live, 1_000).unwrap());
+    let kept = store.traces("h-read").unwrap().expect("a traced hand");
+    let ranged = &kept[0].priced.as_ref().unwrap().ranges[0];
+    assert_eq!(
+        (ranged.class, ranged.trust),
+        (Some(Class::Switching), Some(0.62))
+    );
+    // A range the population read keeps neither.
+    let plain = traced_hand("h-plain", &[Branch::Priced]);
+    assert!(store.append_hand(&plain, Source::Live, 2_000).unwrap());
+    let kept = store.traces("h-plain").unwrap().expect("a traced hand");
+    let ranged = &kept[0].priced.as_ref().unwrap().ranges[0];
+    assert_eq!((ranged.class, ranged.trust), (None, None));
+}
+
+#[test]
+fn a_held_read_keeps_its_class_with_no_trust() {
+    // A read that has not cleared its gate names the opponent's class and decided nothing.
+    let path = scratch("held").join("SurSvan.db");
+    let store = Store::open(&path, "SurSvan").unwrap();
+    let mut hand = traced_hand("h-held", &[Branch::Priced]);
+    hand.traced[0].priced.as_mut().unwrap().ranges[0].class = Some(Class::Fixed);
+    assert!(store.append_hand(&hand, Source::Live, 1_000).unwrap());
+    let kept = store.traces("h-held").unwrap().expect("a traced hand");
+    let ranged = &kept[0].priced.as_ref().unwrap().ranges[0];
+    assert_eq!((ranged.class, ranged.trust), (Some(Class::Fixed), None));
 }
 
 #[test]

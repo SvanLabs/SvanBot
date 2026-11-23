@@ -132,6 +132,24 @@ fn a_duplicate_or_older_event_is_ignored_and_a_forward_jump_is_applied() {
 }
 
 #[test]
+fn a_decision_reads_the_player_named_by_its_own_snapshot() {
+    let mut session = seated();
+    let frame = Inbound::TableState(acting(vec![
+        seat(0, "replacement", Some(false)),
+        seat(2, "SurSvan", Some(false)),
+    ]));
+    let step = session.on_frame_with_players(frame, |spot, players| {
+        assert_eq!(spot.seats, [0]);
+        assert_eq!(
+            players.iter().find(|p| p.seat == 0).unwrap().name,
+            "replacement"
+        );
+        Action::Call
+    });
+    assert!(matches!(step.send.as_slice(), [Outbound::Action { .. }]));
+}
+
+#[test]
 fn the_actor_replays_then_acts_on_the_snapshots_token_once() {
     let mut session = seated();
     let resync = Inbound::Resync(Resync {
@@ -141,6 +159,7 @@ fn the_actor_replays_then_acts_on_the_snapshots_token_once() {
             47,
             Inbound::PlayerAction {
                 seat: 0,
+                name: Some("alpha_bot".into()),
                 action: "fold".into(),
                 amount: 0,
                 stack: 1940,
@@ -189,6 +208,7 @@ fn a_resync_traces_the_decision_it_plays_once() {
             47,
             Inbound::PlayerAction {
                 seat: 0,
+                name: Some("alpha_bot".into()),
                 action: "fold".into(),
                 amount: 0,
                 stack: 1940,

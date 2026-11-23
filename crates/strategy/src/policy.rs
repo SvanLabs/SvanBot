@@ -11,6 +11,7 @@ use svanbot_core::spot::Spot;
 use crate::action::{ActionModel, BUCKETS, Seen, masses, range, ranked};
 use crate::params::Params;
 use crate::pricer::{self, Budget};
+use crate::read::Class;
 pub use crate::resolve::Abstract;
 use crate::resolve::resolve;
 
@@ -80,8 +81,7 @@ impl Branch {
 /// What a decision was made from, kept with its hand so "why did it do that?" is answered from the
 /// record rather than by playing the hand again.
 ///
-/// It carries only what the decision path knows. An opponent's class and an exploit budget spent
-/// and left are not among them: nothing computes either while a bot plays (V11-19).
+/// Each range carries the class and share of the budget its opponent's read earned.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Trace {
     pub branch: Branch,
@@ -120,17 +120,35 @@ pub struct Ranged {
     pub seat: Option<usize>,
     /// The mass in each strength bucket on the board, weakest first.
     pub masses: Vec<f64>,
+    /// The opponent's adaptivity class, when their own read decided the range; `None` when the
+    /// population's model read them.
+    pub class: Option<Class>,
+    /// The share of the exploit budget their read had earned, with the class.
+    pub trust: Option<f64>,
+}
+
+/// One opponent's own read, as the decision takes it: the model their line is read by, and the
+/// class and trust it carries for the trace.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Personal {
+    /// The seat, as [`Spot::seats`] names it.
+    pub seat: usize,
+    /// The population's model tilted toward their read ([`crate::read::personal`]).
+    pub model: ActionModel,
+    pub class: Class,
+    /// The share of the exploit budget the read earned, or `None` when it is held and decides
+    /// nothing: the line is then read by the population's model.
+    pub trust: Option<f64>,
 }
 
 /// What the pricer decided from: our equity against the opponents' ranges, the price of the call
-/// it was measured against, and how far the exploit gate let the reads move it.
+/// it was measured against, and the configured exploit budget when playing by reads.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PricedTrace {
     pub equity: f64,
     /// `None` when the check was free, since a free check has no price.
     pub price: Option<f64>,
-    /// The exploit budget the decision read by, when a fitted model passed the gate; `None` when
-    /// the baseline decided, since the baseline exploits nothing.
+    /// The configured budget when a fitted model or a trusted opponent read was in use.
     pub exploit: Option<f64>,
     pub ranges: Vec<Ranged>,
 }
@@ -152,11 +170,36 @@ pub fn decide_drawn(
     budget: Budget,
     iterations: u32,
 ) -> Decision {
+    decide_read(spot, model, &[], params, budget, iterations)
+}
+
+/// [`decide_drawn`] with each opponent in `personal` read by their own model: the re-solve's
+/// villain and each of the pricer's lines. An opponent with no read is read by `model`.
+pub fn decide_read(
+    spot: &Spot,
+    model: Option<&ActionModel>,
+    personal: &[Personal],
+    params: &Params,
+    budget: Budget,
+    iterations: u32,
+) -> Decision {
     // Until a fit passes the gate, the baseline reads the opponents' lines. A model present is a
     // model that passed it (`svanbot fit`), so its presence is the gate's answer.
     let gated = model.is_some();
     let baseline = ActionModel::baseline();
-    let model = model.unwrap_or(&baseline);
+    let population = model.unwrap_or(&baseline);
+    // Each line's own read, by the seat the spot names it with.
+    let reads: Vec<Option<&Personal>> = (0..spot.lines.len())
+        .map(|ordinal| {
+            let seat = spot.seats.get(ordinal)?;
+            personal.iter().find(|read| read.seat == *seat)
+        })
+        .collect();
+    let models: Vec<&ActionModel> = reads
+        .iter()
+        .map(|read| read.map_or(population, |read| &read.model))
+        .collect();
+    let model = models.first().copied().unwrap_or(population);
     let street = Street::of(spot.board);
     match resolve(spot, Some(model), params.exploit, iterations, budget.seed) {
         Some(resolved) => {
@@ -186,14 +229,14 @@ pub fn decide_drawn(
                             .into_iter()
                             .map(|(action, _)| action)
                             .collect(),
-                        ranges: read_ranges(spot, model, 1),
+                        ranges: read_ranges(spot, population, &reads, 1),
                     }),
                     priced: None,
                 }),
             }
         }
         None => {
-            let priced = pricer::price(spot, Some(model), budget, params);
+            let priced = pricer::price_lines(spot, &models, budget, params);
             Decision {
                 action: priced.action,
                 drawn: None,
@@ -207,8 +250,13 @@ pub fn decide_drawn(
                         equity: priced.equity,
                         // What the pricer compared against, not a second reading of the spot.
                         price: priced.price,
-                        exploit: gated.then_some(params.exploit),
-                        ranges: read_ranges(spot, model, spot.opponents.max(1)),
+                        exploit: (gated
+                            || reads
+                                .iter()
+                                .flatten()
+                                .any(|read| read.trust.is_some_and(|trust| trust > 0.0)))
+                        .then_some(params.exploit),
+                        ranges: read_ranges(spot, population, &reads, spot.opponents.max(1)),
                     }),
                 }),
             }
@@ -219,21 +267,32 @@ pub fn decide_drawn(
 /// The opponents' ranges from `model` and their lines, summarised by strength bucket: one per
 /// opponent, `count` of them, the ones with no line read at the uniform range. `dead` is every
 /// card the range must miss. Each range names its opponent's seat when the spot carries one.
-fn read_ranges(spot: &Spot, model: &ActionModel, count: usize) -> Vec<Ranged> {
+fn read_ranges(
+    spot: &Spot,
+    population: &ActionModel,
+    reads: &[Option<&Personal>],
+    count: usize,
+) -> Vec<Ranged> {
     let ranked = ranked(spot.board);
     let dead = spot.hole | spot.board;
     (0..count)
-        .map(|ordinal| Ranged {
-            seat: spot.seats.get(ordinal).copied(),
-            masses: match spot.lines.get(ordinal) {
-                Some(line) if !line.is_empty() => {
-                    let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
-                    masses(&range(model, &seen, dead), &ranked)
-                }
-                // No line is no information: every pair equally likely, which is uniform over
-                // the buckets too. An all-zero row would read as "nothing is possible".
-                _ => vec![1.0 / BUCKETS as f64; BUCKETS],
-            },
+        .map(|ordinal| {
+            let read = reads.get(ordinal).copied().flatten();
+            let model = read.map_or(population, |read| &read.model);
+            Ranged {
+                seat: spot.seats.get(ordinal).copied(),
+                masses: match spot.lines.get(ordinal) {
+                    Some(line) if !line.is_empty() => {
+                        let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
+                        masses(&range(model, &seen, dead), &ranked)
+                    }
+                    // No line is no information: every pair equally likely, which is uniform
+                    // over the buckets too. An all-zero row would read as "nothing is possible".
+                    _ => vec![1.0 / BUCKETS as f64; BUCKETS],
+                },
+                class: read.map(|read| read.class),
+                trust: read.and_then(|read| read.trust),
+            }
         })
         .collect()
 }

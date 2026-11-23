@@ -49,6 +49,7 @@ mod deciders;
 mod download;
 mod fit;
 mod paired;
+mod paired_reads;
 mod propose;
 mod ship;
 
@@ -61,15 +62,18 @@ use std::time::Duration;
 use svanbot::live::{self, Live};
 use svanbot::now_ms;
 use svanbot_learn::probe::Decided;
+use svanbot_learn::reads::Reads;
 use svanbot_runtime::client::{
-    Bot, ClientError, Config, Event, PlayOutcome, VENUE, fresh_seed, play_with_stop,
+    Bot, ClientError, Config, Event, PlayOutcome, VENUE, fresh_seed, play_with_players,
 };
 use svanbot_runtime::fleet::{self, Fleet};
 use svanbot_runtime::health::{self, Health};
+use svanbot_runtime::history;
 use svanbot_runtime::probing::Probing;
 use svanbot_runtime::status::{Play, Status, status_path};
-use svanbot_runtime::store::{Source, Store};
-use svanbot_strategy::policy::decide_drawn;
+use svanbot_runtime::store::Store;
+use svanbot_strategy::action::ActionModel;
+use svanbot_strategy::policy::decide_read;
 use svanbot_strategy::pricer::Budget;
 use svanbot_strategy::resolve::iterations_for;
 
@@ -147,6 +151,19 @@ fn main() -> ExitCode {
             None => "has no fitted action model: plays by the baseline",
         }
     );
+    // Each opponent's own read, from this bot's store alone (ADR 0004), kept up as hands end.
+    let reads = RefCell::new(match store.hands() {
+        Ok(hands) => history::reads(&hands, &config.me),
+        Err(error) => {
+            eprintln!("svanbot: could not read the store's hands for reads: {error}");
+            Reads::default()
+        }
+    });
+    eprintln!(
+        "svanbot: reads {} opponents from its store",
+        reads.borrow().opponents().count()
+    );
+    let baseline = ActionModel::baseline();
     let canary = std::env::var("SVANBOT_CANARY").is_ok_and(|name| name == config.me);
     let (probing, notes) = Probing::open(&store, Fleet::in_dir(fleet_dir()), canary, now_ms());
     for note in notes {
@@ -165,16 +182,17 @@ fn main() -> ExitCode {
         }
     };
     let _refresh = Live::spawn_refresh(&live, live::REFRESH);
+    live.opponents(history::dossiers(&reads.borrow()));
     // The decision and the hand's end both reach the ledger, one after the other.
     let probing = RefCell::new(probing);
     let mut bot = Bot::new(&config);
     let stop = || health.update_requested();
     let mut backoff = Duration::from_secs(1);
     loop {
-        let ended = play_with_stop(
+        let ended = play_with_players(
             &config,
             &mut bot,
-            |spot| {
+            |spot, players| {
                 let budget = Budget {
                     samples: SAMPLES,
                     seed: fresh_seed(),
@@ -183,8 +201,19 @@ fn main() -> ExitCode {
                 let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
                 // The parameter set of the hand in play: the champion's, or a probe's arm.
                 let params = probing.borrow().params();
-                // A fitted action model is used only if it passed the gate (`svanbot fit`).
-                let decision = decide_drawn(spot, model.as_ref(), &params, budget, iterations);
+                // Each opponent is named with their read's class, and read by the population's
+                // model (the fitted one if it passed `svanbot fit`, else the baseline): tilted
+                // toward their own read once reads are in play (`reads::IN_PLAY`), as it is not
+                // until `svanbot paired reads` passes.
+                let named: Vec<(usize, &str)> = players
+                    .iter()
+                    .filter(|player| spot.seats.contains(&player.seat))
+                    .map(|player| (player.seat, player.name.as_str()))
+                    .collect();
+                let population = model.as_ref().unwrap_or(&baseline);
+                let personal = reads.borrow().deciding(&named, population, params.exploit);
+                let decision =
+                    decide_read(spot, model.as_ref(), &personal, &params, budget, iterations);
                 if let Some(drawn) = &decision.drawn {
                     probing.borrow_mut().decided(Decided {
                         strategy: drawn.strategy.clone(),
@@ -196,7 +225,16 @@ fn main() -> ExitCode {
                 // recorder keeps it with the hand (`V11-24`).
                 decision
             },
-            |event| keep(&store, &probing, &live, event),
+            |event| {
+                keep(
+                    &store,
+                    &probing,
+                    &live,
+                    &mut reads.borrow_mut(),
+                    &config.me,
+                    event,
+                );
+            },
             &stop,
         );
         match ended {
@@ -232,7 +270,14 @@ fn main() -> ExitCode {
 
 /// Keeps a finished hand or an incident, and moves the status with it. A store or status failure
 /// is reported and play goes on: the next decision does not wait on the disk.
-fn keep(store: &Store, probing: &RefCell<Probing<'_>>, live: &Live, event: Event<'_>) {
+fn keep(
+    store: &Store,
+    probing: &RefCell<Probing<'_>>,
+    live: &Live,
+    reads: &mut Reads,
+    me: &str,
+    event: Event<'_>,
+) {
     match event {
         Event::Connected => live.connected(),
         Event::Table(table) => live.table(table),
@@ -268,8 +313,13 @@ fn keep(store: &Store, probing: &RefCell<Probing<'_>>, live: &Live, event: Event
                 probing.borrow().describe(),
                 probing.borrow().champion().digest().to_string(),
             );
-            match store.append_hand(&hand, Source::Live, at_ms) {
-                Ok(kept) => live.hand(kept, at_ms),
+            match history::keep_live(store, reads, &hand, me, at_ms) {
+                Ok(added) => {
+                    live.hand(added, at_ms);
+                    if added {
+                        live.opponents(history::dossiers(reads));
+                    }
+                }
                 Err(error) => eprintln!("svanbot: NOT KEPT: {error}"),
             }
         }
@@ -301,6 +351,7 @@ fn start_status(me: &str, store: &Store, probing: &Probing<'_>) -> Result<Live, 
         last_hand_ms: totals.last_hand_ms,
         last_error: None,
         play,
+        opponents: Vec::new(),
     };
     Live::start(status_path(&store_path(me)?), status).map_err(|e| e.to_string())
 }

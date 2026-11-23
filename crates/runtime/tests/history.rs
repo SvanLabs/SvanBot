@@ -1,13 +1,16 @@
 //! Lines and stored hands: each seat's actions with their street, board, facing and size, and a
 //! stored hand turned into the fit's observations.
 
+#[allow(clippy::disallowed_methods)]
+mod support;
+
 use serde_json::json;
 use svanbot_core::card::CardSet;
 use svanbot_core::eval::strength;
 use svanbot_core::rules::Street;
 use svanbot_core::spot::{Act, ActKind};
 use svanbot_learn::fit::Outcome;
-use svanbot_runtime::history::observed;
+use svanbot_runtime::history::{dossiers, observed, reads, witnesses};
 use svanbot_runtime::lines::Lines;
 use svanbot_runtime::record::Hand;
 use svanbot_runtime::wire::parse;
@@ -57,6 +60,136 @@ fn frames() -> Vec<String> {
     ]
     .map(|frame| frame.to_string())
     .to_vec()
+}
+
+/// Seat 2 is us. Seat 0 raises, seat 5 folds to it, seat 4 calls, then on the flop seat 0 bets,
+/// seat 4 folds and on the turn we bet and seat 0 folds. The names come only from the actions.
+fn named_frames() -> Vec<String> {
+    let action = |seat: u32,
+                  name: Option<&str>,
+                  action: &str,
+                  added: u32,
+                  pot: u32,
+                  to_call: u32| {
+        json!({"type": "player_action", "seat": seat, "name": name, "action": action,
+               "amount": if added == 0 { serde_json::Value::Null } else { json!(added) },
+               "stack": 1000, "contribution_delta": added, "pot_before": pot,
+               "to_call_before": if to_call == 0 { serde_json::Value::Null } else { json!(to_call) }})
+    };
+    [
+        json!({"type": "hand_start", "hand_id": "h-2", "seat": 2, "dealer_seat": 0,
+               "blinds": {"small_blind": 10, "big_blind": 20}}),
+        json!({"type": "hole_cards", "hand_id": "h-2", "cards": ["3c", "3d"]}),
+        action(0, Some("alpha_bot"), "raise", 60, 30, 20),
+        action(5, Some("gamma_bot"), "fold", 0, 90, 60),
+        action(4, Some("beta_bot"), "call", 50, 90, 50),
+        action(2, Some("SurSvan"), "call", 40, 140, 40),
+        json!({"type": "community_cards", "cards": ["Ks", "9d", "4c"], "street": "flop"}),
+        action(2, Some("SurSvan"), "check", 0, 180, 0),
+        action(0, Some("alpha_bot"), "bet", 60, 180, 0),
+        action(4, Some("beta_bot"), "fold", 0, 240, 60),
+        json!({"type": "community_cards", "cards": ["7h"], "street": "turn"}),
+        action(2, Some("SurSvan"), "bet", 200, 240, 0),
+        action(0, Some("alpha_bot"), "fold", 0, 440, 200),
+        json!({"type": "hand_result", "final_stacks": {"2": 2400}, "shown_cards": {},
+               "winners": [{"seat": 2}]}),
+    ]
+    .map(|frame| frame.to_string())
+    .to_vec()
+}
+
+#[test]
+fn a_hand_witnesses_each_named_opponent_and_never_us() {
+    let hand = Hand {
+        hand_id: "h-2".into(),
+        table_id: "t-1".into(),
+        frames: named_frames(),
+        traced: Vec::new(),
+    };
+    let seen = witnesses(&hand, "SurSvan");
+    let names: Vec<&str> = seen.iter().map(|witness| witness.name.as_str()).collect();
+    assert_eq!(names, ["alpha_bot", "beta_bot", "gamma_bot"]);
+    let [alpha, beta, gamma] = &seen[..] else {
+        unreachable!()
+    };
+    assert_eq!(alpha.actions.len(), 3);
+    assert_eq!(alpha.actions[0].mv, Move::Large);
+    assert!(alpha.aggressive);
+    assert_eq!(alpha.vs_us, Some(true), "alpha folded to our turn bet");
+    assert_eq!(alpha.vs_others, None);
+    assert!(!beta.aggressive);
+    assert_eq!(beta.vs_us, None);
+    assert_eq!(
+        beta.vs_others,
+        Some(false),
+        "beta first answered alpha's raise with a call"
+    );
+    assert!(!gamma.aggressive);
+    assert_eq!(gamma.vs_others, Some(true), "gamma folded to alpha's raise");
+    assert_eq!(gamma.vs_us, None);
+}
+
+#[test]
+fn a_hand_that_names_no_seat_witnesses_nobody() {
+    let hand = Hand {
+        hand_id: "h-1".into(),
+        table_id: "t-1".into(),
+        frames: frames(),
+        traced: Vec::new(),
+    };
+    assert!(witnesses(&hand, "SurSvan").is_empty());
+}
+
+#[test]
+fn a_bot_s_stored_hands_give_its_reads_of_each_named_opponent() {
+    let hand = |id: &str| Hand {
+        hand_id: id.into(),
+        table_id: "t-1".into(),
+        frames: named_frames(),
+        traced: Vec::new(),
+    };
+    let reads = reads(&[hand("h-2"), hand("h-3")], "SurSvan");
+    let names: Vec<&str> = reads.opponents().map(|opponent| opponent.name()).collect();
+    assert_eq!(names, ["alpha_bot", "beta_bot", "gamma_bot"]);
+    assert_eq!(reads.get("alpha_bot").unwrap().hands(), 2);
+    assert_eq!(reads.get("alpha_bot").unwrap().actions(), 6);
+    assert!(reads.get("SurSvan").is_none());
+    // The status carries each one as aggregates: two hands are too few to say how they adapt.
+    let rows = dossiers(&reads);
+    assert_eq!(rows.len(), 3);
+    assert_eq!(
+        (rows[0].name.as_str(), rows[0].class.as_str(), rows[0].hands),
+        ("alpha_bot", "unknown", 2)
+    );
+    assert_eq!(
+        (rows[0].actions, rows[0].earned_pct, rows[0].change),
+        (6, 0, None)
+    );
+}
+
+#[test]
+fn live_reads_match_the_store_after_a_duplicate_or_failed_hand_write() {
+    use svanbot_runtime::history::keep_live;
+    use svanbot_runtime::store::Store;
+
+    let path = support::scratch("live-reads").join("bot.db");
+    let bot = "SurSvan";
+    let store = Store::open(&path, bot).unwrap();
+    let mut live = svanbot_learn::reads::Reads::default();
+    let mut hand = Hand {
+        hand_id: "h-2".into(),
+        table_id: "t-1".into(),
+        frames: named_frames(),
+        traced: Vec::new(),
+    };
+    assert!(keep_live(&store, &mut live, &hand, bot, 1).unwrap());
+    assert_eq!(live.get("alpha_bot").unwrap().hands(), 1);
+    assert!(!keep_live(&store, &mut live, &hand, bot, 2).unwrap());
+
+    hand.hand_id = "h-3".into();
+    let reader = Store::open_reader(&path).unwrap();
+    assert!(keep_live(&reader, &mut live, &hand, bot, 3).is_err());
+    assert_eq!(live, reads(&store.hands().unwrap(), bot));
 }
 
 #[test]

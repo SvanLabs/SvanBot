@@ -47,19 +47,31 @@ pub fn price(
     budget: Budget,
     params: &Params,
 ) -> Decision {
+    match model {
+        Some(model) => price_lines(spot, &vec![model; spot.lines.len()], budget, params),
+        None => price_lines(spot, &[], budget, params),
+    }
+}
+
+/// [`price`] with each opponent's line read by its own model: `models[i]` reads `spot.lines[i]`.
+/// A line without a model is read as uniform.
+pub fn price_lines(
+    spot: &Spot,
+    models: &[&ActionModel],
+    budget: Budget,
+    params: &Params,
+) -> Decision {
     let uniform = uniform_range(spot.hole | spot.board);
-    let read: Vec<Vec<(CardSet, f64)>> = match model {
-        Some(model) => spot
-            .lines
-            .iter()
-            .take(spot.opponents.max(1))
-            .map(|line| {
-                let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
-                range(model, &seen, spot.hole | spot.board)
-            })
-            .collect(),
-        None => Vec::new(),
-    };
+    let read: Vec<Vec<(CardSet, f64)>> = spot
+        .lines
+        .iter()
+        .zip(models)
+        .take(spot.opponents.max(1))
+        .map(|(line, model)| {
+            let seen: Vec<Seen> = line.iter().map(Seen::of).collect();
+            range(model, &seen, spot.hole | spot.board)
+        })
+        .collect();
     let mut ranges: Vec<&[(CardSet, f64)]> = read.iter().map(Vec::as_slice).collect();
     ranges.resize(spot.opponents.max(1), &uniform);
     let equity = sampled(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
