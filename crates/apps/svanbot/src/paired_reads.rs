@@ -4,9 +4,9 @@
 //! Against each fixed sparring archetype, a warm-up of `warm-up` deals (default 200) builds the
 //! policy's read of the opponent with the live code, and freezes it. Then each of `deals` fresh
 //! deals is played by the policy with the read and without, and the difference is the result. It
-//! prints a line per archetype and one over all of them, and exits 0 only when that last
-//! interval is wholly above 0. Against the adapting archetypes it runs the exploit gate
-//! ([`gate`]) on what the reads lose to them, and prints its verdict.
+//! prints a line per archetype and one across the fixed archetypes. Against the adapting
+//! archetypes it runs the exploit gate ([`gate`]) on what the reads lose to them. It exits 0
+//! only when the fixed archetypes' interval is wholly above 0 and the exploit gate passes.
 
 use std::process::ExitCode;
 
@@ -58,17 +58,15 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         );
         results
     };
-    let all: Vec<f64> = FIXED.into_iter().flat_map(play).collect();
-    let found = verdict(&all);
+    let found = verdict(&mean_per_deal(FIXED.map(play)));
     println!(
         "reads on against off, heads up: {} (seed {}, warm-up {warm})",
         line(&found),
         game.seed
     );
     // The exploit meter: what reads lose, per hand, to the opponents that punish them.
-    let losses: Vec<f64> = ADAPTING
+    let losses: Vec<f64> = mean_per_deal(ADAPTING.map(play))
         .into_iter()
-        .flat_map(play)
         .map(|won| -won * 1000.0)
         .collect();
     let meter = gate(&losses, CAP);
@@ -79,11 +77,19 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         meter.upper,
         if meter.passed { "passed" } else { "refused" }
     );
-    if found.above_zero() {
+    if found.above_zero() && meter.passed {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
     }
+}
+
+/// Each archetype plays the same cards on a deal. Average the rows within each deal so the
+/// interval uses independent deals and keeps the covariance between archetypes.
+fn mean_per_deal<const N: usize>(rows: [Vec<f64>; N]) -> Vec<f64> {
+    (0..rows[0].len())
+        .map(|deal| rows.iter().map(|row| row[deal]).sum::<f64>() / N as f64)
+        .collect()
 }
 
 fn line(found: &Verdict) -> String {
