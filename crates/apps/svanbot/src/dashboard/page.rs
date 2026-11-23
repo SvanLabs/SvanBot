@@ -29,6 +29,8 @@ pub(super) fn file(path: &str) -> Option<(&'static str, &'static [u8])> {
         "/widgets.js" => (script, include_bytes!("../../web/widgets.js").as_slice()),
         "/activity.js" => (script, include_bytes!("../../web/activity.js").as_slice()),
         "/patch.js" => (script, include_bytes!("../../web/patch.js").as_slice()),
+        "/palette.js" => (script, include_bytes!("../../web/palette.js").as_slice()),
+        "/icons.js" => (script, include_bytes!("../../web/icons.js").as_slice()),
         _ => return None,
     })
 }

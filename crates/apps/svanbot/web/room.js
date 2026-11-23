@@ -1,9 +1,10 @@
-// The control room's frame (V11-44), after v10's: a tab a bot in the top bar, the workspace's
-// breadcrumb, the telemetry rail, a live table a bot, and the fleet race. Every name is text.
+// The control room's frame (V11-44, V11-45): a chip a bot in the header, the page's head, the
+// telemetry rail, a live table a bot, and the fleet race. Every name is text.
 
 import { h } from "./dom.js";
 import { chips, felt, sparkline } from "./felt.js";
 import { botView, rateText, winRate } from "./fleet.js";
+import { icon } from "./icons.js";
 
 /** A bot's dot: playing, between tables, or down. */
 function dot(status, nowMs) {
@@ -28,30 +29,36 @@ export function botTabs(fleet, current, nowMs) {
 }
 
 /**
- * The workspace bar: where the reader is, the venue's tag, the page's tools, and when the fleet
- * was last heard.
+ * The page's head: where the reader is, the page's title and its state, the page's tools, and
+ * when the fleet was last heard.
  */
-export function workspace(place, nowMs, tools) {
+export function pageHead({ crumb, title, after = null, detail = null, tools = null, nowMs }) {
   const at = new Date(nowMs);
   const clock = [at.getHours(), at.getMinutes(), at.getSeconds()]
     .map((part) => String(part).padStart(2, "0"))
     .join(":");
   return h(
-    "div",
-    { class: "workspace" },
+    "header",
+    { class: "page-head" },
     h(
       "div",
-      { class: "crumbs" },
-      h("span", { class: "crumb" }, "Workspace"),
-      h("span", { class: "chev", "aria-hidden": "true" }, "›"),
-      h("b", {}, place),
-      h("span", { class: "env" }, "openpoker · virtual chips"),
+      { class: "page-title" },
+      h(
+        "div",
+        { class: "crumbs" },
+        h("span", { class: "crumb" }, "Workspace"),
+        h("span", { class: "chev", "aria-hidden": "true" }, "/"),
+        h("span", { class: "crumb here" }, crumb),
+        h("span", { class: "env" }, "openpoker · virtual chips"),
+      ),
+      h("h1", {}, title, after ? [" ", after] : null),
+      detail ? h("p", { class: "status-line" }, detail) : null,
     ),
     h(
       "div",
-      { class: "workspace-end" },
+      { class: "page-tools" },
       tools,
-      h("span", { class: "updated" }, `Updated ${clock}`),
+      h("span", { class: "updated" }, h("i", { class: "live-dot" }), `Updated ${clock}`),
     ),
   );
 }
@@ -61,7 +68,13 @@ export function rail(lead, note, cells) {
   return h(
     "div",
     { class: "rail-strip" },
-    h("div", { class: "rail-lead" }, h("b", {}, lead), h("small", {}, note)),
+    h(
+      "div",
+      { class: "rail-lead" },
+      h("span", { class: "rail-icon" }, icon("pulse")),
+      h("b", {}, lead),
+      h("small", {}, note),
+    ),
     h(
       "dl",
       {},

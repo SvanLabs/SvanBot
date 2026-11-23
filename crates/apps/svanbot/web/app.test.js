@@ -108,6 +108,11 @@ beforeAll(async () => {
     querySelector: (tag) => ids.view.querySelector(tag),
   };
   globalThis.location = { pathname: "/" };
+  globalThis.history = {
+    pushState: (_state, _title, url) => {
+      globalThis.location.pathname = url;
+    },
+  };
   globalThis.EventSource = class {
     addEventListener(name, listener) {
       listeners[name] = listener;
@@ -313,7 +318,7 @@ test("a bot's table, and a chart with its numbers in a table", () => {
   const view = show("/bot/SurSvan");
   expect(view.textContent).toContain("Ah Kd 7c 2s");
   expect(view.textContent).toContain("SurSvan (us)");
-  const svg = view.querySelector("svg");
+  const [svg] = byClass(view, "chart");
   expect(svg.attrs.role).toBe("img");
   expect(svg.attrs["aria-label"]).toContain("-1.5 big blinds");
   expect(svg.querySelector("polyline").attrs.points.split(" ").length).toBe(4);
@@ -462,4 +467,16 @@ test("an open table fallback stays open when the page redraws", () => {
   listeners.fleet({ data: JSON.stringify(next) });
   expect(view.querySelector("details").open).toBe(true);
   expect(view.textContent).toContain("211");
+});
+
+test("a page inside the dashboard is reached without a reload: the path moves and the view follows", async () => {
+  const { navigate } = await import("./app.js");
+  show("/");
+  navigate("/bot/SurSvan");
+  expect(globalThis.location.pathname).toBe("/bot/SurSvan");
+  expect(titles(ids.view)).toContain("Table");
+  expect(ids.bots.all("a").map((tab) => tab.attrs["aria-current"] ?? null)).toEqual(["page", null]);
+  navigate("/");
+  expect(globalThis.location.pathname).toBe("/");
+  expect(ids.view.all("article").length).toBe(2);
 });

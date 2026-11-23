@@ -279,6 +279,8 @@ fn the_page_its_script_and_its_styles_are_served_and_every_view_is_the_page() {
         ("/widgets.js", "export function seasonRace"),
         ("/activity.js", "export function changes"),
         ("/patch.js", "export function patch"),
+        ("/palette.js", "export function openPalette"),
+        ("/icons.js", "export function icon"),
     ] {
         let (status, body) = get(addr, module);
         assert_eq!(status, 200, "{module}");
@@ -313,6 +315,21 @@ fn only_a_get_is_answered_and_a_request_that_is_not_one_is_refused() {
     assert!(status.contains("405"), "{status}");
     let (status, _) = send(addr, "\r\n\r\n");
     assert!(status.contains("400"), "{status}");
+}
+
+/// A browser opens a connection before it needs one and may send nothing on it. An answer it did
+/// not ask for would be read as the page's, so a connection that sends nothing is closed unanswered.
+#[test]
+fn a_connection_that_sends_nothing_is_closed_without_an_answer() {
+    let (addr, _dir) = serve("silent");
+    let mut stream = std::net::TcpStream::connect(addr).unwrap();
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    stream.shutdown(std::net::Shutdown::Write).unwrap();
+    let mut answer = String::new();
+    std::io::Read::read_to_string(&mut stream, &mut answer).unwrap();
+    assert_eq!(answer, "");
 }
 
 #[test]

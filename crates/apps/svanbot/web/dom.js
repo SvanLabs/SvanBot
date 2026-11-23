@@ -3,9 +3,22 @@
 
 const SVG = "http://www.w3.org/2000/svg";
 
+/** The tags drawn in SVG: the page's charts and icons. */
+const SHAPES = new Set([
+  "svg",
+  "g",
+  "path",
+  "circle",
+  "rect",
+  "line",
+  "polyline",
+  "polygon",
+  "title",
+]);
+
 /** An element with attributes and children. A string child is text. */
 export function h(tag, attrs = {}, ...children) {
-  const svg = ["svg", "polyline", "line", "title"].includes(tag) && attrs.svg !== false;
+  const svg = SHAPES.has(tag) && attrs.svg !== false;
   const node = svg ? document.createElementNS(SVG, tag) : document.createElement(tag);
   for (const [name, value] of Object.entries(attrs)) {
     if (name !== "svg" && value !== null && value !== undefined) {

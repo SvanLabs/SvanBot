@@ -28,6 +28,7 @@ import {
   route,
   whisker,
 } from "./fleet.js";
+import { openPalette } from "./palette.js";
 import { patch } from "./patch.js";
 import { handPage } from "./replay.js";
 import { botTabs } from "./room.js";
@@ -78,6 +79,10 @@ function roomOf(path) {
  */
 export function act(action, data = {}) {
   const room = roomOf(location.pathname);
+  if (action === "palette") {
+    openPalette({ fleet: state.fleet, room, go: navigate, act });
+    return;
+  }
   if (action === "theme") {
     reader.theme = data.theme;
     store.write("svanbot.theme", data.theme);
@@ -112,6 +117,27 @@ export function act(action, data = {}) {
 /** A note is saved as it is typed; the page does not redraw for it. */
 export function note(key, text) {
   store.write(`svanbot.note.${key}`, text);
+}
+
+/** Whether `path` is one of the dashboard's own pages, which the page can show without a load. */
+function isPage(path) {
+  return path === "/" || /^\/(release|scoreboard|dossier)$/.test(path) || path.startsWith("/bot/");
+}
+
+/**
+ * Goes to `path` inside the page, with no reload: the event stream stays open, and where the
+ * browser can, the old view crossfades into the new.
+ */
+export function navigate(path) {
+  if (path !== location.pathname) {
+    history.pushState(null, "", path);
+  }
+  globalThis.scrollTo?.({ top: 0, behavior: "instant" });
+  if (document.startViewTransition) {
+    document.startViewTransition(render);
+  } else {
+    render();
+  }
 }
 
 /** The release page: what is installed, where the slots point, and what each bot runs. */
@@ -409,8 +435,10 @@ function render() {
   const problems = fleetProblems(state.fleet, nowMs, state.streamError);
   const count = state.fleet.bots.length;
   document.getElementById("count").textContent = `${count} bot${count === 1 ? "" : "s"}`;
+  // The fleet room lists every problem itself, so there the strip's line steps aside.
   const worst = document.getElementById("worst");
-  worst.className = `worst ${problems[0]?.tone ?? "ok"}`;
+  const listed = roomOf(location.pathname) === "fleet" ? " listed" : "";
+  worst.className = `worst ${problems[0]?.tone ?? "ok"}${listed}`;
   worst.textContent =
     problems.length === 0
       ? "Nothing is wrong."
@@ -474,13 +502,30 @@ function take(text) {
   render();
 }
 
-// The reader's actions, by delegation: a click on anything carrying `data-act`, and a note typed.
+// The reader's actions, by delegation: a link to one of the dashboard's pages, a click on anything
+// carrying `data-act`, a note typed, the palette's keys, and the browser's back and forward.
 document.addEventListener?.("click", (event) => {
+  const link = event.target.closest?.("a[href]");
+  const plain =
+    event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+  if (link && plain && link.origin === location.origin && !link.target && isPage(link.pathname)) {
+    event.preventDefault();
+    navigate(link.pathname);
+    return;
+  }
   const target = event.target.closest?.("[data-act]");
   if (target) {
     act(target.dataset.act, { ...target.dataset });
   }
 });
+document.addEventListener?.("keydown", (event) => {
+  const typing = /^(input|textarea|select)$/i.test(event.target.tagName ?? "");
+  if ((event.key === "k" && (event.metaKey || event.ctrlKey)) || (event.key === "/" && !typing)) {
+    event.preventDefault();
+    act("palette");
+  }
+});
+globalThis.addEventListener?.("popstate", () => render());
 document.addEventListener?.("input", (event) => {
   const key = event.target.dataset?.note;
   if (key) {

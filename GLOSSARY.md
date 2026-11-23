@@ -328,7 +328,8 @@ the fleet; it never plays. Both are our own code, and the page is compiled into 
 binary. Its page is laid out after v10's control room: a tab per bot, hero tiles, the signal rail,
 then a board of panels the reader arranges and views a slice of at a time: each bot's table drawn
 live, the fleet race ranking the bots by win rate, the season board, opponent intel and the
-activity log (what changed while the page was open).
+activity log (what changed while the page was open). The command palette (Ctrl/⌘ K) jumps to any
+bot, page, view or look.
 _Avoid_: UI, control panel, admin console
 
 **Event stream**:
