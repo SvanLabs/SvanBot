@@ -17,6 +17,7 @@ use svanbot_strategy::action::Seen;
 use crate::lines::Lines;
 use crate::record::Hand;
 use crate::status::Dossier;
+use crate::store::{Source, Store, StoreError};
 use crate::wire::{Inbound, parse};
 
 /// The opponents' sides of `hand`, numbered `number` so the gate can count them as one hand.
@@ -75,6 +76,23 @@ pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
 /// The bot's reads from its own stored `hands`, oldest first (`docs/adr/0004-reads-are-per-bot.md`).
 pub fn reads(hands: &[Hand], me: &str) -> Reads {
     Reads::from_witnesses(hands.iter().flat_map(|hand| witnesses(hand, me)))
+}
+
+/// Learn from a live hand when its first copy has been committed to this bot's store.
+pub fn keep_live(
+    store: &Store,
+    reads: &mut Reads,
+    hand: &Hand,
+    me: &str,
+    at_ms: i64,
+) -> Result<bool, StoreError> {
+    let added = store.append_hand(hand, Source::Live, at_ms)?;
+    if added {
+        for witness in witnesses(hand, me) {
+            reads.observe(witness);
+        }
+    }
+    Ok(added)
 }
 
 /// The status's view of `reads`: one dossier row per opponent, by name, aggregates only.

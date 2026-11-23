@@ -68,10 +68,10 @@ use svanbot_runtime::client::{
 };
 use svanbot_runtime::fleet::{self, Fleet};
 use svanbot_runtime::health::{self, Health};
-use svanbot_runtime::history::{self, witnesses};
+use svanbot_runtime::history;
 use svanbot_runtime::probing::Probing;
 use svanbot_runtime::status::{Play, Status, status_path};
-use svanbot_runtime::store::{Source, Store};
+use svanbot_runtime::store::Store;
 use svanbot_strategy::action::ActionModel;
 use svanbot_strategy::policy::decide_read;
 use svanbot_strategy::pricer::Budget;
@@ -230,25 +230,23 @@ fn main() -> ExitCode {
                 decision
             },
             |event| {
-                match &event {
-                    Event::Table(table) => {
-                        *seated.borrow_mut() = table.as_ref().map_or_else(Vec::new, |table| {
-                            table
-                                .players
-                                .iter()
-                                .map(|player| (player.seat, player.name.clone()))
-                                .collect()
-                        });
-                    }
-                    Event::Hand(hand) => {
-                        for witness in witnesses(hand, &config.me) {
-                            reads.borrow_mut().observe(witness);
-                        }
-                        live.opponents(history::dossiers(&reads.borrow()));
-                    }
-                    _ => {}
+                if let Event::Table(table) = &event {
+                    *seated.borrow_mut() = table.as_ref().map_or_else(Vec::new, |table| {
+                        table
+                            .players
+                            .iter()
+                            .map(|player| (player.seat, player.name.clone()))
+                            .collect()
+                    });
                 }
-                keep(&store, &probing, &live, event);
+                keep(
+                    &store,
+                    &probing,
+                    &live,
+                    &mut reads.borrow_mut(),
+                    &config.me,
+                    event,
+                );
             },
             &stop,
         );
@@ -285,7 +283,14 @@ fn main() -> ExitCode {
 
 /// Keeps a finished hand or an incident, and moves the status with it. A store or status failure
 /// is reported and play goes on: the next decision does not wait on the disk.
-fn keep(store: &Store, probing: &RefCell<Probing<'_>>, live: &Live, event: Event<'_>) {
+fn keep(
+    store: &Store,
+    probing: &RefCell<Probing<'_>>,
+    live: &Live,
+    reads: &mut Reads,
+    me: &str,
+    event: Event<'_>,
+) {
     match event {
         Event::Connected => live.connected(),
         Event::Table(table) => live.table(table),
@@ -321,8 +326,13 @@ fn keep(store: &Store, probing: &RefCell<Probing<'_>>, live: &Live, event: Event
                 probing.borrow().describe(),
                 probing.borrow().champion().digest().to_string(),
             );
-            match store.append_hand(&hand, Source::Live, at_ms) {
-                Ok(kept) => live.hand(kept, at_ms),
+            match history::keep_live(store, reads, &hand, me, at_ms) {
+                Ok(added) => {
+                    live.hand(added, at_ms);
+                    if added {
+                        live.opponents(history::dossiers(reads));
+                    }
+                }
                 Err(error) => eprintln!("svanbot: NOT KEPT: {error}"),
             }
         }

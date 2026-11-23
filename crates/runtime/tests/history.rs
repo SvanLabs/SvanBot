@@ -1,6 +1,9 @@
 //! Lines and stored hands: each seat's actions with their street, board, facing and size, and a
 //! stored hand turned into the fit's observations.
 
+#[allow(clippy::disallowed_methods)]
+mod support;
+
 use serde_json::json;
 use svanbot_core::card::CardSet;
 use svanbot_core::eval::strength;
@@ -162,6 +165,31 @@ fn a_bot_s_stored_hands_give_its_reads_of_each_named_opponent() {
         (rows[0].actions, rows[0].earned_pct, rows[0].change),
         (6, 0, None)
     );
+}
+
+#[test]
+fn live_reads_match_the_store_after_a_duplicate_or_failed_hand_write() {
+    use svanbot_runtime::history::keep_live;
+    use svanbot_runtime::store::Store;
+
+    let path = support::scratch("live-reads").join("bot.db");
+    let bot = "SurSvan";
+    let store = Store::open(&path, bot).unwrap();
+    let mut live = svanbot_learn::reads::Reads::default();
+    let mut hand = Hand {
+        hand_id: "h-2".into(),
+        table_id: "t-1".into(),
+        frames: named_frames(),
+        traced: Vec::new(),
+    };
+    assert!(keep_live(&store, &mut live, &hand, bot, 1).unwrap());
+    assert_eq!(live.get("alpha_bot").unwrap().hands(), 1);
+    assert!(!keep_live(&store, &mut live, &hand, bot, 2).unwrap());
+
+    hand.hand_id = "h-3".into();
+    let reader = Store::open_reader(&path).unwrap();
+    assert!(keep_live(&reader, &mut live, &hand, bot, 3).is_err());
+    assert_eq!(live, reads(&store.hands().unwrap(), bot));
 }
 
 #[test]
