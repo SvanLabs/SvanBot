@@ -177,13 +177,13 @@ impl League {
 
     /// The league of a stored run. A run stored before 6-max has no league, and was heads up.
     fn from_json(value: &Value) -> Result<Self, String> {
-        match value.as_str() {
-            None if value.is_null() => Ok(Self::HeadsUp),
-            Some(name) => {
-                Self::named(name).ok_or_else(|| format!("no Arena league is called {value}"))
-            }
-            None => Err(format!("no Arena league is called {value}")),
+        if value.is_null() {
+            return Ok(Self::HeadsUp);
         }
+        value
+            .as_str()
+            .and_then(Self::named)
+            .ok_or_else(|| format!("no Arena league is called {value}"))
     }
 }
 
