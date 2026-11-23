@@ -125,12 +125,17 @@ Run `svanbot propose` at low priority: a sim is CPU the live fleet shares.
 ### A release, start to end
 
 ```sh
-gh release download v2026.11.16 --repo SvanLabs/SvanBot   # the bundle and its .sha256
-deploy/install.sh svanbot-2026.11.16-x86-64-v3.tar.gz      # verifies and stages it
+gh release download v11.1.0 --repo SvanLabs/SvanBot       # the bundle and its .sha256
+deploy/install.sh svanbot-11.1.0-x86-64-v2.tar.gz          # checks the CPU, verifies, stages
 svanbot-release install ~/.local/lib/svanbot/staged
 svanbot-release status                                       # the build is installed, no slot has moved
-SVANBOT_CANARY=SurSvan svanbot-release update 2026.11.16   # the canary takes it first
+SVANBOT_CANARY=SurSvan svanbot-release update 11.1.0       # the canary takes it first
 ```
+
+A bundle is built for one instruction level, named in its file name and in `UPGRADE/cpu`: the
+box's, x86-64-v2. `install.sh` refuses a bundle built above the CPU it is installing on, before
+anything is staged, since a program that reaches an instruction its CPU lacks dies. Bundles up to
+11.0.2 are named `x86-64-v3` but were built for the x86-64 baseline, so they run here too.
 
 ### The first start, on a fresh box
 
@@ -146,12 +151,12 @@ install -m 644 deploy/svanbot@.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable svanbot@SurSvan        # and each other bot, all without --now
 # 3. The bundle: install.sh puts svanbot-release in ~/.local/bin and stages the release.
-gh release download v11.0.0 --repo SvanLabs/SvanBot
-deploy/install.sh svanbot-11.0.0-x86-64-v3.tar.gz
+gh release download v11.1.0 --repo SvanLabs/SvanBot
+deploy/install.sh svanbot-11.1.0-x86-64-v2.tar.gz
 svanbot-release install ~/.local/lib/svanbot/staged
 # 4. The canary's first update: it is down, so current is pointed at the build and the bot is
 #    started, then watched for a crash loop like any other update.
-SVANBOT_CANARY=SurSvan SVANBOT_NAME=SurSvan svanbot-release update 11.0.0
+SVANBOT_CANARY=SurSvan SVANBOT_NAME=SurSvan svanbot-release update 11.1.0
 svanbot-release status
 ```
 

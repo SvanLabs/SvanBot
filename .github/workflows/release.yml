@@ -2,16 +2,18 @@
 # box, and publishes a checksummed bundle on the GitHub release. The fleet never builds: the updater
 # installs only what this built, verified and named, and never while the fleet plays.
 #
-# One build, one bundle. The program's instruction level is the runner's (x86-64-v3), because a
-# compiler emits baseline code only when it is built on baseline — building v1 or v2 needs a runner
-# or a container of that level, which is a second build the release does not have and does not need:
-# the box here is v3. The bundle's file name carries that level, and nothing checks it back: there
-# is one runner and one box, so the level is a fact of the build, not a thing the install verifies.
+# One build, one bundle, at one instruction level: the box's. Its QEMU CPU reports every x86-64-v2
+# flag (SSE4.2, POPCNT, SSSE3, CX16) and none of v3's (no AVX, AVX2, BMI or FMA), so the program is
+# built with `-C target-cpu=x86-64-v2` on any runner: rustc emits the level it is told to, not the
+# level of the machine it runs on. The level goes in the bundle's name and in `UPGRADE/cpu`, and
+# `install.sh` refuses a bundle built above the CPU it is installing on. Crates that pick a faster
+# path at run time (rustls's crypto, memchr) still ask the CPU first, so AVX2 code inside them is
+# never reached on a v2 machine.
 #
 # The job is a release build and `tools/release.ts`, and nothing else: the gate that guards this
-# tag already ran on the pull request. RUSTFLAGS="" drops the box's target-cpu=native so the bundle
-# is a fixed instruction level, and only dependencies are cached (`cache-workspace-crates: false`),
-# so the released bytes are the tag's own sources, rebuilt.
+# tag already ran on the pull request. RUSTFLAGS names the level outright, dropping the box's
+# target-cpu=native, and only dependencies are cached (`cache-workspace-crates: false`), so the
+# released bytes are the tag's own sources, rebuilt.
 name: release
 
 on:
@@ -30,9 +32,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # A target-cpu=native in a cargo config would not travel, and a release must not take one: the
-  # bundle is a fixed instruction level, built portably.
-  RUSTFLAGS: ""
+  # The box's instruction level, named outright: a target-cpu=native would be the runner's, and the
+  # runner is not the box. `tools/release.ts` names the bundle for the same level (its `CPU`).
+  RUSTFLAGS: "-C target-cpu=x86-64-v2"
   # Where every build in the project goes, and where `tools/release.ts` reads the programs from.
   # Nothing else sets it: the gate's `cargo()` wrapper does, and this job calls cargo directly.
   CARGO_TARGET_DIR: target/dev
@@ -73,7 +75,7 @@ jobs:
           echo "release: building $version from $TAG"
       - run: nice -n 15 ionice -c3 cargo build --release --locked -j4 --bins
       - name: package the bundle
-        run: bun tools/release.ts --version "${{ steps.version.outputs.version }}" --cpu x86-64-v3
+        run: bun tools/release.ts --version "${{ steps.version.outputs.version }}" --cpu x86-64-v2
       # The checksum is what the updater verifies before it installs, and what the box cross-checks
       # against the release; publishing it beside the archive is the whole point of the bundle.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
