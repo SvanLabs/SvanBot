@@ -3,7 +3,7 @@
 use svanbot_core::card::CardSet;
 use svanbot_core::rules::Street;
 use svanbot_learn::reads::{Reads, Witness};
-use svanbot_strategy::action::{Move, Seen, Situation};
+use svanbot_strategy::action::{ActionModel, Move, Seen, Situation};
 use svanbot_strategy::read::Class;
 
 fn open() -> Situation {
@@ -118,4 +118,26 @@ fn each_name_has_its_own_read_in_alphabetical_order() {
     assert_eq!(reads.get("alpha_bot").unwrap().class(), Class::Unknown);
     assert_eq!(reads.get("beta_bot").unwrap().class(), Class::Fixed);
     assert!(reads.get("gamma_bot").is_none());
+}
+
+#[test]
+fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
+    // beta checks every hand: a fixed read that tilts their model toward checking.
+    let reads = fixed("Beta_Bot", 60);
+    let population = ActionModel::baseline();
+    let seated = [(1, "beta_bot"), (4, "gamma_bot")];
+    let personal = reads.personal(&seated, &population, 0.5);
+    assert_eq!(personal.len(), 2);
+    let (beta, gamma) = (&personal[0], &personal[1]);
+    assert_eq!((beta.seat, beta.class), (1, Class::Fixed));
+    assert!((beta.trust - 2.0 / 3.0).abs() < 1e-9, "{}", beta.trust);
+    let check = |model: &ActionModel| model.marginal(open(), Move::Check);
+    assert!(check(&beta.model) > check(&population));
+    // Never seen: unknown, trusted with nothing, read by the population.
+    assert_eq!((gamma.seat, gamma.class, gamma.trust), (4, Class::Unknown, 0.0));
+    assert_eq!(gamma.model, population);
+    // No exploit budget leaves every model the population's.
+    for read in reads.personal(&seated, &population, 0.0) {
+        assert_eq!(read.model, population);
+    }
 }

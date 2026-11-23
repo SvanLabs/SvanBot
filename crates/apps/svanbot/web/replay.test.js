@@ -134,6 +134,21 @@ test("a range with no seat says so rather than numbering the opponents itself", 
   expect(text).not.toContain("Opponent 1");
 });
 
+test("a range read by its opponent's own read names their class and the budget it earned", () => {
+  const text = replay.decisionView(
+    priced({
+      ranges: [
+        { seat: 3, masses: [1, 0, 0, 0, 0, 0, 0, 0], class: "fixed", trust: 0.62 },
+        { seat: 4, masses: [1, 0, 0, 0, 0, 0, 0, 0] },
+      ],
+    }),
+  ).textContent;
+  expect(text).toContain("Seat 3: fixed, 62% of the budget");
+  // The population's read names no class.
+  expect(text).toContain("Seat 4");
+  expect(text).not.toContain("Seat 4:");
+});
+
 test("a decision with no action names still says which index was taken", async () => {
   const text = replay.decisionView(resolved({ actions: undefined })).textContent;
   expect(text).toContain("took action 2 of 3");

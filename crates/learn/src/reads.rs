@@ -9,8 +9,9 @@
 
 use std::collections::BTreeMap;
 
-use svanbot_strategy::action::{Seen, Situation};
-use svanbot_strategy::read::{Class, Read, Trust};
+use svanbot_strategy::action::{ActionModel, Seen, Situation};
+use svanbot_strategy::policy::Personal;
+use svanbot_strategy::read::{Class, Read, Trust, personal};
 
 use crate::adapt::classify;
 
@@ -135,7 +136,8 @@ fn weight(n: u32) -> f64 {
     n / (n + Trust::DEFAULT.half)
 }
 
-/// Every opponent this bot has seen, by venue name.
+/// Every opponent this bot has seen, by venue name. A name matches in any case, as the venue's
+/// names are compared everywhere else.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Reads {
     opponents: BTreeMap<String, Opponent>,
@@ -145,17 +147,52 @@ impl Reads {
     /// Takes one hand's witness of one opponent.
     pub fn observe(&mut self, witness: Witness) {
         self.opponents
-            .entry(witness.name.clone())
+            .entry(witness.name.to_lowercase())
             .or_insert_with(|| Opponent::new(witness.name.clone()))
             .observe(witness);
     }
 
     pub fn get(&self, name: &str) -> Option<&Opponent> {
-        self.opponents.get(name)
+        self.opponents.get(&name.to_lowercase())
     }
 
     /// Every opponent, by name.
     pub fn opponents(&self) -> impl Iterator<Item = &Opponent> {
         self.opponents.values()
+    }
+
+    /// The decision's reads of the opponents `seated` (seat, venue name): each one's model is
+    /// `population` tilted toward their read, as far as `exploit` times their class's share allows.
+    /// One never seen is unknown, trusted with nothing, and read by `population`.
+    pub fn personal(
+        &self,
+        seated: &[(usize, &str)],
+        population: &ActionModel,
+        exploit: f64,
+    ) -> Vec<Personal> {
+        seated
+            .iter()
+            .map(|&(seat, name)| match self.get(name) {
+                Some(opponent) => {
+                    let class = opponent.class();
+                    let trust = Trust {
+                        budget: exploit * class.budget(),
+                        ..Trust::DEFAULT
+                    };
+                    Personal {
+                        seat,
+                        model: personal(population, opponent.read(), trust),
+                        class,
+                        trust: opponent.earned(),
+                    }
+                }
+                None => Personal {
+                    seat,
+                    model: population.clone(),
+                    class: Class::Unknown,
+                    trust: 0.0,
+                },
+            })
+            .collect()
     }
 }

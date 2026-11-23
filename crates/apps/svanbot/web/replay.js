@@ -54,9 +54,16 @@ export function decisionView(decision) {
     h("p", { class: "muted" }, cardsText(decision)),
     priced ? null : facts(decision.values.map((value, at) => actionRow(decision, at, value))),
     ...(decision.ranges ?? []).map((range) =>
-      facts([[seatLabel(range.seat), range.masses.map((mass) => mass.toFixed(2)).join(" ")]]),
+      facts([[rangeLabel(range), range.masses.map((mass) => mass.toFixed(2)).join(" ")]]),
     ),
   );
+}
+
+/** The seat, and when the opponent's own read decided the range, its class and earned budget. */
+function rangeLabel(range) {
+  const seat = seatLabel(range.seat);
+  if (typeof range.class !== "string" || typeof range.trust !== "number") return seat;
+  return `${seat}: ${range.class}, ${Math.round(range.trust * 100)}% of the budget`;
 }
 
 /**

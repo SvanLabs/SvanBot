@@ -69,7 +69,10 @@ use svanbot_runtime::health::{self, Health};
 use svanbot_runtime::probing::Probing;
 use svanbot_runtime::status::{Play, Status, status_path};
 use svanbot_runtime::store::{Source, Store};
-use svanbot_strategy::policy::decide_drawn;
+use svanbot_learn::reads::Reads;
+use svanbot_runtime::history::{self, witnesses};
+use svanbot_strategy::action::ActionModel;
+use svanbot_strategy::policy::decide_read;
 use svanbot_strategy::pricer::Budget;
 use svanbot_strategy::resolve::iterations_for;
 
@@ -147,6 +150,21 @@ fn main() -> ExitCode {
             None => "has no fitted action model: plays by the baseline",
         }
     );
+    // Each opponent's own read, from this bot's store alone (ADR 0004), kept up as hands end.
+    let reads = RefCell::new(match store.hands() {
+        Ok(hands) => history::reads(&hands, &config.me),
+        Err(error) => {
+            eprintln!("svanbot: could not read the store's hands for reads: {error}");
+            Reads::default()
+        }
+    });
+    eprintln!(
+        "svanbot: reads {} opponents from its store",
+        reads.borrow().opponents().count()
+    );
+    // The seated players by seat, from the table view: the names a decision's seats read by.
+    let seated: RefCell<Vec<(usize, String)>> = RefCell::new(Vec::new());
+    let baseline = ActionModel::baseline();
     let canary = std::env::var("SVANBOT_CANARY").is_ok_and(|name| name == config.me);
     let (probing, notes) = Probing::open(&store, Fleet::in_dir(fleet_dir()), canary, now_ms());
     for note in notes {
@@ -183,8 +201,27 @@ fn main() -> ExitCode {
                 let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
                 // The parameter set of the hand in play: the champion's, or a probe's arm.
                 let params = probing.borrow().params();
-                // A fitted action model is used only if it passed the gate (`svanbot fit`).
-                let decision = decide_drawn(spot, model.as_ref(), &params, budget, iterations);
+                // Each opponent is read by their own read of the population's model: the fitted
+                // one if it passed the gate (`svanbot fit`), else the baseline.
+                let names = seated.borrow();
+                let named: Vec<(usize, &str)> = spot
+                    .seats
+                    .iter()
+                    .filter_map(|&seat| {
+                        let (_, name) = names.iter().find(|(at, _)| *at == seat)?;
+                        Some((seat, name.as_str()))
+                    })
+                    .collect();
+                let population = model.as_ref().unwrap_or(&baseline);
+                let personal = reads.borrow().personal(&named, population, params.exploit);
+                let decision = decide_read(
+                    spot,
+                    model.as_ref(),
+                    &personal,
+                    &params,
+                    budget,
+                    iterations,
+                );
                 if let Some(drawn) = &decision.drawn {
                     probing.borrow_mut().decided(Decided {
                         strategy: drawn.strategy.clone(),
@@ -196,7 +233,26 @@ fn main() -> ExitCode {
                 // recorder keeps it with the hand (`V11-24`).
                 decision
             },
-            |event| keep(&store, &probing, &live, event),
+            |event| {
+                match &event {
+                    Event::Table(table) => {
+                        *seated.borrow_mut() = table.as_ref().map_or_else(Vec::new, |table| {
+                            table
+                                .players
+                                .iter()
+                                .map(|player| (player.seat, player.name.clone()))
+                                .collect()
+                        });
+                    }
+                    Event::Hand(hand) => {
+                        for witness in witnesses(hand, &config.me) {
+                            reads.borrow_mut().observe(witness);
+                        }
+                    }
+                    _ => {}
+                }
+                keep(&store, &probing, &live, event);
+            },
             &stop,
         );
         match ended {

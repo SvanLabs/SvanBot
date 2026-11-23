@@ -53,6 +53,23 @@ impl Class {
             Self::Learning => 0.25,
         }
     }
+
+    pub const ALL: [Self; 4] = [Self::Unknown, Self::Fixed, Self::Switching, Self::Learning];
+
+    /// The class's name, as a trace or a page writes it.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Fixed => "fixed",
+            Self::Switching => "switching",
+            Self::Learning => "learning",
+        }
+    }
+
+    /// The class [`Class::name`] gives `text`.
+    pub fn named(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|class| class.name() == text)
+    }
 }
 
 /// One opponent's moves, counted per situation.

@@ -184,6 +184,8 @@ pub fn traced_store(data: &std::path::Path, bot: &str) {
                                 ranges: vec![Ranged {
                                     seat: Some(3),
                                     masses: vec![0.0, 0.1, 0.2, 0.3, 0.2, 0.1, 0.1, 0.0],
+                                    class: None,
+                                    trust: None,
                                 }],
                             }),
                         }]

@@ -7,7 +7,7 @@ use svanbot_core::eval::strength;
 use svanbot_core::rules::Street;
 use svanbot_core::spot::{Act, ActKind};
 use svanbot_learn::fit::Outcome;
-use svanbot_runtime::history::{observed, witnesses};
+use svanbot_runtime::history::{observed, reads, witnesses};
 use svanbot_runtime::lines::Lines;
 use svanbot_runtime::record::Hand;
 use svanbot_runtime::wire::parse;
@@ -130,6 +130,22 @@ fn a_hand_that_names_no_seat_witnesses_nobody() {
         traced: Vec::new(),
     };
     assert!(witnesses(&hand, "SurSvan").is_empty());
+}
+
+#[test]
+fn a_bot_s_stored_hands_give_its_reads_of_each_named_opponent() {
+    let hand = |id: &str| Hand {
+        hand_id: id.into(),
+        table_id: "t-1".into(),
+        frames: named_frames(),
+        traced: Vec::new(),
+    };
+    let reads = reads(&[hand("h-2"), hand("h-3")], "SurSvan");
+    let names: Vec<&str> = reads.opponents().map(|opponent| opponent.name()).collect();
+    assert_eq!(names, ["alpha_bot", "beta_bot", "gamma_bot"]);
+    assert_eq!(reads.get("alpha_bot").unwrap().hands(), 2);
+    assert_eq!(reads.get("alpha_bot").unwrap().actions(), 6);
+    assert!(reads.get("SurSvan").is_none());
 }
 
 #[test]

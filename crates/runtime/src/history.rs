@@ -11,7 +11,7 @@ use svanbot_core::card::CardSet;
 use svanbot_core::eval::strength;
 use svanbot_core::spot::ActKind;
 use svanbot_learn::fit::{Observed, Outcome};
-use svanbot_learn::reads::Witness;
+use svanbot_learn::reads::{Reads, Witness};
 use svanbot_strategy::action::Seen;
 
 use crate::lines::Lines;
@@ -69,6 +69,17 @@ pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
             }
         })
         .collect()
+}
+
+/// The bot's reads from its own stored `hands`, oldest first (`docs/adr/0004-reads-are-per-bot.md`).
+pub fn reads(hands: &[Hand], me: &str) -> Reads {
+    let mut reads = Reads::default();
+    for hand in hands {
+        for witness in witnesses(hand, me) {
+            reads.observe(witness);
+        }
+    }
+    reads
 }
 
 /// The opponents `hand` names, with what each did and how each answered bets. Our own seat is
