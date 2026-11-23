@@ -84,11 +84,13 @@ fn run(commit: &str, seed: u64, mbb: f64) -> ArenaRun {
         champion: "00000000000000aa".into(),
         seed,
         league: League::HeadsUp,
+        iterations: None,
         rows: vec![ArenaRow {
             opponent: "nit".into(),
             deals: 400,
             mbb_per_100: mbb,
             ci95: 250.0,
+            bouts: Vec::new(),
         }],
     }
 }
@@ -238,6 +240,7 @@ fn a_six_max_run_is_never_the_heads_up_run_of_the_same_name() {
     fleet.record_arena(&run("abc1234", 7, 1.0)).unwrap();
     let six = ArenaRun {
         league: League::SixMax,
+        iterations: None,
         ..run("abc1234", 7, 1.0)
     };
     fleet.record_arena(&six).unwrap();
@@ -275,6 +278,7 @@ fn each_league_keeps_its_own_history() {
     for number in 0..(ARENA_HISTORY as u64 + 2) {
         let six = ArenaRun {
             league: League::SixMax,
+            iterations: None,
             ..run(&format!("six{number}"), number, 1.0)
         };
         fleet.record_arena(&six).unwrap();
@@ -283,4 +287,27 @@ fn each_league_keeps_its_own_history() {
     let count = |league| runs.iter().filter(|r| r.league == league).count();
     assert_eq!(count(League::SixMax), ARENA_HISTORY);
     assert_eq!(count(League::HeadsUp), 1);
+}
+
+#[test]
+fn a_run_keeps_each_bouts_result_and_how_it_was_solved_so_the_gate_can_play_one_again() {
+    // The ship bar trusts a run only when a bout it draws plays out as recorded (V11-22),
+    // so each row keeps what every bout won, and the run keeps the iterations it re-solved with.
+    let fleet = Fleet::in_dir(scratch("arena-bouts"));
+    let mut played = run("abc123", 9, 12.0);
+    played.iterations = Some(40);
+    played.rows[0].bouts = vec![1.5, -0.25, -984_173.515_151_514_9];
+    fleet.record_arena(&played).unwrap();
+    let [read] = fleet.arena_runs().unwrap().try_into().unwrap();
+    assert_eq!(read, played);
+    // A run recorded before bouts were kept reads back with none, and budget-sized iterations.
+    let old = scratch("arena-old");
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::write(
+        old.join("arena.json"),
+        r#"{"runs":[{"commit":"c","champion":"d","seed":1,"rows":[{"opponent":"nit","deals":50,"mbb_per_100":1.0,"ci95":2.0}]}]}"#,
+    )
+    .unwrap();
+    let [read] = Fleet::in_dir(old).arena_runs().unwrap().try_into().unwrap();
+    assert_eq!((read.iterations, read.rows[0].bouts.len()), (None, 0));
 }

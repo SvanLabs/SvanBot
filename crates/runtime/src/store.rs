@@ -474,8 +474,10 @@ impl Store {
 }
 
 mod trace;
+mod window;
 
 pub use trace::{TRACED_HANDS, TracedHand};
+pub use window::ExportLine;
 
 fn arm_name(arm: Arm) -> &'static str {
     match arm {

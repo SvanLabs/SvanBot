@@ -83,8 +83,9 @@ is the window: it asks the bot to stop between hands, waits for it, stops it und
 
 The **canary** (SurSvan) takes every update first. `SVANBOT_CANARY` names it, and `update` without
 `--fleet` runs the canary's window: the canary is the bot it swaps. `--fleet` is the operator's word
-that the canary's window is over — nothing on the box knows it has been watched long enough — so it
-needs no canary named, only the bot it swaps, `SVANBOT_NAME`. It swaps one bot at a time.
+that the canary's window is over, given once `svanbot release-check <tag> fleet` clears ([the ship
+bar](#the-ship-bar)), so it needs no canary named, only the bot it swaps, `SVANBOT_NAME`. It swaps
+one bot at a time.
 
 ```sh
 # the canary first
@@ -127,6 +128,46 @@ svanbot-release install ~/.local/lib/svanbot/staged
 svanbot-release status                                       # the build is installed, no slot has moved
 SVANBOT_CANARY=SurSvan svanbot-release update 2026.11.16   # the canary takes it first
 ```
+
+### The ship bar
+
+A release reaches the fleet only over the ship bar (V11-22). `svanbot release-check` names every
+clause a release fails and exits 1, or says it clears the bar and exits 0. It reads the fleet's
+files and the stores and writes nothing. git names the tag's commit, so run it in a clone that has
+the tag. It has two stages.
+
+**Before the tag is pushed: the Arena stage.** Play the Arena in both leagues from a build of the
+commit to be tagged, with that commit named, then check it:
+
+```sh
+git tag v11.0.0                                    # local: not pushed until it clears
+export SVANBOT_COMMIT=$(git rev-parse 'v11.0.0^{commit}')
+nice -n 15 svanbot arena 10000 <seed>              # heads up: 500 000 deals against v10.0.2
+nice -n 15 svanbot arena 6-max <bouts> <seed>
+svanbot release-check v11.0.0
+git push origin v11.0.0                            # only once it clears
+```
+
+The newest run of each league from the tag's commit is the one read. It must have been played
+under the fleet's champion. Three of its bouts, drawn from its seed, must play again bit for bit
+as recorded. It must beat v10.0.2 heads up over 500 000 deals, with its 95% interval wholly above
+zero. And no sparring opponent or the pricer may beat it, in either league, with its interval wholly
+below zero. The 6-max v10.0.2 row is shown, never required. A run without a commit (`local`) is
+never read.
+
+**Before `update --fleet`: the canary stage.** Each bot marks in its store when it first started on
+a release. The canary's window opens there and closes at its latest hand. Over that window the
+canary must hold 20 000 hands, and the rest of the fleet another 20 000 by their export; the canary
+must not lose to the fleet with the 95% interval of the difference wholly below zero. Short of
+20 000 on either side, it is not yet measured, and refused. The fleet's side is its export, so
+download every other bot's season first (see [the season download](#the-season-download)):
+
+```sh
+SVANBOT_CANARY=SurSvan ~/.local/lib/svanbot/11.0.0/svanbot release-check v11.0.0 fleet
+```
+
+The `fleet` stage runs the Arena stage again first, from the release's own build. The canary keeps
+the first time it started on a release, so a rollback and a second update measure from the first.
 ## The dashboard
 
 `svanbot dashboard` serves one page on loopback and pushes the fleet to it over one event stream.

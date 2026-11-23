@@ -7,9 +7,9 @@
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running.
 //! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
-//!   its board on the scoreboard, and the newest heads-up run is what the release gate reads;
-//!   [`ARENA_HISTORY`] of each league are kept, so a trend across commits is a read and not a
-//!   re-run.
+//!   its board on the scoreboard, and the newest of each from a tag's commit is what the ship
+//!   bar reads; [`ARENA_HISTORY`] of each league are kept, so a trend across commits is a read
+//!   and not a re-run.
 //!
 //! A parameter set is numbers the owner tuned, not a read of an opponent, so sharing it crosses no
 //! bot's reads (`docs/adr/0004-reads-are-per-bot.md`). Each number is written as the text that
@@ -161,6 +161,10 @@ pub struct ArenaRow {
     pub deals: usize,
     pub mbb_per_100: f64,
     pub ci95: f64,
+    /// What the policy won over each bout, in bout order: the sum of its deals' results, in big
+    /// blinds a hand. The ship bar plays bouts drawn from these again (V11-22). A run recorded
+    /// before they were kept has none.
+    pub bouts: Vec<f64>,
 }
 
 /// A recorded run of the Arena: the commit, the champion and the seed it was played from, and its
@@ -174,6 +178,9 @@ pub struct ArenaRun {
     pub champion: String,
     pub seed: u64,
     pub league: League,
+    /// The re-solve's iterations on every spot, or `None` when the compute budget sized them by
+    /// the pot. A bout is played again only with the same.
+    pub iterations: Option<u64>,
     pub rows: Vec<ArenaRow>,
 }
 
@@ -189,6 +196,7 @@ impl ArenaRun {
             "champion": self.champion,
             "seed": self.seed,
             "league": self.league.name(),
+            "iterations": self.iterations,
             "rows": self
                 .rows
                 .iter()
@@ -197,6 +205,7 @@ impl ArenaRun {
                     "deals": row.deals,
                     "mbb_per_100": row.mbb_per_100,
                     "ci95": row.ci95,
+                    "bouts": row.bouts,
                 }))
                 .collect::<Vec<_>>(),
         })
@@ -227,6 +236,15 @@ impl ArenaRun {
                     deals: row["deals"].as_u64().ok_or("an arena row lacks deals")? as usize,
                     mbb_per_100: number(row, "mbb_per_100")?,
                     ci95: number(row, "ci95")?,
+                    bouts: match row.get("bouts") {
+                        None => Vec::new(),
+                        Some(bouts) => bouts
+                            .as_array()
+                            .ok_or("an arena row's bouts are not a list")?
+                            .iter()
+                            .map(|bout| bout.as_f64().ok_or("an arena bout is not a number"))
+                            .collect::<Result<_, _>>()?,
+                    },
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -243,6 +261,13 @@ impl ArenaRun {
                 .as_u64()
                 .ok_or("the arena run lacks its seed")?,
             league: League::from_json(&value["league"])?,
+            iterations: match &value["iterations"] {
+                Value::Null => None,
+                held => Some(
+                    held.as_u64()
+                        .ok_or("the arena run's iterations are not a count")?,
+                ),
+            },
             rows,
         })
     }

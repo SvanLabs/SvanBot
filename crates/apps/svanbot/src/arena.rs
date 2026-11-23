@@ -10,13 +10,16 @@
 //! when one is named, with the commit in `SVANBOT_COMMIT` and the seed, so the run can be played
 //! again.
 //!
-//! Every run is also recorded in the fleet's `arena.json` (`Fleet::record_arena`), so the
-//! dashboard's scoreboard and the release gate read the same numbers this printed.
+//! Every run is also recorded in the fleet's `arena.json` (`Fleet::record_arena`), with what each
+//! bout won, so the dashboard's scoreboard and the ship bar read the same numbers this
+//! printed, and the ship bar can play a bout again to check them ([`play_bout`]).
 
 use std::process::ExitCode;
 
+use svanbot_core::rules::Action;
+use svanbot_core::spot::Spot;
 use svanbot_learn::arena::{BOUT, Row, bout, ring_bout, scoreboard, v10_duel, v10_ring};
-use svanbot_learn::paired::{duel, verdict};
+use svanbot_learn::paired::{Match, duel, verdict};
 use svanbot_learn::ring::{SIX_MAX, ring};
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_sim::sparring::Archetype;
@@ -28,7 +31,7 @@ const THREADS: u64 = 4;
 
 /// A row of the scoreboard: who the policy plays.
 #[derive(Clone, Copy)]
-enum Opponent {
+pub(crate) enum Opponent {
     /// The pricer the strategy layer falls back to.
     Pricer,
     /// v10.0.2, ported (`sim::v10`): the bar a release must clear.
@@ -37,12 +40,65 @@ enum Opponent {
 }
 
 impl Opponent {
-    fn name(self) -> &'static str {
+    /// Every row, in the scoreboard's order.
+    fn all() -> Vec<Self> {
+        [Self::Pricer, Self::V10]
+            .into_iter()
+            .chain(Archetype::ALL.map(Self::Sparring))
+            .collect()
+    }
+
+    pub(crate) fn name(self) -> &'static str {
         match self {
-            Opponent::Pricer => "pricer",
-            Opponent::V10 => svanbot_sim::v10::seat::NAME,
-            Opponent::Sparring(archetype) => archetype.name(),
+            Self::Pricer => "pricer",
+            Self::V10 => svanbot_sim::v10::seat::NAME,
+            Self::Sparring(archetype) => archetype.name(),
         }
+    }
+
+    /// The opponent a scoreboard row names.
+    pub(crate) fn named(name: &str) -> Option<Self> {
+        Self::all()
+            .into_iter()
+            .find(|opponent| opponent.name() == name)
+    }
+}
+
+/// Plays bout `number` of `league` against `opponent`: what the challenger won on each deal, in
+/// big blinds a hand. A bout stands alone, so it plays the same here, on any thread, or later in
+/// the ship bar.
+pub(crate) fn play_bout(
+    game: &Match,
+    league: League,
+    opponent: Opponent,
+    number: u64,
+    challenger: &impl Fn(&Spot, u64) -> Action,
+) -> Vec<f64> {
+    let pricer = deciders::pricer();
+    let deals = number * BOUT..(number + 1) * BOUT;
+    match (league, opponent) {
+        (League::HeadsUp, Opponent::Sparring(archetype)) => {
+            bout(game, archetype, number, challenger)
+        }
+        (League::HeadsUp, Opponent::V10) => {
+            deals.map(|deal| v10_duel(game, deal, challenger)).collect()
+        }
+        (League::SixMax, Opponent::V10) => {
+            deals.map(|deal| v10_ring(game, deal, challenger)).collect()
+        }
+        (League::HeadsUp, Opponent::Pricer) => deals
+            .map(|deal| duel(game, deal, challenger, &pricer))
+            .collect(),
+        (League::SixMax, Opponent::Sparring(archetype)) => {
+            ring_bout(game, archetype, number, challenger)
+        }
+        (League::SixMax, Opponent::Pricer) => deals
+            .map(|deal| {
+                ring(game, SIX_MAX, deal, challenger, &|_, spot, seed| {
+                    pricer(spot, seed)
+                })
+            })
+            .collect(),
     }
 }
 
@@ -74,53 +130,22 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     };
     let game = deciders::game(seed.unwrap_or(1));
     let challenger = deciders::challenger(&champion, fixed);
-    let pricer = deciders::pricer();
-    let opponents: Vec<Opponent> = [Opponent::Pricer, Opponent::V10]
-        .into_iter()
-        .chain(Archetype::ALL.map(Opponent::Sparring))
-        .collect();
     let mut rows = Vec::new();
-    for opponent in opponents {
+    for opponent in Opponent::all() {
         // Thread `k` plays bouts k, k + THREADS, …; put back in order, the verdict is the
         // same on any number of threads.
         let played: Vec<Vec<(u64, Vec<f64>)>> = std::thread::scope(|scope| {
             let workers: Vec<_> = (0..THREADS)
                 .map(|k| {
-                    let (challenger, pricer) = (&challenger, &pricer);
+                    let (game, challenger) = (&game, &challenger);
                     scope.spawn(move || {
                         (k..bouts)
                             .step_by(THREADS as usize)
                             .map(|number| {
-                                let deals = number * BOUT..(number + 1) * BOUT;
-                                let results = match (league, opponent) {
-                                    (League::HeadsUp, Opponent::Sparring(archetype)) => {
-                                        bout(&game, archetype, number, challenger)
-                                    }
-                                    (League::HeadsUp, Opponent::V10) => deals
-                                        .map(|deal| v10_duel(&game, deal, challenger))
-                                        .collect(),
-                                    (League::SixMax, Opponent::V10) => deals
-                                        .map(|deal| v10_ring(&game, deal, challenger))
-                                        .collect(),
-                                    (League::HeadsUp, Opponent::Pricer) => deals
-                                        .map(|deal| duel(&game, deal, challenger, pricer))
-                                        .collect(),
-                                    (League::SixMax, Opponent::Sparring(archetype)) => {
-                                        ring_bout(&game, archetype, number, challenger)
-                                    }
-                                    (League::SixMax, Opponent::Pricer) => deals
-                                        .map(|deal| {
-                                            ring(
-                                                &game,
-                                                SIX_MAX,
-                                                deal,
-                                                challenger,
-                                                &|_, spot, seed| pricer(spot, seed),
-                                            )
-                                        })
-                                        .collect(),
-                                };
-                                (number, results)
+                                (
+                                    number,
+                                    play_bout(game, league, opponent, number, challenger),
+                                )
                             })
                             .collect()
                     })
@@ -137,6 +162,11 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         });
         let mut by_bout: Vec<(u64, Vec<f64>)> = played.into_iter().flatten().collect();
         by_bout.sort_by_key(|(number, _)| *number);
+        // Summed in deal order, the way the ship bar sums a bout it plays again.
+        let sums: Vec<f64> = by_bout
+            .iter()
+            .map(|(_, results)| results.iter().sum())
+            .collect();
         let results: Vec<f64> = by_bout
             .into_iter()
             .flat_map(|(_, results)| results)
@@ -146,25 +176,28 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             verdict: verdict(&results),
         };
         eprintln!("svanbot arena: {} done", row.opponent);
-        rows.push(row);
+        rows.push((row, sums));
     }
+    let board: Vec<Row> = rows.iter().map(|(row, _)| row.clone()).collect();
     println!("{} league", league.name());
-    print!("{}", scoreboard(&rows));
+    print!("{}", scoreboard(&board));
     // A local run has no commit, and is kept as such: `record_arena` tells two of them apart by
     // their own numbers, since there is no commit to play them again from.
     let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| ArenaRun::LOCAL_COMMIT.into());
     let run = ArenaRun {
-        commit: commit.clone(),
+        commit,
         champion: champion.digest().to_string(),
         seed: game.seed,
         league,
+        iterations: fixed,
         rows: rows
-            .iter()
-            .map(|row| ArenaRow {
-                opponent: row.opponent.clone(),
+            .into_iter()
+            .map(|(row, bouts)| ArenaRow {
+                opponent: row.opponent,
                 deals: row.verdict.deals,
                 mbb_per_100: row.verdict.mbb_per_100,
                 ci95: row.verdict.ci95,
+                bouts,
             })
             .collect(),
     };

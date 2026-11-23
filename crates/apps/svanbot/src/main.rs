@@ -28,7 +28,11 @@
 //! arena` plays the policy against every sparring archetype ([`arena`]). `svanbot paired` runs a
 //! paired sim of the policy against the pricer ([`paired`]). `svanbot propose` puts a challenger
 //! forward for the canary ([`propose`]). `svanbot dashboard` serves the fleet's dashboard on
-//! loopback ([`svanbot::dashboard`]).
+//! loopback ([`svanbot::dashboard`]). `svanbot release-check` holds a release to the ship bar
+//! ([`ship`]).
+//!
+//! A bot run from an installed release marks in its store when it first took that release, so
+//! the ship bar can tell the canary's hands on it from the ones before.
 //!
 //! While it plays, the bot keeps its status file current beside its store, for the dashboard
 //! ([`svanbot::live`]).
@@ -46,6 +50,7 @@ mod download;
 mod fit;
 mod paired;
 mod propose;
+mod ship;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -78,6 +83,11 @@ fn main() -> ExitCode {
     // The dashboard is not a bot: it records no start.
     if std::env::args().nth(1).as_deref() == Some("dashboard") {
         return svanbot::dashboard::run(fleet_dir());
+    }
+    // Nor is the ship bar's check.
+    if std::env::args().nth(1).as_deref() == Some("release-check") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return ship::run(&args);
     }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.
@@ -117,6 +127,13 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // The ship bar's canary window opens when the canary first took the release (V11-22). A
+    // build run from a checkout is no release, and marks none.
+    if let Some(version) = svanbot_runtime::ship::version(&running_version())
+        && let Err(error) = store.mark_release(version, now_ms())
+    {
+        eprintln!("svanbot: could not mark release {version} in the store: {error}");
+    }
     // The updater's request to stop between hands, and the answer this bot gives it.
     let health = open_health(&config.me);
     eprintln!("svanbot: {} connects to {}", config.me, config.url);

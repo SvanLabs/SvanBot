@@ -259,8 +259,14 @@ guard clears it, and then the rest of the fleet adopts it.
 _Avoid_: rollout, upgrade, merge
 
 **Ship bar**:
-The evidence a release must show, and the approval it needs, before the fleet plays it.
+The evidence a release must show, and the approval it needs, before the fleet plays it: the Arena
+from the tag's own commit before the tag, then the canary's window before the fleet.
 _Avoid_: release criteria, gate (the gate is for changes, the ship bar for releases)
+
+**Canary window**:
+The hours from the canary first starting on a release to its latest hand. The ship bar measures
+the canary against the rest of the fleet's export over them.
+_Avoid_: soak, bake time, watch period
 
 ### Running it
 
