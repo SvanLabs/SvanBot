@@ -140,6 +140,11 @@ An opponent's own departure from the prior, learned from their hands alone. One 
 own, never pooled across stablemates.
 _Avoid_: profile, note, tag
 
+**Held**:
+Said of reads that have not yet shown, in a paired sim, that playing by them wins. A held read is
+kept, classed and shown, and the decision reads that opponent as it would with no read at all.
+_Avoid_: disabled, off, shadow
+
 **Evidence**:
 The opponent's hands at spots like the current one. A read counts for only as much as its evidence.
 _Avoid_: sample, data
