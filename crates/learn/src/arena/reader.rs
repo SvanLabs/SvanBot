@@ -27,6 +27,11 @@ pub struct BoutReader<F> {
 }
 
 impl<F: Fn(&Spot, u64, &Reads) -> Action> BoutReader<F> {
+    /// Freeze the observations before measuring fresh deals.
+    pub fn into_reads(self) -> Reads {
+        self.reads.into_inner()
+    }
+
     pub fn new(decide: F) -> Self {
         Self {
             decide,

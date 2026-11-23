@@ -1,5 +1,5 @@
-//! `svanbot paired reads <deals> [seed] [warm-up]`: what playing by an opponent's own read wins,
-//! heads up, then exit (V11-25). It touches neither the venue nor a store.
+//! `svanbot paired reads [6-max] <deals> [seed] [warm-up]`: what playing by an opponent's own read wins,
+//! heads up or with the pricer at six seats, then exit (V11-25). It touches neither the venue nor a store.
 //!
 //! Against each fixed sparring archetype, a warm-up of `warm-up` deals (default 200) builds the
 //! policy's read of the opponent with the live code, and freezes it. Then each of `deals` fresh
@@ -10,11 +10,16 @@
 
 use std::process::ExitCode;
 
+use svanbot_core::spot::Spot;
+use svanbot_learn::arena::{BoutReader, opponent_name, ring_deals};
 use svanbot_learn::exploit::gate;
 use svanbot_learn::paired::{Match, Verdict, verdict};
 use svanbot_learn::read_sim::{OPPONENT, reads_on_off, warm_up};
+use svanbot_learn::ring::SIX_MAX;
 use svanbot_sim::sparring::Archetype;
+use svanbot_strategy::action::ActionModel;
 use svanbot_strategy::params::Params;
+use svanbot_strategy::pricer::{Budget, price_lines};
 
 use crate::deciders;
 
@@ -32,9 +37,13 @@ const ADAPTING: [Archetype; 2] = [Archetype::Switching, Archetype::Learning];
 const CAP: f64 = 25.0;
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
+    let six_max = args.first().is_some_and(|arg| arg == "6-max");
+    let args = &args[usize::from(six_max)..];
     let number = |at: usize| args.get(at).map(|text| text.parse::<u64>());
     let (Some(Ok(deals)), seed, warm) = (number(0), number(1), number(2)) else {
-        eprintln!("svanbot paired reads: usage: svanbot paired reads <deals> [seed] [warm-up]");
+        eprintln!(
+            "svanbot paired reads: usage: svanbot paired reads [6-max] <deals> [seed] [warm-up]"
+        );
         return ExitCode::from(2);
     };
     let (Ok(seed), Ok(warm)) = (seed.transpose(), warm.transpose()) else {
@@ -42,13 +51,19 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     };
     let (game, warm) = (deciders::game(seed.unwrap_or(1)), warm.unwrap_or(200));
+    let table = if six_max { "6-max" } else { "heads up" };
     let params = Params::DEFAULT;
     let off = deciders::challenger(&params, None);
     let play = |archetype: Archetype| {
+        if six_max {
+            return measure_ring(&game, archetype, warm, deals, &params);
+        }
         let reads = warm_up(&game, archetype, 0..warm, &off);
         let read = reads.get(OPPONENT);
         let on = deciders::reader(&params, None, &reads);
-        let results = measure(&game, archetype, warm..warm + deals, &on, &off);
+        let results = measure(warm..warm + deals, |deal| {
+            reads_on_off(&game, archetype, deal..deal + 1, &on, &off)[0]
+        });
         println!(
             "reads on against off, {}: {}, read {} at {:.0}% of the budget",
             archetype.name(),
@@ -60,7 +75,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     };
     let found = verdict(&mean_per_deal(FIXED.map(play)));
     println!(
-        "reads on against off, heads up: {} (seed {}, warm-up {warm})",
+        "reads on against off, {table}: {} (seed {}, warm-up {warm})",
         line(&found),
         game.seed
     );
@@ -102,28 +117,18 @@ fn line(found: &Verdict) -> String {
 /// [`reads_on_off`] over `numbers`, spread over [`THREADS`]: thread `k` plays every
 /// `THREADS`-th deal from the `k`-th, and the results go back in deal order, so the verdict is
 /// the same on any number of threads.
-fn measure(
-    game: &Match,
-    archetype: Archetype,
-    numbers: std::ops::Range<u64>,
-    on: &(impl Fn(&svanbot_core::spot::Spot, u64) -> svanbot_core::rules::Action + Sync),
-    off: &(impl Fn(&svanbot_core::spot::Spot, u64) -> svanbot_core::rules::Action + Sync),
-) -> Vec<f64> {
+fn measure(numbers: std::ops::Range<u64>, play: impl Fn(u64) -> f64 + Sync) -> Vec<f64> {
     let start = numbers.start;
     let mut results = vec![0.0; (numbers.end - start) as usize];
     let played: Vec<Vec<(u64, f64)>> = std::thread::scope(|scope| {
         let workers: Vec<_> = (0..THREADS)
             .map(|k| {
                 let numbers = numbers.clone();
+                let play = &play;
                 scope.spawn(move || {
                     (numbers.start + k..numbers.end)
                         .step_by(THREADS as usize)
-                        .map(|deal| {
-                            (
-                                deal,
-                                reads_on_off(game, archetype, deal..deal + 1, on, off)[0],
-                            )
-                        })
+                        .map(|deal| (deal, play(deal)))
                         .collect()
                 })
             })
@@ -136,5 +141,49 @@ fn measure(
     for (deal, result) in played.into_iter().flatten() {
         results[(deal - start) as usize] = result;
     }
+    results
+}
+
+/// Freeze one read per physical seat, then rotate both pricers through identical deals.
+fn measure_ring(
+    game: &Match,
+    archetype: Archetype,
+    warm: u64,
+    deals: u64,
+    params: &Params,
+) -> Vec<f64> {
+    let population = ActionModel::baseline();
+    let budget = |seed| Budget {
+        samples: deciders::SAMPLES,
+        seed,
+    };
+    let off = |spot: &Spot, seed| {
+        svanbot_strategy::pricer::price(spot, Some(&population), budget(seed), params).action
+    };
+    let observer = BoutReader::new(|spot, seed, _reads| off(spot, seed));
+    ring_deals(game, archetype, 0..warm, &observer);
+    let reads = observer.into_reads();
+    let names: Vec<_> = (0..SIX_MAX)
+        .map(|seat| opponent_name(SIX_MAX, seat))
+        .collect();
+    let on = |spot: &Spot, seed| {
+        let seated: Vec<_> = spot
+            .seats
+            .iter()
+            .map(|&seat| (seat, names[seat].as_str()))
+            .collect();
+        let personal = reads.personal(&seated, &population, params.exploit);
+        let models: Vec<_> = personal.iter().map(|read| &read.model).collect();
+        price_lines(spot, &models, budget(seed), params).action
+    };
+    let results = measure(warm..warm + deals, |deal| {
+        ring_deals(game, archetype, deal..deal + 1, &on)[0]
+            - ring_deals(game, archetype, deal..deal + 1, &off)[0]
+    });
+    println!(
+        "reads on against off, {}: {}",
+        archetype.name(),
+        line(&verdict(&results))
+    );
     results
 }
