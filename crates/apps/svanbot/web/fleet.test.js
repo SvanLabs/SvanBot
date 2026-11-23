@@ -250,7 +250,7 @@ test("a re-solve's value is signed and in chips, the unit the tree is built in",
 });
 
 test("an exploit budget says so, and the baseline says it exploits nothing", () => {
-  expect(exploitText(0.4)).toBe("exploit 0.40");
+  expect(exploitText(0.4)).toBe("configured exploit budget 0.40");
   expect(exploitText(null)).toBe("baseline read, no exploit");
   expect(exploitText(undefined)).toBe("baseline read, no exploit");
 });

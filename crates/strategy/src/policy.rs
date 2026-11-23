@@ -81,8 +81,7 @@ impl Branch {
 /// What a decision was made from, kept with its hand so "why did it do that?" is answered from the
 /// record rather than by playing the hand again.
 ///
-/// It carries only what the decision path knows. An opponent's class and an exploit budget spent
-/// and left are not among them: nothing computes either while a bot plays (V11-19).
+/// Each range carries the class and share of the budget its opponent's read earned.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Trace {
     pub branch: Branch,
@@ -141,14 +140,13 @@ pub struct Personal {
 }
 
 /// What the pricer decided from: our equity against the opponents' ranges, the price of the call
-/// it was measured against, and how far the exploit gate let the reads move it.
+/// it was measured against, and the configured exploit budget when playing by reads.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PricedTrace {
     pub equity: f64,
     /// `None` when the check was free, since a free check has no price.
     pub price: Option<f64>,
-    /// The exploit budget the decision read by, when a fitted model passed the gate; `None` when
-    /// the baseline decided, since the baseline exploits nothing.
+    /// The configured budget when a fitted model or a trusted opponent read was in use.
     pub exploit: Option<f64>,
     pub ranges: Vec<Ranged>,
 }
@@ -250,7 +248,8 @@ pub fn decide_read(
                         equity: priced.equity,
                         // What the pricer compared against, not a second reading of the spot.
                         price: priced.price,
-                        exploit: gated.then_some(params.exploit),
+                        exploit: (gated || reads.iter().flatten().any(|read| read.trust > 0.0))
+                            .then_some(params.exploit),
                         ranges: read_ranges(spot, population, &reads, spot.opponents.max(1)),
                     }),
                 }),

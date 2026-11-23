@@ -157,7 +157,9 @@ fn each_opponent_is_read_by_their_own_model_and_the_trace_names_their_class_and_
     }];
     let decision = decide_read(&spot, None, &personal, &Params::DEFAULT, BUDGET, 60);
     let trace = decision.trace.unwrap();
-    let ranges = trace.priced.unwrap().ranges;
+    let priced = trace.priced.unwrap();
+    assert_eq!(priced.exploit, Some(Params::DEFAULT.exploit));
+    let ranges = priced.ranges;
     let (one, three) = (&ranges[0], &ranges[1]);
     assert_eq!((one.seat, one.class, one.trust), (Some(1), None, None));
     assert_eq!(

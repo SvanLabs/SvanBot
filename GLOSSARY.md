@@ -397,8 +397,8 @@ The action a re-solve's mixed strategy picked: the mix, the values, and the inde
 _Avoid_: sampled, rolled, picked
 
 **Exploit gate**:
-The test a fit must pass before a bot reads by it. A model that failed it is not in the process at
-all, so the trace's `exploit` is `None` and the **baseline** read the spot.
+The test of how much playing by a set of opponent reads could cost against adapting opponents.
+The reads pass when the one-sided 95% upper bound on their paired loss per hand is below the cap.
 _Avoid_: threshold, approval
 
 **Public TV**:

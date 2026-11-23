@@ -116,7 +116,7 @@ test("a priced decision says its price, and that the baseline exploits nothing",
 
 test("a priced decision reads by an exploit budget when a fit passed the gate", async () => {
   const text = replay.decisionView(priced({ exploit: 0.4 })).textContent;
-  expect(text).toContain("exploit 0.40");
+  expect(text).toContain("configured exploit budget 0.40");
 });
 
 test("a range names the seat it read, so it matches the table", async () => {
