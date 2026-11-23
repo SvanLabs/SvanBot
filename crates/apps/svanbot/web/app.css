@@ -1,44 +1,67 @@
-/* The dashboard's one tokens file and its layout (V11-11). Four type steps, tokens that follow
-   the OS light or dark setting, and a sticky strip that keeps the fleet's state on screen.
-   Contrast: every text token is at least 4.5:1 on its background, and the chart's line and the
-   tone borders at least 3:1, in both schemes. */
+/* The dashboard's tokens and layout: a dark poker console (V11-44). Dense like a trading desk,
+   with a felt-green accent, the fleet's state always on the strip, and numbers in tabular figures
+   so a ticking value never shifts its column. Dark is the console's own scheme; a light OS
+   setting gets the same layout in light tokens. Contrast: every text token is at least 4.5:1 on
+   its background, and the chart's line and the tone borders at least 3:1, in both schemes. */
 
 :root {
+  --step-tiny: 0.6875rem;
   --step-small: 0.8125rem;
-  --step-body: 1rem;
-  --step-lead: 1.375rem;
-  --step-title: 2rem;
+  --step-body: 0.9375rem;
+  --step-lead: 1.25rem;
+  --step-title: 1.75rem;
 
-  --bg: #f5f6f8;
-  --panel: #ffffff;
-  --ink: #161b22;
-  --muted: #4b5565;
-  --line: #d8dde5;
-  --mark: #1f5fbf;
-  --ok-ink: #0f5132;
-  --ok-bg: #e6f4ec;
-  --warn-ink: #6b4a00;
-  --warn-bg: #fff3cd;
-  --bad-ink: #8a1c12;
-  --bad-bg: #fde8e6;
+  --bg: #0b0f0d;
+  --bg-glow: #0f1f18;
+  --panel: #121915;
+  --panel-raised: #18221d;
+  --ink: #e6efe9;
+  --muted: #9fb1a7;
+  --line: #24332b;
+  --line-strong: #345043;
+  --mark: #3ddc97;
+  --mark-soft: rgb(61 220 151 / 0.14);
+  --gold: #f2c14e;
+  --ok-ink: #7ef0b6;
+  --ok-bg: #10301f;
+  --warn-ink: #ffd36b;
+  --warn-bg: #362b0c;
+  --bad-ink: #ff9d92;
+  --bad-bg: #3d1714;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px rgb(0 0 0 / 0.35);
+  --radius: 0.625rem;
 
-  color-scheme: light dark;
+  color-scheme: dark;
 }
 
+/* The console is dark by its own design; the OS setting is followed both ways. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1216;
-    --panel: #171c22;
-    --ink: #e8edf3;
-    --muted: #aab4c0;
-    --line: #2b333d;
-    --mark: #7fb0ff;
-    --ok-ink: #8fe0b0;
-    --ok-bg: #123526;
-    --warn-ink: #ffd670;
-    --warn-bg: #3a2f0d;
-    --bad-ink: #ffb4aa;
-    --bad-bg: #421d19;
+    color-scheme: dark;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eef3f0;
+    --bg-glow: #e1ece6;
+    --panel: #ffffff;
+    --panel-raised: #f6faf8;
+    --ink: #0f1a14;
+    --muted: #4a5d52;
+    --line: #d3ddd7;
+    --line-strong: #a9bdb2;
+    --mark: #0b7a4b;
+    --mark-soft: rgb(11 122 75 / 0.1);
+    --gold: #8a6300;
+    --ok-ink: #0d5a35;
+    --ok-bg: #e2f4ea;
+    --warn-ink: #6b4a00;
+    --warn-bg: #fff2cc;
+    --bad-ink: #8a1c12;
+    --bad-bg: #fde6e3;
+    --shadow: 0 1px 2px rgb(15 26 20 / 0.06), 0 6px 18px rgb(15 26 20 / 0.06);
+    color-scheme: light;
   }
 }
 
@@ -46,29 +69,49 @@
   box-sizing: border-box;
 }
 
+html {
+  background: var(--bg);
+}
+
 body {
   margin: 0;
-  background: var(--bg);
+  min-height: 100vh;
+  background:
+    radial-gradient(60rem 30rem at 10% -10%, var(--bg-glow), transparent 70%),
+    radial-gradient(50rem 30rem at 110% 0%, var(--bg-glow), transparent 70%), var(--bg);
   color: var(--ink);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
   font-size: var(--step-body);
   line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
   color: var(--mark);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 a:focus-visible,
-summary:focus-visible {
-  outline: 3px solid var(--mark);
+summary:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--mark);
   outline-offset: 2px;
+  border-radius: 4px;
+}
+
+code,
+.mono,
+.num,
+td.number,
+th.number {
+  font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 code,
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--step-small);
 }
 
@@ -76,43 +119,127 @@ code,
   color: var(--muted);
 }
 
-/* The sticky strip: brand, pages, count, freshness, worst problem. */
+/* The strip: brand, pages, count, freshness and the worst problem, always on screen. */
 .strip {
   position: sticky;
   top: 0;
   z-index: 10;
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 1rem;
-  padding: 0.7rem 1.25rem;
-  background: var(--panel);
+  align-items: center;
+  gap: 0.4rem 1.25rem;
+  padding: 0.6rem 1.25rem;
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  backdrop-filter: blur(12px) saturate(1.2);
   border-bottom: 1px solid var(--line);
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: var(--step-lead);
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   color: var(--ink);
   text-decoration: none;
 }
 
+.brand svg {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.brand .chip-ring {
+  fill: none;
+  stroke: var(--mark);
+  stroke-width: 2.5;
+  stroke-dasharray: 3.5 2.6;
+}
+
+.brand .chip-face {
+  fill: var(--mark-soft);
+  stroke: var(--mark);
+  stroke-width: 1;
+}
+
+.brand .chip-suit {
+  fill: var(--mark);
+}
+
 .strip nav {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.25rem;
+}
+
+.strip nav a {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: var(--step-small);
+  font-weight: 600;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.strip nav a:hover {
+  color: var(--ink);
+  background: var(--panel-raised);
+}
+
+.strip nav a[aria-current="page"] {
+  color: var(--bg);
+  background: var(--mark);
+}
+
+#count {
+  margin-left: auto;
+  font-size: var(--step-small);
 }
 
 .worst {
   flex-basis: 100%;
+  font-size: var(--step-small);
 }
 
 .pill {
-  display: inline-block;
-  padding: 0.05rem 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.6rem;
   border-radius: 999px;
   border: 1px solid currentColor;
-  font-size: var(--step-small);
-  font-weight: 600;
+  font-size: var(--step-tiny);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A live dot on a pill that says the stream is fresh. */
+.pill.ok::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill.ok::before,
+  .tick {
+    animation: none;
+  }
 }
 
 .ok {
@@ -137,34 +264,67 @@ code,
 }
 
 main {
-  padding: 1.25rem;
-  max-width: 78rem;
+  padding: 1.5rem 1.25rem 3rem;
+  max-width: 96rem;
   margin: 0 auto;
 }
 
 h1 {
   font-size: var(--step-title);
-  margin: 0 0 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 1.25rem;
 }
 
 h2 {
   font-size: var(--step-lead);
-  margin: 0 0 0.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.6rem;
+}
+
+h3 {
+  font-size: var(--step-small);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 1rem 0 0.4rem;
 }
 
 /* One card per bot, and the panels of a drill-down page: the same grid. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
   gap: 1rem;
 }
 
 .card {
-  background: var(--panel);
+  position: relative;
+  background: linear-gradient(180deg, var(--panel-raised), var(--panel));
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
-  padding: 1rem;
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
   min-width: 0;
+  box-shadow: var(--shadow);
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+
+/* A felt-green rule across the top of each card: the console's one accent. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: linear-gradient(90deg, var(--mark), transparent);
+  opacity: 0.7;
+}
+
+.card:hover {
+  border-color: var(--line-strong);
 }
 
 .card > :last-child {
@@ -174,37 +334,73 @@ h2 {
 .card header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.card header h2 {
+  margin: 0;
+}
+
+.card header a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.card header a:hover {
+  color: var(--mark);
+}
+
+/* A value that just changed flashes once. */
+.tick {
+  animation: tick 0.9s ease-out;
+}
+
+@keyframes tick {
+  from {
+    background: var(--mark-soft);
+  }
+  to {
+    background: transparent;
+  }
 }
 
 .problems {
-  margin: 0 0 1rem;
+  margin: 0 0 1.25rem;
   padding: 0;
   list-style: none;
 }
 
 .problems li {
-  padding: 0.4rem 0.75rem;
-  border-left: 4px solid currentColor;
-  margin-bottom: 0.35rem;
-  border-radius: 0.25rem;
+  padding: 0.5rem 0.85rem;
+  border-left: 3px solid currentColor;
+  margin-bottom: 0.4rem;
+  border-radius: 0.35rem;
+  font-size: var(--step-small);
 }
 
 dl {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0.15rem 1rem;
-  margin: 0.5rem 0;
+  gap: 0.25rem 1rem;
+  margin: 0.6rem 0;
+  font-size: var(--step-small);
 }
 
 dt {
   color: var(--muted);
+  font-size: var(--step-tiny);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  align-self: center;
 }
 
 dd {
   margin: 0;
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 table {
@@ -213,36 +409,51 @@ table {
   font-size: var(--step-small);
 }
 
+th {
+  color: var(--muted);
+  font-size: var(--step-tiny);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 th,
 td {
   text-align: left;
-  padding: 0.25rem 0.5rem 0.25rem 0;
+  padding: 0.4rem 0.6rem 0.4rem 0;
   border-bottom: 1px solid var(--line);
+}
+
+tbody tr:hover td {
+  background: var(--mark-soft);
 }
 
 td.number,
 th.number {
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 tr.folded td {
   color: var(--muted);
 }
 
-/* The chart: a line on a zero rule. Its numbers are in the table under it. */
+/* The chart: a line on a zero rule, with a soft fill under it. Its numbers are in the table. */
 .chart {
   display: block;
   width: 100%;
-  height: 6rem;
-  margin: 0.5rem 0;
+  height: 7rem;
+  margin: 0.6rem 0;
+  border-radius: 0.35rem;
+  background: linear-gradient(180deg, var(--mark-soft), transparent 80%);
 }
 
 .chart polyline {
   fill: none;
   stroke: var(--mark);
   stroke-width: 2;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px var(--mark-soft));
 }
 
 .chart line {
@@ -272,25 +483,262 @@ tr.folded td {
 
 .whisker line.bar {
   stroke: var(--mark);
-  stroke-width: 2;
+  stroke-width: 3;
+  stroke-linecap: round;
 }
 
 .whisker line.mean {
-  stroke: var(--ink);
+  stroke: var(--gold);
   stroke-width: 2;
 }
 
 details {
-  margin-top: 0.5rem;
+  margin-top: 0.6rem;
 }
 
 summary {
   cursor: pointer;
   color: var(--muted);
   font-size: var(--step-small);
+  font-weight: 600;
+}
+
+summary:hover {
+  color: var(--ink);
 }
 
 .scroll {
-  max-height: 14rem;
+  max-height: 16rem;
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.decision {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* A playing card, drawn in our own markup: rank over suit, red suits in the red. */
+.pcard {
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 2.6rem;
+  margin-right: 0.2rem;
+  border-radius: 0.3rem;
+  background: #f7f4ec;
+  color: #14181a;
+  border: 1px solid #c9c2b0;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.35);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-weight: 800;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.pcard.red {
+  color: #b3261e;
+}
+
+.pcard.back {
+  background: repeating-linear-gradient(45deg, #1d6b4a 0 4px, #145238 4px 8px);
+  border-color: #0e3d29;
+}
+
+@media (max-width: 40rem) {
+  .strip {
+    padding: 0.5rem 1rem;
+  }
+  main {
+    padding: 1rem;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The fleet's summary bar: four tiles across the top of the fleet page. */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--panel-raised), var(--panel));
+  box-shadow: var(--shadow);
+}
+
+.tile .label {
+  color: var(--muted);
+  font-size: var(--step-tiny);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.big {
+  font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--step-lead);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.up {
+  color: var(--ok-ink);
+}
+
+.down {
+  color: var(--bad-ink);
+}
+
+/* A card's headline: its win rate, large, beside a sparkline of its latest hands. */
+.headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.3rem 0 0.6rem;
+}
+
+.spark {
+  width: 8rem;
+  height: 1.9rem;
+  flex: none;
+}
+
+.spark polyline {
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark.up polyline {
+  stroke: var(--ok-ink);
+}
+
+.spark.down polyline {
+  stroke: var(--bad-ink);
+}
+
+.spark line {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The felt: an oval table in green baize with a wooden rail, seats round it. */
+.felt {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  margin: 0.9rem 0.5rem 1.6rem;
+  border-radius: 50% / 50%;
+  background:
+    radial-gradient(ellipse at 50% 40%, #2f8a5c 0%, #1d6b45 45%, #134d31 100%);
+  border: 0.55rem solid #4a2e1c;
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.06),
+    inset 0 0 2.5rem rgb(0 0 0 / 0.45),
+    0 0 0 1px #2a190e,
+    0 10px 24px rgb(0 0 0 / 0.45);
+}
+
+.felt .middle {
+  position: absolute;
+  inset: 12% 0 24%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.felt .board {
+  display: flex;
+  min-height: 2rem;
+}
+
+.felt .pcard {
+  width: 1.45rem;
+  height: 2rem;
+  margin-right: 0.12rem;
+  font-size: 0.7rem;
+}
+
+.felt .pot {
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.35);
+  color: #f3e7c5;
+  font-size: var(--step-tiny);
+  font-weight: 700;
+}
+
+.felt .seat {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 4.4rem;
+  max-width: 6.5rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.45rem;
+  background: rgb(10 16 13 / 0.88);
+  border: 1px solid #2c3d33;
+  color: #e6efe9;
+  font-size: var(--step-tiny);
+  line-height: 1.25;
+  text-align: center;
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.4);
+}
+
+.felt .seat .name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.felt .seat .stack {
+  color: #f2c14e;
+}
+
+.felt .seat.us {
+  border-color: #3ddc97;
+  box-shadow:
+    0 0 0 1px #3ddc97,
+    0 0 14px rgb(61 220 151 / 0.45);
+}
+
+.felt .seat.folded {
+  opacity: 0.45;
+}
+
+.felt .dealer {
+  position: absolute;
+  top: -0.55rem;
+  right: -0.55rem;
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #f7f4ec;
+  color: #14181a;
+  font-size: 0.6rem;
+  font-weight: 900;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
 }

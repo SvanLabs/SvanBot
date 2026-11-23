@@ -4,6 +4,7 @@
 
 import { facts, h, panel, table } from "./dom.js";
 import { dossierIndex, dossierPage } from "./dossier.js";
+import { felt, sparkline, summary } from "./felt.js";
 import {
   arenaLeagues,
   arenaRun,
@@ -32,6 +33,7 @@ function when(ms, nowMs) {
 function fleetView(fleet, nowMs, problems) {
   return [
     h("h1", {}, "Fleet"),
+    summary(fleet),
     problems.length > 0
       ? h(
           "ul",
@@ -53,9 +55,20 @@ function fleetView(fleet, nowMs, problems) {
             h("h2", {}, h("a", { href: `/bot/${encodeURIComponent(status.bot)}` }, status.bot)),
             h("span", { class: `pill ${view.tone}` }, view.label),
           ),
-          h("p", {}, view.detail),
+          h("p", { class: "muted" }, view.detail),
+          h(
+            "div",
+            { class: "headline" },
+            h(
+              "strong",
+              { class: `big ${(winRate(status.play) ?? 0) >= 0 ? "up" : "down"}` },
+              rateText(winRate(status.play)),
+            ),
+            sparkline(status.play),
+          ),
+          status.table ? felt(status.table) : null,
           facts([
-            ["Win rate", rateText(winRate(status.play))],
+            ["Build", status.version ?? "—"],
             ["Hands", `${status.hands} kept, ${status.play.counted} counted`],
             ["Last hand", when(status.last_hand_ms, nowMs)],
             ["Incidents", `${status.run_incidents} this run, ${status.incidents} in all`],
@@ -543,6 +556,13 @@ function render() {
         : `${problems[0].text} (and ${problems.length - 1} more)`;
   const at = route(location.pathname);
   load(at);
+  // The page in view is marked in the nav, so the strip says where the reader is.
+  const section = `/${location.pathname.split("/")[1] ?? ""}`;
+  for (const link of document.querySelectorAll?.(".strip nav a") ?? []) {
+    const here = link.getAttribute("href") === (section === "/bot" ? "/" : section);
+    if (here) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
   const pages = {
     hand: () => handPage(state, at.bot, at.hand),
     bot: () => botPage(state.fleet, at.bot, nowMs),
