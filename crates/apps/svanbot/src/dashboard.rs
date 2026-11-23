@@ -12,13 +12,12 @@
 //! unless set. `SVANBOT_LIB` is the install tree, `~/.local/lib/svanbot` unless set.
 //! `SVANBOT_DASHBOARD_ADDR` is `127.0.0.1:5000` unless set.
 
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
 use serde_json::{Value, json};
 use svanbot_runtime::fleet::{self, ArenaRun};
@@ -26,11 +25,13 @@ use svanbot_runtime::status::Fleet;
 use svanbot_runtime::store::Store;
 use svanbot_strategy::policy::{Branch, Ranged, Trace};
 
+mod head;
 mod page;
 mod release;
 mod season;
 mod stream;
 
+use head::{HEAD_WAIT, Head, head};
 use release::release;
 pub use season::Season;
 
@@ -62,10 +63,6 @@ pub struct Server {
     config: Arc<Config>,
     addr: SocketAddr,
 }
-
-/// The longest request head read, and the longest wait for one.
-const HEAD_LIMIT: usize = 8 * 1024;
-const HEAD_WAIT: Duration = Duration::from_secs(5);
 
 /// The answer when a store is there but cannot be read: not the caller's mistake, and not a
 /// bot that has played nothing.
@@ -110,14 +107,20 @@ impl Server {
 /// Reads one request and answers it. Every answer closes the connection.
 fn handle(mut socket: TcpStream, config: &Config) {
     let _ = socket.set_read_timeout(Some(HEAD_WAIT));
-    let Some((method, path)) = request_line(&socket) else {
-        let _ = respond(
-            &mut socket,
-            400,
-            "text/plain; charset=utf-8",
-            b"bad request\n",
-        );
-        return;
+    let (method, path) = match head(&socket) {
+        Head::Request(method, path) => (method, path),
+        // A connection opened before it was needed: an answer it did not ask for would be read
+        // as the page's, so it is closed unanswered.
+        Head::Silent => return,
+        Head::Bad => {
+            let _ = respond(
+                &mut socket,
+                400,
+                "text/plain; charset=utf-8",
+                b"bad request\n",
+            );
+            return;
+        }
     };
     if method != "GET" {
         let _ = respond(
@@ -158,27 +161,6 @@ fn handle(mut socket: TcpStream, config: &Config) {
             ),
         },
     };
-}
-
-/// The method and the path of the request on `socket`, once its whole head has come.
-fn request_line(socket: &TcpStream) -> Option<(String, String)> {
-    let mut reader = BufReader::new(socket);
-    let mut first = String::new();
-    reader.read_line(&mut first).ok()?;
-    let mut read = first.len();
-    loop {
-        let mut line = String::new();
-        let count = reader.read_line(&mut line).ok()?;
-        read += count;
-        if count == 0 || read > HEAD_LIMIT {
-            return None;
-        }
-        if line == "\r\n" || line == "\n" {
-            break;
-        }
-    }
-    let mut parts = first.split_whitespace();
-    Some((parts.next()?.to_owned(), parts.next()?.to_owned()))
 }
 
 /// Writes one whole response.

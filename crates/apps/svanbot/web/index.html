@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#05060b" />
     <title>SvanBot</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
@@ -17,22 +18,30 @@
               d="M16 5c3.6 4.6 9 7.4 9 12.2a5 5 0 0 1-8 4l1.4 4.8h-4.8l1.4-4.8a5 5 0 0 1-8-4C7 12.4 12.4 9.6 16 5z"
             />
           </svg>
-          <i>11</i>
         </span>
         <span class="brand-text">
           <b>SvanBot</b>
-          <small>Control room / v11</small>
+          <small>Control room <i>v11</i></small>
         </span>
       </a>
       <nav id="bots" class="bot-tabs" aria-label="Bots"></nav>
-      <nav class="pages" aria-label="Pages">
-        <a href="/">Fleet</a>
-        <a href="/dossier">Opponents</a>
-        <a href="/scoreboard">Arena</a>
-        <a href="/release">Release</a>
-      </nav>
-      <span id="count" class="muted"></span>
-      <span id="fresh" class="pill warn">connecting</span>
+      <div class="strip-end">
+        <nav class="pages" aria-label="Pages">
+          <a href="/">Fleet</a>
+          <a href="/dossier">Opponents</a>
+          <a href="/scoreboard">Arena</a>
+          <a href="/release">Release</a>
+        </nav>
+        <button type="button" class="search" data-act="palette" aria-label="Search: jump to a bot, page or view">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" />
+          </svg>
+          <span>Jump to…</span>
+          <kbd>⌘K</kbd>
+        </button>
+        <span id="count" class="muted"></span>
+        <span id="fresh" class="pill warn">connecting</span>
+      </div>
       <strong id="worst" class="worst"></strong>
     </header>
     <main id="view">

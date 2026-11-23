@@ -4,6 +4,7 @@
 
 import { h } from "./dom.js";
 import { chart, rateText, running, winRate } from "./fleet.js";
+import { icon } from "./icons.js";
 
 const SUITS = { h: ["♥", true], d: ["♦", true], c: ["♣", false], s: ["♠", false] };
 
@@ -64,7 +65,7 @@ export function felt(table, { opponents = null, theme = "arena" } = {}) {
           "span",
           { class: "who" },
           h("span", { class: "name" }, player.name),
-          h("span", { class: "stack" }, chips(player.stack)),
+          h("span", { class: "stack", "data-flash": "" }, chips(player.stack)),
         ),
         us ? h("span", { class: "you" }, "you") : null,
         !us && reads !== null
@@ -96,7 +97,7 @@ export function felt(table, { opponents = null, theme = "arena" } = {}) {
         "div",
         { class: "pot" },
         h("span", { class: "pot-label" }, "pot"),
-        h("span", { class: "pot-amount" }, chips(table.pot)),
+        h("span", { class: "pot-amount", "data-flash": "" }, chips(table.pot)),
         bb === null ? null : h("span", { class: "pot-bb" }, `${Number(bb.toFixed(1))} BB`),
       ),
     ),
@@ -118,37 +119,62 @@ export function summary(fleet) {
     .filter((bot) => winRate(bot.play) !== null)
     .sort((a, b) => winRate(b.play) - winRate(a.play))[0];
   return tiles([
-    ["Bots online", `${playing} of ${bots.length} playing`, `${bots.length - playing} offline`],
-    ["Hands played", `${chips(hands)} hands`, `${chips(counted)} counted for the ledger`],
+    [
+      "Bots online",
+      `${playing} of ${bots.length} playing`,
+      `${bots.length - playing} offline`,
+      "",
+      "bots",
+    ],
+    [
+      "Hands played",
+      `${chips(hands)} hands`,
+      `${chips(counted)} counted for the ledger`,
+      "",
+      "cards",
+    ],
     [
       "Fleet win rate",
       rateText(pooled),
       "pooled over every counted hand",
       pooled === null ? "" : pooled >= 0 ? "up" : "down",
+      "trend",
     ],
     [
       "Leading bot",
       best ? best.bot : "—",
       best ? rateText(winRate(best.play)) : "no counted hands yet",
+      "",
+      "trophy",
     ],
   ]);
 }
 
-/** Hero tiles: a label, a big value and a note each, the value toned up or down when given. */
+/**
+ * Hero tiles: an icon, a label, a big value and a note each, the value toned up or down when
+ * given, and flashing once when it changes.
+ */
 export function tiles(rows) {
   return h(
     "div",
     { class: "summary" },
-    rows.map(([label, value, note, tone = ""]) =>
+    rows.map(([label, value, note, tone = "", glyph = "bolt"]) =>
       h(
         "div",
-        { class: "tile" },
+        { class: `tile${tone ? ` tone-${tone}` : ""}` },
+        h("span", { class: "tile-icon" }, icon(glyph)),
         h("span", { class: "label" }, label),
-        h("strong", { class: `big ${tone}`.trim() }, value),
+        h("strong", { class: `big ${tone}`.trim(), "data-flash": "" }, value),
         note ? h("small", {}, note) : null,
       ),
     ),
   );
+}
+
+/** The area between a chart's line and its zero rule, for the soft fill under the line. */
+export function area(points, zero) {
+  const xs = points === "" ? [] : points.split(" ").map((point) => point.split(",")[0]);
+  return xs.length === 0 ? "" : `${xs[0]},${zero} ${points} ${xs.at(-1)},${zero}`;
 }
 
 /** A bot's running total over its latest hands, as a small line. */
@@ -166,6 +192,7 @@ export function sparkline(play) {
       role: "img",
       "aria-label": `Running total over the latest ${totals.length} hands: ${last.toFixed(1)} big blinds`,
     },
+    h("polygon", { class: "fill", points: area(points, zero) }),
     h("line", { x1: 0, x2: width, y1: zero, y2: zero }),
     h("polyline", { points }),
   );

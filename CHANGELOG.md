@@ -2,7 +2,20 @@
 
 v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final`.
 
-## 11.1.4: unreleased
+## 11.1.5: unreleased
+
+- The dashboard is remade to a 2026 standard (V11-45): a near-black ground under a slow aurora,
+  glass panels with a hairline gradient edge, one violet-to-cyan accent, and the platform's own
+  sans with tabular figures. A floating header carries the bots as chips; each page opens with a
+  large title and its state; hero tiles carry an icon and flash when their number moves; charts
+  fill to zero; each table glows on its rail, with seat plates ringed by what the bot reads of the
+  player. Ctrl/⌘ K (or `/`) opens a command palette that jumps to any bot, page, view or look,
+  and the dashboard's own links move without a reload. Motion stops when the OS asks for less.
+- The dashboard closes a connection that sends nothing without answering it. A browser opens one
+  before it needs it, and the "bad request" it used to get after five seconds was shown as the
+  page.
+
+## 11.1.4: released 2026-11-24
 
 - The dashboard's control room is a board (V11-44): panels in three columns that the reader
   arranges, hides and folds, shown a view at a time (Live, Opponents, Results, Learning, System,

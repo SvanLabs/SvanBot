@@ -5,9 +5,9 @@
 
 import { board, viewTabs } from "./board.js";
 import { facts, h, table } from "./dom.js";
-import { chips, felt, summary, tiles } from "./felt.js";
+import { area, chips, felt, summary, tiles } from "./felt.js";
 import { botView, chart, duration, rateText, running, winRate } from "./fleet.js";
-import { fleetRace, rail, tableCard, workspace } from "./room.js";
+import { fleetRace, pageHead, rail, tableCard } from "./room.js";
 import {
   activityView,
   arenaSummary,
@@ -59,7 +59,7 @@ export const BOT_LAYOUT = {
   hidden: [],
 };
 
-/** The tools of the workspace bar: the table's look, arranging, folding and a reset. */
+/** The page's tools: the table's look, arranging, folding and a reset. */
 function tools(ui) {
   return h(
     "div",
@@ -236,19 +236,19 @@ export function fleetRoom({ fleet, nowMs, problems, log, ui }) {
   ];
   const view = FLEET_VIEWS.find((one) => one.id === ui.view) ?? FLEET_VIEWS[0];
   return [
-    workspace("Fleet overview", nowMs, tools(ui)),
-    h(
-      "div",
-      { class: "overview" },
-      h(
-        "p",
-        { class: "status-line" },
-        h("span", { class: `dot ${online === fleet.bots.length ? "ok" : "warn"}` }),
-        h("b", {}, "Fleet"),
-        ` · ${online} of ${fleet.bots.length} bots online`,
+    pageHead({
+      crumb: "Fleet overview",
+      title: "Fleet",
+      after: h(
+        "span",
+        { class: `pill ${online === fleet.bots.length ? "ok" : "warn"}` },
+        `${online} of ${fleet.bots.length} online`,
       ),
-      summary(fleet),
-    ),
+      detail: "Every bot's table live, the season race, and what changed while you watched.",
+      tools: tools(ui),
+      nowMs,
+    }),
+    summary(fleet),
     rail("SV11 signal", "What the fleet plays by, as each bot reports it", [
       ["Build", builds.join(", ") || "—", builds.length > 1 ? "mixed builds" : "one build"],
       [
@@ -265,7 +265,6 @@ export function fleetRoom({ fleet, nowMs, problems, log, ui }) {
       ["Incidents", String(incidents), incidents === 0 ? "none recorded" : "see each bot"],
     ]),
     problemList(problems),
-    h("h1", {}, "Fleet"),
     viewTabs(FLEET_VIEWS, view.id),
     board(widgets, view, ui),
   ];
@@ -292,6 +291,7 @@ function ledgerChart(play) {
         "aria-label": label,
       },
       h("title", {}, label),
+      h("polygon", { class: "fill", points: area(points, zero) }),
       h("line", { x1: 0, x2: width, y1: zero, y2: zero }),
       h("polyline", { points }),
     ),
@@ -409,9 +409,7 @@ export function botRoom({ fleet, nowMs, log, hands, ui }, name) {
   const status = fleet.bots.find((bot) => bot.bot === name);
   if (!status) {
     return [
-      workspace(name, nowMs, null),
-      h("h1", {}, name),
-      h("p", {}, "This bot has written no status."),
+      pageHead({ crumb: name, title: name, detail: "This bot has written no status.", nowMs }),
     ];
   }
   const view = botView(status, nowMs);
@@ -477,40 +475,50 @@ export function botRoom({ fleet, nowMs, log, hands, ui }, name) {
   ];
   const chosen = BOT_VIEWS.find((one) => one.id === ui.view) ?? BOT_VIEWS[0];
   return [
-    workspace(status.bot, nowMs, tools(ui)),
-    h(
-      "div",
-      { class: "overview" },
-      h(
-        "p",
-        { class: "status-line" },
-        h("span", { class: `dot ${view.tone}` }),
-        h("b", {}, status.bot),
-        ` · ${view.detail} · `,
+    pageHead({
+      crumb: status.bot,
+      title: status.bot,
+      after: h("span", { class: `pill ${view.tone}` }, view.label),
+      detail: [
+        view.detail,
+        " · ",
         h("a", { href: `/bot/${encodeURIComponent(status.bot)}/dossier` }, "Dossier"),
-      ),
-      tiles([
-        [
-          "Table stack",
-          ours ? chips(ours.stack) : "—",
-          ours && seats.big_blind > 0
-            ? `${Number((ours.stack / seats.big_blind).toFixed(1))} BB behind`
-            : "not seated",
-        ],
-        [
-          "Win rate",
-          rateText(rate),
-          `over ${chips(status.play.counted)} counted hands`,
-          rate === null ? "" : rate >= 0 ? "up" : "down",
-        ],
-        [
-          "Season rank",
-          placed ? `#${placed.rank}` : "—",
-          placed ? `${chips(placed.score)} points` : "not on the board",
-        ],
-        ["Hands played", chips(status.hands), `${status.run_incidents} incidents this run`],
-      ]),
-    ),
+      ],
+      tools: tools(ui),
+      nowMs,
+    }),
+    tiles([
+      [
+        "Table stack",
+        ours ? chips(ours.stack) : "—",
+        ours && seats.big_blind > 0
+          ? `${Number((ours.stack / seats.big_blind).toFixed(1))} BB behind`
+          : "not seated",
+        "",
+        "chips",
+      ],
+      [
+        "Win rate",
+        rateText(rate),
+        `over ${chips(status.play.counted)} counted hands`,
+        rate === null ? "" : rate >= 0 ? "up" : "down",
+        "trend",
+      ],
+      [
+        "Season rank",
+        placed ? `#${placed.rank}` : "—",
+        placed ? `${chips(placed.score)} points` : "not on the board",
+        "",
+        "trophy",
+      ],
+      [
+        "Hands played",
+        chips(status.hands),
+        `${status.run_incidents} incidents this run`,
+        "",
+        "cards",
+      ],
+    ]),
     rail("SV11 signal", "What this bot plays by, as it reports it", [
       ["Street", seats?.street ?? "between hands", seats ? `pot ${chips(seats.pot)}` : "no table"],
       ["Build", status.version || "a checkout", `up ${when(status.started_ms, nowMs)}`],
@@ -525,7 +533,6 @@ export function botRoom({ fleet, nowMs, log, hands, ui }, name) {
         `${(status.opponents ?? []).length} opponents read`,
       ],
     ]),
-    h("h1", {}, status.bot, " ", h("span", { class: `pill ${view.tone}` }, view.label)),
     viewTabs(BOT_VIEWS, chosen.id),
     board(widgets, chosen, ui),
   ];

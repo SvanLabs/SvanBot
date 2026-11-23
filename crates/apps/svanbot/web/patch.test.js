@@ -57,6 +57,21 @@ test("a kept node stays as the reader left it while its key holds, and goes when
   expect(shown.textContent).toBe("theirs");
 });
 
+test("a value marked to flash flashes once when its text changes, and not when it holds", () => {
+  const value = (text) => h("strong", { class: "big", "data-flash": "" }, text);
+  const shown = view(value("12"), h("span", {}, "1s ago"));
+  const [big, age] = shown.children;
+  const flashed = [];
+  big.animate = (_frames, options) => flashed.push(["big", options.duration]);
+  age.animate = () => flashed.push(["age"]);
+  patch(shown, view(value("12"), h("span", {}, "2s ago")));
+  expect(flashed).toEqual([]);
+  patch(shown, view(value("13"), h("span", {}, "3s ago")));
+  expect(flashed).toEqual([["big", 900]]);
+  expect(shown.children[0]).toBe(big);
+  expect(big.textContent).toBe("13");
+});
+
 test("an open fallback stays open: whether it is open is the reader's, not the page's", () => {
   const shown = view(h("details", {}, h("summary", {}, "as a table"), h("p", {}, "1")));
   const [details] = shown.children;
