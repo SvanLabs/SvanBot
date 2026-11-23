@@ -71,6 +71,7 @@ const ids = {
   fresh: new Node("span"),
   count: new Node("span"),
   worst: new Node("strong"),
+  bots: new Node("nav"),
 };
 const listeners = {};
 const NOW = 1_800_000_000_000;
@@ -205,31 +206,52 @@ function byClass(node, name, found = []) {
   return found;
 }
 
-test("a fleet card draws its live table on the felt: seats, our seat, the button, the board", () => {
+test("a fleet card draws its live table: seats with plates, our seat, the button, the board, the pot", () => {
   const view = show("/");
   const [felt] = byClass(view, "felt");
   const seats = byClass(felt, "seat");
   expect(seats.length).toBe(3);
-  expect(byClass(felt, "us").map((seat) => seat.textContent)).toEqual(["SurSvan2,240"]);
-  expect(byClass(felt, "folded").map((seat) => seat.textContent)).toEqual(["someone1,950"]);
+  const plate = (seat) => [
+    byClass(seat, "name")[0].textContent,
+    byClass(seat, "stack")[0].textContent,
+  ];
+  expect(byClass(felt, "us").map(plate)).toEqual([["SurSvan", "2,240"]]);
+  expect(byClass(felt, "folded").map(plate)).toEqual([["someone", "1,950"]]);
+  // Everyone still in has card backs in front of them; the folded seat has none.
+  expect(seats.map((seat) => byClass(seat, "backs").length)).toEqual([1, 1, 0]);
+  expect(byClass(felt, "state").map((tag) => tag.textContent)).toEqual([
+    "in hand",
+    "in hand",
+    "folded",
+  ]);
   // The dealer's button sits with seat 0, whose name is text, never markup.
   expect(byClass(seats[0], "dealer").length).toBe(1);
-  expect(seats[0].textContent).toContain("<img src=x onerror=alert(1)>");
+  expect(byClass(seats[0], "name")[0].textContent).toBe("<img src=x onerror=alert(1)>");
+  expect(byClass(seats[0], "avatar")[0].textContent).toBe("IM");
   const cards = byClass(felt, "pcard");
   expect(cards.map((card) => card.textContent)).toEqual(["A♥", "K♦", "7♣", "2♠"]);
   expect(byClass(felt, "red").length).toBe(2);
-  expect(byClass(felt, "pot")[0].textContent).toBe("pot 640");
+  expect(byClass(felt, "pot-amount")[0].textContent).toBe("640");
+  expect(byClass(felt, "pot-bb")[0].textContent).toBe("32 BB");
   // A bot with no table has no felt.
   expect(byClass(view, "felt").length).toBe(1);
 });
 
-test("the fleet page opens with a summary and every card carries a sparkline of its hands", () => {
+test("the fleet overview opens with tiles, and every table card carries a sparkline", () => {
   const view = show("/");
   const [summary] = byClass(view, "summary");
   expect(summary.textContent).toContain("1 of 2 playing");
   expect(summary.textContent).toContain("420 hands");
   expect(summary.textContent).toContain("+1.5 bb/100");
-  expect(byClass(view, "spark").length).toBe(2);
+  expect(view.all("article").map((card) => byClass(card, "spark").length)).toEqual([1, 1]);
+  expect(byClass(view, "race-row").length).toBe(2);
+});
+
+test("the top bar has a tab a bot, and the bot in view is lit", () => {
+  show("/bot/SurSvan");
+  const tabs = ids.bots.all("a");
+  expect(tabs.map((tab) => tab.attrs.href)).toEqual(["/bot/SurSvan", "/bot/MegaSvan"]);
+  expect(tabs.map((tab) => tab.attrs["aria-current"] ?? null)).toEqual(["page", null]);
 });
 
 test("a bot's page has six panels, its table, and a chart with its numbers in a table", () => {

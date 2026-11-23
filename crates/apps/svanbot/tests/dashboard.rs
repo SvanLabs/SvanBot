@@ -235,6 +235,13 @@ fn the_page_its_script_and_its_styles_are_served_and_every_view_is_the_page() {
     assert_eq!(status, 404);
     let (status, _) = get(addr, "/dom.js");
     assert_eq!(status, 200);
+    // The control room's table and its frame are modules of their own too.
+    let (status, body) = get(addr, "/felt.js");
+    assert_eq!(status, 200);
+    assert!(body.contains("export function felt"), "{body}");
+    let (status, body) = get(addr, "/room.js");
+    assert_eq!(status, 200);
+    assert!(body.contains("export function botTabs"), "{body}");
     let (status, body) = get(addr, "/app.css");
     assert_eq!(status, 200);
     assert!(body.contains("prefers-color-scheme: dark"), "{body}");

@@ -1,5 +1,6 @@
-// The console's live pieces (V11-44): a bot's table drawn on the felt, the fleet's summary bar,
-// and a sparkline of a bot's latest hands. Every name is written as text, never as markup.
+// The control room's live pieces (V11-44): a bot's table drawn as an arena table, the fleet's
+// summary tiles, and a sparkline of a bot's latest hands. Every name is written as text, never as
+// markup: an opponent chooses their own name.
 
 import { h } from "./dom.js";
 import { chart, rateText, running, winRate } from "./fleet.js";
@@ -9,17 +10,26 @@ const SUITS = { h: ["♥", true], d: ["♦", true], c: ["♣", false], s: ["♠"
 /** One playing card from the venue's notation (`Ah`, `Td`): rank over suit, red suits in red. */
 export function playingCard(code) {
   const [symbol, red] = SUITS[code.slice(-1)] ?? ["?", false];
-  return h("span", { class: red ? "pcard red" : "pcard" }, `${code.slice(0, -1)}${symbol}`);
+  const rank = code.slice(0, -1);
+  return h("span", { class: red ? "pcard red" : "pcard" }, h("b", {}, rank), h("i", {}, symbol));
 }
 
 /** Chips as text, with thousands separated. */
-function chips(amount) {
+export function chips(amount) {
   return Number(amount).toLocaleString("en-US");
 }
 
+/** A player's initials for their seat's badge: the first two letters or digits of their name. */
+export function initials(name) {
+  const letters = String(name ?? "").replace(/[^\p{L}\p{N}]/gu, "");
+  return (letters.slice(0, 2) || "··").toUpperCase();
+}
+
 /**
- * A bot's table on the felt: a seat a player round an oval, our seat at the foot and marked,
- * the folded dimmed, the dealer's button with its seat, and the board and the pot in the middle.
+ * A bot's table as an arena table: the rail and the felt, a seat a player round it with their
+ * initials, name, stack and whether they are still in, our seat at the foot and lit, card backs
+ * in front of everyone still in, the dealer's button, and the board and the pot (in chips and big
+ * blinds) in the middle.
  */
 export function felt(table) {
   const players = [...table.players].sort((a, b) => a.seat - b.seat);
@@ -28,59 +38,104 @@ export function felt(table) {
     players.findIndex((player) => player.seat === table.seat),
   );
   const seats = players.map((player, at) => {
-    // Round the oval from the foot, so our seat is always at the bottom in the middle.
+    // Round the table from the foot, so our seat is always at the bottom in the middle.
     const turn = ((at - ours + players.length) % players.length) / players.length;
     const angle = Math.PI / 2 + turn * 2 * Math.PI;
-    const left = (50 + 44 * Math.cos(angle)).toFixed(1);
-    const top = (50 + 40 * Math.sin(angle)).toFixed(1);
-    const kind = ["seat", player.seat === table.seat ? "us" : "", player.folded ? "folded" : ""]
-      .filter(Boolean)
-      .join(" ");
+    const left = (50 + 46 * Math.cos(angle)).toFixed(1);
+    const top = (50 + 43 * Math.sin(angle)).toFixed(1);
+    const us = player.seat === table.seat;
+    const kind = ["seat", us ? "us" : "", player.folded ? "folded" : ""].filter(Boolean).join(" ");
     return h(
       "div",
       { class: kind, style: `left:${left}%;top:${top}%` },
+      player.folded
+        ? null
+        : h("span", { class: "backs", "aria-hidden": "true" }, h("i", {}), h("i", {})),
+      h(
+        "span",
+        { class: "plate" },
+        h("span", { class: "avatar", "aria-hidden": "true" }, initials(player.name)),
+        h(
+          "span",
+          { class: "who" },
+          h("span", { class: "name" }, player.name),
+          h("span", { class: "stack" }, chips(player.stack)),
+        ),
+        us ? h("span", { class: "you" }, "you") : null,
+      ),
+      h("span", { class: "state" }, player.folded ? "folded" : "in hand"),
       player.seat === table.dealer ? h("span", { class: "dealer", title: "dealer" }, "D") : null,
-      h("span", { class: "name" }, player.name),
-      h("span", { class: "stack num" }, chips(player.stack)),
     );
   });
+  const bb = table.big_blind > 0 ? table.pot / table.big_blind : null;
   return h(
     "div",
-    { class: "felt", role: "img", "aria-label": `${table.street}, pot ${table.pot}` },
+    {
+      class: "felt",
+      role: "img",
+      "aria-label": `${table.street ?? "between hands"}, pot ${table.pot}`,
+    },
+    h("div", { class: "rail" }),
     h(
       "div",
       { class: "middle" },
       h("div", { class: "board" }, table.board.map(playingCard)),
-      h("span", { class: "pot num" }, `pot ${table.pot}`),
+      h(
+        "div",
+        { class: "pot" },
+        h("span", { class: "pot-label" }, "pot"),
+        h("span", { class: "pot-amount" }, chips(table.pot)),
+        bb === null ? null : h("span", { class: "pot-bb" }, `${Number(bb.toFixed(1))} BB`),
+      ),
     ),
     seats,
   );
 }
 
-/** The fleet in one bar: how many bots play, the hands they have kept, and the pooled win rate. */
+/** The fleet in tiles: how many bots play, the hands they have kept, and the pooled win rate. */
 export function summary(fleet) {
   const bots = fleet.bots;
   const playing = bots.filter((bot) => bot.connected).length;
   const hands = bots.reduce((sum, bot) => sum + (bot.hands ?? 0), 0);
+  const counted = bots.reduce((sum, bot) => sum + (bot.play?.counted ?? 0), 0);
   const pooled = winRate({
-    counted: bots.reduce((sum, bot) => sum + (bot.play?.counted ?? 0), 0),
+    counted,
     won_mbb: bots.reduce((sum, bot) => sum + (bot.play?.won_mbb ?? 0), 0),
   });
-  const versions = [...new Set(bots.map((bot) => bot.version).filter(Boolean))].join(", ");
-  const tile = (label, value, tone = "") =>
-    h(
-      "div",
-      { class: "tile" },
-      h("span", { class: "label" }, label),
-      h("strong", { class: `big ${tone}` }, value),
-    );
+  const best = [...bots]
+    .filter((bot) => winRate(bot.play) !== null)
+    .sort((a, b) => winRate(b.play) - winRate(a.play))[0];
+  return tiles([
+    ["Bots online", `${playing} of ${bots.length} playing`, `${bots.length - playing} offline`],
+    ["Hands played", `${chips(hands)} hands`, `${chips(counted)} counted for the ledger`],
+    [
+      "Fleet win rate",
+      rateText(pooled),
+      "pooled over every counted hand",
+      pooled === null ? "" : pooled >= 0 ? "up" : "down",
+    ],
+    [
+      "Leading bot",
+      best ? best.bot : "—",
+      best ? rateText(winRate(best.play)) : "no counted hands yet",
+    ],
+  ]);
+}
+
+/** Hero tiles: a label, a big value and a note each, the value toned up or down when given. */
+export function tiles(rows) {
   return h(
     "div",
     { class: "summary" },
-    tile("Bots", `${playing} of ${bots.length} playing`),
-    tile("Hands", `${chips(hands)} hands`),
-    tile("Fleet win rate", rateText(pooled), pooled === null ? "" : pooled >= 0 ? "up" : "down"),
-    tile("Builds", versions || "—"),
+    rows.map(([label, value, note, tone = ""]) =>
+      h(
+        "div",
+        { class: "tile" },
+        h("span", { class: "label" }, label),
+        h("strong", { class: `big ${tone}`.trim() }, value),
+        note ? h("small", {}, note) : null,
+      ),
+    ),
   );
 }
 

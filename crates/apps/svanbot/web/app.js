@@ -4,7 +4,7 @@
 
 import { facts, h, panel, table } from "./dom.js";
 import { dossierIndex, dossierPage } from "./dossier.js";
-import { felt, sparkline, summary } from "./felt.js";
+import { chips, felt, summary, tiles } from "./felt.js";
 import {
   arenaLeagues,
   arenaRun,
@@ -24,59 +24,84 @@ import {
   winRate,
 } from "./fleet.js";
 import { handPage } from "./replay.js";
+import { botTabs, fleetRace, rail, tableCard, workspace } from "./room.js";
 
 function when(ms, nowMs) {
   return ms === null || ms === undefined ? "never" : `${duration(nowMs - ms)} ago`;
 }
 
-/** The fleet page: what needs attention, then one card per bot. */
+/** What needs attention, worst first, or nothing. */
+function problemList(problems) {
+  return problems.length > 0
+    ? h(
+        "ul",
+        { class: "problems" },
+        problems.map((problem) => h("li", { class: problem.tone }, problem.text)),
+      )
+    : null;
+}
+
+/** The fleet overview: the fleet in tiles and on the rail, then every bot's table live. */
 function fleetView(fleet, nowMs, problems) {
+  const online = fleet.bots.filter((bot) => bot.connected).length;
+  const builds = [...new Set(fleet.bots.map((bot) => bot.version).filter(Boolean))];
+  const champions = [...new Set(fleet.bots.map((bot) => bot.play?.champion).filter(Boolean))];
+  const reading = fleet.bots.filter((bot) => bot.reads_in_play).length;
+  const incidents = fleet.bots.reduce((sum, bot) => sum + (bot.incidents ?? 0), 0);
   return [
-    h("h1", {}, "Fleet"),
-    summary(fleet),
-    problems.length > 0
-      ? h(
-          "ul",
-          { class: "problems" },
-          problems.map((problem) => h("li", { class: problem.tone }, problem.text)),
-        )
-      : null,
+    workspace("Fleet overview", nowMs),
     h(
       "div",
-      { class: "grid" },
-      fleet.bots.map((status) => {
-        const view = botView(status, nowMs);
-        return h(
-          "article",
-          { class: "card" },
-          h(
-            "header",
-            {},
-            h("h2", {}, h("a", { href: `/bot/${encodeURIComponent(status.bot)}` }, status.bot)),
-            h("span", { class: `pill ${view.tone}` }, view.label),
-          ),
-          h("p", { class: "muted" }, view.detail),
-          h(
-            "div",
-            { class: "headline" },
-            h(
-              "strong",
-              { class: `big ${(winRate(status.play) ?? 0) >= 0 ? "up" : "down"}` },
-              rateText(winRate(status.play)),
-            ),
-            sparkline(status.play),
-          ),
-          status.table ? felt(status.table) : null,
-          facts([
-            ["Build", status.version ?? "—"],
-            ["Hands", `${status.hands} kept, ${status.play.counted} counted`],
-            ["Last hand", when(status.last_hand_ms, nowMs)],
-            ["Incidents", `${status.run_incidents} this run, ${status.incidents} in all`],
-          ]),
-        );
-      }),
+      { class: "overview" },
+      h(
+        "p",
+        { class: "status-line" },
+        h("span", { class: `dot ${online === fleet.bots.length ? "ok" : "warn"}` }),
+        h("b", {}, "Fleet"),
+        ` · ${online} of ${fleet.bots.length} bots online`,
+      ),
+      summary(fleet),
     ),
-    h("p", {}, h("a", { href: "/dossier" }, "Dossiers: how each bot reads its opponents")),
+    rail("SV11 signal", "What the fleet plays by, as each bot reports it", [
+      ["Build", builds.join(", ") || "—", builds.length > 1 ? "mixed builds" : "one build"],
+      [
+        "Champion",
+        champions.map((digest) => digest.slice(0, 8)).join(", ") || "—",
+        "the parameter set in play",
+      ],
+      ["Reads in play", `${reading} of ${fleet.bots.length}`, "per-opponent reads, per bot"],
+      ["Incidents", String(incidents), incidents === 0 ? "none recorded" : "see each bot"],
+    ]),
+    problemList(problems),
+    h("h1", {}, "Fleet"),
+    h(
+      "div",
+      { class: "tables" },
+      fleet.bots.map((status) => tableCard(status, nowMs)),
+    ),
+    h(
+      "div",
+      { class: "board-row" },
+      h(
+        "section",
+        { class: "card" },
+        h("h2", {}, "Fleet race"),
+        h("p", { class: "subtle" }, "Each bot's win rate over its counted hands, best first"),
+        fleetRace(fleet),
+      ),
+      h(
+        "section",
+        { class: "card" },
+        h("h2", {}, "Opponents"),
+        h(
+          "p",
+          {},
+          "Each bot reads its opponents on its own, from its own store. ",
+          h("a", { href: "/dossier" }, "Open the dossiers"),
+          ".",
+        ),
+      ),
+    ),
   ];
 }
 
@@ -141,12 +166,56 @@ function botPage(fleet, name, nowMs) {
   }
   const view = botView(status, nowMs);
   const seats = status.table;
+  const ours = seats?.players.find((player) => player.seat === seats.seat);
+  const rate = winRate(status.play);
   return [
-    h("h1", {}, status.bot, " ", h("span", { class: `pill ${view.tone}` }, view.label)),
-    h("p", {}, h("a", { href: `/bot/${encodeURIComponent(status.bot)}/dossier` }, "Dossier")),
+    workspace(status.bot, nowMs),
     h(
       "div",
-      { class: "grid" },
+      { class: "overview" },
+      h(
+        "p",
+        { class: "status-line" },
+        h("span", { class: `dot ${view.tone}` }),
+        h("b", {}, status.bot),
+        ` · ${view.detail} · `,
+        h("a", { href: `/bot/${encodeURIComponent(status.bot)}/dossier` }, "Dossier"),
+      ),
+      tiles([
+        [
+          "Table stack",
+          ours ? chips(ours.stack) : "—",
+          ours && seats.big_blind > 0
+            ? `${Number((ours.stack / seats.big_blind).toFixed(1))} BB behind`
+            : "not seated",
+        ],
+        [
+          "Win rate",
+          rateText(rate),
+          `over ${chips(status.play.counted)} counted hands`,
+          rate === null ? "" : rate >= 0 ? "up" : "down",
+        ],
+        ["Hands played", chips(status.hands), `${status.run_incidents} incidents this run`],
+      ]),
+    ),
+    rail("SV11 signal", "What this bot plays by, as it reports it", [
+      ["Street", seats?.street ?? "between hands", seats ? `pot ${chips(seats.pot)}` : "no table"],
+      ["Build", status.version || "a checkout", `up ${when(status.started_ms, nowMs)}`],
+      [
+        "Champion",
+        (status.play.champion || "unknown").slice(0, 8),
+        status.play.probe ?? "no probe running",
+      ],
+      [
+        "Reads",
+        status.reads_in_play ? "in play" : "held",
+        `${(status.opponents ?? []).length} opponents read`,
+      ],
+    ]),
+    h("h1", {}, status.bot, " ", h("span", { class: `pill ${view.tone}` }, view.label)),
+    h(
+      "div",
+      { class: "grid room" },
       panel(
         "Now",
         h("p", {}, view.detail),
@@ -162,6 +231,7 @@ function botPage(fleet, name, nowMs) {
         seats === null
           ? h("p", { class: "muted" }, "Not at a table.")
           : [
+              felt(seats),
               facts([
                 ["Table", seats.id],
                 ["Street", seats.street ?? "between hands"],
@@ -556,10 +626,18 @@ function render() {
         : `${problems[0].text} (and ${problems.length - 1} more)`;
   const at = route(location.pathname);
   load(at);
+  // A tab a bot in the top bar, the bot in view lit; redrawn only when it changes.
+  const holder = document.getElementById("bots");
+  if (holder) {
+    const tabs = h("nav", {}, botTabs(state.fleet, at.bot, nowMs));
+    if (holder.innerHTML !== tabs.innerHTML) {
+      holder.replaceChildren(...tabs.childNodes);
+    }
+  }
   // The page in view is marked in the nav, so the strip says where the reader is.
   const section = `/${location.pathname.split("/")[1] ?? ""}`;
-  for (const link of document.querySelectorAll?.(".strip nav a") ?? []) {
-    const here = link.getAttribute("href") === (section === "/bot" ? "/" : section);
+  for (const link of document.querySelectorAll?.(".strip nav.pages a") ?? []) {
+    const here = section !== "/bot" && link.getAttribute("href") === section;
     if (here) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
