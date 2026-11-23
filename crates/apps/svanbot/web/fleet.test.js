@@ -222,6 +222,12 @@ test("the scoreboard's span reaches every interval it draws, and always zero", (
   });
 });
 
+test("a bot's dossier and the dossier index have their own paths", () => {
+  expect(route("/bot/Alpha/dossier")).toEqual({ view: "dossier", bot: "Alpha" });
+  expect(route("/dossier")).toEqual({ view: "dossiers" });
+  expect(route("/bot/<x>/dossier")).toEqual({ view: "fleet" });
+});
+
 test("a hand's path names its bot and its hand", () => {
   // `/bot/Alpha` is the bot's page; `/bot/Alpha/hand/h-1` is one of its hands.
   expect(route("/bot/Alpha/hand/h-1")).toEqual({ view: "hand", bot: "Alpha", hand: "h-1" });

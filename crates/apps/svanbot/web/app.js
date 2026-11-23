@@ -3,6 +3,7 @@
 // their own name.
 
 import { facts, h, panel, table } from "./dom.js";
+import { dossierIndex, dossierPage } from "./dossier.js";
 import {
   arenaLeagues,
   arenaRun,
@@ -62,6 +63,7 @@ function fleetView(fleet, nowMs, problems) {
         );
       }),
     ),
+    h("p", {}, h("a", { href: "/dossier" }, "Dossiers: how each bot reads its opponents")),
   ];
 }
 
@@ -128,6 +130,7 @@ function botPage(fleet, name, nowMs) {
   const seats = status.table;
   return [
     h("h1", {}, status.bot, " ", h("span", { class: `pill ${view.tone}` }, view.label)),
+    h("p", {}, h("a", { href: `/bot/${encodeURIComponent(status.bot)}/dossier` }, "Dossier")),
     h(
       "div",
       { class: "grid" },
@@ -287,6 +290,13 @@ function releasePage(fleet, nowMs) {
  * things, so each has its own whiskers and its own trend, and no run is pooled across them.
  */
 function scoreboardPage(fleet) {
+  return [
+    h("p", {}, h("a", { href: "/dossier" }, "Live opponents are in the dossiers")),
+    scoreboardBody(fleet),
+  ];
+}
+
+function scoreboardBody(fleet) {
   const boards = arenaLeagues(fleet.arena);
   if (boards.length === 0) {
     return [
@@ -527,16 +537,19 @@ function render() {
         : `${problems[0].text} (and ${problems.length - 1} more)`;
   const at = route(location.pathname);
   load(at);
-  const view =
-    at.view === "hand"
-      ? handPage(state, at.bot, at.hand)
-      : at.view === "bot"
-        ? botPage(state.fleet, at.bot, nowMs)
-        : at.view === "release"
-          ? releasePage(state.fleet, nowMs)
-          : at.view === "scoreboard"
-            ? scoreboardPage(state.fleet)
-            : fleetView(state.fleet, nowMs, problems);
+  const pages = {
+    hand: () => handPage(state, at.bot, at.hand),
+    bot: () => botPage(state.fleet, at.bot, nowMs),
+    dossier: () =>
+      dossierPage(
+        state.fleet.bots.find((bot) => bot.bot === at.bot),
+        at.bot,
+      ),
+    dossiers: () => dossierIndex(state.fleet),
+    release: () => releasePage(state.fleet, nowMs),
+    scoreboard: () => scoreboardPage(state.fleet),
+  };
+  const view = (pages[at.view] ?? (() => fleetView(state.fleet, nowMs, problems)))();
   // Redraw only what changed: a redraw every second would take the focus and the scroll from
   // whoever is reading the table. An open table fallback stays open across a redraw.
   const shown = document.getElementById("view");

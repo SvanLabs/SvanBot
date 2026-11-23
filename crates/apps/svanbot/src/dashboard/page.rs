@@ -7,7 +7,7 @@ pub(super) fn file(path: &str) -> Option<(&'static str, &'static [u8])> {
     let html = "text/html; charset=utf-8";
     let script = "text/javascript; charset=utf-8";
     Some(match path {
-        "/" | "/release" | "/scoreboard" => {
+        "/" | "/release" | "/scoreboard" | "/dossier" => {
             (html, include_bytes!("../../web/index.html").as_slice())
         }
         _ if path.strip_prefix("/bot/").is_some_and(is_hand_path) => {
@@ -21,13 +21,18 @@ pub(super) fn file(path: &str) -> Option<(&'static str, &'static [u8])> {
         "/fleet.js" => (script, include_bytes!("../../web/fleet.js").as_slice()),
         "/dom.js" => (script, include_bytes!("../../web/dom.js").as_slice()),
         "/replay.js" => (script, include_bytes!("../../web/replay.js").as_slice()),
+        "/dossier.js" => (script, include_bytes!("../../web/dossier.js").as_slice()),
         _ => return None,
     })
 }
 
-/// Whether `rest` is a bot's name, or a bot's name and one of its hands: `/bot/Alpha` or
-/// `/bot/Alpha/hand/h-1`. Nothing else after `/bot/` is a page.
+/// Whether `rest` is a bot's name, a bot's name and one of its hands, or a bot's dossier:
+/// `/bot/Alpha`, `/bot/Alpha/hand/h-1` or `/bot/Alpha/dossier`. Nothing else after `/bot/` is a
+/// page.
 fn is_hand_path(rest: &str) -> bool {
+    if let Some(bot) = rest.strip_suffix("/dossier") {
+        return is_name(bot);
+    }
     match rest.split_once("/hand/") {
         Some((bot, hand)) => is_name(bot) && is_name(hand),
         None => is_name(rest),
