@@ -16,11 +16,9 @@ use svanbot_strategy::read::{Class, Read, Trust, personal};
 
 use crate::adapt::classify;
 
-/// Whether reads decide in play, live and in the Arena. They stay held until `svanbot paired
-/// reads` passes: its whole interval above zero and the exploit gate cleared (V11-35). A change
-/// that turns this on is a behaviour change, and its PR quotes that passing line. Held, the bot
-/// plays exactly as it would with no reads at all.
-pub const IN_PLAY: bool = false;
+/// Selective reads cleared the heads-up and six-seat paired gates in V11-35.
+/// This switch is shared by live play, the Arena and the dashboard status.
+pub const IN_PLAY: bool = true;
 
 /// What one hand showed of one opponent.
 #[derive(Clone, Debug, PartialEq, Eq)]

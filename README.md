@@ -45,8 +45,9 @@ the venue's frames ─▶ session ─▶ spot ─▶ policy ─▶ the nearest l
 - **Ranges** come from an action model: a probability for every move by street, by whether a bet
   is faced, and by strength. It is fitted on every stored hand and used only once it beats the
   baseline on hands it has not seen.
-- **Reads** of one opponent tilt the model by how much evidence there is, inside an exploit
-  budget, and only against an opponent whose play holds still.
+- **Reads** apply to a fixed opponent who raises more than 40% of the time when facing a
+  preflop bet, after at least 30 such opportunities. For that opponent, observed action
+  frequencies reduce how strongly a bet signals hand strength, within the exploit budget.
 - **The work is an input.** A decision is given iterations, samples and a seed, never a clock, so
   the same spot and seed give the same action on any machine.
 

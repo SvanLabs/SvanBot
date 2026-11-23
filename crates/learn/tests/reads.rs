@@ -174,6 +174,7 @@ fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
     let population = ActionModel::baseline();
     let seated = [(1, "beta_bot"), (4, "gamma_bot")];
     let personal = reads.personal(&seated, &population, 0.5);
+    assert_eq!(reads.deciding(&seated, &population, 0.5), personal);
     assert_eq!(personal.len(), 2);
     let (beta, gamma) = (&personal[0], &personal[1]);
     assert_eq!((beta.seat, beta.class), (1, Class::Fixed));
