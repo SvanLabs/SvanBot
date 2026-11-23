@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # provenance reads every commit since origin/main
+          fetch-depth: 0 # provenance reads every commit since the base branch
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
       - run: bun install --cwd tools --frozen-lockfile
       # Our own crates are cached too, keyed by the lockfile and toolchain, and saved only from v11.
