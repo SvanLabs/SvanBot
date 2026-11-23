@@ -1,6 +1,9 @@
 //! `svanbot arena`: the policy against the pricer, v10.0.2 and every sparring archetype, as a scoreboard,
 //! then exit. It touches neither the venue nor a store.
 //!
+//! `svanbot arena ship [seed] [iterations]` plays both leagues until the ship bar is decided
+//! instead of for a fixed count ([`crate::arena_ship`]).
+//!
 //! `svanbot arena [6-max] <bouts> [seed] [iterations] [out.json]`: each bout is 50 deals. Heads
 //! up, each deal is played twice from mirrored seats; with `6-max` it is played six times, the
 //! policy in each seat of a full table against five of the opponent (`learn::ring`). Either way
@@ -29,7 +32,7 @@ use svanbot_strategy::params::Params;
 use crate::deciders;
 
 /// Threads the bouts are spread over. The box is shared with the live fleet.
-const THREADS: u64 = 4;
+pub(crate) const THREADS: u64 = 4;
 
 /// A row of the scoreboard: who the policy plays.
 #[derive(Clone, Copy)]
@@ -43,7 +46,7 @@ pub(crate) enum Opponent {
 
 impl Opponent {
     /// Every row, in the scoreboard's order.
-    fn all() -> Vec<Self> {
+    pub(crate) fn all() -> Vec<Self> {
         [Self::Pricer, Self::V10]
             .into_iter()
             .chain(Archetype::ALL.map(Self::Sparring))
@@ -130,6 +133,7 @@ pub(crate) fn play_bout(
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let (league, args) = match args.first().map(String::as_str) {
+        Some("ship") => return crate::arena_ship::run(&args[1..]),
         Some("6-max") => (League::SixMax, &args[1..]),
         _ => (League::HeadsUp, args),
     };

@@ -172,24 +172,30 @@ clause a release fails and exits 1, or says it clears the bar and exits 0. It re
 files and the stores and writes nothing. git names the tag's commit, so run it in a clone that has
 the tag. It has two stages.
 
-**Before the tag is pushed: the Arena stage.** Play the Arena in both leagues from a build of the
-commit to be tagged, with that commit named, then check it:
+**Before the tag is pushed: the Arena stage.** Play the ship run from a build of the commit to be
+tagged, with that commit named, then check it:
 
 ```sh
-git tag v11.0.0                                    # local: not pushed until it clears
-export SVANBOT_COMMIT=$(git rev-parse 'v11.0.0^{commit}')
-nice -n 15 svanbot arena 10000 <seed>              # heads up: 500 000 deals against v10.0.2
-nice -n 15 svanbot arena 6-max <bouts> <seed>
-svanbot release-check v11.0.0
-git push origin v11.0.0                            # only once it clears
+git tag v11.1.0                                    # local: not pushed until it clears
+export SVANBOT_COMMIT=$(git rev-parse 'v11.1.0^{commit}')
+nice -n 15 svanbot arena ship <seed>               # both leagues, until the bar is decided
+svanbot release-check v11.1.0
+git push origin v11.1.0                            # only once it clears
 ```
 
-The newest run of each league from the tag's commit is the one read. It must have been played
-under the fleet's champion. Three of its bouts, drawn from its seed, must play again bit for bit
-as recorded. It must beat v10.0.2 heads up over 500 000 deals, with its 95% interval wholly above
-zero. And no sparring opponent or the pricer may beat it, in either league, with its interval wholly
-below zero. The 6-max v10.0.2 row is shown, never required. A run without a commit (`local`) is
-never read.
+`svanbot arena ship` plays both leagues against every opponent a **heat** at a time, one more bout
+of every row, and records both runs in `arena.json` after each heat. Each row is read through an
+anytime-valid 95% confidence sequence, one observation a bout, from its 30th bout on. The run
+stops at the first heat where the bar is decided. It passes once v10.0.2 is read below the policy
+in **both** leagues, and is refused as soon as any row is read above it. A run still undecided
+after 48 hours is refused too. A heat is about 11 minutes on this box, so the run is about
+5½ hours at the least. It exits 0 when the bar passes, and 1 when it is refused.
+
+`release-check` reads the newest run of each league from the tag's commit. It must have been
+played under the fleet's champion, and three of its bouts, drawn from its seed, must play again
+bit for bit as recorded. The policy must be read above v10.0.2 heads up and at 6-max, and no
+sparring opponent or the pricer may be read above the policy, in either league. A run without a
+commit (`local`) is never read.
 
 **Before `update --fleet`: the canary stage.** Each bot marks in its store when it first started on
 a release. The canary's window opens there and closes at its latest hand. Over that window the

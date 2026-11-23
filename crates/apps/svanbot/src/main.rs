@@ -45,6 +45,7 @@
 )]
 
 mod arena;
+mod arena_ship;
 mod deciders;
 mod download;
 mod fit;

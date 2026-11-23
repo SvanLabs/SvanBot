@@ -339,6 +339,11 @@ One stretch of the Arena: 50 deals, one sparring opponent, played in order so a 
 learns across them. Bouts share nothing, so they run in any order.
 _Avoid_: session, round, match
 
+**Heat**:
+One more bout of every row, in both leagues at once, while the ship bar is played for. The bar is
+read after every heat, and the play stops at the first heat that decides it.
+_Avoid_: round, lap, pass
+
 **League**:
 Which table an Arena run is played at: heads up, or 6-max. The two measure different things (the
 re-solve after the flop, the multiway path), so each keeps its own runs and its own board, and a
