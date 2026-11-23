@@ -44,7 +44,10 @@ impl Session {
             },
             opponents: lines.len(),
             stack: mine.map_or(0, |player| player.stack),
-            committed: self.seat.map_or(0, |seat| self.lines.committed(seat)),
+            committed: self.seat.map_or(0, |seat| {
+                let dealt: Vec<usize> = turn.players.iter().map(|player| player.seat).collect();
+                self.lines.committed(seat, &dealt)
+            }),
             big_blind: self.lines.big_blind(),
             in_position,
             lines,
