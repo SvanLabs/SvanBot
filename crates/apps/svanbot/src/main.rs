@@ -229,6 +229,18 @@ fn keep(store: &Store, probing: &RefCell<Probing<'_>>, live: &Live, event: Event
             }
         }
         Event::Hand(hand) => {
+            // The trace keeps its own copy of the cards so the replayer needs no frame parser, and
+            // the frames keep the venue's JSON. If the two ever describe different cards, that is a
+            // bug in the decision path or the wire parser, and the page would show whichever copy
+            // it happened to read. Say it loudly; the hand is still kept, because losing it would
+            // hide more than it fixes.
+            let wrong = hand.cards_disagree();
+            if !wrong.is_empty() {
+                eprintln!(
+                    "<2>svanbot: TRACE AND FRAMES DISAGREE about {wrong:?} in hand {}",
+                    hand.hand_id
+                );
+            }
             let at_ms = now_ms();
             let kept = probing.borrow_mut().on_hand(&hand, at_ms);
             for note in &kept.notes {

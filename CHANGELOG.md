@@ -109,6 +109,13 @@ V11-00.
   drifts from the pin, refuses a pin whose commit the repository does not hold, and refuses a
   cloned tree with no pin; a run is pinned on `v11` from the `arena` artifact a pull request's CI
   left, never from the pull request itself.
+- A hand's trace and its frames each keep the cards, and `Hand::cards_disagree` compares them: the
+  trace's copy is what lets the replayer work without a frame parser, the frames are the venue's own
+  JSON, and a drift between the two would otherwise be invisible. Cards that arrive inside a
+  reconnect's `resync_response` — its replayed events and its snapshot — count like any other, so a
+  clean reconnect is not a false alarm and a reconnect that replays a different board still is one.
+  A live hand that disagrees says so at crit priority and is still kept, since losing it would hide
+  more than it fixes. A hand whose frames name no cards has nothing to compare and compares equal.
 - The decision trace names a range by **seat**: the spot carries the seat each opponent's line came
   from, and the trace, the store and the page keep it, so a reader matches a range to a seat in the
   table view rather than to a position in a list. A spot built without seats (a sim's own table, or
