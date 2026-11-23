@@ -212,17 +212,9 @@ impl Session {
         self.hand = None;
     }
 
-    /// Answers one frame. `decide` is asked only at our turn, with the spot as the session sees it.
+    /// Answers one frame. `decide` is asked only at our turn, with the spot as the session sees it
+    /// and the seats and names from the same turn or snapshot ([`Session::on_frame`] without them).
     /// A frame whose `table_seq` is not past the watermark was applied already, and is ignored.
-    pub fn on_frame<D: Into<Decision>>(
-        &mut self,
-        frame: impl Into<Frame>,
-        decide: impl FnOnce(&Spot) -> D,
-    ) -> Step {
-        self.on_frame_with_players(frame, |spot, _| decide(spot))
-    }
-
-    /// Gives the decision the seats and names from the same turn or snapshot as its spot.
     pub fn on_frame_with_players<D: Into<Decision>>(
         &mut self,
         frame: impl Into<Frame>,
