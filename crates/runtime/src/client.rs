@@ -25,7 +25,7 @@ use crate::limit::Limiter;
 use crate::record::{Hand, Recorder};
 use crate::session::{Incident, Session};
 use crate::status::Table;
-use crate::wire::{self, Inbound, Outbound};
+use crate::wire::{self, Inbound, Outbound, Player};
 
 /// The venue's WebSocket endpoint.
 pub const VENUE: &str = "wss://openpoker.ai/ws";
@@ -159,6 +159,17 @@ pub fn play_with_stop<D: Into<Decision>>(
     config: &Config,
     bot: &mut Bot,
     mut decide: impl FnMut(&Spot) -> D,
+    on_event: impl FnMut(Event<'_>),
+    stop: &dyn Fn() -> bool,
+) -> Result<PlayOutcome, ClientError> {
+    play_with_players(config, bot, |spot, _| decide(spot), on_event, stop)
+}
+
+/// Plays a connection with the current turn's player identities available to each decision.
+pub fn play_with_players<D: Into<Decision>>(
+    config: &Config,
+    bot: &mut Bot,
+    mut decide: impl FnMut(&Spot, &[Player]) -> D,
     mut on_event: impl FnMut(Event<'_>),
     stop: &dyn Fn() -> bool,
 ) -> Result<PlayOutcome, ClientError> {
@@ -221,7 +232,7 @@ pub fn play_with_stop<D: Into<Decision>>(
                 if let Inbound::Error { code, .. } = inbound {
                     eprintln!("svanbot: the venue reported {code}");
                 }
-                let step = bot.session.on_frame(frame, |spot| decide(spot));
+                let step = bot.session.on_frame_with_players(frame, &mut decide);
                 for incident in &step.incidents {
                     on_event(Event::Incident(incident));
                 }

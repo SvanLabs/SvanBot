@@ -64,7 +64,7 @@ use svanbot::now_ms;
 use svanbot_learn::probe::Decided;
 use svanbot_learn::reads::Reads;
 use svanbot_runtime::client::{
-    Bot, ClientError, Config, Event, PlayOutcome, VENUE, fresh_seed, play_with_stop,
+    Bot, ClientError, Config, Event, PlayOutcome, VENUE, fresh_seed, play_with_players,
 };
 use svanbot_runtime::fleet::{self, Fleet};
 use svanbot_runtime::health::{self, Health};
@@ -163,8 +163,6 @@ fn main() -> ExitCode {
         "svanbot: reads {} opponents from its store",
         reads.borrow().opponents().count()
     );
-    // The seated players by seat, from the table view: the names a decision's seats read by.
-    let seated: RefCell<Vec<(usize, String)>> = RefCell::new(Vec::new());
     let baseline = ActionModel::baseline();
     let canary = std::env::var("SVANBOT_CANARY").is_ok_and(|name| name == config.me);
     let (probing, notes) = Probing::open(&store, Fleet::in_dir(fleet_dir()), canary, now_ms());
@@ -191,10 +189,10 @@ fn main() -> ExitCode {
     let stop = || health.update_requested();
     let mut backoff = Duration::from_secs(1);
     loop {
-        let ended = play_with_stop(
+        let ended = play_with_players(
             &config,
             &mut bot,
-            |spot| {
+            |spot, players| {
                 let budget = Budget {
                     samples: SAMPLES,
                     seed: fresh_seed(),
@@ -205,14 +203,10 @@ fn main() -> ExitCode {
                 let params = probing.borrow().params();
                 // Each opponent is read by their own read of the population's model: the fitted
                 // one if it passed the gate (`svanbot fit`), else the baseline.
-                let names = seated.borrow();
-                let named: Vec<(usize, &str)> = spot
-                    .seats
+                let named: Vec<(usize, &str)> = players
                     .iter()
-                    .filter_map(|&seat| {
-                        let (_, name) = names.iter().find(|(at, _)| *at == seat)?;
-                        Some((seat, name.as_str()))
-                    })
+                    .filter(|player| spot.seats.contains(&player.seat))
+                    .map(|player| (player.seat, player.name.as_str()))
                     .collect();
                 let population = model.as_ref().unwrap_or(&baseline);
                 let personal = reads.borrow().personal(&named, population, params.exploit);
@@ -230,15 +224,6 @@ fn main() -> ExitCode {
                 decision
             },
             |event| {
-                if let Event::Table(table) = &event {
-                    *seated.borrow_mut() = table.as_ref().map_or_else(Vec::new, |table| {
-                        table
-                            .players
-                            .iter()
-                            .map(|player| (player.seat, player.name.clone()))
-                            .collect()
-                    });
-                }
                 keep(
                     &store,
                     &probing,

@@ -214,6 +214,15 @@ impl Session {
         frame: impl Into<Frame>,
         decide: impl FnOnce(&Spot) -> D,
     ) -> Step {
+        self.on_frame_with_players(frame, |spot, _| decide(spot))
+    }
+
+    /// Gives the decision the seats and names from the same turn or snapshot as its spot.
+    pub fn on_frame_with_players<D: Into<Decision>>(
+        &mut self,
+        frame: impl Into<Frame>,
+        decide: impl FnOnce(&Spot, &[Player]) -> D,
+    ) -> Step {
         let Frame { table_seq, inbound } = frame.into();
         if let Inbound::Resync(resync) = inbound {
             // Carries its own watermarks, one per replayed event.
@@ -359,7 +368,7 @@ impl Session {
     fn your_turn<D: Into<Decision>>(
         &mut self,
         turn: Turn,
-        decide: impl FnOnce(&Spot) -> D,
+        decide: impl FnOnce(&Spot, &[Player]) -> D,
     ) -> Step {
         let left = self.seat_list(turn.players.clone());
         let stablemate = self.stablemate();
@@ -381,7 +390,7 @@ impl Session {
         // part in a hand a stablemate is in.
         let decided = match stablemate {
             Some(_) => None,
-            None => Some(decide(&self.spot(&turn, &hand)).into()),
+            None => Some(decide(&self.spot(&turn, &hand), &turn.players).into()),
         };
         let action = match &decided {
             Some(decision) => offered(decision.action, &turn.offer),
