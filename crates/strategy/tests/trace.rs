@@ -169,7 +169,7 @@ fn cards(text: &str) -> CardSet {
     text.parse().unwrap()
 }
 
-fn act(street: Street, facing: bool, added: u32, pot: u32) -> svanbot_core::spot::Act {
+fn act(street: Street, facing: bool, added: u64, pot: u64) -> svanbot_core::spot::Act {
     svanbot_core::spot::Act {
         street,
         board: cards("AhKsQh"),
@@ -178,7 +178,7 @@ fn act(street: Street, facing: bool, added: u32, pot: u32) -> svanbot_core::spot
     }
 }
 
-fn spot(hole: &str, board: &str, pot: u32, call: u32, opponents: usize) -> Spot {
+fn spot(hole: &str, board: &str, pot: u64, call: u64, opponents: usize) -> Spot {
     Spot {
         hole: hole.parse().unwrap(),
         board: board.parse().unwrap(),

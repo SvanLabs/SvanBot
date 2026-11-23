@@ -69,7 +69,7 @@ impl Showdown {
     /// Hero's share of the pot against the opponents in `against` (a bit an opponent, in the order
     /// of [`Showdown::holes`]), the others out of the hand: 1 when no opponent left in beats hero,
     /// split among ties, 0 when one does.
-    pub fn share_against(&self, against: u32) -> f64 {
+    pub fn share_against(&self, against: u64) -> f64 {
         let hero = self.strengths[0];
         let mut tied = 1;
         for (at, &strength) in self.strengths[1..].iter().enumerate() {

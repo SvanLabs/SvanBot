@@ -11,11 +11,15 @@ use std::fmt;
 
 use crate::card::CardSet;
 
+/// A count of chips: a stack, a bet, a pot or a payout. 64 bits wide, so no sum of them a table
+/// can make comes near its limit; the venue's 10/20 game with 2,000-chip stacks uses a sliver.
+pub type Chips = u64;
+
 /// The forced bets. The venue plays 10/20.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Blinds {
-    pub small: u32,
-    pub big: u32,
+    pub small: Chips,
+    pub big: Chips,
 }
 
 /// A betting round, named by the cards that open it.
@@ -65,15 +69,15 @@ pub enum Action {
     Fold,
     Check,
     Call,
-    RaiseTo(u32),
+    RaiseTo(Chips),
 }
 
 /// The totals a raise may name, both included. When the stack cannot reach a full raise, both are
 /// the stack: the only raise left is all in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RaiseRange {
-    pub min: u32,
-    pub max: u32,
+    pub min: Chips,
+    pub max: Chips,
 }
 
 /// The actions open to the seat whose turn it is. Folding is always open. Checking is open when
@@ -82,7 +86,7 @@ pub struct RaiseRange {
 pub struct Legal {
     /// The chips a call puts in: the bet less what the seat has in, or its whole stack if that is
     /// less. `None` when there is nothing to call.
-    pub call: Option<u32>,
+    pub call: Option<Chips>,
     /// `None` when the seat may not raise: its stack covers no more than a call, a short all-in
     /// has not reopened the betting to it, or nobody is left to call a raise.
     pub raise: Option<RaiseRange>,
@@ -111,14 +115,14 @@ impl std::error::Error for RuleError {}
 #[derive(Clone, Debug)]
 struct Seat {
     /// Chips behind.
-    stack: u32,
+    stack: Chips,
     /// Chips put in on this street.
-    street: u32,
+    street: Chips,
     /// Chips put in this hand.
-    total: u32,
+    total: Chips,
     folded: bool,
     /// The bet this seat faced after it last acted on this street. `None` until it acts.
-    matched: Option<u32>,
+    matched: Option<Chips>,
 }
 
 impl Seat {
@@ -126,7 +130,7 @@ impl Seat {
         !self.folded && self.stack > 0
     }
 
-    fn put_in(&mut self, chips: u32) {
+    fn put_in(&mut self, chips: Chips) {
         let chips = chips.min(self.stack);
         self.stack -= chips;
         self.street += chips;
@@ -143,15 +147,15 @@ pub struct Hand {
     street: Street,
     to_act: Option<usize>,
     /// The most any seat has in on this street.
-    bet: u32,
+    bet: Chips,
     /// The increase the last full raise made. The next raise must add at least as much.
-    full_raise: u32,
+    full_raise: Chips,
 }
 
 impl Hand {
     /// Posts the blinds and finds the first seat to act. Each stack is what that seat brings to
     /// the hand, and must be more than 0. Heads-up the button posts the small blind.
-    pub fn new(stacks: &[u32], button: usize, blinds: Blinds) -> Self {
+    pub fn new(stacks: &[Chips], button: usize, blinds: Blinds) -> Self {
         assert!(stacks.len() >= 2, "a hand needs two seats");
         assert!(button < stacks.len(), "the button sits at a seat");
         let n = stacks.len();
@@ -203,12 +207,12 @@ impl Hand {
     }
 
     /// The chips each seat has put in this hand.
-    pub fn committed(&self) -> Vec<u32> {
+    pub fn committed(&self) -> Vec<Chips> {
         self.seats.iter().map(|seat| seat.total).collect()
     }
 
     /// The chips each seat has behind.
-    pub fn stacks(&self) -> Vec<u32> {
+    pub fn stacks(&self) -> Vec<Chips> {
         self.seats.iter().map(|seat| seat.stack).collect()
     }
 
@@ -218,7 +222,7 @@ impl Hand {
     }
 
     /// The chips in the middle.
-    pub fn pot(&self) -> u32 {
+    pub fn pot(&self) -> Chips {
         self.seats.iter().map(|seat| seat.total).sum()
     }
 

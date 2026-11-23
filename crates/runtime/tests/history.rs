@@ -25,10 +25,10 @@ fn cards(text: &str) -> CardSet {
 fn frames() -> Vec<String> {
     let action = |seat: u32,
                   action: &str,
-                  amount: Option<u32>,
-                  added: u32,
-                  pot: u32,
-                  to_call: u32| {
+                  amount: Option<u64>,
+                  added: u64,
+                  pot: u64,
+                  to_call: u64| {
         json!({"type": "player_action", "seat": seat, "action": action, "amount": amount,
                "stack": 1000, "contribution_delta": added, "pot_before": pot,
                "to_call_before": if to_call == 0 { serde_json::Value::Null } else { json!(to_call) }})
@@ -68,9 +68,9 @@ fn named_frames() -> Vec<String> {
     let action = |seat: u32,
                   name: Option<&str>,
                   action: &str,
-                  added: u32,
-                  pot: u32,
-                  to_call: u32| {
+                  added: u64,
+                  pot: u64,
+                  to_call: u64| {
         json!({"type": "player_action", "seat": seat, "name": name, "action": action,
                "amount": if added == 0 { serde_json::Value::Null } else { json!(added) },
                "stack": 1000, "contribution_delta": added, "pot_before": pot,
@@ -264,7 +264,7 @@ fn a_posted_blind_counts_in_what_its_seat_has_put_in_before_the_flop() {
     let mut lines = Lines::default();
     lines.on(&start(5));
     let dealt = [0, 2, 4, 5];
-    let posted: Vec<u32> = dealt
+    let posted: Vec<u64> = dealt
         .iter()
         .map(|&seat| lines.committed(seat, &dealt))
         .collect();

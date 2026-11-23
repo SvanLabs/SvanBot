@@ -23,7 +23,7 @@ pub use tree::{Abstract, MAX_BETS};
 
 use svanbot_core::card::CardSet;
 use svanbot_core::rng::Rng;
-use svanbot_core::rules::{Action, Street};
+use svanbot_core::rules::{Action, Chips, Street};
 use svanbot_core::spot::Spot;
 
 use crate::action::{ActionModel, Seen, combos, range};
@@ -39,9 +39,10 @@ pub const DEEP_COST: u32 = 4;
 
 /// Iterations for a pot of `pot` chips at a big blind of `big_blind`, with `cards` on the board:
 /// more for bigger pots, and fewer before the river, so the time spent is about the same.
-pub fn iterations_for(pot: u32, big_blind: u32, cards: usize) -> u32 {
+pub fn iterations_for(pot: Chips, big_blind: Chips, cards: usize) -> u32 {
     let blinds = pot / big_blind.max(1);
-    let river = (ITERATIONS.0 + 20 * blinds).min(ITERATIONS.1);
+    // Counted in chips' width, so a deep pot cannot overflow the count, then capped to a u32.
+    let river = (u64::from(ITERATIONS.0) + 20 * blinds).min(u64::from(ITERATIONS.1)) as u32;
     if cards < 5 { river / DEEP_COST } else { river }
 }
 
@@ -247,9 +248,9 @@ impl<'a> Solver<'a> {
         match &self.tree.nodes[node] {
             Node::Fold { folder, added } => {
                 let win = if *folder == player {
-                    -f64::from(added[player])
+                    -(added[player] as f64)
                 } else {
-                    f64::from(self.tree.base + added[1 - player])
+                    (self.tree.base + added[1 - player]) as f64
                 };
                 self.showdown
                     .compatible(theirs)
@@ -258,7 +259,7 @@ impl<'a> Solver<'a> {
                     .collect()
             }
             Node::Leaf { added } => {
-                let pot = f64::from(self.tree.base + added[0] + added[1]);
+                let pot = (self.tree.base + added[0] + added[1]) as f64;
                 self.leaves.value(
                     player,
                     pot,

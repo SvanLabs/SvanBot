@@ -13,6 +13,7 @@
 //! The ledger does no I/O. Its caller stores each [`Played`] hand, starts a probe from a
 //! proposal, and acts on the verdict.
 
+use svanbot_core::rules::Chips;
 use svanbot_learn::probe::{self, Arm, Decided, Hypothesis, Probe, Verdict};
 use svanbot_strategy::params::{Digest, Params};
 
@@ -33,7 +34,7 @@ pub struct Played {
     pub net: i64,
     /// The chips of `net` that were the luck of our own draws.
     pub luck: f64,
-    pub big_blind: u32,
+    pub big_blind: Chips,
     /// The probe the hand counted in, the orbit's number in it, and the arm it played.
     pub orbit: Option<(u64, u64, Arm)>,
 }
@@ -45,7 +46,7 @@ pub struct Ledger {
     running: Option<Running>,
     table: String,
     /// Our stack after the last hand at this table, when that hand's result came.
-    stack: Option<u32>,
+    stack: Option<Chips>,
     /// The re-solve's draws in the hand in play.
     decided: Vec<Decided>,
 }
@@ -150,12 +151,12 @@ impl Ledger {
             }
             return None;
         };
-        let net = i64::from(after) - i64::from(before);
+        let net = after as i64 - before as i64;
         let luck = net as f64 - probe::corrected(net as f64, &decided);
         let digest = self.params().digest();
         let orbit = self.running.as_mut().map(|running| {
             let at = (running.id, running.orbit, running.arm);
-            running.won += (net as f64 - luck) / f64::from(big_blind.max(1));
+            running.won += (net as f64 - luck) / big_blind.max(1) as f64;
             running.hands += 1;
             if running.hands == ORBIT {
                 running.close();
@@ -202,7 +203,7 @@ impl Ledger {
 }
 
 /// Our stack after `hand` and its big blind, when the hand holds its start and its result.
-fn result_of(hand: &Hand) -> Option<(u32, u32)> {
+fn result_of(hand: &Hand) -> Option<(Chips, Chips)> {
     let mut seat = None;
     let mut stack = None;
     for text in &hand.frames {

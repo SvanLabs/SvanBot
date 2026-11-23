@@ -67,7 +67,7 @@ const BUDGET: Budget = Budget {
     seed: 5,
 };
 
-fn spot(hole: &str, board: &str, pot: u32, call: u32, opponents: usize) -> Spot {
+fn spot(hole: &str, board: &str, pot: u64, call: u64, opponents: usize) -> Spot {
     Spot {
         hole: hole.parse().unwrap(),
         board: board.parse().unwrap(),

@@ -120,7 +120,7 @@ fn no_chip_is_made_or_lost_whatever_the_seats_ask_for() {
     for seats in 2..=6 {
         for _ in 0..40 {
             let cards = deal(seats, &mut rng);
-            let stacks: Vec<u32> = (0..seats).map(|_| 40 + rng.below(3000) as u32).collect();
+            let stacks: Vec<u64> = (0..seats).map(|_| 40 + rng.below(3000)).collect();
             let button = rng.below(seats as u64) as usize;
             let mut draws = Rng::seeded(rng.next_u64());
             let won = play(&cards, &stacks, button, BLINDS, |_, spot| {
@@ -135,7 +135,7 @@ fn no_chip_is_made_or_lost_whatever_the_seats_ask_for() {
             });
             assert_eq!(won.iter().sum::<i64>(), 0, "{cards:?} {stacks:?}");
             for (net, stack) in won.iter().zip(&stacks) {
-                assert!(*net >= -i64::from(*stack));
+                assert!(*net >= -(*stack as i64));
             }
         }
     }

@@ -376,7 +376,8 @@ impl Store {
                 played.digest.to_string(),
                 played.net,
                 played.luck,
-                played.big_blind,
+                // SQLite keeps integers as i64; a big blind always fits.
+                i64::try_from(played.big_blind).unwrap_or(i64::MAX),
                 probe,
                 orbit,
                 arm
@@ -402,7 +403,8 @@ impl Store {
                 digest: digest.parse().map_err(|_| rusqlite::Error::InvalidQuery)?,
                 net: row.get(3)?,
                 luck: row.get(4)?,
-                big_blind: row.get(5)?,
+                big_blind: u64::try_from(row.get::<_, i64>(5)?)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
                 orbit: match (probe, orbit, arm) {
                     (Some(probe), Some(orbit), Some(arm)) => Some((
                         u64::from_str_radix(&probe, 16).unwrap_or(0),

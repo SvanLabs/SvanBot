@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::eval::{Strength, strength};
-use svanbot_core::rules::Street;
+use svanbot_core::rules::{Chips, Street};
 use svanbot_core::spot::{Act, ActKind};
 
 /// Strength buckets per situation.
@@ -50,8 +50,8 @@ impl Move {
     }
 
     /// The size of a bet or raise that adds `added` chips to a pot of `pot` before it.
-    pub fn bet(added: u32, pot: u32) -> Self {
-        let share = f64::from(added) / f64::from(pot.max(1));
+    pub fn bet(added: Chips, pot: Chips) -> Self {
+        let share = added as f64 / pot.max(1) as f64;
         if share < 0.5 {
             Self::Small
         } else if share < 1.0 {

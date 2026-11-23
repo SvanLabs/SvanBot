@@ -14,7 +14,7 @@ use std::cell::Cell;
 
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::rng::Rng;
-use svanbot_core::rules::Action;
+use svanbot_core::rules::{Action, Chips};
 use svanbot_core::spot::{Act, ActKind, Spot};
 
 use crate::equity::sampled;
@@ -155,7 +155,7 @@ impl Sparring {
         };
         match spot.legal.call {
             Some(call) => {
-                let price = f64::from(call) / f64::from(spot.pot + call);
+                let price = call as f64 / (spot.pot + call) as f64;
                 if equity > 0.8 {
                     bet(spot, 1.0)
                 } else if equity >= price + 0.12 - lighter {
@@ -206,7 +206,7 @@ fn maniac(spot: &Spot, equity: f64, roll: f64) -> Action {
 fn bet(spot: &Spot, share: f64) -> Action {
     match (spot.legal.raise, spot.legal.call) {
         (Some(range), call) => {
-            let to = spot.committed + call.unwrap_or(0) + (f64::from(spot.pot) * share) as u32;
+            let to = spot.committed + call.unwrap_or(0) + (spot.pot as f64 * share) as Chips;
             Action::RaiseTo(to.clamp(range.min, range.max))
         }
         (None, Some(_)) => Action::Call,

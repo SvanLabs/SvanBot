@@ -12,7 +12,7 @@ const BUDGET: Budget = Budget {
     seed: 5,
 };
 
-fn spot(hole: &str, board: &str, pot: u32, legal: Legal, opponents: usize) -> Spot {
+fn spot(hole: &str, board: &str, pot: u64, legal: Legal, opponents: usize) -> Spot {
     Spot {
         hole: hole.parse().unwrap(),
         board: board.parse().unwrap(),
@@ -29,7 +29,7 @@ fn spot(hole: &str, board: &str, pot: u32, legal: Legal, opponents: usize) -> Sp
     }
 }
 
-fn facing(call: u32, raise: Option<(u32, u32)>) -> Legal {
+fn facing(call: u64, raise: Option<(u64, u64)>) -> Legal {
     Legal {
         call: Some(call),
         raise: raise.map(|(min, max)| RaiseRange { min, max }),

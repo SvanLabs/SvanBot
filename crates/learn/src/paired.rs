@@ -7,7 +7,7 @@
 //! in any order, on any number of threads, and add up the same.
 
 use svanbot_core::rng::Rng;
-use svanbot_core::rules::{Action, Blinds};
+use svanbot_core::rules::{Action, Blinds, Chips};
 use svanbot_core::spot::{Act, Spot};
 use svanbot_sim::table::{Record, Seen, deal, play_observed};
 
@@ -30,7 +30,7 @@ impl<F: Fn(&Spot, u64) -> Action> Challenger for F {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Match {
     pub blinds: Blinds,
-    pub stack: u32,
+    pub stack: Chips,
     pub seed: u64,
 }
 
@@ -103,7 +103,7 @@ pub fn duel_seen(
         chips += won[seat];
     }
     challenger.finished_deal();
-    chips / (2.0 * f64::from(game.blinds.big))
+    chips / (2.0 * game.blinds.big as f64)
 }
 
 /// What a paired sim found: the challenger's win rate over the champion in mbb/100, and the

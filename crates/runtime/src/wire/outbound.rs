@@ -1,6 +1,7 @@
 //! Messages to the venue.
 
 use serde_json::json;
+use svanbot_core::rules::Chips;
 
 /// An action as the venue names it. A raise names the street total it rises to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -8,7 +9,7 @@ pub enum VenueAction {
     Fold,
     Check,
     Call,
-    Raise(u32),
+    Raise(Chips),
     AllIn,
 }
 
@@ -16,7 +17,7 @@ pub enum VenueAction {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Outbound {
     JoinLobby {
-        buy_in: u32,
+        buy_in: Chips,
     },
     SetAutoRebuy {
         enabled: bool,

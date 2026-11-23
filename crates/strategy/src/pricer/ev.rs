@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 
 use svanbot_core::card::CardSet;
-use svanbot_core::rules::Street;
+use svanbot_core::rules::{Chips, Street};
 use svanbot_core::spot::Spot;
 use svanbot_sim::equity::Showdown;
 
@@ -74,17 +74,17 @@ pub(super) fn references(
 pub(super) fn raise(
     dealt: &[Showdown],
     references: &[Vec<f64>],
-    pot: u32,
-    call: u32,
-    added: u32,
+    pot: Chips,
+    call: Chips,
+    added: Chips,
 ) -> f64 {
-    let (pot, call, added) = (f64::from(pot), f64::from(call), f64::from(added));
+    let (pot, call, added) = ((pot as f64), (call as f64), (added as f64));
     let share = (added - call) / (pot + call).max(1.0);
     let mut total = 0.0;
     for (deal, reference) in dealt.iter().zip(references) {
         let goes_on: Vec<f64> = reference.iter().map(|&r| continues(r, share)).collect();
         let opponents = goes_on.len();
-        for callers in 0u32..(1 << opponents) {
+        for callers in 0u64..(1 << opponents) {
             let mut chance = 1.0;
             for (at, &p) in goes_on.iter().enumerate() {
                 chance *= if callers & (1 << at) != 0 { p } else { 1.0 - p };
@@ -111,17 +111,17 @@ pub(super) fn raise(
 pub(super) fn call(
     dealt: &[Showdown],
     references: &[Vec<f64>],
-    answering: u32,
-    pot: u32,
-    call: u32,
-    bet: u32,
+    answering: u64,
+    pot: Chips,
+    call: Chips,
+    bet: Chips,
 ) -> f64 {
-    let (pot, call_chips, bet) = (f64::from(pot), f64::from(call), f64::from(bet));
+    let (pot, call_chips, bet) = ((pot as f64), (call as f64), (bet as f64));
     let share = bet / pot.max(1.0);
     let mut total = 0.0;
     for (deal, reference) in dealt.iter().zip(references) {
         let opponents = reference.len() as u32;
-        let all = (1u32 << opponents) - 1;
+        let all = (1u64 << opponents) - 1;
         let staying = all & !answering;
         // Each subset of the answering players that calls, with its chance.
         let mut callers = answering;
@@ -157,7 +157,7 @@ pub(super) fn call(
 /// times it, and all-in when the stack is short of three of those. After it: a third, two thirds
 /// and the whole of the pot after the call, and all-in when the stack is short of one and a half
 /// pots.
-pub(super) fn sizes(spot: &Spot) -> Vec<u32> {
+pub(super) fn sizes(spot: &Spot) -> Vec<Chips> {
     let Some(range) = spot.legal.raise else {
         return Vec::new();
     };
@@ -181,13 +181,13 @@ pub(super) fn sizes(spot: &Spot) -> Vec<u32> {
     } else {
         let after_call = spot.pot + call;
         for share in [0.33, 0.66, 1.0] {
-            totals.push(spot.committed + call + (f64::from(after_call) * share) as u32);
+            totals.push(spot.committed + call + ((after_call as f64) * share) as Chips);
         }
-        if f64::from(spot.stack) <= 1.5 * f64::from(after_call) {
+        if (spot.stack as f64) <= 1.5 * (after_call as f64) {
             totals.push(all_in);
         }
     }
-    let mut legal: Vec<u32> = totals
+    let mut legal: Vec<Chips> = totals
         .into_iter()
         .map(|to| to.clamp(range.min, range.max))
         .collect();

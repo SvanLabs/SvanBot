@@ -95,7 +95,7 @@ pub fn price_lines(
 /// ordinary pot price. `None` when there is nothing to call.
 pub fn price_of(spot: &Spot) -> Option<f64> {
     spot.legal.call.map(|call| {
-        f64::from(call) / (f64::from(spot.callable_pot.unwrap_or(spot.pot)) + f64::from(call))
+        (call as f64) / ((spot.callable_pot.unwrap_or(spot.pot) as f64) + (call as f64))
     })
 }
 
@@ -105,15 +105,18 @@ pub fn price_of(spot: &Spot) -> Option<f64> {
 fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64) -> Action {
     let sizes = ev::sizes(spot);
     let answering = answering(spot, models.len());
-    let references = (!sizes.is_empty() || (spot.legal.call.is_some() && answering != 0))
-        .then(|| ev::references(spot, dealt, models, &ranked(spot.board)))
-        .unwrap_or_default();
+    // Each opponent's fold chances, built only when a raise or an answered call will read them.
+    let references = if !sizes.is_empty() || (spot.legal.call.is_some() && answering != 0) {
+        ev::references(spot, dealt, models, &ranked(spot.board))
+    } else {
+        Vec::new()
+    };
     let (mut best, mut worth) = match spot.legal.call {
-        None => (Action::Check, equity * f64::from(spot.pot)),
+        None => (Action::Check, equity * (spot.pot as f64)),
         Some(call) => {
             let pot = spot.callable_pot.unwrap_or(spot.pot);
             let called = if answering == 0 {
-                equity * (f64::from(pot) + f64::from(call)) - f64::from(call)
+                equity * ((pot as f64) + (call as f64)) - (call as f64)
             } else {
                 ev::call(
                     dealt,
@@ -146,7 +149,7 @@ fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64)
 /// The opponents, a bit each in the order of the ranges, who have not acted on this street yet
 /// and so still answer its bet. None when the caller did not follow the hand: with no lines,
 /// nobody can be told apart, and every opponent is taken to be in.
-fn answering(spot: &Spot, opponents: usize) -> u32 {
+fn answering(spot: &Spot, opponents: usize) -> u64 {
     if spot.lines.is_empty() {
         return 0;
     }

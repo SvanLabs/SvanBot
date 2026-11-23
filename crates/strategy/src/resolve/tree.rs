@@ -6,6 +6,8 @@
 //! they may fold, call, raise the pot or go all in, up to [`MAX_BETS`] bets and raises a street.
 //! A call, or a check back, ends the street.
 
+use svanbot_core::rules::Chips;
+
 /// Bets and raises a street may hold.
 pub const MAX_BETS: u32 = 3;
 
@@ -16,7 +18,7 @@ pub enum Abstract {
     Check,
     Call,
     /// A bet or raise that adds this many chips.
-    Bet(u32),
+    Bet(Chips),
 }
 
 impl Abstract {
@@ -42,22 +44,22 @@ pub enum Node {
         children: Vec<usize>,
     },
     /// `folder` folded.
-    Fold { folder: usize, added: [u32; 2] },
+    Fold { folder: usize, added: [Chips; 2] },
     /// The street ends with both in.
-    Leaf { added: [u32; 2] },
+    Leaf { added: [Chips; 2] },
 }
 
 /// The tree, root first.
 #[derive(Clone, Debug)]
 pub struct Tree {
-    pub base: u32,
+    pub base: Chips,
     pub nodes: Vec<Node>,
 }
 
 #[derive(Clone, Copy)]
 struct State {
     player: usize,
-    added: [u32; 2],
+    added: [Chips; 2],
     bets: u32,
     /// The player before checked.
     checked: bool,
@@ -66,7 +68,7 @@ struct State {
 impl Tree {
     /// The tree from our turn: `base` in the pot, facing `call`, with `stack` behind. The villain
     /// is taken to cover us.
-    pub fn new(base: u32, call: u32, stack: u32, in_position: bool) -> Self {
+    pub fn new(base: Chips, call: Chips, stack: Chips, in_position: bool) -> Self {
         let mut tree = Self {
             base,
             nodes: Vec::new(),
@@ -84,7 +86,7 @@ impl Tree {
         tree
     }
 
-    fn grow(&mut self, state: State, caps: [u32; 2]) -> usize {
+    fn grow(&mut self, state: State, caps: [Chips; 2]) -> usize {
         let at = self.nodes.len();
         self.nodes.push(Node::Leaf { added: state.added });
         let me = state.player;
