@@ -98,6 +98,10 @@ impl Window for BotWorld<'_> {
                 .in_crash_loop(now, now.saturating_sub(since_ms), limit)
         })
     }
+
+    fn down(&mut self) -> bool {
+        self.systemd.is_down()
+    }
 }
 
 /// Milliseconds since the Unix epoch, the updater's clock.
