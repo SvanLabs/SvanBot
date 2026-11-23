@@ -187,9 +187,34 @@ the reads and ranges of the opponents in the hand.
 _Avoid_: search, solve, lookahead
 
 **Pricer**:
-The fallback way to decide: price each legal action by its expected value against the ranges and
-take the best. It covers every spot a re-solve does not.
+The way to decide every spot a re-solve does not cover: value each legal action in chips over
+sampled deals against the ranges and take the best. A raise is worth the pot when the table folds
+to it, each opponent folding as their action model folds their hand to a bet of that size, and the
+showdown against whoever calls. An unopened pot is decided by the opening range instead.
 _Avoid_: heuristic, EV engine
+
+**Starting-hand class**:
+One of the 169 kinds of starting hand: a pair, or two ranks suited or offsuit (`AA`, `AKs`, `72o`).
+Suits do not matter before the flop, so every pair of hole cards has one class.
+_Avoid_: hand type, combo (a combo is one pair of hole cards)
+
+**Preflop table**:
+Each starting-hand class's all-in equity against one to five random hands, measured once by our own
+sampler and shipped in the binary, so no decision spends samples on it.
+_Avoid_: chart, lookup
+
+**Position**:
+Where a decision sits in the order of play before the flop: how many opponents are still to act
+behind it, and whether it plays the later streets in position. At six-handed UTG has five behind and
+the button two; heads up the button has one behind and is in position. Not a seat: the same seat
+is a different position each hand.
+_Avoid_: seat, slot
+
+**Opening range**:
+The hands a position opens an unopened pot with: the starting-hand classes whose rank against the
+players behind is within the position's share, from 15% of hands at UTG to 80% on the heads-up
+button. Any other hand folds.
+_Avoid_: chart, open list
 
 **Compute budget**:
 The time a decision may spend at a spot. Bigger pots get more of it.
@@ -345,13 +370,14 @@ read after every heat, and the play stops at the first heat that decides it.
 _Avoid_: round, lap, pass
 
 **League**:
-Which table an Arena run is played at: heads up, or 6-max. The two measure different things (the
-re-solve after the flop, the multiway path), so each keeps its own runs and its own board, and a
-result is never pooled across them. The headline states the heads-up league.
+Which table an Arena run is played at: heads up, 3-handed, 4-handed, 5-handed or 6-max. Each measures
+something different (the re-solve after the flop, and the pricer at each count of players behind
+it), so each keeps its own runs and its own board, and a result is never pooled across them. The
+headline states the heads-up league, and the ship bar reads heads up and 6-max.
 _Avoid_: format, mode, division
 
 **Ring**:
-One deal played once from every seat of a full table, the challenger moving a seat each time
+One deal played once from every seat of a table of three or more, the challenger moving a seat each time
 against the same opponents, so it holds every hand in every position and the luck of the cards
 cancels as the mirror cancels it heads up. Each seat's decisions draw from that seat's own stream,
 so a policy playing itself breaks even.

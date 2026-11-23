@@ -100,7 +100,7 @@ fn a_premium_hand_opens_a_full_table_to_two_and_a_half_blinds() {
 }
 
 #[test]
-fn an_unopened_pot_is_opened_or_folded_by_the_seat_and_its_chart() {
+fn an_unopened_pot_is_opened_or_folded_by_its_position() {
     // Nobody has acted yet: every opponent still in is behind us. Five behind is UTG, two behind
     // and in position is the button.
     let seat = |hole: &str, behind: usize, in_position: bool| {

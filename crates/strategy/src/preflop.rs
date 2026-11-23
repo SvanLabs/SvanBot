@@ -1,15 +1,15 @@
 //! The preflop tables (V11-39): what each starting hand is worth against one to five random hands,
-//! known ahead of time, and the hands each seat opens with.
+//! known ahead of time, and the hands each position opens with.
 //!
 //! - A **class** is one of the 169 kinds of starting hand: a pair, or two ranks suited or offsuit.
 //!   Suits do not matter before the flop, so every pair of hole cards has one class.
 //! - The **table** is each class's all-in equity against one to five opponents holding random
 //!   hands. It is measured once by our own sampler (`svanbot tables preflop`), shipped as
 //!   `data/preflop.txt` and read in at the first use, so no decision spends samples on it.
-//! - A **seat**, before the flop, is how many opponents are still to act behind us and whether we
+//! - A **position**, before the flop, is how many opponents are still to act behind us and whether we
 //!   play the later streets in position. At six-handed UTG has 5 behind, HJ 4, CO 3, the button 2
 //!   and the small blind 1; heads up the button has 1 behind and is in position.
-//! - A seat **opens** the share of hands its rank allows: a class's rank is the share of all hands
+//! - A position **opens** the share of hands its rank allows: a class's rank is the share of all hands
 //!   that are worth more than it against the players behind.
 
 use std::sync::OnceLock;
@@ -154,13 +154,13 @@ fn ranks() -> &'static [[f64; CLASSES]; MOST] {
 /// Where a decision sits before the flop: the opponents still to act behind it, and whether it
 /// plays the later streets in position.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Seat {
+pub struct Position {
     pub behind: usize,
     pub in_position: bool,
 }
 
-impl Seat {
-    /// The share of all hands this seat opens an unopened pot with. The standard 6-max opening
+impl Position {
+    /// The share of all hands this position opens an unopened pot with. The standard 6-max opening
     /// ranges: tight up front, wide on the button, and widest heads up, where the button is in
     /// position against one player.
     pub fn share(self) -> f64 {
@@ -175,8 +175,8 @@ impl Seat {
     }
 }
 
-/// Whether `seat` opens an unopened pot with `class`: its rank against the players behind is
-/// within the seat's share.
-pub fn opens(class: usize, seat: Seat) -> bool {
-    ranks()[seat.behind.clamp(1, MOST) - 1][class.min(CLASSES - 1)] < seat.share()
+/// Whether `position` opens an unopened pot with `class`: its rank against the players behind is
+/// within the position's share.
+pub fn opens(class: usize, position: Position) -> bool {
+    ranks()[position.behind.clamp(1, MOST) - 1][class.min(CLASSES - 1)] < position.share()
 }

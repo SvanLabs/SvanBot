@@ -2,6 +2,29 @@
 
 v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final`.
 
+## 11.1.0: unreleased
+
+Win rate against the field, at every table size (V11-39).
+
+- The pricer values each legal action in chips over the deals it samples. A raise is worth the pot
+  when the table folds, plus the showdown against whoever calls. Each opponent folds as their
+  action model folds their hand to a bet, more often the bigger the bet. A call is answered the
+  same way by the players still to act. Raises come in the table's standard sizes.
+- The preflop table: each of the 169 starting-hand classes' equity against one to five random
+  hands, measured by our own sampler (`svanbot tables preflop`) and shipped in the binary. An
+  unopened pot is opened with the opening range of its position, from 15% of hands at UTG to 80%
+  on the heads-up button.
+- The Arena plays 3-, 4- and 5-handed leagues beside heads up and 6-max, each on its own board.
+  `svanbot paired compare` reads two runs on one seed and gives each row's paired difference.
+- Chips are counted in 64 bits (`core::rules::Chips`).
+- The release is built for x86-64-v2, the box's instruction level, and says so in `UPGRADE/cpu`.
+  `install.sh` refuses a bundle built above the CPU it runs on.
+- `Params` keeps `exploit` alone. `value_margin` and `raise_share` sized the old pricer's raises.
+- The dashboard listens on port 5000 (V11-41).
+- The README is rewritten, with `CONTRIBUTING.md`, `SECURITY.md`, a docs index, issue and PR
+  templates, and a GitHub Pages site in `site/`, published by `pages.yml`. `tools/site.ts` checks
+  every link in the commit tier.
+
 ## 11.0.0 "The Deep Mass-ReWorkStructure": unreleased
 
 A new codebase written from scratch (`docs/adr/0002-v11-from-scratch.md`), tracked as the map

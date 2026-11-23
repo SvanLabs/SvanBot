@@ -133,8 +133,8 @@ fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64)
     best
 }
 
-/// The decision in an unopened pot, from the seat's chart ([`preflop::opens`]): before the flop,
-/// with nobody yet to have acted, every opponent still in is behind us. A hand the seat opens is
+/// The decision in an unopened pot, from the opening range ([`preflop::opens`]): before the flop,
+/// with nobody yet to have acted, every opponent still in is behind us. A hand the position opens is
 /// raised to the table's standard open, and any other folds (or checks, when it is free). `None`
 /// when the pot has been opened, when a raise is not open to us, or when the caller did not follow
 /// the hand: with no lines, an unopened pot cannot be told from a raised one.
@@ -151,11 +151,11 @@ fn opening(spot: &Spot) -> Option<Decision> {
         return None;
     }
     let class = preflop::class_of(spot.hole);
-    let seat = preflop::Seat {
+    let position = preflop::Position {
         behind: spot.opponents,
         in_position: spot.in_position,
     };
-    let action = if preflop::opens(class, seat) {
+    let action = if preflop::opens(class, position) {
         Action::RaiseTo(*ev::sizes(spot).first()?)
     } else if spot.legal.call.is_none() {
         Action::Check

@@ -1,9 +1,9 @@
 //! The preflop tables (V11-39): each of the 169 starting hands' equity against one to five random
-//! hands, shipped in the binary, and the hands each seat opens with. The expected equities are
+//! hands, shipped in the binary, and the hands each position opens with. The expected equities are
 //! the published all-in figures, not numbers derived from the code under test.
 
 use svanbot_core::card::CardSet;
-use svanbot_strategy::preflop::{CLASSES, Seat, class_of, equity, name, opens};
+use svanbot_strategy::preflop::{CLASSES, Position, class_of, equity, name, opens};
 
 fn class(hole: &str) -> usize {
     class_of(hole.parse::<CardSet>().unwrap())
@@ -58,16 +58,16 @@ fn every_pair_of_hole_cards_has_one_of_169_classes_and_suits_do_not_matter() {
 }
 
 #[test]
-fn each_seat_opens_its_best_hands_and_the_later_seats_open_more() {
-    let utg = Seat {
+fn each_position_opens_its_best_hands_and_the_later_positions_open_more() {
+    let utg = Position {
         behind: 5,
         in_position: false,
     };
-    let button = Seat {
+    let button = Position {
         behind: 2,
         in_position: true,
     };
-    let heads_up_button = Seat {
+    let heads_up_button = Position {
         behind: 1,
         in_position: true,
     };
@@ -78,7 +78,7 @@ fn each_seat_opens_its_best_hands_and_the_later_seats_open_more() {
     assert!(opens(class("Kh9s"), button));
     assert!(opens(class("Kh9s"), heads_up_button));
     assert!(opens(class("8h5s"), heads_up_button));
-    let count = |seat: Seat| (0..CLASSES).filter(|&c| opens(c, seat)).count();
+    let count = |position: Position| (0..CLASSES).filter(|&c| opens(c, position)).count();
     assert!(
         count(utg) < count(button),
         "UTG {} BTN {}",
