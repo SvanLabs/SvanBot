@@ -5,10 +5,12 @@
 //! policy's read of the opponent with the live code, and freezes it. Then each of `deals` fresh
 //! deals is played by the policy with the read and without, and the difference is the result. It
 //! prints a line per archetype and one over all of them, and exits 0 only when that last
-//! interval is wholly above 0.
+//! interval is wholly above 0. Against the adapting archetypes it runs the exploit gate
+//! ([`gate`]) on what the reads lose to them, and prints its verdict.
 
 use std::process::ExitCode;
 
+use svanbot_learn::exploit::gate;
 use svanbot_learn::paired::{Match, Verdict, verdict};
 use svanbot_learn::read_sim::{OPPONENT, reads_on_off, warm_up};
 use svanbot_sim::sparring::Archetype;
@@ -21,6 +23,13 @@ const THREADS: u64 = 4;
 
 /// The archetypes that play one strategy throughout, whose reads should pay.
 const FIXED: [Archetype; 3] = [Archetype::Station, Archetype::Nit, Archetype::Maniac];
+
+/// The archetypes that change how they play, which punish a read that does not keep up: the
+/// exploit gate's losses come from them.
+const ADAPTING: [Archetype; 2] = [Archetype::Switching, Archetype::Learning];
+
+/// The most reads may lose a hand to the adapting archetypes, in mbb, at the gate's 95% bound.
+const CAP: f64 = 25.0;
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let number = |at: usize| args.get(at).map(|text| text.parse::<u64>());
@@ -35,27 +44,40 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     let (game, warm) = (deciders::game(seed.unwrap_or(1)), warm.unwrap_or(200));
     let params = Params::DEFAULT;
     let off = deciders::challenger(&params, None);
-    let mut all = Vec::new();
-    for archetype in FIXED {
+    let play = |archetype: Archetype| {
         let reads = warm_up(&game, archetype, 0..warm, &off);
         let read = reads.get(OPPONENT);
         let on = deciders::reader(&params, None, &reads);
         let results = measure(&game, archetype, warm..warm + deals, &on, &off);
-        let found = verdict(&results);
         println!(
             "reads on against off, {}: {}, read {} at {:.0}% of the budget",
             archetype.name(),
-            line(&found),
+            line(&verdict(&results)),
             read.map_or("nothing", |read| read.class().name()),
             read.map_or(0.0, |read| read.earned() * 100.0)
         );
-        all.extend(results);
-    }
+        results
+    };
+    let all: Vec<f64> = FIXED.into_iter().flat_map(play).collect();
     let found = verdict(&all);
     println!(
         "reads on against off, heads up: {} (seed {}, warm-up {warm})",
         line(&found),
         game.seed
+    );
+    // The exploit meter: what reads lose, per hand, to the opponents that punish them.
+    let losses: Vec<f64> = ADAPTING
+        .into_iter()
+        .flat_map(play)
+        .map(|won| -won * 1000.0)
+        .collect();
+    let meter = gate(&losses, CAP);
+    println!(
+        "exploit gate against the adapting archetypes: {:+.1} mbb a hand lost, upper bound {:+.1}, \
+         cap {CAP}: {}",
+        meter.mean,
+        meter.upper,
+        if meter.passed { "passed" } else { "refused" }
     );
     if found.above_zero() {
         ExitCode::SUCCESS
