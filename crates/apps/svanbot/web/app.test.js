@@ -192,6 +192,46 @@ test("the fleet page has one card a bot and the strip names the worst problem", 
   expect(view.querySelector("a").attrs.href).toBe("/bot/SurSvan");
 });
 
+/** Every element under `node` whose class list holds `name`. */
+function byClass(node, name, found = []) {
+  for (const child of node.children) {
+    if (typeof child !== "string") {
+      if ((child.attrs.class ?? "").split(" ").includes(name)) {
+        found.push(child);
+      }
+      byClass(child, name, found);
+    }
+  }
+  return found;
+}
+
+test("a fleet card draws its live table on the felt: seats, our seat, the button, the board", () => {
+  const view = show("/");
+  const [felt] = byClass(view, "felt");
+  const seats = byClass(felt, "seat");
+  expect(seats.length).toBe(3);
+  expect(byClass(felt, "us").map((seat) => seat.textContent)).toEqual(["SurSvan2,240"]);
+  expect(byClass(felt, "folded").map((seat) => seat.textContent)).toEqual(["someone1,950"]);
+  // The dealer's button sits with seat 0, whose name is text, never markup.
+  expect(byClass(seats[0], "dealer").length).toBe(1);
+  expect(seats[0].textContent).toContain("<img src=x onerror=alert(1)>");
+  const cards = byClass(felt, "pcard");
+  expect(cards.map((card) => card.textContent)).toEqual(["A♥", "K♦", "7♣", "2♠"]);
+  expect(byClass(felt, "red").length).toBe(2);
+  expect(byClass(felt, "pot")[0].textContent).toBe("pot 640");
+  // A bot with no table has no felt.
+  expect(byClass(view, "felt").length).toBe(1);
+});
+
+test("the fleet page opens with a summary and every card carries a sparkline of its hands", () => {
+  const view = show("/");
+  const [summary] = byClass(view, "summary");
+  expect(summary.textContent).toContain("1 of 2 playing");
+  expect(summary.textContent).toContain("420 hands");
+  expect(summary.textContent).toContain("+1.5 bb/100");
+  expect(byClass(view, "spark").length).toBe(2);
+});
+
 test("a bot's page has six panels, its table, and a chart with its numbers in a table", () => {
   const view = show("/bot/SurSvan");
   expect(view.all("section").map((panel) => panel.querySelector("h2").textContent)).toEqual([
