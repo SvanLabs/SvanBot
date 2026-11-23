@@ -78,7 +78,10 @@ svanbot-release rollback                # point current back at the build it rep
 `install` never touches a slot, so a release can be staged long before a window is found. `update`
 is the window: it asks the bot to stop between hands, waits for it, stops it under systemd, points
 `current` at the new build, starts it again, and rolls back if it does not come up or crash-loops
-(three starts in five minutes). The whole tree is one path, `SVANBOT_LIB` or
+(three starts in five minutes). A bot that systemd has down (inactive or failed) has no hand to
+wait out, so `update` skips the stop: it points `current` and starts the bot, and if the bot does
+not come up it is stopped again with `current` back where it was ([the first
+start](#the-first-start-on-a-fresh-box)). The whole tree is one path, `SVANBOT_LIB` or
 `~/.local/lib/svanbot`; which bot a window runs for is `SVANBOT_NAME`.
 
 The **canary** (SurSvan) takes every update first. `SVANBOT_CANARY` names it, and `update` without
@@ -128,6 +131,39 @@ svanbot-release install ~/.local/lib/svanbot/staged
 svanbot-release status                                       # the build is installed, no slot has moved
 SVANBOT_CANARY=SurSvan svanbot-release update 2026.11.16   # the canary takes it first
 ```
+
+### The first start, on a fresh box
+
+A fresh box has no `current` and no bot running, and `svanbot-release` takes it from a downloaded
+bundle to a running canary. Nothing else may be playing with these keys: a second connection with
+a bot's key takes over its live session.
+
+```sh
+# 1. Each bot's env file, as in "A bot" above: key, name, roster, SVANBOT_CANARY=SurSvan.
+# 2. The unit, enabled but not started: until `current` exists a start can only fail, and five
+#    failures in five minutes leave the unit failed.
+install -m 644 deploy/svanbot@.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable svanbot@SurSvan        # and each other bot, all without --now
+# 3. The bundle: install.sh puts svanbot-release in ~/.local/bin and stages the release.
+gh release download v11.0.0 --repo SvanLabs/SvanBot
+deploy/install.sh svanbot-11.0.0-x86-64-v3.tar.gz
+svanbot-release install ~/.local/lib/svanbot/staged
+# 4. The canary's first update: it is down, so current is pointed at the build and the bot is
+#    started, then watched for a crash loop like any other update.
+SVANBOT_CANARY=SurSvan SVANBOT_NAME=SurSvan svanbot-release update 11.0.0
+svanbot-release status
+```
+
+The rest of the fleet follows the same way, one bot at a time, once the canary's window is over:
+`SVANBOT_NAME=<name> svanbot-release update --fleet 11.0.0`. Name the version: with none,
+`update` takes the newest installed build by number, and an older dated build such as
+`2026.11.16-1` outranks `11.0.0`.
+
+If the canary does not come up, `update` says so, stops it again, and exits 1. A first build that
+crash-loops has nothing to roll back to, so it stays in `current`, systemd stops retrying it after
+five starts, and `update` exits 1 saying so. A unit left failed by its start limit refuses a start
+until `systemctl --user reset-failed svanbot@<name>`.
 
 ### The ship bar
 
