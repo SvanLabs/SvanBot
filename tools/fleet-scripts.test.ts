@@ -1,17 +1,22 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 function withSystemctl(
   check: (
-    run: (script: string, ...args: string[]) => ReturnType<typeof Bun.spawnSync>,
+    run: (script: string, locked?: boolean) => ReturnType<typeof Bun.spawnSync>,
     log: () => string,
   ) => void,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-fleet-"));
   try {
     const calls = join(dir, "calls");
+    const config = join(dir, ".config/svanbot");
+    mkdirSync(config, { recursive: true });
+    for (const file of ["First.env", "Second.env", "invalid-name.env", "First.env.bak"]) {
+      writeFileSync(join(config, file), "");
+    }
     writeFileSync(calls, "");
     writeFileSync(
       join(dir, "systemctl"),
@@ -25,16 +30,19 @@ fi
       { mode: 0o755 },
     );
     check(
-      (script, ...args) =>
-        Bun.spawnSync(["bash", join(import.meta.dir, "../scripts", script), ...args], {
+      (script, locked) => {
+        const lock = locked ? ["flock", join(dir, "update.lock")] : [];
+        return Bun.spawnSync([...lock, "bash", join(import.meta.dir, "../scripts", script)], {
           env: {
             ...process.env,
+            HOME: dir,
             PATH: `${dir}:${process.env.PATH}`,
             SVANBOT_LIB: dir,
             SVANBOT_TEST_CALLS: calls,
           },
           stderr: "pipe",
-        }),
+        });
+      },
       () => readFileSync(calls, "utf8"),
     );
   } finally {
@@ -42,9 +50,9 @@ fi
   }
 }
 
-test("start brings up the requested bot units and dashboard", () => {
+test("start brings up the configured bot units and dashboard", () => {
   withSystemctl((run, log) => {
-    expect(run("start.sh", "First", "Second").exitCode).toBe(0);
+    expect(run("start.sh").exitCode).toBe(0);
     expect(log()).toBe(
       "--user start svanbot@First.service svanbot@Second.service svanbot-dashboard.service\n",
     );
@@ -58,5 +66,16 @@ test("stop brings down only the loaded bot units and dashboard", () => {
       "--user stop svanbot@First.service svanbot@Second.service svanbot-dashboard.service\n",
     );
     expect(log()).not.toContain("unrelated.service");
+  });
+});
+
+test("a release update in progress blocks both operations", () => {
+  withSystemctl((run, log) => {
+    for (const script of ["start.sh", "stop.sh"]) {
+      const result = run(script, true);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr?.toString()).toContain("release update is already in progress");
+    }
+    expect(log()).toBe("");
   });
 });

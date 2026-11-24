@@ -66,7 +66,6 @@ Run these as the systemd user after installing the units and a release:
 ```sh
 scripts/start.sh                # starts each bot with a .env file and the dashboard
 scripts/stop.sh                 # stops the loaded bot instances and the dashboard
-scripts/start.sh SurSvan        # starts just this bot and the dashboard
 ```
 
 Starting or stopping the fleet leaves the service enablement and release slots as they are.
