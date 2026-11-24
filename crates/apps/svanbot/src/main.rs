@@ -1,6 +1,7 @@
 //! `svanbot`: one bot at the venue. It connects with the bot's key, plays every turn by the
-//! policy (a re-solve heads up after the flop, the pricer otherwise), leaves any table a stablemate sits at, and reconnects with a backoff when the venue
-//! closes the connection, resyncing the table it sat at if the venue still holds the seat.
+//! policy (a re-solve heads up after the flop, the pricer otherwise), leaves any table a stablemate
+//! sits at, and reconnects with a backoff when the venue closes the connection, resyncing the table
+//! it sat at if the venue still holds the seat.
 //!
 //! It reads its setup from the environment, as the venue's docs advise for keys:
 //! - `SVANBOT_API_KEY`: the bot's key. It is never printed.
@@ -258,7 +259,7 @@ fn main() -> ExitCode {
             }
             Ok(PlayOutcome::Stopped) => {
                 // Between hands, and the updater has asked for the build: say so, so the updater
-                // knows the table is left, and end. Systemd starts the new build.
+                // knows the table is left, and end. The supervisor starts the new build.
                 eprintln!("svanbot: stopped between hands for an update");
                 if let Err(error) = health.note_stop() {
                     eprintln!("svanbot: could not say it stopped: {error}");
@@ -295,8 +296,8 @@ fn keep(
         Event::Connected => live.connected(),
         Event::Table(table) => live.table(table),
         Event::Incident(incident) => {
-            // `<2>` is journald's priority prefix for crit, so `journalctl -p crit` lists every
-            // incident and nothing else.
+            // `<2>` is the syslog priority prefix for crit, so `grep '^<2>'` on the bot's log
+            // (`~/.local/state/svanbot/<name>.log`) lists every incident and nothing else.
             eprintln!("<2>svanbot: FAIR-PLAY INCIDENT: {incident:?}");
             match store.append_incident(incident, now_ms()) {
                 Ok(()) => live.incident(),

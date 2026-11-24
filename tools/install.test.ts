@@ -24,6 +24,7 @@ function bundle(dir: string, cpu: string | undefined): string {
     ["release/sha256", Buffer.from("0  svanbot\n")],
     ["release/version", Buffer.from("version\t11.1.0\nsha256\t0\n")],
     ["UPGRADE/svanbot-release", Buffer.from("#!/bin/sh\n")],
+    ["UPGRADE/svanbot-bot", Buffer.from("#!/usr/bin/env bash\n")],
   ]);
   if (cpu !== undefined) files.set("UPGRADE/cpu", Buffer.from(`${cpu}\n`));
   const path = join(dir, "svanbot-11.1.0.tar.gz");
@@ -47,6 +48,7 @@ function install(cpu: string | undefined, flags: string) {
     code: run.exitCode,
     stderr: run.stderr.toString(),
     staged: existsSync(join(home, "tree/staged/svanbot")),
+    supervisor: existsSync(join(home, ".local/bin/svanbot-bot")),
   };
 }
 
@@ -72,4 +74,8 @@ test("a level the installer does not know is refused rather than guessed at", ()
   const found = install("x86-64-v9", V3);
   expect(found.code).toBe(1);
   expect(found.staged).toBe(false);
+});
+
+test("the supervisor is installed beside the updater, which drives it", () => {
+  expect(install("x86-64-v2", V2)).toMatchObject({ code: 0, supervisor: true });
 });

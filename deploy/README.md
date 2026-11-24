@@ -1,16 +1,22 @@
-# Deploy: the units on the box
+# Deploy: the fleet on the box
 
-The box runs v11 as systemd **user** units, with no version in their names. Every path below is
-under the home of the user the fleet runs as.
+The box runs v11 from the scripts in `scripts/`, with no systemd (V11-52). Every path below is under
+the home of the user the fleet runs as.
 
 | File | What it is |
 |------|------------|
-| `svanbot@.service` | One bot at the venue. One instance per bot: `svanbot@<name>`. |
-| `install.sh` | Stages and verifies a release bundle on a box with no toolchain. |
-| `svanbot-dashboard.service` | The loopback-only fleet dashboard: `svanbot dashboard`. |
-| `svanbot-clean.service`, `svanbot-clean.timer` | Daily `cargo sweep` of the dev clone's `target/dev`. |
-| `svanbot-learn.service`, `svanbot-learn.timer` | The learner's unattended search: `svanbot learn`, a step each half hour. |
-| `journald-svanbot.conf` | The journal's 1 GiB cap. Root installs it: the operator's step. |
+| `scripts/bot.sh` | The supervisor, installed as `svanbot-bot`: it keeps one bot, the dashboard or the learner running. |
+| `scripts/start.sh`, `scripts/stop.sh` | Start or stop the whole fleet: every configured bot, the dashboard and the learner. |
+| `scripts/update.sh` | Roll a release out, canary first, then every other bot. |
+| `scripts/clean.sh` | `cargo sweep` of the dev clone's `target/dev`: build output untouched for 14 days. |
+| `deploy/install.sh` | Stages and verifies a release bundle on a box with no toolchain. |
+
+Each one keeps its pid, and its log, under `~/.local/state/svanbot/`:
+
+```sh
+svanbot-bot status <name>                 # running | restarting | stopped | failed
+tail -f ~/.local/state/svanbot/<name>.log
+```
 
 > **While the v10 fleet plays, do not start `svanbot@<name>` with a fleet bot's key.** A new
 > connection with a bot's key takes over that bot's live session. The first live run of v11 waits
@@ -37,42 +43,52 @@ SVANBOT_ROSTER=<name>,<name>,...
 Add `SVANBOT_CANARY=SurSvan` to every bot's file: the bot it names runs the probes and takes each
 promotion first, and the others wait for its harm guard (see "Probes and promotions" below).
 
-The unit adds `SVANBOT_STORE=~/.local/share/svanbot/<name>.db`, one store per bot. It runs
-`~/.local/lib/svanbot/current/svanbot`, the slot the updater points `current` at (V11-10).
+The supervisor sets `SVANBOT_STORE=~/.local/share/svanbot/<name>.db`, one store per bot, unless the
+env file names another. It runs `~/.local/lib/svanbot/current/svanbot`, the slot the updater points
+`current` at (V11-10).
 
 ```sh
-install -m 644 deploy/svanbot@.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now svanbot@<name>
-journalctl --user -u svanbot@<name> -f
-systemctl --user stop svanbot@<name>
+svanbot-bot start <name>      # in the background; refused if it already runs
+svanbot-bot stop <name>       # TERM, waits for it to exit (KILL after 90 s)
+svanbot-bot status <name>
+tail -f ~/.local/state/svanbot/<name>.log
 ```
 
 A crash restarts the bot after 10 s, at most five times in five minutes, so a crash loop cannot
-spend the venue's ten connections a minute per IP. Exit 1 (the venue refused the key) and exit 2
-(setup missing) never restart: fix the env file, then `systemctl --user reset-failed` and start it
-again.
+spend the venue's ten connections a minute per IP. After the fifth, `status` says `failed` and it
+stays down. Exit 1 (the venue refused the key) and exit 2 (setup missing) never restart. Fix the env
+file, then `svanbot-bot start <name>` again. Each bot's address space is capped at 1 GiB, and a log
+past 64 MiB is moved to `<name>.log.1` at the next start.
 
 A fair-play incident is logged at priority crit as `FAIR-PLAY INCIDENT` and kept in the bot's
 store, in its append-only `incidents` table. To list every incident on the box:
 
 ```sh
-journalctl --user -p crit -u 'svanbot@*'
+grep -h '^<2>' ~/.local/state/svanbot/*.log
 ```
 
 ## Start or stop the configured fleet
 
-The operator runs these as the systemd user after installing the units and a release.
-Before starting, check the warning above about any bot keys the v10 fleet still uses.
+The operator runs these after installing a release. Before starting, check the warning above about
+any bot keys the v10 fleet still uses.
 
 ```sh
-scripts/start.sh                # starts each bot with a .env file and the dashboard
-scripts/stop.sh                 # stops the loaded bot instances and the dashboard
+scripts/start.sh                # each bot with a .env file, the dashboard and the learner
+scripts/stop.sh                 # the learner, every bot with a pid file, then the dashboard
 ```
 
-Starting or stopping the fleet leaves the service enablement and release slots as they are.
-Both commands refuse to run during a release update. Stop asks systemd to stop the units
-immediately. Use the release updater for a swap that waits for the end of a hand.
+Starting leaves alone anything that already runs. Both scripts leave the release slots as they are,
+and both refuse to run during a release update. Stop ends each program at once: use the release
+updater for a swap that waits for the end of a hand.
+
+After a reboot, cron starts the fleet. Add the two lines once, with the clone's own path:
+
+```sh
+( crontab -l 2>/dev/null
+  echo "@reboot $HOME/NewSvanBot/scripts/start.sh >> $HOME/.local/state/svanbot/cron.log 2>&1"
+  echo "@daily $HOME/NewSvanBot/scripts/clean.sh >> $HOME/.local/state/svanbot/cron.log 2>&1"
+) | crontab -
+```
 
 ## Updating the fleet
 
@@ -91,9 +107,9 @@ svanbot-release rollback                # point current back at the build it rep
 ```
 
 `install` never touches a slot, so a release can be staged long before a window is found. `update`
-is the window: it asks the bot to stop between hands, waits for it, stops it under systemd, points
+is the window: it asks the bot to stop between hands, waits for it, stops it under its supervisor, points
 `current` at the new build, starts it again, and rolls back if it does not come up or crash-loops
-(three starts in five minutes). A bot that systemd has down (inactive or failed) has no hand to
+(three starts in five minutes). A bot that is down (`stopped` or `failed`) has no hand to
 wait out, so `update` skips the stop: it points `current` and starts the bot, and if the bot does
 not come up it is stopped again with `current` back where it was ([the first
 start](#the-first-start-on-a-fresh-box)). The whole tree is one path, `SVANBOT_LIB` or
@@ -119,7 +135,7 @@ SVANBOT_NAME=<name> svanbot-release update --fleet
 3. It swaps every other bot with `--fleet`, one at a time. A bot that already runs the build is
    skipped, so a run that stopped can simply be run again.
 4. It stops at the first bot that does not take the build, a rollback included, and exits 1.
-5. It restarts the dashboard, and says if a drop-in pins the dashboard to another build.
+5. It restarts the dashboard if it runs, onto the new build.
 
 `--canary-only` stops after the canary, for a canary window before the fleet.
 
@@ -143,7 +159,7 @@ default.
 # proposed as a promotion; `--probe` proposes it as evidence only, whatever the sim said.
 svanbot propose --deals 2000 exploit=0.4
 svanbot propose --deals 2000                    # the search: each number a step down and up
-journalctl --user -u svanbot@SurSvan | grep probe   # started, ended, promoted
+grep probe ~/.local/state/svanbot/SurSvan.log   # started, ended, promoted
 ```
 
 The canary takes the proposal up between hands and plays the challenger in about half its orbits.
@@ -156,7 +172,7 @@ Run `svanbot propose` at low priority: a sim is CPU the live fleet shares.
 ### The unattended search
 
 `svanbot learn` is the same search with nobody running it (V11-49). Each run does one step and
-exits, and the timer starts the next run half an hour after the last one ended:
+exits, and its supervisor starts the next run half an hour after the last one ended:
 
 - **It waits** while a proposal waits or the canary runs a probe. That evidence is pending, so it
   sims nothing. The canary mirrors its running probe in `fleet/probe.json` for this.
@@ -177,16 +193,13 @@ It reads and writes the fleet's files and nothing else: no store, no key, no ven
 what the last run did are in `fleet/search.json`; the dashboard shows them too.
 
 ```sh
-install -m 644 deploy/svanbot-learn.service deploy/svanbot-learn.timer ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now svanbot-learn.timer
-journalctl --user -u svanbot-learn -f          # one line a run: simmed, proposed, waits or spent
-systemctl --user disable --now svanbot-learn.timer   # stops the search; nothing it wrote is undone
+svanbot-bot start learn                        # scripts/start.sh starts it too
+tail -f ~/.local/state/svanbot/learn.log       # one line a run: simmed, proposed, waits or spent
+svanbot-bot stop learn                         # stops the search; nothing it wrote is undone
 ```
 
-The service runs under the idle CPU scheduler at nice 19, capped at two cores, so a sim takes only
-CPU the bots leave free. To start the search over round the same champion, remove
-`fleet/search.json`.
+Each step runs under the idle CPU scheduler at nice 19 and idle I/O, so a sim takes only CPU the
+bots leave free. To start the search over round the same champion, remove `fleet/search.json`.
 
 ### A release, start to end
 
@@ -211,11 +224,7 @@ a bot's key takes over its live session.
 
 ```sh
 # 1. Each bot's env file, as in "A bot" above: key, name, roster, SVANBOT_CANARY=SurSvan.
-# 2. The unit, enabled but not started: until `current` exists a start can only fail, and five
-#    failures in five minutes leave the unit failed.
-install -m 644 deploy/svanbot@.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable svanbot@SurSvan        # and each other bot, all without --now
+# 2. Nothing is started by hand: until `current` exists a start can only fail.
 # 3. The bundle: install.sh puts svanbot-release in ~/.local/bin and stages the release.
 gh release download v11.1.0 --repo SvanLabs/SvanBot
 deploy/install.sh svanbot-11.1.0-x86-64-v2.tar.gz
@@ -232,9 +241,8 @@ The rest of the fleet follows the same way, one bot at a time, once the canary's
 `2026.11.16-1` outranks `11.0.0`.
 
 If the canary does not come up, `update` says so, stops it again, and exits 1. A first build that
-crash-loops has nothing to roll back to, so it stays in `current`, systemd stops retrying it after
-five starts, and `update` exits 1 saying so. A unit left failed by its start limit refuses a start
-until `systemctl --user reset-failed svanbot@<name>`.
+crash-loops has nothing to roll back to, so it stays in `current`, its supervisor stops retrying
+it after five starts, and `update` exits 1 saying so. `svanbot-bot start <name>` tries it again.
 
 ### The ship bar
 
@@ -289,19 +297,17 @@ calls a status older than fifteen seconds stale, and keeps the last one on scree
 drops. The page names opponents and shows their stacks, so it is never the public TV.
 
 ```sh
-install -m 644 deploy/svanbot-dashboard.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now svanbot-dashboard
-ssh -N -L 5000:127.0.0.1:5000 <box>   # then open http://127.0.0.1:5000
+svanbot-bot start dashboard            # scripts/start.sh starts it too
+ssh -N -L 8080:127.0.0.1:8080 <box>    # then open http://127.0.0.1:8080
 ```
 
-The service reads these variables, with the defaults the unit sets:
+It reads these variables, with the defaults its supervisor sets:
 
 | Variable | Default | What it is |
 |----------|---------|------------|
 | `SVANBOT_DATA` | `~/.local/share/svanbot` | Every bot's store and status file. |
 | `SVANBOT_LIB` | `~/.local/lib/svanbot` | The install tree, whose slots the Release page shows. |
-| `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:5000` | Where it listens. Keep it on loopback. |
+| `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:8080` | Where it listens. Keep it on loopback. |
 | `SVANBOT_SEASON` | on | `off` keeps the dashboard off the network: no season board. |
 
 The page is hand-written files compiled into the `svanbot` binary, and the server is our own, on
@@ -341,25 +347,31 @@ done
 v11 starts from a fresh store. The v10 stores are archived in `~/archive/svanbot-v10/` and are
 never migrated.
 
-## The clean timer
+## The clean job
 
 ```sh
 MISE_ENV=box mise install    # once: builds the pinned cargo-sweep (mise.box.toml)
-install -m 644 deploy/svanbot-clean.service deploy/svanbot-clean.timer ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now svanbot-clean.timer
+scripts/clean.sh             # cron runs it daily (see "Start or stop the configured fleet")
 ```
 
 It removes build output nobody has touched in 14 days, at idle I/O priority. `tools/disk.ts`
 reports every `target/` in the clone, worktrees' and nested crates' included, against one 9 GiB
 budget after every `mise run full`, and names each tree when it is over.
 
-## The journal cap (operator, root)
+## From systemd to the scripts (once, the operator)
+
+Until V11-52 the fleet ran as systemd user units. The cutover is a fleet stop and a fleet start, so
+run it when a minute of play can be lost, with nothing else connected:
 
 ```sh
-sudo install -D -m 644 deploy/journald-svanbot.conf /etc/systemd/journald.conf.d/svanbot.conf
-sudo systemctl restart systemd-journald
+deploy/install.sh <bundle>          # a bundle from V11-52 on installs svanbot-bot beside svanbot-release
+systemctl --user disable --now 'svanbot@*' svanbot-dashboard svanbot-learn.timer svanbot-clean.timer
+rm -f ~/.config/systemd/user/svanbot*.service ~/.config/systemd/user/svanbot*.timer
+rm -rf ~/.config/systemd/user/svanbot-dashboard.service.d
+systemctl --user daemon-reload
+scripts/start.sh                    # every bot, the dashboard and the learner, under the supervisor
+svanbot-bot status SurSvan          # and each other bot: running
 ```
 
-Units of a user who is not lingering stop when that user logs out. For a fleet that must outlive
-the session, the operator runs `sudo loginctl enable-linger <user>` once.
+Then add the cron lines above. `/etc/systemd/journald.conf.d/svanbot.conf`, if root installed it,
+can go too: no bot logs to the journal now.

@@ -1,5 +1,5 @@
-# Tools only the box needs, beside the ones in mise.toml. They load with `MISE_ENV=box`, which the
-# clean timer's unit sets (deploy/svanbot-clean.service), so CI never installs them.
+# Tools only the box needs, beside the ones in mise.toml. They load with `MISE_ENV=box`, which
+# `scripts/clean.sh` sets, so CI never installs them.
 [tools]
 # cargo-sweep publishes no release binaries, so this one builds from crates.io, once.
 "cargo:cargo-sweep" = "0.8.0"

@@ -96,9 +96,11 @@ a home-made TLS would be a risk: ask the operator before you add to that list or
   built in or edited.
 - Run one build at a time at low priority, with
   `nice -n 15 ionice -c3 cargo … -j4`. Concurrent builds have OOM-killed the fleet.
-- The box runs v11 as systemd user units from `deploy/`, one `svanbot@<name>` per bot, and
-  `deploy/README.md` is their runbook. Never start one with a fleet bot's key while v10 plays: the
-  new connection takes over that bot's live session.
+- The box runs v11 from `scripts/`, one supervisor (`svanbot-bot`, `scripts/bot.sh`) per bot,
+  with no systemd, and `deploy/README.md` is the runbook. Never start a bot with a fleet bot's key
+  while another connection plays it: the new connection takes over that bot's live session.
+- A test of a fleet script puts a refusing `systemctl` first on its PATH, and stubs every tool the
+  script runs. A red run once ran the old `stop.sh` against the real fleet and stopped every bot.
 - The repo is public. Keys, `.env` contents, opponent data and store contents stay out of it: out
   of code, logs, issues and PRs alike.
 

@@ -9,8 +9,8 @@
 #
 #   deploy/install.sh <bundle.tar.gz> [install tree]
 #
-# The install tree is `~/.local/lib/svanbot` unless given, which is where `deploy/svanbot@.service`
-# execs `current/svanbot` from. Run `svanbot-release status` to read what is installed and running.
+# The install tree is `~/.local/lib/svanbot` unless given, which is where the supervisor
+# (`svanbot-bot`, `scripts/bot.sh`) execs `current/svanbot` from. Run `svanbot-release status` to read what is installed and running.
 set -eu
 
 usage() {
@@ -92,6 +92,10 @@ mkdir -p "$tree"
 bindir="${HOME:?HOME is not set}/.local/bin"
 mkdir -p "$bindir"
 install -m 755 "$work/UPGRADE/svanbot-release" "$bindir/svanbot-release"
+# The supervisor the updater stops and starts bots through. A bundle from before V11-52 has none.
+if [ -f "$work/UPGRADE/svanbot-bot" ]; then
+  install -m 755 "$work/UPGRADE/svanbot-bot" "$bindir/svanbot-bot"
+fi
 
 # The staged release the updater verifies: the program, its checksum, and the manifest naming the
 # version it is. Read by `svanbot_runtime::release`, installed by `svanbot-release install`.
@@ -101,6 +105,7 @@ mv "$work/release" "$staged"
 chmod +x "$staged/svanbot"
 
 echo "install.sh: installed $bindir/svanbot-release"
+[ -f "$bindir/svanbot-bot" ] && echo "install.sh: installed $bindir/svanbot-bot"
 echo "install.sh: staged $(awk -F'\t' '$1 == "version" { print $2 }' "$staged/version") under $staged"
 echo "install.sh: now run \`svanbot-release install $staged\`, then one bot at a time"
 echo "install.sh:           \`svanbot-release update\` (SVANBOT_CANARY first, then --fleet)"

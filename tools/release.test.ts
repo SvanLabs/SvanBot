@@ -20,10 +20,11 @@ function fakeClone(): string {
   const dir = mkdtempSync(join(root, "clone-"));
   mkdirSync(join(dir, "target/dev/release"), { recursive: true });
   mkdirSync(join(dir, "deploy"), { recursive: true });
+  mkdirSync(join(dir, "scripts"), { recursive: true });
   writeFileSync(join(dir, "target/dev/release", release.PROGRAM), PROGRAM);
   writeFileSync(join(dir, "target/dev/release", release.UPDATER), UPDATER);
   writeFileSync(join(dir, "deploy/install.sh"), "#!/bin/sh\n");
-  writeFileSync(join(dir, "deploy/svanbot@.service"), "[Unit]\n");
+  writeFileSync(join(dir, "scripts/bot.sh"), "#!/usr/bin/env bash\n");
   return dir;
 }
 
@@ -32,8 +33,8 @@ test("the archive holds the staged release the updater verifies, and the files a
   expect([...files.keys()].sort()).toEqual([
     "UPGRADE/cpu",
     "UPGRADE/install.sh",
+    "UPGRADE/svanbot-bot",
     "UPGRADE/svanbot-release",
-    "UPGRADE/svanbot@.service",
     "release/sha256",
     "release/svanbot",
     "release/version",
@@ -115,6 +116,7 @@ test("the version comes from the workspace manifest unless the tag overrides it"
 test("packing a clone that was never built says so, naming the missing build", () => {
   const dir = mkdtempSync(join(root, "unbuilt-"));
   mkdirSync(join(dir, "deploy"), { recursive: true });
+  mkdirSync(join(dir, "scripts"), { recursive: true });
   expect(() => release.collect(dir, "2026.11.16")).toThrow(
     /no .*target\/dev\/release\/svanbot: build the release first/,
   );

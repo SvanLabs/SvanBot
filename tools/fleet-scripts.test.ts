@@ -3,13 +3,26 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-function withSystemctl(
+/**
+ * A `systemctl` that refuses, first on every scratch PATH: a script under test that still reached
+ * for the real one would stop the live fleet (it did once, on 2026-11-24).
+ */
+function guard(dir: string): void {
+  writeFileSync(
+    join(dir, "systemctl"),
+    "#!/usr/bin/env bash\necho 'systemctl is not for tests' >&2\nexit 1\n",
+    { mode: 0o755 },
+  );
+}
+
+function withSupervisor(
   check: (
     run: (script: string, locked?: boolean) => ReturnType<typeof Bun.spawnSync>,
     log: () => string,
   ) => void,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-fleet-"));
+  guard(dir);
   try {
     const calls = join(dir, "calls");
     const config = join(dir, ".config/svanbot");
@@ -18,14 +31,17 @@ function withSystemctl(
       writeFileSync(join(config, file), "");
     }
     writeFileSync(calls, "");
+    // The stand-in supervisor: First is running, Second has a pid file but is down.
+    mkdirSync(join(dir, ".local/state/svanbot"), { recursive: true });
+    for (const name of ["First", "Second", "learn", "stray name"]) {
+      writeFileSync(join(dir, `.local/state/svanbot/${name}.pid`), "1");
+    }
     writeFileSync(
-      join(dir, "systemctl"),
+      join(dir, "svanbot-bot"),
       `#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$SVANBOT_TEST_CALLS"
-if [[ $2 == list-units ]]; then
-    printf '%s\n' 'svanbot@First.service loaded active running' \\
-        'svanbot@Second.service loaded activating start' 'unrelated.service loaded active running'
-fi
+if [[ $1 == start && $2 == First ]]; then echo "svanbot-bot: First is already running" >&2; exit 1; fi
+exit 0
 `,
       { mode: 0o755 },
     );
@@ -38,6 +54,7 @@ fi
             HOME: dir,
             PATH: `${dir}:${process.env.PATH}`,
             SVANBOT_LIB: dir,
+            SVANBOT_BOT: join(dir, "svanbot-bot"),
             SVANBOT_TEST_CALLS: calls,
           },
           stderr: "pipe",
@@ -50,27 +67,24 @@ fi
   }
 }
 
-test("start brings up the configured bot units and dashboard", () => {
-  withSystemctl((run, log) => {
-    expect(run("start.sh").exitCode).toBe(0);
-    expect(log()).toBe(
-      "--user start svanbot@First.service svanbot@Second.service svanbot-dashboard.service\n",
-    );
+test("start brings up every configured bot, the dashboard and the learner", () => {
+  withSupervisor((run, log) => {
+    const started = run("start.sh");
+    expect(started.exitCode).toBe(0);
+    // A bot that is already running is left as it is, and is not a failure.
+    expect(log()).toBe("start First\nstart Second\nstart dashboard\nstart learn\n");
   });
 });
 
-test("stop brings down only the loaded bot units and dashboard", () => {
-  withSystemctl((run, log) => {
+test("stop brings down the learner, every bot with a pid file, then the dashboard", () => {
+  withSupervisor((run, log) => {
     expect(run("stop.sh").exitCode).toBe(0);
-    expect(log()).toContain(
-      "--user stop svanbot@First.service svanbot@Second.service svanbot-dashboard.service\n",
-    );
-    expect(log()).not.toContain("unrelated.service");
+    expect(log()).toBe("stop learn\nstop First\nstop Second\nstop dashboard\n");
   });
 });
 
 /**
- * Runs `scripts/update.sh` with `args` against stand-ins for `svanbot-release`, `systemctl`, `gh`
+ * Runs `scripts/update.sh` with `args` against stand-ins for `svanbot-release`, the supervisor, `gh`
  * and the installer, in a scratch home with bots `First` and `Second`, `Second` the canary. Each
  * stand-in logs what it was asked. `rollback` names a bot whose swap the stand-in rolls back.
  */
@@ -79,6 +93,7 @@ function update(
   options: { installed?: boolean; rollback?: string; dashboard?: boolean } = {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-update-"));
+  guard(dir);
   try {
     const calls = join(dir, "calls");
     writeFileSync(calls, "");
@@ -105,10 +120,10 @@ fi
 `,
     );
     stub(
-      "systemctl",
-      `printf 'systemctl %s\\n' "$*" >> "$SVANBOT_TEST_CALLS"
-[[ $2 == show ]] && echo 0
-[[ $2 == is-active ]] && exit "\${SVANBOT_TEST_DASHBOARD:-3}"
+      "svanbot-bot",
+      `printf 'svanbot-bot %s\\n' "$*" >> "$SVANBOT_TEST_CALLS"
+[[ $1 == pid ]] && exit 3
+[[ $1 == status ]] && exit "\${SVANBOT_TEST_DASHBOARD:-3}"
 exit 0
 `,
     );
@@ -126,6 +141,7 @@ while (($#)); do [[ $1 == --dir ]] && touch "$2/svanbot-11.1.7-x86-64-v2.tar.gz"
         PATH: `${dir}:${process.env.PATH}`,
         SVANBOT_LIB: lib,
         SVANBOT_INSTALLER: join(dir, "installer"),
+        SVANBOT_BOT: join(dir, "svanbot-bot"),
         SVANBOT_TEST_CALLS: calls,
         SVANBOT_TEST_ROLLBACK: options.rollback ?? "",
         SVANBOT_TEST_DASHBOARD: options.dashboard ? "0" : "3",
@@ -138,7 +154,7 @@ while (($#)); do [[ $1 == --dir ]] && touch "$2/svanbot-11.1.7-x86-64-v2.tar.gz"
       out: `${result.stdout}${result.stderr}`,
       calls: readFileSync(calls, "utf8")
         .split("\n")
-        .filter((line) => line && !line.startsWith("systemctl --user show")),
+        .filter((line) => line && !line.startsWith("svanbot-bot pid")),
     };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -157,8 +173,9 @@ test("update installs a new release, swaps the canary, then each other bot, one 
     `svanbot-release name= canary= install ${installedFrom}`,
     "svanbot-release name=Second canary=Second update 11.1.7",
     "svanbot-release name=First canary= update --fleet 11.1.7",
-    "systemctl --user is-active --quiet svanbot-dashboard.service",
-    "systemctl --user restart svanbot-dashboard.service",
+    "svanbot-bot status dashboard",
+    "svanbot-bot stop dashboard",
+    "svanbot-bot start dashboard",
   ]);
   expect(ran.calls[2]).toEndWith("/lib/staged");
   expect(ran.out).toContain("Every bot runs 11.1.7");
@@ -190,7 +207,7 @@ test("a version that is not a version is refused before anything runs", () => {
 });
 
 test("a release update in progress blocks both operations", () => {
-  withSystemctl((run, log) => {
+  withSupervisor((run, log) => {
     for (const script of ["start.sh", "stop.sh"]) {
       const result = run(script, true);
       expect(result.exitCode).toBe(1);

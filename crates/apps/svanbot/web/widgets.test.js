@@ -202,8 +202,10 @@ test("the search panel says what the learner did, what is pending, and each step
   const idle = body(
     widgets.searchView({ ...search, last: null, steps: [], waiting: null }, READ_MS),
   );
-  expect(idle.textContent).toContain("svanbot-learn.timer");
-  expect(body(widgets.searchView(undefined, READ_MS)).textContent).toContain("svanbot-learn.timer");
+  expect(idle.textContent).toContain("svanbot-bot start learn");
+  expect(body(widgets.searchView(undefined, READ_MS)).textContent).toContain(
+    "svanbot-bot start learn",
+  );
 });
 
 test("a note is the reader's own: kept as typed, saved under its key", () => {
