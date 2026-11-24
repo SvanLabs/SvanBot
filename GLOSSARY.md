@@ -320,6 +320,12 @@ _Avoid_: soak, bake time, watch period
 
 ### Running it
 
+**Handoff**:
+The note a session leaves on its ticket when it stops mid-work, from `bun tools/handoff.ts`: the
+pushed branch and its head, what is done, what comes next, the traps. The label `agent-handoff`
+offers the claimed ticket to the next agent, whichever tool it is.
+_Avoid_: takeover, relay, baton
+
 **Store**:
 SvanBot's own record of hands, decisions, fits and incidents.
 _Avoid_: database, DB, artifacts

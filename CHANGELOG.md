@@ -4,6 +4,10 @@ v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final
 
 ## 11.1.7: unreleased
 
+- An agent that stops mid-ticket hands it over (V11-53): it pushes, posts the note from
+  `bun tools/handoff.ts <ticket>`, and labels the ticket `agent-handoff`, so that Codex, opencode
+  or another Claude session takes it over from the branch. `AGENTS.md`, "Handing off".
+
 - `scripts/update.sh <version>` rolls a release out to the whole fleet in one run (V11-50):
   - installs it if needed;
   - swaps the canary, then each other bot one at a time;

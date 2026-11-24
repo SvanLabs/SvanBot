@@ -9,4 +9,4 @@ The other v11 labels:
   `area:tooling`, `area:ci`
 - **Wayfinder:** `wayfinder:map`, `wayfinder:task`, `wayfinder:research`, `wayfinder:grilling`,
   `wayfinder:prototype`
-- **Process:** `agent-claimed` and `v11`
+- **Process:** `agent-claimed`, `agent-handoff` (a claimed ticket another agent may take over) and `v11`
