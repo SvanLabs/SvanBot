@@ -2,8 +2,8 @@
 //! runs, and when it takes the new build back out.
 //!
 //! The window has a fixed order and never guesses. It asks the bot to stop, and waits for the bot
-//! to say it has; it asks systemd to stop the process that left the table; it installs the new
-//! build and points `current` at it; it asks systemd to start the bot again. The build is kept only
+//! to say it has; it asks the supervisor to stop the process that left the table; it installs the new
+//! build and points `current` at it; it asks the supervisor to start the bot again. The build is kept only
 //! if the bot comes up and stays up; if it never comes up, crash-loops, or the canary's harm guard
 //! trips first, the slot goes back to the previous build — and a build always comes back up:
 //! whatever fails, the window leaves the slot it settled on running.
@@ -43,12 +43,12 @@ fn health_for(root: &Path, name: &str) -> Health {
     Health::in_dir(root.join("health"), name)
 }
 
-/// A world the test scripts: what systemd answers, whether the bot comes back up, and a log of
+/// A world the test scripts: what the supervisor answers, whether the bot comes back up, and a log of
 /// every call the window made, in order.
 struct Scripted {
-    /// What `systemd stop` answers.
+    /// What `svanbot-bot stop` answers.
     stop_ok: bool,
-    /// What `systemd start` answers.
+    /// What `svanbot-bot start` answers.
     start_ok: bool,
     /// What the start poll finds at its deadline.
     up: bool,
@@ -56,14 +56,14 @@ struct Scripted {
     stopped: bool,
     /// What the crash-loop watch finds by its deadline.
     looped: bool,
-    /// Whether systemd has the bot down when the window opens: inactive or failed.
+    /// Whether the supervisor has the bot down when the window opens: stopped or failed.
     down: bool,
     /// Every call the window made: `"stop"`, `"stop_poll"`, `"start"`, `"up_poll"`, `"loop_watch"`.
     calls: Rc<RefCell<Vec<&'static str>>>,
 }
 
 impl Scripted {
-    /// A world that concedes every wait and answers every systemd call, the happy path.
+    /// A world that concedes every wait and answers every supervisor call, the happy path.
     fn ready() -> Self {
         Self {
             stop_ok: true,
@@ -76,7 +76,7 @@ impl Scripted {
         }
     }
 
-    /// A world where systemd has the bot down: a fresh box, or a bot the operator stopped. Nothing
+    /// A world where the supervisor has the bot down: a fresh box, or a bot the operator stopped. Nothing
     /// is playing, so no bot is there to say it stopped.
     fn down() -> Self {
         Self {
@@ -94,7 +94,7 @@ impl Scripted {
         }
     }
 
-    /// A world whose systemd refuses `stop`.
+    /// A world whose supervisor refuses `stop`.
     fn refuses_to_stop() -> Self {
         Self {
             stop_ok: false,
@@ -102,7 +102,7 @@ impl Scripted {
         }
     }
 
-    /// A world whose systemd refuses `start`.
+    /// A world whose supervisor refuses `start`.
     fn refuses_to_start() -> Self {
         Self {
             start_ok: false,
@@ -110,7 +110,7 @@ impl Scripted {
         }
     }
 
-    /// A world where systemd starts the bot but it never comes up.
+    /// A world where the supervisor starts the bot but it never comes up.
     fn never_comes_up() -> Self {
         Self {
             up: false,
@@ -141,7 +141,7 @@ impl Window for Scripted {
         if self.stop_ok {
             Ok(())
         } else {
-            Err(io::Error::other("systemd: unit is not loaded"))
+            Err(io::Error::other("svanbot-bot: First has no configuration"))
         }
     }
 
@@ -155,7 +155,7 @@ impl Window for Scripted {
         if self.start_ok {
             Ok(())
         } else {
-            Err(io::Error::other("systemd: unit failed to start"))
+            Err(io::Error::other("svanbot-bot: First did not start"))
         }
     }
 
@@ -180,7 +180,7 @@ fn a_fresh_box_points_current_at_the_build_and_starts_the_bot_without_a_stop_wai
     let slots = Slots::in_dir(root.join("lib"));
     let health = health_for(&root, "SurSvan");
     let new = build(&root, "11.0.0");
-    // Nothing has ever run here: no `current`, and systemd has the bot inactive. There is no bot
+    // Nothing has ever run here: no `current`, and the supervisor has the bot stopped. There is no bot
     // to say it stopped, so a window that waits for one waits out its whole deadline for nothing.
     let mut world = Scripted::down();
     let outcome =
@@ -191,7 +191,7 @@ fn a_fresh_box_points_current_at_the_build_and_starts_the_bot_without_a_stop_wai
             rolled_back_to: None
         }
     );
-    // No stop wait and no stop: started once, and watched until systemd has it running.
+    // No stop wait and no stop: started once, and watched until the supervisor has it running.
     assert_eq!(world.log(), ["start", "up_poll"]);
     assert_eq!(slots.current(), Some(new));
     assert_eq!(slots.previous(), None);
@@ -208,7 +208,7 @@ fn a_stopped_bot_whose_new_build_never_comes_up_is_left_stopped_on_the_old_build
     let old = build(&root, "11.0.0");
     let new = build(&root, "11.0.1");
     slots.install(&old).unwrap();
-    // The operator stopped the bot, and the new build systemd starts never comes up.
+    // The operator stopped the bot, and the new build the supervisor starts never comes up.
     let mut world = Scripted {
         up: false,
         ..Scripted::down()
@@ -219,7 +219,7 @@ fn a_stopped_bot_whose_new_build_never_comes_up_is_left_stopped_on_the_old_build
         matches!(error, WindowError::NeverCameUp { .. }),
         "{error:?}"
     );
-    // The window leaves the bot as it found it: stopped, so systemd's own restarts do not keep
+    // The window leaves the bot as it found it: stopped, so the supervisor's own restarts do not keep
     // retrying the build, and `current` back on the build the rest of the fleet runs from.
     assert_eq!(world.log(), ["start", "up_poll", "stop"]);
     assert_eq!(slots.current(), Some(old));
@@ -227,7 +227,7 @@ fn a_stopped_bot_whose_new_build_never_comes_up_is_left_stopped_on_the_old_build
 }
 
 #[test]
-fn a_stopped_bot_systemd_will_not_start_keeps_the_old_build_in_current() {
+fn a_stopped_bot_the_supervisor_will_not_start_keeps_the_old_build_in_current() {
     let root = scratch("downrefused");
     let slots = Slots::in_dir(root.join("lib"));
     let health = health_for(&root, "SurSvan");
@@ -292,7 +292,7 @@ fn a_bot_that_does_not_stop_inside_the_deadline_is_never_swapped_under() {
         matches!(error, WindowError::BotNeverStopped { .. }),
         "{error:?}"
     );
-    // The bot was never asked to stop and systemd was never touched: there is nothing to stop a
+    // The bot was never asked to stop and the supervisor was never touched: there is nothing to stop a
     // bot that is still playing for, and the swap waits for the next window.
     assert_eq!(world.log(), ["stop_poll"]);
     assert_eq!(slots.current(), Some(old));
@@ -300,14 +300,14 @@ fn a_bot_that_does_not_stop_inside_the_deadline_is_never_swapped_under() {
 }
 
 #[test]
-fn a_build_systemd_cannot_start_is_rolled_back_before_it_can_take_anything_down() {
+fn a_build_the_supervisor_cannot_start_is_rolled_back_before_it_can_take_anything_down() {
     let root = scratch("deadonarrival");
     let slots = Slots::in_dir(root.join("lib"));
     let health = health_for(&root, "SurSvan");
     let old = build(&root, "2026.11.16-1");
     let new = build(&root, "2026.11.16-2");
     slots.install(&old).unwrap();
-    // The swap happened, but systemd never reported the bot back up: the build is not running, so
+    // The swap happened, but the supervisor never reported the bot back up: the build is not running, so
     // the one that was running goes straight back. This is a different failure from a crash loop:
     // there is not one start to read.
     let mut world = Scripted::never_comes_up();
@@ -323,7 +323,7 @@ fn a_build_systemd_cannot_start_is_rolled_back_before_it_can_take_anything_down(
 }
 
 #[test]
-fn a_start_systemd_refuses_rolls_the_slot_back_and_starts_the_old_build() {
+fn a_start_the_supervisor_refuses_rolls_the_slot_back_and_starts_the_old_build() {
     let root = scratch("badstart");
     let slots = Slots::in_dir(root.join("lib"));
     let health = health_for(&root, "SurSVan");
@@ -334,14 +334,14 @@ fn a_start_systemd_refuses_rolls_the_slot_back_and_starts_the_old_build() {
     let error = svanbot_runtime::update::apply(&mut world, &slots, &health, &new, 1_000, 60_000)
         .unwrap_err();
     assert!(matches!(error, WindowError::Start(_)), "{error:?}");
-    // The build systemd would not start is not left in `current`: the old one is back and started.
+    // The build the supervisor would not start is not left in `current`: the old one is back and started.
     assert_eq!(slots.current(), Some(old));
     assert_eq!(world.log(), ["stop_poll", "stop", "start", "start"]);
     assert!(!health.update_requested());
 }
 
 #[test]
-fn a_stop_systemd_refuses_leaves_the_slots_where_they_were() {
+fn a_stop_the_supervisor_refuses_leaves_the_slots_where_they_were() {
     let root = scratch("badstop");
     let slots = Slots::in_dir(root.join("lib"));
     let health = health_for(&root, "SurSVan");
@@ -352,7 +352,7 @@ fn a_stop_systemd_refuses_leaves_the_slots_where_they_were() {
     let error = svanbot_runtime::update::apply(&mut world, &slots, &health, &new, 1_000, 60_000)
         .unwrap_err();
     assert!(matches!(error, WindowError::Stop(_)), "{error:?}");
-    // Nothing moved and nothing was started: systemd never stopped the bot, so the running build
+    // Nothing moved and nothing was started: the supervisor never stopped the bot, so the running build
     // is still the one it is running and the window is repeated later.
     assert_eq!(slots.current(), Some(old));
     assert_eq!(slots.previous(), None);
@@ -382,7 +382,7 @@ fn a_build_that_crash_loops_is_rolled_back_to_the_one_that_was_running() {
     assert_eq!(slots.current(), Some(old));
     // The build that crash-looped is now `previous`, so a later rollback is still possible.
     assert_eq!(slots.previous(), Some(new));
-    // The loop is stopped before the swap and the build rolled back to is started: systemd is
+    // The loop is stopped before the swap and the build rolled back to is started: the supervisor is
     // restarting the broken build, so a swap under it would race the start of the old one.
     assert_eq!(
         world.log(),
@@ -421,7 +421,7 @@ fn a_first_build_that_crash_loops_is_reported_and_not_kept_as_running() {
     let first = build(&root, "11.0.0");
     slots.install(&first).unwrap();
     // A fresh box's first build has nothing in `previous`, so there is nothing to roll back to.
-    // It stays in `current` and systemd's own restarts keep trying it, but a window that says it
+    // It stays in `current` and the supervisor's own restarts keep trying it, but a window that says it
     // is running would send the operator away from a bot that is not.
     let mut world = Scripted::crash_loops();
     let error = svanbot_runtime::update::watch(&mut world, &slots, 0, WINDOW_MS, 3).unwrap_err();

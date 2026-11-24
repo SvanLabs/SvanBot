@@ -3,7 +3,7 @@
 //!
 //! Every test drives the real binary with a cleared environment and an install tree in a temporary
 //! directory, so what is asserted is the exit code and the words a person would read. The one
-//! thing not exercised here is a swap against systemd: that needs a unit on the box, and the window
+//! thing not exercised here is a swap against the supervisor: that needs a bot on the box, and the window
 //! it drives is covered by `svanbot_runtime::update`'s own tests.
 //!
 //! A test install tree is a set of files in a fresh temporary directory, and the binary is an app,
@@ -78,7 +78,7 @@ fn install_verifies_a_staged_release_and_promotes_it_into_the_tree() {
     let (code, out, err) = run(&tree, &["install", staged.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{out}{err}");
     assert!(out.contains("installed 2026.11.16-1"), "{out}");
-    // The build is where a slot can point at it, and it is executable there: the unit execs this.
+    // The build is where a slot can point at it, and it is executable there: the supervisor execs this.
     let installed = tree.join("2026.11.16-1").join("svanbot");
     assert_eq!(fs::read(&installed).unwrap(), STAGED);
     let mode = fs::metadata(&installed).unwrap().permissions();

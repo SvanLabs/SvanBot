@@ -2,7 +2,7 @@
 //!
 //! `starts`: the bot appends the time and its build each time it comes up. The updater asks how
 //! many of those fall inside a window, which is how a crash loop is seen from outside the process:
-//! systemd restarts the bot, the bot records the start, and three starts inside the window mean the
+//! the supervisor restarts the bot, the bot records the start, and three starts inside the window mean the
 //! build is not surviving. The log is pruned by its writer, so a season of restarts does not leave
 //! a growing file behind, and a line torn by a crash is skipped by its reader.
 //!

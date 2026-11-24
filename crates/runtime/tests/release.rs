@@ -93,7 +93,7 @@ fn a_manifest_that_names_no_version_is_refused() {
 
 #[test]
 fn a_program_that_cannot_be_run_is_not_installed() {
-    // The file is there and the checksum matches, but the mode is not executable: the unit would
+    // The file is there and the checksum matches, but the mode is not executable: the supervisor would
     // fail to exec it, so verification refuses it here rather than at the next restart.
     let root = scratch("nomode");
     let staged = stage(&root, "2026.11.16-1", b"a program");
