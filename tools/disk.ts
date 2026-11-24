@@ -1,6 +1,7 @@
 // The disk budget for build output. The box is shared with the live fleet and its store, so a
 // clone's target/ directories stay under one budget, and the full tier reports it on every run.
-//   bun tools/disk.ts [root]   reports the combined size of every target/ directory, and exits 1 if it is over
+//   bun tools/disk.ts   reports the combined size of every target/ directory in this clone, and
+//                       exits 1 if it is over. It measures the clone it sits in, and takes no path.
 import { existsSync, lstatSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
@@ -81,7 +82,7 @@ export function targetUse(root: string, budget = BUDGET): { over: boolean; line:
 }
 
 if (import.meta.main) {
-  const { over, line } = targetUse(process.argv[2] ?? join(import.meta.dir, ".."));
+  const { over, line } = targetUse(join(import.meta.dir, ".."));
   console.log(line);
   process.exit(over ? 1 : 0);
 }
