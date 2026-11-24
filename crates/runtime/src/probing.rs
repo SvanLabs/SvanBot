@@ -145,6 +145,7 @@ impl<'a> Probing<'a> {
                 }
                 self.ledger.finish(promote);
                 self.running = None;
+                self.fleet.end_probe()?;
                 Ok(Some(format!(
                     "probe {id:016x} of {} ended {name}: {edge:+.1} bb/100, 95% ±{radius:.1}{}",
                     proposal.challenger.digest(),
@@ -162,7 +163,20 @@ impl<'a> Probing<'a> {
                 };
                 let champion = *self.ledger.champion();
                 if proposal.challenger == champion {
+                    self.fleet.end_probe()?;
                     return Ok(Some("the proposal is the champion: dropped".into()));
+                }
+                if proposal
+                    .against
+                    .is_some_and(|against| against != champion.digest())
+                {
+                    // Its sims measured it against a champion since replaced: the evidence that
+                    // put it forward no longer speaks to the champion it would face.
+                    self.fleet.end_probe()?;
+                    return Ok(Some(format!(
+                        "the proposal of {} was measured against another champion: dropped",
+                        proposal.challenger.digest()
+                    )));
                 }
                 let id = proposal.hypothesis(&champion).id();
                 let detail = json!({
@@ -199,6 +213,7 @@ impl<'a> Probing<'a> {
             self.store
                 .append_probe(id, "superseded", "{}", now_ms)
                 .map_err(store)?;
+            self.fleet.end_probe()?;
             return Ok(Some(format!(
                 "probe {id:016x} superseded: the champion changed"
             )));
@@ -210,6 +225,7 @@ impl<'a> Probing<'a> {
         for &(_, arm, won, hands) in &orbits {
             self.ledger.replay(arm, won, hands);
         }
+        self.fleet.mirror_probe(&proposal)?;
         self.running = Some((id, proposal));
         Ok(Some(format!(
             "probe {id:016x} taken up after {} orbits",

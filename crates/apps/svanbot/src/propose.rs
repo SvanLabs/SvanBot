@@ -100,6 +100,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         },
         sim_estimate: Some(found.mbb_per_100 / 1000.0),
         max_orbits: PROBE_ORBITS,
+        against: Some(champion.digest()),
     };
     if !asked.probe && !found.above_zero() {
         println!("svanbot propose: no challenger is above the champion: nothing proposed");
