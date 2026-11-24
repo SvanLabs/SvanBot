@@ -27,7 +27,8 @@
 //! ([`download`]). `svanbot fit` fits the action model on the store's hands ([`fit`]). `svanbot
 //! arena` plays the policy against every sparring archetype ([`arena`]). `svanbot paired` runs a
 //! paired sim of the policy against the pricer ([`paired`]). `svanbot propose` puts a challenger
-//! forward for the canary ([`propose`]). `svanbot dashboard` serves the fleet's dashboard on
+//! forward for the canary ([`propose`]), and `svanbot learn` runs one step of the unattended
+//! search for one ([`svanbot::learn`]). `svanbot dashboard` serves the fleet's dashboard on
 //! loopback ([`svanbot::dashboard`]). `svanbot release-check` holds a release to the ship bar
 //! ([`ship`]).
 //!
@@ -100,6 +101,12 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("release-check") {
         let args: Vec<String> = std::env::args().skip(2).collect();
         return ship::run(&args);
+    }
+    // Nor is the learner's unattended step: a timer runs it, and it must never count as a bot's
+    // start in the crash-loop record the updater reads.
+    if std::env::args().nth(1).as_deref() == Some("learn") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return propose::learn(&args);
     }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.

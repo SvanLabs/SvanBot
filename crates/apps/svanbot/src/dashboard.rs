@@ -28,6 +28,7 @@ use svanbot_strategy::policy::{Branch, Ranged, Trace};
 mod head;
 mod page;
 mod release;
+mod search;
 mod season;
 mod stream;
 
@@ -362,6 +363,7 @@ fn fleet_now(config: &Config) -> Value {
         "release": release(&config.lib_dir),
         "arena": runs,
         "season": config.season.get(),
+        "search": search::search(&config.fleet_dir),
     })
 }
 

@@ -53,6 +53,79 @@ fn the_fleet_carries_the_latest_arena_run_and_a_history_to_compare_it_with() {
 }
 
 #[test]
+fn the_fleet_carries_the_search_newest_step_first_with_what_the_canary_has_pending() {
+    use svanbot_learn::paired::Verdict;
+    use svanbot_learn::probe::Kind;
+    use svanbot_learn::search::{Entry, Stage, Step};
+    use svanbot_runtime::fleet::Proposal;
+
+    let (addr, dir) = serve("search");
+    let fleet = Fleet::in_dir(dir.join("data").join("fleet"));
+    let (_, body) = get(addr, "/api/fleet");
+    let before: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        before["search"]["last"],
+        Value::Null,
+        "{}",
+        before["search"]
+    );
+    assert_eq!(before["search"]["steps"], serde_json::json!([]));
+
+    let champion = Params::DEFAULT;
+    let simmed = |exploit: f64, stage, mbb: f64| Entry::Simmed {
+        step: Step {
+            champion: champion.digest(),
+            challenger: Params { exploit },
+            stage,
+            seed: 7,
+        },
+        verdict: Verdict {
+            deals: 2_000,
+            mbb_per_100: mbb,
+            ci95: 100.0,
+        },
+    };
+    let entries = [
+        simmed(0.4, Stage::First, 300.0),
+        simmed(0.4, Stage::Confirmation, 250.0),
+        Entry::Proposed {
+            champion: champion.digest(),
+            challenger: Params { exploit: 0.4 },
+        },
+    ];
+    fleet.record_search(&entries, "proposed it", 1_234).unwrap();
+    fleet
+        .propose(&Proposal {
+            challenger: Params { exploit: 0.4 },
+            kind: Kind::Guard { hands: 3_000 },
+            harm_margin: 20.0,
+            sim_estimate: Some(0.25),
+            max_orbits: 3_334,
+            against: Some(champion.digest()),
+        })
+        .unwrap();
+
+    let (_, body) = get(addr, "/api/fleet");
+    let search = &serde_json::from_str::<Value>(&body).unwrap()["search"];
+    assert_eq!(search["champion"]["digest"], champion.digest().to_string());
+    assert_eq!(
+        search["waiting"],
+        Params { exploit: 0.4 }.digest().to_string()
+    );
+    assert_eq!(search["probe"], Value::Null);
+    assert_eq!(search["last"]["note"], "proposed it");
+    assert_eq!(search["last"]["at_ms"], 1_234);
+    assert_eq!(search["simmed"], 2, "sims round today's champion");
+    let steps = search["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 3);
+    assert_eq!(steps[0]["stage"], "proposed");
+    assert_eq!(steps[1]["stage"], "confirmation");
+    assert_eq!(steps[1]["mbb_per_100"], 250.0);
+    assert_eq!(steps[1]["ci95"], 100.0);
+    assert_eq!(steps[2]["challenger"]["numbers"]["exploit"], "0.4");
+}
+
+#[test]
 fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
     // `SVANBOT_FLEET` can move the fleet away from `data/fleet` (`crate::fleet_dir`), so the page
     // must read the directory it is told, or it would show an empty scoreboard for a run that

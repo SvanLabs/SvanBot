@@ -14,6 +14,7 @@ import {
   highlightsView,
   intel,
   notes,
+  searchView,
   seasonRace,
   standing,
 } from "./widgets.js";
@@ -25,15 +26,15 @@ export function when(ms, nowMs) {
 /** The fleet room's views and the panels each shows; All shows every panel. */
 export const FLEET_VIEWS = [
   { id: "live", label: "Live", widgets: ["tables", "race", "season", "activity", "notes"] },
-  { id: "results", label: "Results", widgets: ["season", "race", "form", "arena"] },
+  { id: "results", label: "Results", widgets: ["season", "race", "form", "arena", "search"] },
   { id: "opponents", label: "Opponents", widgets: ["reads", "tables"] },
-  { id: "system", label: "System", widgets: ["system", "activity", "notes"] },
+  { id: "system", label: "System", widgets: ["system", "search", "activity", "notes"] },
   { id: "all", label: "All", widgets: null },
 ];
 
 export const FLEET_LAYOUT = {
   left: ["race", "form", "reads", "notes"],
-  center: ["tables", "arena"],
+  center: ["tables", "arena", "search"],
   right: ["season", "activity", "system"],
   hidden: [],
 };
@@ -231,6 +232,7 @@ export function fleetRoom({ fleet, nowMs, problems, log, ui }) {
     { id: "notes", title: "Notes", body: () => notes("fleet", ui.note("fleet")) },
     { id: "form", title: "Form", body: () => fleetForm(fleet) },
     { id: "arena", title: "Arena", body: () => arenaSummary(fleet.arena) },
+    { id: "search", title: "Search", body: () => searchView(fleet.search, nowMs) },
     { id: "reads", title: "Reads", body: () => fleetReads(fleet) },
     { id: "system", title: "System", body: () => system(fleet, nowMs) },
   ];

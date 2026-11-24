@@ -145,6 +145,7 @@ impl<'a> Probing<'a> {
                 }
                 self.ledger.finish(promote);
                 self.running = None;
+                self.fleet.end_probe()?;
                 Ok(Some(format!(
                     "probe {id:016x} of {} ended {name}: {edge:+.1} bb/100, 95% ±{radius:.1}{}",
                     proposal.challenger.digest(),
@@ -162,7 +163,20 @@ impl<'a> Probing<'a> {
                 };
                 let champion = *self.ledger.champion();
                 if proposal.challenger == champion {
+                    self.fleet.end_probe()?;
                     return Ok(Some("the proposal is the champion: dropped".into()));
+                }
+                if proposal
+                    .against
+                    .is_some_and(|against| against != champion.digest())
+                {
+                    // Its sims measured it against a champion since replaced: the evidence that
+                    // put it forward no longer speaks to the champion it would face.
+                    self.fleet.end_probe()?;
+                    return Ok(Some(format!(
+                        "the proposal of {} was measured against another champion: dropped",
+                        proposal.challenger.digest()
+                    )));
                 }
                 let id = proposal.hypothesis(&champion).id();
                 let detail = json!({
@@ -170,9 +184,14 @@ impl<'a> Probing<'a> {
                     "proposal": serde_json::from_str::<Value>(&proposal.to_json())
                         .unwrap_or(Value::Null),
                 });
-                self.store
-                    .append_probe(id, "started", &detail.to_string(), now_ms)
-                    .map_err(store)?;
+                if let Err(error) =
+                    self.store
+                        .append_probe(id, "started", &detail.to_string(), now_ms)
+                {
+                    // Not started: the mirror taking it up wrote must not hold the learner back.
+                    let _ = self.fleet.end_probe();
+                    return Err(store(error));
+                }
                 self.ledger
                     .start(proposal.hypothesis(&champion), proposal.challenger, 0);
                 self.running = Some((id, proposal));
@@ -190,6 +209,9 @@ impl<'a> Probing<'a> {
     fn resume(&mut self, now_ms: i64) -> Result<Option<String>, String> {
         let store = |error| format!("probe: {error}");
         let Some((id, detail)) = self.store.open_probe().map_err(store)? else {
+            // The store is the record: with no probe open, a mirror is one left behind, and the
+            // learner would wait on a probe nobody runs.
+            self.fleet.end_probe()?;
             return Ok(None);
         };
         let detail: Value = serde_json::from_str(&detail).map_err(|e| e.to_string())?;
@@ -199,6 +221,7 @@ impl<'a> Probing<'a> {
             self.store
                 .append_probe(id, "superseded", "{}", now_ms)
                 .map_err(store)?;
+            self.fleet.end_probe()?;
             return Ok(Some(format!(
                 "probe {id:016x} superseded: the champion changed"
             )));
@@ -210,6 +233,7 @@ impl<'a> Probing<'a> {
         for &(_, arm, won, hands) in &orbits {
             self.ledger.replay(arm, won, hands);
         }
+        self.fleet.mirror_probe(&proposal)?;
         self.running = Some((id, proposal));
         Ok(Some(format!(
             "probe {id:016x} taken up after {} orbits",

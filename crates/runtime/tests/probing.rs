@@ -44,7 +44,73 @@ fn guard(hands: u64) -> Proposal {
         harm_margin: 5.0,
         sim_estimate: Some(2.0),
         max_orbits: 10_000,
+        against: None,
     }
+}
+
+#[test]
+fn the_canary_mirrors_its_probe_while_it_runs_and_clears_it_when_it_ends() {
+    let dir = scratch("mirror");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
+    fleet.propose(&guard(120)).unwrap();
+    let next = play(&mut canary, 0, 1, 0);
+    assert_eq!(fleet.probe(), Ok(Some(guard(120))));
+    assert_eq!(fleet.propose_if_free(&guard(60)), Ok(false));
+    play(&mut canary, next, 1 + 20 * ORBIT, 0);
+    assert_eq!(fleet.champion(), Ok(CHALLENGER));
+    assert_eq!(fleet.probe(), Ok(None));
+}
+
+#[test]
+fn a_canary_that_opens_with_no_probe_in_its_store_clears_a_mirror_left_behind() {
+    // A canary that died between mirroring a probe and storing its start would leave the learner
+    // waiting on a probe nobody runs.
+    let dir = scratch("stale-mirror");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    fleet.mirror_probe(&guard(120)).unwrap();
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let _canary = Probing::open(&store, fleet.clone(), true, 500);
+    assert_eq!(fleet.probe(), Ok(None));
+    // Only the canary owns the mirror: another bot leaves it be.
+    fleet.mirror_probe(&guard(120)).unwrap();
+    let other = Store::open(&dir.join("MegaSvan.db"), "MegaSvan").unwrap();
+    let _other = Probing::open(&other, fleet.clone(), false, 500);
+    assert_eq!(fleet.probe(), Ok(Some(guard(120))));
+}
+
+#[test]
+fn a_proposal_measured_against_another_champion_is_dropped_unplayed() {
+    let dir = scratch("stale");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let promoted = Params { exploit: 0.4 };
+    fleet.promote(&promoted).unwrap();
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
+    fleet
+        .propose(&Proposal {
+            against: Some(Params::DEFAULT.digest()),
+            ..guard(120)
+        })
+        .unwrap();
+    let notes = canary.on_hand(&hand(0, 1_000_000), 1_000).notes;
+    assert!(
+        notes.iter().any(|note| note.contains("another champion")),
+        "{notes:?}"
+    );
+    assert_eq!(store.open_probe().unwrap(), None);
+    assert_eq!(fleet.probe(), Ok(None));
+    assert_eq!(canary.params(), promoted);
+    // Measured against today's champion, it is played.
+    fleet
+        .propose(&Proposal {
+            against: Some(promoted.digest()),
+            ..guard(120)
+        })
+        .unwrap();
+    canary.on_hand(&hand(1, 1_000_000), 1_000);
+    assert!(store.open_probe().unwrap().is_some());
 }
 
 /// Plays `hands` hands numbered from `from`, in which a hand played by the challenger wins
@@ -142,8 +208,11 @@ fn a_restarted_canary_takes_its_probe_up_where_the_store_left_it() {
     // 15 full orbits of the guard's 20.
     let next = play(&mut canary, 0, 1 + 15 * ORBIT, 0);
     drop(canary);
+    // A mirror lost while the canary was down is written again when it takes the probe up.
+    fleet.end_probe().unwrap();
 
     let (mut canary, notes) = Probing::open(&store, fleet.clone(), true, 500);
+    assert_eq!(fleet.probe(), Ok(Some(guard(120))));
     assert!(
         notes.iter().any(|note| note.contains("15 orbits")),
         "{notes:?}"

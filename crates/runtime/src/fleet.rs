@@ -6,6 +6,8 @@
 //!   champion is [`Params::DEFAULT`].
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running.
+//! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
+//!   search's log ([`search`]).
 //! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
 //!   its board on the scoreboard, and the newest of each from a tag's commit is what the ship
 //!   bar reads; [`ARENA_HISTORY`] of each league are kept, so a trend across commits is a read
@@ -20,9 +22,13 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 use svanbot_learn::probe::{Hypothesis, Kind};
-use svanbot_strategy::params::Params;
+use svanbot_strategy::params::{Digest, Params};
 
 use crate::health::write_atomically;
+
+mod search;
+
+pub use search::{SEARCH_KEPT, SearchLog};
 
 /// Where the fleet's files live, derived from a bot's store: the `fleet` directory beside it.
 pub fn beside_store(store: impl AsRef<Path>) -> PathBuf {
@@ -70,6 +76,9 @@ pub struct Proposal {
     /// The challenger's edge by the paired sim, in bb/100, when one ran.
     pub sim_estimate: Option<f64>,
     pub max_orbits: u64,
+    /// The champion the sims measured the challenger against, when the search proposed it. The
+    /// canary drops a proposal whose champion is no longer the champion: its evidence is stale.
+    pub against: Option<Digest>,
 }
 
 impl Proposal {
@@ -96,6 +105,7 @@ impl Proposal {
             "harm_margin": self.harm_margin.to_string(),
             "sim_estimate": self.sim_estimate.map(|estimate| estimate.to_string()),
             "max_orbits": self.max_orbits,
+            "against": self.against.map(|digest| digest.to_string()),
         })
         .to_string()
     }
@@ -118,6 +128,15 @@ impl Proposal {
             max_orbits: value["max_orbits"]
                 .as_u64()
                 .ok_or("the proposal lacks max_orbits")?,
+            against: match &value["against"] {
+                Value::Null => None,
+                named => Some(
+                    named
+                        .as_str()
+                        .and_then(|text| text.parse::<Digest>().ok())
+                        .ok_or("the proposal's champion is not a digest")?,
+                ),
+            },
         })
     }
 }
@@ -349,13 +368,23 @@ impl Fleet {
 
     /// The waiting proposal, removed so it is taken once. A proposal that cannot be read is
     /// removed too, and reported.
+    ///
+    /// A proposal taken up is the running probe, mirrored in `probe.json` until [`end_probe`]: it is
+    /// written before `proposal.json` goes, so the learner never finds neither and proposes
+    /// under a probe that has just begun.
+    ///
+    /// [`end_probe`]: Fleet::end_probe
     pub fn take_proposal(&self) -> Result<Option<Proposal>, String> {
         let path = self.dir.join("proposal.json");
         let Ok(text) = fs::read_to_string(&path) else {
             return Ok(None);
         };
+        let taken = Proposal::from_json(&text);
+        if taken.is_ok() {
+            self.write("probe.json", &text)?;
+        }
         fs::remove_file(&path).map_err(|e| format!("fleet: {e}"))?;
-        Proposal::from_json(&text).map(Some)
+        taken.map(Some)
     }
 
     /// The Arena's recorded runs, newest first. No file yet is no run yet.
