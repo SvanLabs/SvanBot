@@ -361,16 +361,24 @@ budget after every `mise run full`, and names each tree when it is over.
 ## From systemd to the scripts (once, the operator)
 
 Until V11-52 the fleet ran as systemd user units. The cutover is a fleet stop and a fleet start, so
-run it when a minute of play can be lost, with nothing else connected:
+run it when a minute of play can be lost, with nothing else connected. Run it from a checkout of
+`main` that nobody edits, and do the cutover first: until a bot runs under its supervisor, the new
+`svanbot-release update` cannot swap it. Its start refuses a bot that another process still plays.
 
 ```sh
 deploy/install.sh <bundle>          # a bundle from V11-52 on installs svanbot-bot beside svanbot-release
-systemctl --user disable --now 'svanbot@*' svanbot-dashboard svanbot-learn.timer svanbot-clean.timer
+# `disable` takes unit names, not patterns: one bot a line, from the env files.
+for env in ~/.config/svanbot/*.env; do
+  systemctl --user disable --now "svanbot@$(basename "$env" .env)"
+done
+systemctl --user disable --now svanbot-dashboard
+systemctl --user disable --now svanbot-learn.timer svanbot-clean.timer   # where installed
 rm -f ~/.config/systemd/user/svanbot*.service ~/.config/systemd/user/svanbot*.timer
 rm -rf ~/.config/systemd/user/svanbot-dashboard.service.d
 systemctl --user daemon-reload
 scripts/start.sh                    # every bot, the dashboard and the learner, under the supervisor
 svanbot-bot status SurSvan          # and each other bot: running
+scripts/update.sh <version>         # then the release, canary first, through the supervisor
 ```
 
 Then add the cron lines above. `/etc/systemd/journald.conf.d/svanbot.conf`, if root installed it,
