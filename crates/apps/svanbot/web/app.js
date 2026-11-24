@@ -224,6 +224,10 @@ const PLAYED = {
     "by playing each deal from every seat of a full table, against five of the pricer or of one sparring archetype",
 };
 
+function championLabel(run) {
+  return run.champion?.slice(0, 8) ?? "unknown";
+}
+
 /** One league's board: its latest run, a whisker an opponent, and each opponent's trend. */
 function leagueBoard({ league, runs }) {
   const latest = arenaRun(runs);
@@ -244,7 +248,7 @@ function leagueBoard({ league, runs }) {
         { class: "muted mono" },
         latest.commit.slice(0, 7),
         " · champion ",
-        latest.champion?.slice(0, 8) ?? "unknown",
+        championLabel(latest),
         " · seed ",
         latest.seed,
       ),
@@ -327,11 +331,7 @@ function leagueBoard({ league, runs }) {
                 {},
                 // A promotion moves play under one commit, so the commit alone does not name a
                 // run: the champion is what makes two runs of one commit two labels.
-                h(
-                  "td",
-                  { class: "mono" },
-                  `${run.commit.slice(0, 7)} · ${run.champion?.slice(0, 8) ?? "unknown"}`,
-                ),
+                h("td", { class: "mono" }, `${run.commit.slice(0, 7)} · ${championLabel(run)}`),
                 opponents.map((opponent) => {
                   const found = run.rows.find((row) => row.opponent === opponent);
                   return h("td", { class: "number" }, found ? mbbText(found.mbb_per_100) : "—");

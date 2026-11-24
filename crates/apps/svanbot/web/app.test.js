@@ -407,6 +407,19 @@ test("two runs of one commit under different champions are told apart", () => {
   expect(new Set(labels).size).toBe(2);
 });
 
+test("the scoreboard displays legacy runs alongside runs with a champion", () => {
+  globalThis.location.pathname = "/scoreboard";
+  const mixed = fleet();
+  mixed.arena[1].champion = null;
+  listeners.fleet({ data: JSON.stringify(mixed) });
+  expect(ids.view.textContent).toContain("older99 · unknown");
+  expect(ids.view.textContent).toContain("champion 308e7da4");
+
+  mixed.arena.shift();
+  listeners.fleet({ data: JSON.stringify(mixed) });
+  expect(ids.view.textContent).toContain("champion unknown");
+});
+
 test("the scoreboard is ranked by win rate, best first", () => {
   // The spec asks for a win-rate order, not the order the run played them in. The fixture's
   // lines are nit then maniac; reversed here so the ranking cannot happen by accident.

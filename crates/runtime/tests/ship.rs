@@ -249,11 +249,15 @@ fn a_release_is_named_by_a_tag_or_a_slot_of_three_numbers() {
 #[test]
 fn a_legacy_run_without_a_champion_is_not_release_evidence() {
     let mut runs = passing();
+    runs[0].rows.retain(|row| row.opponent != "v10.0.2");
     let mut legacy = runs[0].as_value();
     legacy.as_object_mut().unwrap().remove("champion");
     runs[0] = ArenaRun::from_text(&legacy.to_string()).unwrap();
     assert_eq!(
         failures(&runs),
-        ["the heads-up run has no recorded champion"]
+        [
+            "the heads-up run has no recorded champion",
+            "the heads-up run has no v10.0.2 row",
+        ]
     );
 }
