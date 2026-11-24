@@ -64,6 +64,23 @@ fn the_canary_mirrors_its_probe_while_it_runs_and_clears_it_when_it_ends() {
 }
 
 #[test]
+fn a_canary_that_opens_with_no_probe_in_its_store_clears_a_mirror_left_behind() {
+    // A canary that died between mirroring a probe and storing its start would leave the learner
+    // waiting on a probe nobody runs.
+    let dir = scratch("stale-mirror");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    fleet.mirror_probe(&guard(120)).unwrap();
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let _canary = Probing::open(&store, fleet.clone(), true, 500);
+    assert_eq!(fleet.probe(), Ok(None));
+    // Only the canary owns the mirror: another bot leaves it be.
+    fleet.mirror_probe(&guard(120)).unwrap();
+    let other = Store::open(&dir.join("MegaSvan.db"), "MegaSvan").unwrap();
+    let _other = Probing::open(&other, fleet.clone(), false, 500);
+    assert_eq!(fleet.probe(), Ok(Some(guard(120))));
+}
+
+#[test]
 fn a_proposal_measured_against_another_champion_is_dropped_unplayed() {
     let dir = scratch("stale");
     let fleet = Fleet::in_dir(dir.join("fleet"));

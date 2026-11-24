@@ -184,9 +184,14 @@ impl<'a> Probing<'a> {
                     "proposal": serde_json::from_str::<Value>(&proposal.to_json())
                         .unwrap_or(Value::Null),
                 });
-                self.store
-                    .append_probe(id, "started", &detail.to_string(), now_ms)
-                    .map_err(store)?;
+                if let Err(error) =
+                    self.store
+                        .append_probe(id, "started", &detail.to_string(), now_ms)
+                {
+                    // Not started: the mirror taking it up wrote must not hold the learner back.
+                    let _ = self.fleet.end_probe();
+                    return Err(store(error));
+                }
                 self.ledger
                     .start(proposal.hypothesis(&champion), proposal.challenger, 0);
                 self.running = Some((id, proposal));
@@ -204,6 +209,9 @@ impl<'a> Probing<'a> {
     fn resume(&mut self, now_ms: i64) -> Result<Option<String>, String> {
         let store = |error| format!("probe: {error}");
         let Some((id, detail)) = self.store.open_probe().map_err(store)? else {
+            // The store is the record: with no probe open, a mirror is one left behind, and the
+            // learner would wait on a probe nobody runs.
+            self.fleet.end_probe()?;
             return Ok(None);
         };
         let detail: Value = serde_json::from_str(&detail).map_err(|e| e.to_string())?;
