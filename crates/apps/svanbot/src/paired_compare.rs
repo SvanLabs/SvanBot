@@ -48,6 +48,9 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
 
 /// Each row's line, and whether it is wholly below zero; or why the runs are not the same bouts.
 fn rows(base: &ArenaRun, next: &ArenaRun) -> Result<Vec<(String, bool)>, String> {
+    if base.champion.is_none() || next.champion.is_none() {
+        return Err("both runs must have a recorded champion".into());
+    }
     if base.seed != next.seed {
         return Err(format!(
             "the runs were played from different seeds ({} and {})",

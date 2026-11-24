@@ -208,7 +208,8 @@ pub struct ArenaRow {
 pub struct ArenaRun {
     pub commit: String,
     /// The digest of the champion the run played, as `Params::digest` renders it.
-    pub champion: String,
+    /// Older runs have no recorded champion.
+    pub champion: Option<String>,
     pub seed: u64,
     pub league: League,
     /// The re-solve's iterations on every spot, or `None` when the compute budget sized them by
@@ -293,10 +294,11 @@ impl ArenaRun {
                 .as_str()
                 .ok_or("the arena run lacks its commit")?
                 .to_owned(),
-            champion: value["champion"]
-                .as_str()
-                .ok_or("the arena run lacks its champion")?
-                .to_owned(),
+            champion: match value.get("champion") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(digest)) => Some(digest.clone()),
+                Some(_) => return Err("the arena run's champion is not text".into()),
+            },
             seed: value["seed"]
                 .as_u64()
                 .ok_or("the arena run lacks its seed")?,

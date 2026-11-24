@@ -66,7 +66,7 @@ fn the_scoreboard_reads_the_fleet_it_is_given_not_one_beside_the_stores() {
     Fleet::in_dir(&elsewhere)
         .record_arena(&ArenaRun {
             commit: "def5678".into(),
-            champion: "00000000000000aa".into(),
+            champion: Some("00000000000000aa".into()),
             seed: 3,
             league: League::HeadsUp,
             iterations: None,
@@ -185,7 +185,7 @@ fn each_league_is_checked_for_the_champion_in_play() {
     fleet
         .record_arena(&ArenaRun {
             commit: "abc1234".into(),
-            champion: fleet.champion().unwrap().digest().to_string(),
+            champion: Some(fleet.champion().unwrap().digest().to_string()),
             seed: 7,
             league: League::SixMax,
             iterations: None,

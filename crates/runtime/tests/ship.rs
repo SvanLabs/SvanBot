@@ -23,7 +23,7 @@ fn row(opponent: &str, bouts: usize, per_bout: f64, ci95: f64) -> ArenaRow {
 fn run(league: League, rows: Vec<ArenaRow>) -> ArenaRun {
     ArenaRun {
         commit: COMMIT.into(),
-        champion: CHAMPION.into(),
+        champion: Some(CHAMPION.into()),
         seed: 17,
         league,
         iterations: None,
@@ -93,7 +93,7 @@ fn a_league_with_no_run_from_the_tags_commit_is_refused() {
 #[test]
 fn a_run_under_another_champion_is_refused() {
     let mut runs = passing();
-    runs[0].champion = "00000000000000bb".into();
+    runs[0].champion = Some("00000000000000bb".into());
     assert_eq!(
         failures(&runs),
         ["the heads-up run played champion 00000000000000bb, not the fleet's 00000000000000aa"]
@@ -244,4 +244,16 @@ fn a_release_is_named_by_a_tag_or_a_slot_of_three_numbers() {
     ] {
         assert_eq!(ship::version(refused), None, "{refused}");
     }
+}
+
+#[test]
+fn a_legacy_run_without_a_champion_is_not_release_evidence() {
+    let mut runs = passing();
+    let mut legacy = runs[0].as_value();
+    legacy.as_object_mut().unwrap().remove("champion");
+    runs[0] = ArenaRun::from_text(&legacy.to_string()).unwrap();
+    assert_eq!(
+        failures(&runs),
+        ["the heads-up run has no recorded champion"]
+    );
 }

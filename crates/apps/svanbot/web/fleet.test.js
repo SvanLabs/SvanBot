@@ -145,6 +145,9 @@ test("a fleet whose Arena history is not runs is refused, not half-shown", () =>
   const ok = { server_ms: 1, bots: [], problems: [], arena: [] };
   expect(isFleet(ok)).toBe(true);
   expect(isFleet({ ...ok, arena: [{ commit: "a", seed: 1, rows: [] }] })).toBe(false);
+  expect(isFleet({ ...ok, arena: [{ commit: "a", champion: null, seed: 1, rows: [] }] })).toBe(
+    true,
+  );
   expect(isFleet({ ...ok, arena: [{ commit: "a", champion: "c", seed: 1, rows: [{}] }] })).toBe(
     false,
   );

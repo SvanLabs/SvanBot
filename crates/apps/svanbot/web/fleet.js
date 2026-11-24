@@ -13,7 +13,7 @@ const LOST_MS = 15_000;
 function isArenaRun(run) {
   return (
     typeof run?.commit === "string" &&
-    typeof run?.champion === "string" &&
+    (typeof run.champion === "string" || run.champion === null) &&
     Number.isFinite(run.seed) &&
     Array.isArray(run.rows) &&
     run.rows.every(

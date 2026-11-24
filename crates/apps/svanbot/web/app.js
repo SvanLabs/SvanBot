@@ -244,7 +244,7 @@ function leagueBoard({ league, runs }) {
         { class: "muted mono" },
         latest.commit.slice(0, 7),
         " · champion ",
-        latest.champion.slice(0, 8),
+        latest.champion?.slice(0, 8) ?? "unknown",
         " · seed ",
         latest.seed,
       ),
@@ -330,7 +330,7 @@ function leagueBoard({ league, runs }) {
                 h(
                   "td",
                   { class: "mono" },
-                  `${run.commit.slice(0, 7)} · ${run.champion.slice(0, 8)}`,
+                  `${run.commit.slice(0, 7)} · ${run.champion?.slice(0, 8) ?? "unknown"}`,
                 ),
                 opponents.map((opponent) => {
                   const found = run.rows.find((row) => row.opponent === opponent);

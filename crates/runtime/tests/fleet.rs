@@ -77,7 +77,7 @@ fn a_proposal_reads_back_from_its_own_text_and_names_its_hypothesis() {
 fn run(commit: &str, seed: u64, mbb: f64) -> ArenaRun {
     ArenaRun {
         commit: commit.into(),
-        champion: "00000000000000aa".into(),
+        champion: Some("00000000000000aa".into()),
         seed,
         league: League::HeadsUp,
         iterations: None,
@@ -169,13 +169,13 @@ fn a_promotion_under_the_same_commit_is_a_run_of_its_own() {
     let before = run("abc1234", 7, 1.0);
     fleet.record_arena(&before).unwrap();
     let after = ArenaRun {
-        champion: "00000000000000bb".into(),
+        champion: Some("00000000000000bb".into()),
         ..before
     };
     fleet.record_arena(&after).unwrap();
     let runs = fleet.arena_runs().unwrap();
     assert_eq!(runs.len(), 2);
-    assert_eq!(runs[0].champion, "00000000000000bb");
+    assert_eq!(runs[0].champion.as_deref(), Some("00000000000000bb"));
 }
 
 #[test]
@@ -306,4 +306,21 @@ fn a_run_keeps_each_bouts_result_and_how_it_was_solved_so_the_gate_can_play_one_
     .unwrap();
     let [read] = Fleet::in_dir(old).arena_runs().unwrap().try_into().unwrap();
     assert_eq!((read.iterations, read.rows[0].bouts.len()), (None, 0));
+}
+
+#[test]
+fn new_arena_evidence_can_be_written_alongside_a_pre_champion_run() {
+    let dir = scratch("arena-pre-champion");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("arena.json"),
+        r#"{"runs":[{"commit":"legacy","seed":7,"rows":[]}]}"#,
+    )
+    .unwrap();
+    let fleet = Fleet::in_dir(dir);
+    fleet.record_arena(&run("new", 7, 1.0)).unwrap();
+    let [new, legacy] = fleet.arena_runs().unwrap().try_into().unwrap();
+    assert_eq!(new.commit, "new");
+    assert_eq!(legacy.commit, "legacy");
+    assert_eq!(legacy.as_value()["champion"], serde_json::Value::Null);
 }

@@ -62,7 +62,7 @@ pub fn serve(name: &str) -> (SocketAddr, PathBuf) {
     arena
         .record_arena(&ArenaRun {
             commit: "abc1234".into(),
-            champion,
+            champion: Some(champion),
             seed: 7,
             league: League::HeadsUp,
             iterations: None,
