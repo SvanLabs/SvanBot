@@ -72,10 +72,15 @@ test("starting a bot is the operator's move", () => {
     "systemctl --user restart 'svanbot@*'",
     "SVANBOT_NAME=SurSvan svanbot-release update --fleet",
     "svanbot-release rollback",
+    "./scripts/start.sh",
+    "bash scripts/stop.sh",
+    "bash '/home/operator/checkout/scripts/start.sh'",
+    "cd scripts && ./stop.sh",
   ]) {
     expect(refusal(command, DEV)).toContain("operator");
   }
   expect(refusal("svanbot-release status", DEV)).toBeNull();
+  expect(refusal("bash -n scripts/start.sh", DEV)).toBeNull();
   expect(refusal("systemctl --user stop svanbot@SurSvan", DEV)).toContain("operator");
 });
 

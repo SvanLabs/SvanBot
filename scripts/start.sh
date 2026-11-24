@@ -15,7 +15,7 @@ for file in "$HOME"/.config/svanbot/*.env; do
     [[ -f "$file" ]] || continue
     name=${file##*/}
     name=${name%.env}
-    if [[ $name =~ ^[a-zA-Z0-9_]{3,32}$ ]]; then
+    if [[ $name =~ ^$bot_name_pattern$ ]]; then
         units+=("svanbot@$name.service")
     fi
 done

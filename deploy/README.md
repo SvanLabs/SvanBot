@@ -61,7 +61,8 @@ journalctl --user -p crit -u 'svanbot@*'
 
 ## Start or stop the configured fleet
 
-Run these as the systemd user after installing the units and a release:
+The operator runs these as the systemd user after installing the units and a release.
+Before starting, check the warning above about any bot keys the v10 fleet still uses.
 
 ```sh
 scripts/start.sh                # starts each bot with a .env file and the dashboard

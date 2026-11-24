@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+bot_name_pattern='[A-Za-z0-9_]{3,32}'
+
 lock_install_tree() {
     local tree=${SVANBOT_LIB:-"$HOME/.local/lib/svanbot"}
     if ! exec 9>>"$tree/update.lock"; then

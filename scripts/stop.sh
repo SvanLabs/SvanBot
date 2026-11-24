@@ -13,7 +13,7 @@ lock_install_tree
 listed=$(systemctl --user list-units 'svanbot@*.service' --all --plain --full --no-legend --no-pager)
 units=()
 while read -r unit _; do
-    if [[ $unit =~ ^svanbot@[a-zA-Z0-9_]{3,32}\.service$ ]]; then
+    if [[ $unit =~ ^svanbot@${bot_name_pattern}\.service$ ]]; then
         units+=("$unit")
     fi
 done <<< "$listed"
