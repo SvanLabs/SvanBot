@@ -63,8 +63,8 @@ step() {
 # Whether `bot` already runs this build: a rollout run again after a stop skips what it finished.
 runs_it() {
     local pid
-    pid=$(systemctl --user show "svanbot@$1.service" -p MainPID --value 2>/dev/null || echo 0)
-    [[ $pid != 0 && $(readlink "/proc/$pid/exe" 2>/dev/null) == "$tree/$version/svanbot" ]]
+    pid=$("$supervisor" pid "$1" 2>/dev/null) || return 1
+    [[ $(readlink "/proc/$pid/exe" 2>/dev/null) == "$tree/$version/svanbot" ]]
 }
 
 # One swap; a bot that is rolled back, or a swap that fails, ends the rollout here.
@@ -88,7 +88,7 @@ swap() {
 stopped() {
     printf '\n%s did not take %s: the rollout stops here. Bots not yet swapped run what they ran.\n' \
         "$1" "$version" >&2
-    printf 'See `svanbot-release status` and `journalctl --user -u svanbot@%s`.\n' "$1" >&2
+    printf 'See `svanbot-release status` and ~/.local/state/svanbot/%s.log.\n' "$1" >&2
     exit 1
 }
 
@@ -116,15 +116,11 @@ for bot in "${bots[@]}"; do
     swap "$bot" env -u SVANBOT_CANARY SVANBOT_NAME="$bot" svanbot-release update --fleet "$version"
 done
 
-# The dashboard serves from current unless a drop-in pins it to a build.
-if systemctl --user is-active --quiet svanbot-dashboard.service; then
+# The dashboard serves from current, so a running one is restarted onto the new build.
+if "$supervisor" status dashboard >/dev/null; then
     step "Dashboard"
-    systemctl --user restart svanbot-dashboard.service
-    for dropin in "$HOME"/.config/systemd/user/svanbot-dashboard.service.d/*.conf; do
-        if grep -q '/lib/svanbot/[0-9]' "$dropin" && ! grep -q "/lib/svanbot/$version/" "$dropin"; then
-            printf 'Note: %s pins the dashboard to another build.\n' "$dropin"
-        fi
-    done
+    "$supervisor" stop dashboard
+    "$supervisor" start dashboard
 fi
 
 printf '\nEvery bot runs %s.\n' "$version"

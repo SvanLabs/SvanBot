@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+# Stops the fleet: the learner, every bot its supervisor knows (a pid file under
+# ~/.local/state/svanbot/), then the dashboard. Each stop waits for its program to exit.
 set -euo pipefail
 
+here=$(dirname -- "${BASH_SOURCE[0]}")
 # shellcheck source=scripts/fleet.sh
-source "$(dirname -- "${BASH_SOURCE[0]}")/fleet.sh"
+source "$here/fleet.sh"
 
 if (($# != 0)); then
     printf 'Usage: %s\n' "$0" >&2
@@ -10,12 +13,16 @@ if (($# != 0)); then
 fi
 
 lock_install_tree
-listed=$(systemctl --user list-units 'svanbot@*.service' --all --plain --full --no-legend --no-pager)
-units=()
-while read -r unit _; do
-    if [[ $unit =~ ^svanbot@${bot_name_pattern}\.service$ ]]; then
-        units+=("$unit")
+shopt -s nullglob
+bots=()
+for file in "${SVANBOT_STATE:-$HOME/.local/state/svanbot}"/*.pid; do
+    name=${file##*/}
+    name=${name%.pid}
+    if [[ $name =~ ^$bot_name_pattern$ && $name != learn ]]; then
+        bots+=("$name")
     fi
-done <<< "$listed"
+done
 
-systemctl --user stop "${units[@]}" svanbot-dashboard.service
+for name in learn "${bots[@]}" dashboard; do
+    "$supervisor" stop "$name"
+done

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
+# Sourced by the fleet scripts: what it sets is theirs to use.
+# shellcheck disable=SC2034
 
 bot_name_pattern='[A-Za-z0-9_]{3,32}'
+
+# The supervisor every fleet script drives (scripts/bot.sh, V11-52).
+supervisor=${SVANBOT_BOT:-"$(dirname -- "${BASH_SOURCE[0]}")/bot.sh"}
 
 lock_install_tree() {
     local tree=${SVANBOT_LIB:-"$HOME/.local/lib/svanbot"}
