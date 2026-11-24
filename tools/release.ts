@@ -93,7 +93,8 @@ function built(root: string, name: string): Buffer {
 function upgrade(root: string): [string, string][] {
   return [
     ["install.sh", join(root, "deploy/install.sh")],
-    ["svanbot@.service", join(root, "deploy/svanbot@.service")],
+    // The supervisor every bot runs under (V11-52), which the updater drives.
+    ["svanbot-bot", join(root, "scripts/bot.sh")],
     [UPDATER, join(root, "target/dev/release", UPDATER)],
   ];
 }

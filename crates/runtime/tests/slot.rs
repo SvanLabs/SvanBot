@@ -32,7 +32,8 @@ fn an_install_points_current_at_the_build_and_leaves_previous_empty() {
     let slots = Slots::in_dir(&root);
     let build = install(&root, "2026.11.16-1");
     slots.install(&build).unwrap();
-    // Absolute: the unit resolves `current` against systemd's working directory, not the tree's.
+    // Absolute: the supervisor resolves `current` against its own working directory, not the
+    // tree's.
     let link = root.join("current");
     assert!(
         fs::symlink_metadata(&link)
@@ -46,7 +47,7 @@ fn an_install_points_current_at_the_build_and_leaves_previous_empty() {
     assert_eq!(
         fs::read_to_string(slots.binary().unwrap()).unwrap(),
         "2026.11.16-1\n",
-        "the slot must hold the program the unit execs"
+        "the slot must hold the program the supervisor execs"
     );
 }
 
@@ -102,7 +103,7 @@ fn an_install_of_a_build_that_is_not_there_is_refused() {
         error.to_string().contains("never-built"),
         "the error must name the build: {error}"
     );
-    // Nothing was written: a slot pointing at nothing would leave the unit unable to exec.
+    // Nothing was written: a slot pointing at nothing would leave the supervisor unable to exec.
     assert_eq!(slots.current(), None);
     assert!(!root.join("current").exists());
 }

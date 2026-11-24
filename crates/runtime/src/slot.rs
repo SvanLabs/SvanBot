@@ -1,19 +1,19 @@
 //! The two slots a build lives in: `current` and `previous`.
 //!
 //! A slot is an **absolute symlink** into the directory of one installed build, and `current` is
-//! the slot the fleet runs: `deploy/svanbot@.service` execs `~/.local/lib/svanbot/current/svanbot`.
-//! An update installs the new build into its own version-named directory and then points `current`
-//! at it, keeping the build it replaced in `previous`; a rollback points `current` back at
-//! `previous` and keeps the failed build in `previous`, so a second rollback goes forward again
-//! (`GLOSSARY.md`: update, slot, rollback).
+//! the slot the fleet runs: the supervisor (`scripts/bot.sh`) execs
+//! `~/.local/lib/svanbot/current/svanbot`. An update installs the new build into its own
+//! version-named directory and then points `current` at it, keeping the build it replaced in
+//! `previous`; a rollback points `current` back at `previous` and keeps the failed build in
+//! `previous`, so a second rollback goes forward again (`GLOSSARY.md`: update, slot, rollback).
 //!
 //! Each swap is a symlink written under a temporary name and then renamed over the slot's name,
 //! which replaces it in one step. A bot that resolves the path while an update swaps it sees one
 //! build or the other, never a half-written link, and a bot already running keeps its own files:
 //! nothing deletes an installed build here.
 //!
-//! Absolute is not a preference: the unit's `ExecStart` resolves the link against whatever working
-//! directory systemd gives the bot, so a relative link would point somewhere else entirely.
+//! Absolute is not a preference: the supervisor's exec resolves the link against whatever working
+//! directory the supervisor gives the bot, so a relative link would point somewhere else entirely.
 
 use std::fmt;
 use std::fs;
@@ -101,7 +101,7 @@ impl Slots {
         self.build(Slot::Previous)
     }
 
-    /// The program `current` holds: what the unit execs.
+    /// The program `current` holds: what the supervisor execs.
     pub fn binary(&self) -> Option<PathBuf> {
         self.current().map(|dir| dir.join("svanbot"))
     }
@@ -109,7 +109,7 @@ impl Slots {
     /// Makes an installed build the one that runs, and keeps the build it replaced in `previous`.
     ///
     /// `build` must be a directory that exists: pointing a slot at anything else would leave the
-    /// unit unable to exec, so it is refused rather than written.
+    /// supervisor unable to exec, so it is refused rather than written.
     pub fn install(&self, build: impl AsRef<Path>) -> Result<(), SlotError> {
         let build = build.as_ref();
         if !build.is_dir() {
