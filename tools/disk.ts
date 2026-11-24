@@ -1,7 +1,7 @@
 // The disk budget for build output. The box is shared with the live fleet and its store, so a
-// clone's target/ stays under a budget, and the full tier reports it on every run.
-//   bun tools/disk.ts [root]   prints target/'s size against the budget, and exits 1 if it is over
-import { existsSync, lstatSync, readdirSync } from "node:fs";
+// clone's target/ directories stay under one budget, and the full tier reports it on every run.
+//   bun tools/disk.ts [root]   reports the combined size of every target/ directory, and exits 1 if it is over
+import { existsSync, lstatSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 // A tenth of the box's 93 GiB disk.
@@ -37,16 +37,38 @@ function bytesUnder(dir: string, seen = new Set<string>()): number {
   return total;
 }
 
+function targetDirectoriesUnder(root: string): string[] {
+  const targets: string[] = [];
+  function collect(dir: string): void {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const path = join(dir, entry.name);
+      if (entry.name === "target") {
+        targets.push(path);
+      } else {
+        collect(path);
+      }
+    }
+  }
+  collect(root);
+  return targets;
+}
+
 export function targetUse(root: string, budget = BUDGET): { over: boolean; line: string } {
-  const target = join(root, "target");
-  const bytes = existsSync(target) ? bytesUnder(target) : 0;
+  const targets =
+    existsSync(root) && statSync(root).isDirectory() ? targetDirectoriesUnder(root) : [];
+  const seen = new Set<string>();
+  const bytes = targets.reduce((total, target) => total + bytesUnder(target, seen), 0);
   if (bytes > budget) {
     return {
       over: true,
-      line: `target/ holds ${size(bytes)}, over its ${size(budget)} budget: run \`cargo clean\` in this clone`,
+      line: `target/ directories hold ${size(bytes)}, over this clone's ${size(budget)} budget: remove build output from every target/ directory in this clone`,
     };
   }
-  return { over: false, line: `target/ holds ${size(bytes)} of its ${size(budget)} budget` };
+  return {
+    over: false,
+    line: `target/ directories hold ${size(bytes)} of this clone's ${size(budget)} budget`,
+  };
 }
 
 if (import.meta.main) {
