@@ -3,6 +3,18 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+/**
+ * A `systemctl` that refuses, first on every scratch PATH: a script under test that still reached
+ * for the real one would stop the live fleet (it did once, on 2026-11-24).
+ */
+function guard(dir: string): void {
+  writeFileSync(
+    join(dir, "systemctl"),
+    "#!/usr/bin/env bash\necho 'systemctl is not for tests' >&2\nexit 1\n",
+    { mode: 0o755 },
+  );
+}
+
 function withSupervisor(
   check: (
     run: (script: string, locked?: boolean) => ReturnType<typeof Bun.spawnSync>,
@@ -10,6 +22,7 @@ function withSupervisor(
   ) => void,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-fleet-"));
+  guard(dir);
   try {
     const calls = join(dir, "calls");
     const config = join(dir, ".config/svanbot");
@@ -80,6 +93,7 @@ function update(
   options: { installed?: boolean; rollback?: string; dashboard?: boolean } = {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-update-"));
+  guard(dir);
   try {
     const calls = join(dir, "calls");
     writeFileSync(calls, "");

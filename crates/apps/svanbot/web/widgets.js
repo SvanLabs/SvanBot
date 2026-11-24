@@ -337,7 +337,7 @@ export function searchView(search, nowMs) {
       h(
         "p",
         { class: "subtle" },
-        "Enable svanbot-learn.timer to run it unattended (deploy/README.md).",
+        "Start it with `svanbot-bot start learn` to run it unattended (deploy/README.md).",
       ),
     ];
   }

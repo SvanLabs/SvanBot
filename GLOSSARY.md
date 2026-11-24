@@ -324,6 +324,12 @@ _Avoid_: soak, bake time, watch period
 SvanBot's own record of hands, decisions, fits and incidents.
 _Avoid_: database, DB, artifacts
 
+**Supervisor**:
+`svanbot-bot` (`scripts/bot.sh`): what keeps one bot, the dashboard or the learner running on the
+box. It restarts a crash, stays down after five starts in five minutes, and keeps a pid and a log
+under `~/.local/state/svanbot/`. The fleet scripts and the updater start and stop bots through it.
+_Avoid_: unit, service, daemon
+
 **Status**:
 One bot's last known state, written beside its store every five seconds: connection, table, hands,
 incidents (lifetime and this run) and last error. A status older than fifteen seconds is stale.

@@ -167,8 +167,8 @@ fn update_now(version: Option<&str>, fleet: bool) -> Result<(), String> {
             Ok(())
         }
         None => {
-            // The swap is done; whether the build stays is `watch`'s question, asked by watching its
-            // start log for the whole window. A crash loop rolls back and is restarted there.
+            // The swap is done; whether the build stays is `watch`'s question, asked by watching
+            // its start log for the whole window. A crash loop rolls back and is restarted there.
             let watched = update::watch(
                 &mut world,
                 &slots,
@@ -277,7 +277,7 @@ fn health_for(bot: &str) -> Result<Health, String> {
     Ok(Health::in_dir(dir, bot))
 }
 
-/// The bot's store path, by the same rule the bot and `deploy/svanbot@.service` use.
+/// The bot's store path, by the same rule the bot and its supervisor (`scripts/bot.sh`) use.
 fn store_path(bot: &str) -> Result<PathBuf, String> {
     match std::env::var_os("SVANBOT_STORE") {
         Some(path) => Ok(PathBuf::from(path)),

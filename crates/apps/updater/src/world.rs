@@ -21,8 +21,8 @@ use svanbot_runtime::update::Window;
 use crate::supervisor::Supervisor;
 
 /// How long to wait between polls of a wait. Short: the bot reads the update request within a read
-/// timeout (`svanbot_runtime::client::READ_WAIT_MS`), and the supervisor starts and stops a bot in well
-/// under this.
+/// timeout (`svanbot_runtime::client::READ_WAIT_MS`), and the supervisor starts and stops a bot in
+/// well under this.
 const POLL: Duration = Duration::from_millis(100);
 
 /// The real world: the supervisor for the process work, the bot's health files for the answer.
@@ -38,8 +38,8 @@ impl<'a> BotWorld<'a> {
     }
 
     /// Polls `until` — returning `true`/`false` — every [`POLL`] until it does, or until `deadline`
-    /// passes, and returns the last answer. The clock is read here, in an app: this is the one place
-    /// the deadline is turned into elapsed time.
+    /// passes, and returns the last answer. The clock is read here, in an app: this is the one
+    /// place the deadline is turned into elapsed time.
     ///
     /// The error is whatever the wait's own reader gives — an `io::Error` from the supervisor, a
     /// `HealthError` from a file — and is only reported, so the wait can take either.

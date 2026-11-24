@@ -32,7 +32,8 @@ fn an_install_points_current_at_the_build_and_leaves_previous_empty() {
     let slots = Slots::in_dir(&root);
     let build = install(&root, "2026.11.16-1");
     slots.install(&build).unwrap();
-    // Absolute: the supervisor resolves `current` against its own working directory, not the tree's.
+    // Absolute: the supervisor resolves `current` against its own working directory, not the
+    // tree's.
     let link = root.join("current");
     assert!(
         fs::symlink_metadata(&link)

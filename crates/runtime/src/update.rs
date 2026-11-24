@@ -33,7 +33,8 @@ use std::io;
 use crate::health::{Health, HealthError};
 use crate::slot::{SlotError, Slots};
 
-/// What the window needs done in the world, which is the supervisor's job and the caller's to carry out.
+/// What the window needs done in the world, which is the supervisor's job and the caller's to carry
+/// out.
 ///
 /// `stop` and `start` act; the two polls wait. Each wait gets the deadline, in milliseconds since
 /// the Unix epoch, past which the answer is no; the caller polls and returns as soon as it has one,
@@ -60,8 +61,8 @@ pub trait Window {
     fn crash_looped(&mut self, since_ms: i64, limit: usize, deadline_ms: i64) -> bool;
 
     /// Whether the supervisor has the bot down right now: stopped or failed, with no process of it
-    /// running. `false` when the supervisor cannot say, because a bot that might be playing is the one
-    /// the window must wait for.
+    /// running. `false` when the supervisor cannot say, because a bot that might be playing is the
+    /// one the window must wait for.
     fn down(&mut self) -> bool;
 }
 
@@ -131,21 +132,21 @@ pub struct Outcome {
     pub rolled_back_to: Option<std::path::PathBuf>,
 }
 
-/// Puts a verified `build` in `current`: asks the bot to stop, waits for it, asks the supervisor to stop
-/// it, swaps, and asks the supervisor to start it again.
+/// Puts a verified `build` in `current`: asks the bot to stop, waits for it, asks the supervisor to
+/// stop it, swaps, and asks the supervisor to start it again.
 ///
 /// The build is kept only if the bot comes up at all: `restarted` says whether it did, and a build
-/// the supervisor cannot start is a build that is not surviving, so `current` goes back to the one that
-/// was running and the outcome says so. Whether the build that *did* come up is kept is [`watch`]'s
-/// question, asked once it has had its window to fail in.
+/// the supervisor cannot start is a build that is not surviving, so `current` goes back to the one
+/// that was running and the outcome says so. Whether the build that *did* come up is kept is
+/// [`watch`]'s question, asked once it has had its window to fail in.
 ///
-/// Nothing is swapped until the supervisor has stopped the bot: a bot that is still running under the supervisor
-/// would be started again from the new build while its own process still holds the table, so a stop
-/// that the supervisor refuses ends the window with the slots untouched.
+/// Nothing is swapped until the supervisor has stopped the bot: a bot that is still running under
+/// the supervisor would be started again from the new build while its own process still holds the
+/// table, so a stop that the supervisor refuses ends the window with the slots untouched.
 ///
-/// A bot the supervisor has down is never asked to stop: there is no bot to answer, and waiting for one
-/// would spend the whole window and then report that it never stopped. Its window starts it on the
-/// new build instead (see the module's first start).
+/// A bot the supervisor has down is never asked to stop: there is no bot to answer, and waiting for
+/// one would spend the whole window and then report that it never stopped. Its window starts it on
+/// the new build instead (see the module's first start).
 ///
 /// `now_ms` is the clock, and `window_ms` how long the bot is given to stop and to come up: the
 /// deadline is their sum, so the caller owns the time and this module never reads it (ADR 0003).
@@ -175,10 +176,11 @@ pub fn apply(
             deadline_ms: deadline,
         });
     }
-    // The bot has left the table, but its process is still up and the supervisor would still start *it*
-    // from the old build. Retire it before anything moves, so the start below is the new build's
-    // and only the new build's. A stop the supervisor refuses ends the window here, with the slots
-    // untouched: a request is easier to repeat than a swap under a running process is to undo.
+    // The bot has left the table, but its process is still up and the supervisor would still start
+    // *it* from the old build. Retire it before anything moves, so the start below is the new
+    // build's and only the new build's. A stop the supervisor refuses ends the window here, with
+    // the slots untouched: a request is easier to repeat than a swap under a running process is to
+    // undo.
     if let Err(error) = world.stop() {
         health.clear_update()?;
         return Err(WindowError::Stop(error));
@@ -189,8 +191,8 @@ pub fn apply(
     swapped
 }
 
-/// Starts a bot that the supervisor has down on `build`: the first start on a fresh box, or a bot the
-/// operator stopped.
+/// Starts a bot that the supervisor has down on `build`: the first start on a fresh box, or a bot
+/// the operator stopped.
 ///
 /// Every way it can fail leaves the bot as it was found, down, and starts nothing in its place,
 /// because nothing was running to be restored. `current` goes back to the build it held, which the
@@ -210,8 +212,8 @@ fn start_from_down(
         return Err(WindowError::Start(error));
     }
     if !world.restarted(deadline_ms) {
-        // The supervisor took the start, so its own restarts would keep trying the build. Stop it first,
-        // or a restart could land on whichever build `current` names next.
+        // The supervisor took the start, so its own restarts would keep trying the build. Stop it
+        // first, or a restart could land on whichever build `current` names next.
         let _ = world.stop();
         put_back(slots, before)?;
         return Err(WindowError::NeverCameUp { deadline_ms });
@@ -249,14 +251,15 @@ fn swap_and_start(
         return Err(error.into());
     }
     if let Err(error) = world.start() {
-        // The supervisor would not start the build. Put the one that was running back and start that.
+        // The supervisor would not start the build. Put the one that was running back and start
+        // that.
         roll_back(slots)?;
         let _ = world.start();
         return Err(WindowError::Start(error));
     }
     if !world.restarted(deadline_ms) {
-        // The supervisor started something, but the bot never came up: the same judgement as a crash
-        // loop, made sooner. The old build goes back and is started.
+        // The supervisor started something, but the bot never came up: the same judgement as a
+        // crash loop, made sooner. The old build goes back and is started.
         let rolled_back_to = roll_back(slots)?;
         let _ = world.start();
         return Ok(Outcome { rolled_back_to });
@@ -288,12 +291,12 @@ pub fn watch(
         });
     }
     if slots.previous().is_none() {
-        // A first build has nothing to go back to. It stays, and the supervisor's own restarts are the
-        // ones that run, but the window says it loops rather than that it is running.
+        // A first build has nothing to go back to. It stays, and the supervisor's own restarts are
+        // the ones that run, but the window says it loops rather than that it is running.
         return Err(WindowError::CrashLoop);
     }
-    // Stop the loop before the swap, or the supervisor restarts the build being retired the moment it
-    // starts the one the rollback lands on. A stop it refuses leaves the build as it was.
+    // Stop the loop before the swap, or the supervisor restarts the build being retired the moment
+    // it starts the one the rollback lands on. A stop it refuses leaves the build as it was.
     world.stop().map_err(WindowError::Stop)?;
     let rolled_back_to = roll_back(slots)?;
     world.start().map_err(WindowError::Start)?;

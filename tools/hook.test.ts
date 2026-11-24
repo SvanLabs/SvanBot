@@ -78,11 +78,28 @@ test("starting a bot is the operator's move", () => {
     "cd scripts && ./stop.sh",
     "scripts/update.sh 11.1.7",
     "bash scripts/update.sh --canary-only 11.1.7",
+    "svanbot-bot start SurSvan",
+    "svanbot-bot stop Svanar",
+    "~/.local/bin/svanbot-bot run SurSvan",
+    "bash scripts/bot.sh start SurSvan",
+    "scripts/bot.sh stop SurSvan",
+    "cd scripts && ./bot.sh start SurSvan",
   ]) {
     expect(refusal(command, DEV)).toContain("operator");
   }
   expect(refusal("svanbot-release status", DEV)).toBeNull();
   expect(refusal("bash -n scripts/start.sh", DEV)).toBeNull();
+  // Asking after a bot changes nothing, and the dashboard and the learner never reach the venue.
+  for (const command of [
+    "svanbot-bot status SurSvan",
+    "svanbot-bot pid SurSvan",
+    "svanbot-bot start learn",
+    "svanbot-bot stop dashboard",
+    "bash scripts/bot.sh status SurSvan",
+    "scripts/bot.sh start learn",
+  ]) {
+    expect(refusal(command, DEV)).toBeNull();
+  }
   expect(refusal("systemctl --user stop svanbot@SurSvan", DEV)).toContain("operator");
 });
 

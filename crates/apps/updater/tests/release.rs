@@ -3,8 +3,8 @@
 //!
 //! Every test drives the real binary with a cleared environment and an install tree in a temporary
 //! directory, so what is asserted is the exit code and the words a person would read. The one
-//! thing not exercised here is a swap against the supervisor: that needs a bot on the box, and the window
-//! it drives is covered by `svanbot_runtime::update`'s own tests.
+//! thing not exercised here is a swap against the supervisor: that needs a bot on the box, and the
+//! window it drives is covered by `svanbot_runtime::update`'s own tests.
 //!
 //! A test install tree is a set of files in a fresh temporary directory, and the binary is an app,
 //! so the bans on files are off here as they are in the app itself.
@@ -78,7 +78,8 @@ fn install_verifies_a_staged_release_and_promotes_it_into_the_tree() {
     let (code, out, err) = run(&tree, &["install", staged.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{out}{err}");
     assert!(out.contains("installed 2026.11.16-1"), "{out}");
-    // The build is where a slot can point at it, and it is executable there: the supervisor execs this.
+    // The build is where a slot can point at it, and it is executable there: the supervisor execs
+    // this.
     let installed = tree.join("2026.11.16-1").join("svanbot");
     assert_eq!(fs::read(&installed).unwrap(), STAGED);
     let mode = fs::metadata(&installed).unwrap().permissions();
@@ -152,7 +153,8 @@ fn status_lists_a_build_that_was_installed_but_never_swapped_in() {
     let (code, out, _err) = run(&tree, &["status"]);
     assert_eq!(code, Some(0));
     assert!(out.contains("installed 2026.11.16-1"), "{out}");
-    // It is installed but not current: this is exactly the state an operator checks before a window.
+    // It is installed but not current: this is exactly the state an operator checks before a
+    // window.
     assert!(out.contains("current  -"), "{out}");
     assert!(out.contains("previous -"), "{out}");
 }
@@ -161,7 +163,8 @@ fn status_lists_a_build_that_was_installed_but_never_swapped_in() {
 fn status_does_not_list_a_staged_release_as_an_installed_build() {
     let tree = scratch("onlystaged");
     // A staged release is what `deploy/install.sh` leaves in the tree, named for what it is and not
-    // for a version: it is not a build a window can point at until `install` verifies and promotes it.
+    // for a version: it is not a build a window can point at until `install` verifies and promotes
+    // it.
     let staged = stage(&tree.join("staged"), "2026.11.16-1");
     assert!(staged.is_dir());
     let (code, out, _err) = run(&tree, &["status"]);

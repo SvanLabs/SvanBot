@@ -2,11 +2,11 @@
 //! runs, and when it takes the new build back out.
 //!
 //! The window has a fixed order and never guesses. It asks the bot to stop, and waits for the bot
-//! to say it has; it asks the supervisor to stop the process that left the table; it installs the new
-//! build and points `current` at it; it asks the supervisor to start the bot again. The build is kept only
-//! if the bot comes up and stays up; if it never comes up, crash-loops, or the canary's harm guard
-//! trips first, the slot goes back to the previous build — and a build always comes back up:
-//! whatever fails, the window leaves the slot it settled on running.
+//! to say it has; it asks the supervisor to stop the process that left the table; it installs the
+//! new build and points `current` at it; it asks the supervisor to start the bot again. The build
+//! is kept only if the bot comes up and stays up; if it never comes up, crash-loops, or the
+//! canary's harm guard trips first, the slot goes back to the previous build — and a build always
+//! comes back up: whatever fails, the window leaves the slot it settled on running.
 //!
 //! Nothing here sleeps: every wait is a short poll against a world the caller supplies, and the
 //! clock is passed in, so a test drives both the crash and the deadline without waiting.
@@ -43,8 +43,8 @@ fn health_for(root: &Path, name: &str) -> Health {
     Health::in_dir(root.join("health"), name)
 }
 
-/// A world the test scripts: what the supervisor answers, whether the bot comes back up, and a log of
-/// every call the window made, in order.
+/// A world the test scripts: what the supervisor answers, whether the bot comes back up, and a log
+/// of every call the window made, in order.
 struct Scripted {
     /// What `svanbot-bot stop` answers.
     stop_ok: bool,
@@ -76,8 +76,8 @@ impl Scripted {
         }
     }
 
-    /// A world where the supervisor has the bot down: a fresh box, or a bot the operator stopped. Nothing
-    /// is playing, so no bot is there to say it stopped.
+    /// A world where the supervisor has the bot down: a fresh box, or a bot the operator stopped.
+    /// Nothing is playing, so no bot is there to say it stopped.
     fn down() -> Self {
         Self {
             down: true,
@@ -180,8 +180,9 @@ fn a_fresh_box_points_current_at_the_build_and_starts_the_bot_without_a_stop_wai
     let slots = Slots::in_dir(root.join("lib"));
     let health = health_for(&root, "SurSvan");
     let new = build(&root, "11.0.0");
-    // Nothing has ever run here: no `current`, and the supervisor has the bot stopped. There is no bot
-    // to say it stopped, so a window that waits for one waits out its whole deadline for nothing.
+    // Nothing has ever run here: no `current`, and the supervisor has the bot stopped. There is no
+    // bot to say it stopped, so a window that waits for one waits out its whole deadline for
+    // nothing.
     let mut world = Scripted::down();
     let outcome =
         svanbot_runtime::update::apply(&mut world, &slots, &health, &new, 1_000, 60_000).unwrap();
@@ -219,8 +220,8 @@ fn a_stopped_bot_whose_new_build_never_comes_up_is_left_stopped_on_the_old_build
         matches!(error, WindowError::NeverCameUp { .. }),
         "{error:?}"
     );
-    // The window leaves the bot as it found it: stopped, so the supervisor's own restarts do not keep
-    // retrying the build, and `current` back on the build the rest of the fleet runs from.
+    // The window leaves the bot as it found it: stopped, so the supervisor's own restarts do not
+    // keep retrying the build, and `current` back on the build the rest of the fleet runs from.
     assert_eq!(world.log(), ["start", "up_poll", "stop"]);
     assert_eq!(slots.current(), Some(old));
     assert_eq!(slots.previous(), Some(new));
@@ -292,8 +293,8 @@ fn a_bot_that_does_not_stop_inside_the_deadline_is_never_swapped_under() {
         matches!(error, WindowError::BotNeverStopped { .. }),
         "{error:?}"
     );
-    // The bot was never asked to stop and the supervisor was never touched: there is nothing to stop a
-    // bot that is still playing for, and the swap waits for the next window.
+    // The bot was never asked to stop and the supervisor was never touched: there is nothing to
+    // stop a bot that is still playing for, and the swap waits for the next window.
     assert_eq!(world.log(), ["stop_poll"]);
     assert_eq!(slots.current(), Some(old));
     assert!(!health.update_requested());
@@ -307,9 +308,9 @@ fn a_build_the_supervisor_cannot_start_is_rolled_back_before_it_can_take_anythin
     let old = build(&root, "2026.11.16-1");
     let new = build(&root, "2026.11.16-2");
     slots.install(&old).unwrap();
-    // The swap happened, but the supervisor never reported the bot back up: the build is not running, so
-    // the one that was running goes straight back. This is a different failure from a crash loop:
-    // there is not one start to read.
+    // The swap happened, but the supervisor never reported the bot back up: the build is not
+    // running, so the one that was running goes straight back. This is a different failure from a
+    // crash loop: there is not one start to read.
     let mut world = Scripted::never_comes_up();
     let outcome =
         svanbot_runtime::update::apply(&mut world, &slots, &health, &new, 1_000, 60_000).unwrap();
@@ -334,7 +335,8 @@ fn a_start_the_supervisor_refuses_rolls_the_slot_back_and_starts_the_old_build()
     let error = svanbot_runtime::update::apply(&mut world, &slots, &health, &new, 1_000, 60_000)
         .unwrap_err();
     assert!(matches!(error, WindowError::Start(_)), "{error:?}");
-    // The build the supervisor would not start is not left in `current`: the old one is back and started.
+    // The build the supervisor would not start is not left in `current`: the old one is back and
+    // started.
     assert_eq!(slots.current(), Some(old));
     assert_eq!(world.log(), ["stop_poll", "stop", "start", "start"]);
     assert!(!health.update_requested());
@@ -352,8 +354,8 @@ fn a_stop_the_supervisor_refuses_leaves_the_slots_where_they_were() {
     let error = svanbot_runtime::update::apply(&mut world, &slots, &health, &new, 1_000, 60_000)
         .unwrap_err();
     assert!(matches!(error, WindowError::Stop(_)), "{error:?}");
-    // Nothing moved and nothing was started: the supervisor never stopped the bot, so the running build
-    // is still the one it is running and the window is repeated later.
+    // Nothing moved and nothing was started: the supervisor never stopped the bot, so the running
+    // build is still the one it is running and the window is repeated later.
     assert_eq!(slots.current(), Some(old));
     assert_eq!(slots.previous(), None);
     assert_eq!(world.log(), ["stop_poll", "stop"]);
@@ -382,8 +384,8 @@ fn a_build_that_crash_loops_is_rolled_back_to_the_one_that_was_running() {
     assert_eq!(slots.current(), Some(old));
     // The build that crash-looped is now `previous`, so a later rollback is still possible.
     assert_eq!(slots.previous(), Some(new));
-    // The loop is stopped before the swap and the build rolled back to is started: the supervisor is
-    // restarting the broken build, so a swap under it would race the start of the old one.
+    // The loop is stopped before the swap and the build rolled back to is started: the supervisor
+    // is restarting the broken build, so a swap under it would race the start of the old one.
     assert_eq!(
         world.log(),
         [
@@ -421,8 +423,8 @@ fn a_first_build_that_crash_loops_is_reported_and_not_kept_as_running() {
     let first = build(&root, "11.0.0");
     slots.install(&first).unwrap();
     // A fresh box's first build has nothing in `previous`, so there is nothing to roll back to.
-    // It stays in `current` and the supervisor's own restarts keep trying it, but a window that says it
-    // is running would send the operator away from a bot that is not.
+    // It stays in `current` and the supervisor's own restarts keep trying it, but a window that
+    // says it is running would send the operator away from a bot that is not.
     let mut world = Scripted::crash_loops();
     let error = svanbot_runtime::update::watch(&mut world, &slots, 0, WINDOW_MS, 3).unwrap_err();
     assert!(matches!(error, WindowError::CrashLoop), "{error:?}");

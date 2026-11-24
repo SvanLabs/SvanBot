@@ -1,11 +1,11 @@
 //! The two slots a build lives in: `current` and `previous`.
 //!
 //! A slot is an **absolute symlink** into the directory of one installed build, and `current` is
-//! the slot the fleet runs: `deploy/svanbot@.service` execs `~/.local/lib/svanbot/current/svanbot`.
-//! An update installs the new build into its own version-named directory and then points `current`
-//! at it, keeping the build it replaced in `previous`; a rollback points `current` back at
-//! `previous` and keeps the failed build in `previous`, so a second rollback goes forward again
-//! (`GLOSSARY.md`: update, slot, rollback).
+//! the slot the fleet runs: the supervisor (`scripts/bot.sh`) execs
+//! `~/.local/lib/svanbot/current/svanbot`. An update installs the new build into its own
+//! version-named directory and then points `current` at it, keeping the build it replaced in
+//! `previous`; a rollback points `current` back at `previous` and keeps the failed build in
+//! `previous`, so a second rollback goes forward again (`GLOSSARY.md`: update, slot, rollback).
 //!
 //! Each swap is a symlink written under a temporary name and then renamed over the slot's name,
 //! which replaces it in one step. A bot that resolves the path while an update swaps it sees one

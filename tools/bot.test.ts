@@ -26,6 +26,9 @@ afterEach(() => {
 function home(env: Record<string, string> = { FAKE: "serve" }): string {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-bot-"));
   homes.push(dir);
+  // A `systemctl` that refuses, first on the PATH: nothing under test may reach the live fleet.
+  mkdirSync(join(dir, "bin"), { recursive: true });
+  writeFileSync(join(dir, "bin/systemctl"), "#!/usr/bin/env bash\nexit 1\n", { mode: 0o755 });
   mkdirSync(join(dir, ".config/svanbot"), { recursive: true });
   writeFileSync(
     join(dir, ".config/svanbot/First.env"),
@@ -54,7 +57,7 @@ esac
 function bot(dir: string, ...args: string[]): { code: number; out: string } {
   const result = Bun.spawnSync(["bash", SCRIPT, ...args], {
     env: {
-      PATH: process.env.PATH ?? "",
+      PATH: `${dir}/bin:${process.env.PATH ?? ""}`,
       HOME: dir,
       SVANBOT_LIB: join(dir, "lib"),
       SVANBOT_STATE: join(dir, "state"),

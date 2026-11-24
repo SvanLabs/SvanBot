@@ -4,6 +4,16 @@ v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final
 
 ## 11.1.7: unreleased
 
+- The fleet runs from scripts, not systemd (V11-52):
+  - `scripts/bot.sh` is the supervisor, installed as `svanbot-bot` from the bundle. It keeps a bot,
+    the dashboard or the learner running, restarts a crash after 10 s, stays down after five starts
+    in five minutes, caps memory at 1 GiB, and logs to `~/.local/state/svanbot/<name>.log`.
+  - `start.sh`, `stop.sh` and `update.sh` drive it, and `svanbot-release` stops and starts a bot
+    through it.
+  - The learner is a loop of `svanbot learn` every half hour, started with the fleet. Cron's
+    `@reboot` starts the fleet, and `@daily` runs `scripts/clean.sh`.
+  - Every unit, timer and the journald drop-in are gone. `deploy/README.md` has the cutover.
+
 - `scripts/update.sh <version>` rolls a release out to the whole fleet in one run (V11-50):
   - installs it if needed;
   - swaps the canary, then each other bot one at a time;

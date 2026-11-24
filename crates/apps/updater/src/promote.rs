@@ -80,8 +80,8 @@ pub(crate) fn promote(staged: &Release, lib: &Path) -> Result<PathBuf, PromotErr
     let from = staged.dir().join(PROGRAM);
     let to = target.join(PROGRAM);
     fs::copy(&from, &to).map_err(|e| PromotError::Io(to.clone(), e))?;
-    // The copy is a fresh program: the staged mode is not carried by `copy`, and a program the supervisor
-    // cannot `exec` is not an installed build.
+    // The copy is a fresh program: the staged mode is not carried by `copy`, and a program the
+    // supervisor cannot `exec` is not an installed build.
     let mut mode = fs::metadata(&to)
         .map_err(|e| PromotError::Io(to.clone(), e))?
         .permissions();
