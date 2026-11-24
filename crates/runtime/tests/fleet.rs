@@ -310,14 +310,9 @@ fn a_run_keeps_each_bouts_result_and_how_it_was_solved_so_the_gate_can_play_one_
 
 #[test]
 fn new_arena_evidence_can_be_written_alongside_a_pre_champion_run() {
-    let dir = scratch("arena-pre-champion");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("arena.json"),
-        r#"{"runs":[{"commit":"legacy","seed":7,"rows":[]}]}"#,
-    )
-    .unwrap();
-    let fleet = Fleet::in_dir(dir);
+    let fleet = Fleet::in_dir(scratch("arena-pre-champion"));
+    let legacy = ArenaRun::from_text(r#"{"commit":"legacy","seed":7,"rows":[]}"#).unwrap();
+    fleet.record_arena(&legacy).unwrap();
     fleet.record_arena(&run("new", 7, 1.0)).unwrap();
     let [new, legacy] = fleet.arena_runs().unwrap().try_into().unwrap();
     assert_eq!(new.commit, "new");
