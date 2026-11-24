@@ -431,6 +431,16 @@ One bot's view of one opponent, in one place: their class, change point, hands s
 and the share of the exploit budget their read has earned. Each bot keeps its own (ADR 0004).
 _Avoid_: profile page, file
 
+**Profile**:
+An ordered set of compiled Rust rules. The first matching rule chooses an action from the spot,
+and the decision fits that action to its legal choices. If no rule matches, the policy uses the
+re-solve or the pricer.
+
+**Opponent stats**:
+A bot's own observed VPIP, preflop raise rate, postflop fold-to-bet rate and postflop aggression
+frequency for an opponent. Each rate records how many hands supplied an opportunity. A profile
+can use a rate once 30 such hands support it.
+
 **Decision trace**:
 The record of one decision: the hole cards and board, the ranges, what each action was worth, and
 why one won. The replayer reads it rather than playing the hand again, so the trace keeps its own

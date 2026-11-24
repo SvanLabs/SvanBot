@@ -168,6 +168,34 @@ fn a_bot_s_stored_hands_give_its_reads_of_each_named_opponent() {
 }
 
 #[test]
+fn only_a_bots_own_stored_hands_qualify_profile_stats() {
+    use svanbot_strategy::profile::MIN_EVIDENCE_HANDS;
+
+    let played: Vec<_> = (0..MIN_EVIDENCE_HANDS)
+        .map(|n| Hand {
+            hand_id: format!("h-{n}"),
+            table_id: "t-1".into(),
+            frames: named_frames(),
+            traced: Vec::new(),
+        })
+        .collect();
+    let full = reads(&played, "SurSvan");
+    let thin = reads(&played[..1], "SurSvan");
+    let seated = [(0, "ALPHA_BOT"), (4, "beta_bot")];
+    let [alpha, beta] = full
+        .profile_stats(&seated)
+        .try_into()
+        .unwrap_or_else(|_| panic!("two seats"));
+    assert_eq!((alpha.seat, alpha.stats.pfr.value()), (0, Some(1.0)));
+    assert_eq!((beta.seat, beta.stats.vpip.value()), (4, Some(1.0)));
+    assert_eq!(beta.stats.fold_to_bet.value(), Some(1.0));
+    assert_eq!(
+        thin.profile_stats(&seated)[1].stats.fold_to_bet.value(),
+        None
+    );
+}
+
+#[test]
 fn live_reads_match_the_store_after_a_duplicate_or_failed_hand_write() {
     use svanbot_runtime::history::keep_live;
     use svanbot_runtime::store::Store;

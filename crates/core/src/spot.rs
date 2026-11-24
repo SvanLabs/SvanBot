@@ -28,6 +28,8 @@ pub struct Spot {
     /// Whether the bot acts last on the streets after the flop: of the seats still in, it is the
     /// last one round the table from the button's left.
     pub in_position: bool,
+    /// Opponents with chips who act later in the street's opening order, when known.
+    pub players_behind: Option<usize>,
     /// What each opponent still in the hand has done in it so far, one line per opponent. Empty
     /// when the caller did not follow the hand.
     pub lines: Vec<Vec<Act>>,

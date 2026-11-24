@@ -177,6 +177,7 @@ fn at_its_turn_it_decides_on_the_spot_and_echoes_the_hand_and_token() {
     );
     // Heads up the dealer posts the small blind, so we posted the big one.
     assert_eq!((spot.committed, spot.big_blind), (20, 20));
+    assert_eq!(spot.players_behind, Some(0));
     // The other seat has the button, so it acts last after the flop.
     assert!(!spot.in_position);
     let [

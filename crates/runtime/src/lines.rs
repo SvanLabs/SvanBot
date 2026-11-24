@@ -146,21 +146,8 @@ impl Lines {
         if self.street != Some(Street::Preflop) {
             return acted;
         }
-        let mut order: Vec<usize> = dealt.to_vec();
-        order.sort_unstable();
-        order.dedup();
-        // Seat order from the dealer's left round to the dealer.
-        order.sort_by_key(|&at| (at + 6 - self.dealer % 6 - 1) % 6);
-        let (small, big) = match order.as_slice() {
-            [first, second] if order.contains(&self.dealer) => {
-                if *second == self.dealer {
-                    (*second, *first)
-                } else {
-                    (*first, *second)
-                }
-            }
-            [first, second, ..] => (*first, *second),
-            _ => return acted,
+        let Some((small, big)) = self.blind_seats(dealt) else {
+            return acted;
         };
         let posted = if seat == small {
             self.small_blind
@@ -172,10 +159,21 @@ impl Lines {
         acted + posted
     }
 
+    pub(crate) fn blind_seats(&self, dealt: &[usize]) -> Option<(usize, usize)> {
+        let mut order = dealt.to_vec();
+        order.sort_unstable_by_key(|&seat| self.turn_order(seat));
+        order.dedup();
+        match order.as_slice() {
+            [first, second] if *second == self.dealer => Some((*second, *first)),
+            [first, second, ..] => Some((*first, *second)),
+            _ => None,
+        }
+    }
+
     /// How late `seat` acts after the flop: the button's left is 0, and the button is last.
     /// The venue seats six at most.
     pub fn turn_order(&self, seat: usize) -> usize {
-        (seat + 6 - self.dealer % 6 - 1) % 6
+        (seat % 6 + 5 - self.dealer % 6) % 6
     }
 
     /// The hand's big blind.

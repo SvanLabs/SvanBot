@@ -24,6 +24,7 @@ fn spot(hole: &str, board: &str, pot: u64, legal: Legal, opponents: usize) -> Sp
         committed: 0,
         big_blind: 20,
         in_position: false,
+        players_behind: None,
         lines: vec![],
         seats: vec![],
     }
@@ -191,6 +192,7 @@ fn every_decision_is_legal_and_the_same_seed_repeats_it() {
             committed: 0,
             big_blind: 20,
             in_position: false,
+            players_behind: None,
             lines: vec![],
             seats: vec![],
         };

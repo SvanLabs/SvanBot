@@ -11,6 +11,7 @@ use svanbot_core::spot::Spot;
 use crate::action::{ActionModel, BUCKETS, Seen, masses, range, ranked};
 use crate::params::Params;
 use crate::pricer::{self, Budget};
+use crate::profile::{ACTIVE, Profile};
 use crate::read::Class;
 pub use crate::resolve::Abstract;
 use crate::resolve::resolve;
@@ -183,6 +184,23 @@ pub fn decide_read(
     budget: Budget,
     iterations: u32,
 ) -> Decision {
+    decide_profile(spot, model, personal, params, budget, iterations, ACTIVE)
+}
+
+/// Evaluate the profile first, then use the same re-solve or pricer for unmatched spots.
+pub fn decide_profile(
+    spot: &Spot,
+    model: Option<&ActionModel>,
+    personal: &[Personal],
+    params: &Params,
+    budget: Budget,
+    iterations: u32,
+    profile: Profile<'_>,
+) -> Decision {
+    if let Some(action) = profile.action(spot, budget.seed) {
+        return action.into();
+    }
+
     // Until a fit passes the gate, the baseline reads the opponents' lines. A model present is a
     // model that passed it (`svanbot fit`), so its presence is the gate's answer.
     let gated = model.is_some();

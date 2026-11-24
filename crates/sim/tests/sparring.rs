@@ -22,6 +22,7 @@ fn spot(hole: &str, board: &str, pot: u64, call: Option<u64>) -> Spot {
         committed: 0,
         big_blind: 20,
         in_position: true,
+        players_behind: None,
         lines: vec![vec![]],
         // One seat per line, as the invariant says: this spot has no trace, but a fixture that
         // breaks the invariant is a trap for the next reader.

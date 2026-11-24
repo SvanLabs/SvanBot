@@ -76,8 +76,9 @@ use svanbot_runtime::probing::Probing;
 use svanbot_runtime::status::{Play, Status, status_path};
 use svanbot_runtime::store::Store;
 use svanbot_strategy::action::ActionModel;
-use svanbot_strategy::policy::decide_read;
+use svanbot_strategy::policy::decide_profile;
 use svanbot_strategy::pricer::Budget;
+use svanbot_strategy::profile::ACTIVE;
 use svanbot_strategy::resolve::iterations_for;
 
 /// Deals sampled per decision: a small cost next to the 45 s action clock. `/measure` will size it.
@@ -217,9 +218,22 @@ fn main() -> ExitCode {
                     .map(|player| (player.seat, player.name.as_str()))
                     .collect();
                 let population = model.as_ref().unwrap_or(&baseline);
-                let personal = reads.borrow().deciding(&named, population, params.exploit);
-                let decision =
-                    decide_read(spot, model.as_ref(), &personal, &params, budget, iterations);
+                let reads = reads.borrow();
+                let personal = reads.deciding(&named, population, params.exploit);
+                let stats = if ACTIVE.is_empty() {
+                    Vec::new()
+                } else {
+                    reads.profile_stats(&named)
+                };
+                let decision = decide_profile(
+                    spot,
+                    model.as_ref(),
+                    &personal,
+                    &params,
+                    budget,
+                    iterations,
+                    ACTIVE.with_opponents(&stats),
+                );
                 if let Some(drawn) = &decision.drawn {
                     probing.borrow_mut().decided(Decided {
                         strategy: drawn.strategy.clone(),
