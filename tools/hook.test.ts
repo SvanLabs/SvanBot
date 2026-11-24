@@ -76,6 +76,8 @@ test("starting a bot is the operator's move", () => {
     "bash scripts/stop.sh",
     "bash '/home/operator/checkout/scripts/start.sh'",
     "cd scripts && ./stop.sh",
+    "scripts/update.sh 11.1.7",
+    "bash scripts/update.sh --canary-only 11.1.7",
   ]) {
     expect(refusal(command, DEV)).toContain("operator");
   }

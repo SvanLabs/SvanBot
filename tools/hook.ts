@@ -82,9 +82,10 @@ export function refusal(command: string, env: Record<string, string | undefined>
           ? undefined
           : args.find((arg) => !arg.startsWith("-"))
         : tool;
-    const fleetScript = /(?:^|\/)scripts\/(?:start|stop)\.sh$|^\.\/(?:start|stop)\.sh$/.test(
-      script?.replace(/^['"]|['"]$/g, "") ?? "",
-    );
+    const fleetScript =
+      /(?:^|\/)scripts\/(?:start|stop|update)\.sh$|^\.\/(?:start|stop|update)\.sh$/.test(
+        script?.replace(/^['"]|['"]$/g, "") ?? "",
+      );
     if (starts || swaps || fleetScript) {
       return "Starting, stopping or swapping a bot is the operator's move: a new connection takes over that bot's live session. Say what should run, and let the operator run it.";
     }
