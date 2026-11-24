@@ -2,7 +2,18 @@
 
 v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final`.
 
-## 11.1.6: unreleased
+## 11.1.7: unreleased
+
+- `scripts/update.sh <version>` rolls a release out to the whole fleet in one run (V11-50):
+  - installs it if needed;
+  - swaps the canary, then each other bot one at a time;
+  - skips a bot already on the build, so a stopped run can be run again;
+  - stops at the first bot that does not take it;
+  - restarts the dashboard.
+
+  `--canary-only` stops after the canary.
+
+## 11.1.6: released 2026-11-24
 
 - The learner searches for a challenger unattended (V11-49). `svanbot learn` does one step a
   run from a low-priority timer, `deploy/svanbot-learn.timer`:

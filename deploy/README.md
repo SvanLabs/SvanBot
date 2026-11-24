@@ -112,6 +112,22 @@ SVANBOT_CANARY=SurSvan SVANBOT_NAME=SurSvan svanbot-release update 2026.11.16
 SVANBOT_NAME=<name> svanbot-release update --fleet
 ```
 
+`scripts/update.sh` does the whole rollout in one run (V11-50):
+1. It installs the release if it is not installed yet: `gh release download`, `install.sh`, then
+   `svanbot-release install`.
+2. It swaps the canary, the one the bots' env files name.
+3. It swaps every other bot with `--fleet`, one at a time. A bot that already runs the build is
+   skipped, so a run that stopped can simply be run again.
+4. It stops at the first bot that does not take the build, a rollback included, and exits 1.
+5. It restarts the dashboard, and says if a drop-in pins the dashboard to another build.
+
+`--canary-only` stops after the canary, for a canary window before the fleet.
+
+```sh
+scripts/update.sh 11.1.7                 # install if needed, canary, then the fleet
+scripts/update.sh --canary-only 11.1.7   # the canary alone; run again without it later
+```
+
 One update runs at a time: a second `update` or `rollback` says an update is already in flight and
 stops, because a window is short and a person is watching. If the canary's live evidence says the
 new build is worse, the harm guard trips and `svanbot-release rollback` is the same move by hand.
