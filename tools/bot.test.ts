@@ -40,11 +40,11 @@ function home(env: Record<string, string> = { FAKE: "serve" }): string {
   writeFileSync(
     join(dir, "lib/current/svanbot"),
     `#!/usr/bin/env bash
-printf 'start %s name=%s store=%s ulimit=%s\\n' "$*" "\${SVANBOT_NAME:-}" "\${SVANBOT_STORE:-}" "$(ulimit -v)" >> "$SVANBOT_TEST_RUNS"
+printf 'start %s name=%s store=%s ulimit=%s stray=%s\\n' "$*" "\${SVANBOT_NAME:-}" "\${SVANBOT_STORE:-}" "$(ulimit -v)" "\${SVANBOT_ROSTER:-}" >> "$FAKE_RUNS"
 # A learner step ends at once.
 [[ \${1:-} == learn ]] && exit 0
 case \${FAKE:-serve} in
-    serve) trap 'echo term >> "$SVANBOT_TEST_RUNS"; exit 0' TERM; while :; do sleep 0.05; done ;;
+    serve) trap 'echo term >> "$FAKE_RUNS"; exit 0' TERM; while :; do sleep 0.05; done ;;
     exit:*) exit "\${FAKE#exit:}" ;;
 esac
 `,
@@ -55,15 +55,21 @@ esac
 }
 
 function bot(dir: string, ...args: string[]): { code: number; out: string } {
-  const result = Bun.spawnSync(["bash", SCRIPT, ...args], {
+  return under(dir, [], ...args);
+}
+
+/** `bot`, run under `wrapper` (for example a lock) and with `extra` in the caller's environment. */
+function under(dir: string, wrapper: string[], ...args: string[]): { code: number; out: string } {
+  const result = Bun.spawnSync([...wrapper, "bash", SCRIPT, ...args], {
     env: {
+      SVANBOT_ROSTER: "the caller's own roster",
       PATH: `${dir}/bin:${process.env.PATH ?? ""}`,
       HOME: dir,
       SVANBOT_LIB: join(dir, "lib"),
       SVANBOT_STATE: join(dir, "state"),
       SVANBOT_RESTART_SEC: "0",
       SVANBOT_LEARN_EVERY: "0",
-      SVANBOT_TEST_RUNS: join(dir, "runs"),
+      FAKE_RUNS: join(dir, "runs"),
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -92,7 +98,7 @@ test("start runs the bot from current with its env file and store, and stop ends
   expect(bot(dir, "start", "First").code).toBe(0);
   expect(bot(dir, "status", "First")).toEqual({ code: 0, out: "running" });
   expect(runs(dir)).toEqual([
-    `start  name=First store=${dir}/.local/share/svanbot/First.db ulimit=1048576`,
+    `start  name=First store=${dir}/.local/share/svanbot/First.db ulimit=1048576 stray=`,
   ]);
   expect(bot(dir, "stop", "First").code).toBe(0);
   // Stop waits for the program to exit: TERM reached it, and nothing is restarted after it.
@@ -164,4 +170,42 @@ test("a name that is neither a bot nor a service is refused before anything runs
   }
   expect(bot(dir, "start", "Nobody").code).toBe(2);
   expect(runs(dir)).toEqual([]);
+});
+
+test("a bot starts from its env file alone: the caller's SVANBOT_ variables do not reach it", () => {
+  const dir = home();
+  bot(dir, "start", "First");
+  // The caller exported a roster; the bot's file names none, so the bot has none.
+  expect(runs(dir)[0]).toEndWith(" stray=");
+});
+
+test("a supervisor does not hold a lock its starter held", () => {
+  const dir = home();
+  const lock = join(dir, "update.lock");
+  // start.sh takes the update lock, and every supervisor it starts outlives it.
+  expect(under(dir, ["flock", lock], "start", "First").code).toBe(0);
+  expect(Bun.spawnSync(["flock", "-n", lock, "true"]).exitCode).toBe(0);
+});
+
+test("a bot another process already plays is not started twice: two connections are one too many", () => {
+  const dir = home();
+  // The bot as systemd (or a hand) runs it, outside any supervisor: the same program, the same name.
+  mkdirSync(join(dir, "lib/11.0.0"), { recursive: true });
+  writeFileSync(join(dir, "lib/11.0.0/svanbot"), "#!/usr/bin/env bash\nsleep 30\n", {
+    mode: 0o755,
+  });
+  const other = Bun.spawn([join(dir, "lib/11.0.0/svanbot")], {
+    env: { ...process.env, SVANBOT_NAME: "First" },
+  });
+  try {
+    Bun.sleepSync(100);
+    const started = bot(dir, "start", "First");
+    expect(started.code).toBe(1);
+    expect(started.out).toContain(`First already plays as pid ${other.pid}`);
+    expect(runs(dir)).toEqual([]);
+    // Another bot's process is not this one.
+    other.kill();
+  } finally {
+    other.kill();
+  }
 });

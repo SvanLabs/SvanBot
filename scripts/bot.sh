@@ -105,6 +105,28 @@ status() {
     return 3
 }
 
+# The pid of a process that already plays this bot outside a supervisor: an installed build run
+# with no arguments (a bot, not `dashboard` or `learn`) whose environment names it. A second
+# connection with a bot's key takes over its live session, so a bot that a systemd unit or a hand
+# still runs is never started again here.
+plays_elsewhere() {
+    local dir pid word
+    local -a argv
+    for dir in /proc/[0-9]*; do
+        pid=${dir#/proc/}
+        mapfile -d '' -t argv < "$dir/cmdline" 2> /dev/null || continue
+        ((${#argv[@]} > 0)) || continue
+        # The program is the first word, or the second when an interpreter runs it.
+        word=${argv[-1]}
+        [[ $word == "$lib"/*/svanbot ]] || continue
+        ((${#argv[@]} <= 2)) || continue
+        tr '\0' '\n' < "$dir/environ" 2> /dev/null | grep -qx "SVANBOT_NAME=$name" || continue
+        printf '%s' "$pid"
+        return 0
+    done
+    return 1
+}
+
 start() {
     if [[ $name != dashboard && $name != learn && ! -f $config/$name.env ]]; then
         printf 'svanbot-bot: %s has no configuration in %s\n' "$name" "$config" >&2
@@ -113,6 +135,12 @@ start() {
     mkdir -p "$state"
     if supervisor > /dev/null; then
         printf 'svanbot-bot: %s is already running\n' "$name" >&2
+        exit 1
+    fi
+    local other
+    if [[ $name != dashboard && $name != learn ]] && other=$(plays_elsewhere); then
+        printf 'svanbot-bot: %s already plays as pid %s, outside its supervisor; stop that first\n' \
+            "$name" "$other" >&2
         exit 1
     fi
     rm -f "$failedfile" "$childfile" "$startedfile"
@@ -160,6 +188,13 @@ final() {
 
 # The supervisor: starts the program, waits for it, and decides whether to start it again.
 run() {
+    # Whatever the starter held open stays with the starter: start.sh holds the update lock on a
+    # descriptor, and a supervisor that kept it would hold the lock for as long as the fleet ran.
+    local fd
+    for fd in "/proc/$BASHPID/fd"/*; do
+        fd=${fd##*/}
+        if ((fd > 2 && fd != 255)); then eval "exec $fd>&-"; fi
+    done
     mkdir -p "$state"
     printf '%s' "$BASHPID" > "$pidfile"
     local stopping=false child='' pause='' code
@@ -181,6 +216,9 @@ run() {
             command -v chrt > /dev/null && argv=(chrt -i 0 "${argv[@]}")
             ;;
         *)
+            # A bot starts from its own file, as a unit did: nothing the starter's shell exported
+            # under SVANBOT_ (another bot's key, name or roster) may reach it.
+            unset "${!SVANBOT_@}"
             export SVANBOT_STORE="$HOME/.local/share/svanbot/$name.db"
             # The env file wins over the default, as a unit's EnvironmentFile did.
             load_env "$config/$name.env"
