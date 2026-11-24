@@ -52,6 +52,15 @@ impl Fleet {
         }
     }
 
+    /// The proposal waiting for the canary, read and left in place.
+    pub fn waiting(&self) -> Result<Option<Proposal>, String> {
+        match fs::read_to_string(self.dir.join("proposal.json")) {
+            Ok(text) => Proposal::from_json(&text).map(Some),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("fleet: {error}")),
+        }
+    }
+
     /// The probe the canary is running, as the proposal it took up, or `None` when none runs.
     pub fn probe(&self) -> Result<Option<Proposal>, String> {
         match fs::read_to_string(self.dir.join("probe.json")) {

@@ -1,0 +1,12 @@
+# Runs deploy/svanbot-learn.service half an hour after the last run ended, so runs never overlap
+# and a long sim only pushes the next one back.
+[Unit]
+Description=SvanBot learner, half an hour after each step
+
+[Timer]
+OnBootSec=15min
+OnUnitInactiveSec=30min
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

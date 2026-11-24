@@ -9,6 +9,7 @@ under the home of the user the fleet runs as.
 | `install.sh` | Stages and verifies a release bundle on a box with no toolchain. |
 | `svanbot-dashboard.service` | The loopback-only fleet dashboard: `svanbot dashboard`. |
 | `svanbot-clean.service`, `svanbot-clean.timer` | Daily `cargo sweep` of the dev clone's `target/dev`. |
+| `svanbot-learn.service`, `svanbot-learn.timer` | The learner's unattended search: `svanbot learn`, a step each half hour. |
 | `journald-svanbot.conf` | The journal's 1 GiB cap. Root installs it: the operator's step. |
 
 > **While the v10 fleet plays, do not start `svanbot@<name>` with a fleet bot's key.** A new
@@ -135,6 +136,41 @@ every other bot adopts it between hands, with no restart. If the challenger is c
 probe ends harmful and the champion stays. To take a promotion back by hand, remove
 `champion.json` (the default returns) or put the earlier file back; the bots follow between hands.
 Run `svanbot propose` at low priority: a sim is CPU the live fleet shares.
+
+### The unattended search
+
+`svanbot learn` is the same search with nobody running it (V11-49). Each run does one step and
+exits, and the timer starts the next run half an hour after the last one ended:
+
+- **It waits** while a proposal waits or the canary runs a probe. That evidence is pending, so it
+  sims nothing. The canary mirrors its running probe in `fleet/probe.json` for this.
+- **It sims** the next step round the champion: each number a step down and up, in rings of
+  shrinking steps (×0.8 and ×1.25, then ×0.9 and ×1.11, then ×0.95 and ×1.05). It runs one paired
+  sim of 2,000 deals on a seed named by the champion and the challenger, so the same step is the
+  same sim anywhere and is never run twice.
+- **It proposes** a challenger only when a first sim and a confirmation on fresh deals both put
+  the whole 95% interval above the champion. Many steps are tried, and one lucky sim must not
+  become a promotion. The proposal goes to the canary's harm guard of 3,000 hands, as any
+  promotion does, and only when the canary has nothing else: it never replaces a waiting proposal.
+  It names the champion it was measured against, and the canary drops it unplayed if a promotion
+  has replaced that champion since.
+- **It says the search is spent** once every step round the champion is simmed and none is above
+  it. It searches afresh round the next champion.
+
+It reads and writes the fleet's files and nothing else: no store, no key, no venue. Every step and
+what the last run did are in `fleet/search.json`; the dashboard shows them too.
+
+```sh
+install -m 644 deploy/svanbot-learn.service deploy/svanbot-learn.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now svanbot-learn.timer
+journalctl --user -u svanbot-learn -f          # one line a run: simmed, proposed, waits or spent
+systemctl --user disable --now svanbot-learn.timer   # stops the search; nothing it wrote is undone
+```
+
+The service runs under the idle CPU scheduler at nice 19, capped at two cores, so a sim takes only
+CPU the bots leave free. To start the search over round the same champion, remove
+`fleet/search.json`.
 
 ### A release, start to end
 

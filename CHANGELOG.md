@@ -2,7 +2,26 @@
 
 v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final`.
 
-## 11.1.5: unreleased
+## 11.1.6: unreleased
+
+- The learner searches for a challenger unattended (V11-49). `svanbot learn` does one step a
+  run from a low-priority timer, `deploy/svanbot-learn.timer`:
+  - Each number is moved a step down and up, in rings of shrinking steps, one paired sim a
+    step, on a seed named by the champion and the challenger, never run twice.
+  - A challenger is proposed only when a first sim and a confirmation on fresh deals both put
+    it above the champion. It still goes through the canary's 3,000-hand harm guard.
+  - The search waits, simming nothing, while a proposal waits or a probe runs. It never
+    replaces a waiting proposal.
+  - A proposal names the champion it was measured against, and the canary drops one whose
+    champion has since been replaced.
+  - The canary mirrors its running probe in `fleet/probe.json`, and the search keeps its log
+    in `fleet/search.json`. Both hold parameter sets and sim numbers only.
+- `scripts/start.sh` and `scripts/stop.sh` bring every configured bot and the dashboard up and
+  down, under the updater's lock (V11-46).
+- Arena history from before champion digests is kept, and the ship bar reports its other
+  clauses beside an unknown champion (V11-47).
+
+## 11.1.5: released 2026-11-24
 
 - The dashboard is remade to a 2026 standard (V11-45): a near-black ground under a slow aurora,
   glass panels with a hairline gradient edge, one violet-to-cyan accent, and the platform's own

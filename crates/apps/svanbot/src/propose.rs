@@ -27,18 +27,17 @@ use svanbot_strategy::policy;
 use svanbot_strategy::pricer::Budget;
 use svanbot_strategy::resolve::iterations_for;
 
+use svanbot::learn::{GUARD_HANDS, GUARD_MARGIN, PROBE_ORBITS};
+use svanbot_learn::search::RINGS;
+
 use crate::paired::sim;
 
-/// The hands of a promotion's harm guard on the canary.
-const GUARD_HANDS: u64 = 3_000;
-/// The loss, in bb/100, a guard counts as harm: it is there to catch gross harm fast.
-const GUARD_MARGIN: f64 = 20.0;
 /// The loss, in bb/100, a probe counts as harm.
 const PROBE_MARGIN: f64 = 5.0;
-/// The orbits a probe may take: about 20,000 hands.
-const PROBE_ORBITS: u64 = 3_334;
-/// The steps the search tries on each number.
-const STEPS: [f64; 2] = [0.8, 1.25];
+/// The steps the search tries on each number: the search's widest ring.
+const STEPS: [f64; 2] = RINGS[0];
+/// Deals a `svanbot learn` sim plays unless told otherwise.
+const LEARN_DEALS: u64 = 2_000;
 /// Deals sampled by the pricer per decision in a sim.
 const SAMPLES: u64 = 2_000;
 
@@ -120,6 +119,53 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// `svanbot learn [--deals <n>]`: one step of the unattended search ([`svanbot::learn`]), each
+/// sim heads up on the step's own seed. It exits 0 whatever the step was, waiting included, and 2
+/// when the fleet's files cannot be read or written.
+pub(crate) fn learn(args: &[String]) -> ExitCode {
+    let deals = match args {
+        [] => LEARN_DEALS,
+        [flag, deals] if flag == "--deals" => match deals.parse::<u64>() {
+            Ok(deals) if deals > 1 => deals,
+            _ => return learn_usage(),
+        },
+        _ => return learn_usage(),
+    };
+    let fleet = Fleet::in_dir(crate::fleet_dir());
+    let champion = match fleet.champion() {
+        Ok(champion) => champion,
+        Err(why) => {
+            eprintln!("svanbot learn: the champion file is refused: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    let run = |step: &svanbot_learn::search::Step, deals: u64| {
+        // The search asks only round the champion it was given, which is this one.
+        debug_assert_eq!(step.champion, champion.digest());
+        let game = Match {
+            blinds: Blinds { small: 10, big: 20 },
+            stack: 2000,
+            seed: step.seed,
+        };
+        sim(&game, deals, &player(step.challenger), &player(champion))
+    };
+    match svanbot::learn::step(&fleet, deals, svanbot::now_ms(), &run) {
+        Ok(note) => {
+            println!("svanbot learn: {note}");
+            ExitCode::SUCCESS
+        }
+        Err(why) => {
+            eprintln!("svanbot learn: {why}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn learn_usage() -> ExitCode {
+    eprintln!("svanbot learn: usage: svanbot learn [--deals <n>]");
+    ExitCode::from(2)
 }
 
 /// What the command line asked for.

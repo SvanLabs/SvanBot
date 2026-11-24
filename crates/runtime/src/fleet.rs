@@ -6,6 +6,8 @@
 //!   champion is [`Params::DEFAULT`].
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running.
+//! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
+//!   search's log ([`search`]).
 //! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
 //!   its board on the scoreboard, and the newest of each from a tag's commit is what the ship
 //!   bar reads; [`ARENA_HISTORY`] of each league are kept, so a trend across commits is a read

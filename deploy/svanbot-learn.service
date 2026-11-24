@@ -1,0 +1,19 @@
+# The learner's unattended search (V11-49): one step a run of `svanbot learn`, from
+# deploy/svanbot-learn.timer. deploy/README.md is the runbook. It reads and writes the fleet's
+# files only: no store, no key, no connection to the venue.
+[Unit]
+Description=SvanBot learner: one step of the search for a challenger
+
+[Service]
+Type=oneshot
+# The same build the fleet plays, so the search sims the policy the bots run.
+ExecStart=%h/.local/lib/svanbot/current/svanbot learn
+# A sim is CPU the live fleet shares: it runs only when the bots leave a core idle, and never on
+# more than two of them.
+Nice=19
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+CPUQuota=200%
+MemoryMax=1G
+NoNewPrivileges=yes
+TimeoutStartSec=2h
