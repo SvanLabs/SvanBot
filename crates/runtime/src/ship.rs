@@ -105,11 +105,12 @@ pub fn arena(
             failed.push(format!("no {name} run from {}", short(commit)));
             continue;
         };
-        if run.champion != champion {
-            failed.push(format!(
-                "the {name} run played champion {}, not the fleet's {champion}",
-                run.champion
-            ));
+        match run.champion.as_deref() {
+            None => failed.push(format!("the {name} run has no recorded champion")),
+            Some(played) if played != champion => failed.push(format!(
+                "the {name} run played champion {played}, not the fleet's {champion}",
+            )),
+            Some(_) => {}
         }
         failed.extend(run.rows.iter().filter_map(|row| totals(name, row)));
         failed.extend(replays(run, replay));

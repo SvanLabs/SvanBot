@@ -387,15 +387,18 @@ fn arena(fleet_dir: &Path) -> (Value, Vec<String>) {
     if let Ok(champion) = fleet.champion() {
         let digest = champion.digest().to_string();
         for league in fleet::League::ALL {
-            if let Some(latest) = runs.iter().find(|run| run.league == league)
-                && latest.champion != digest
-            {
-                problems.push(format!(
-                    "the last {} arena run played champion {}, not the champion in play: play \
-                     `svanbot arena`",
-                    league.name(),
-                    latest.champion
-                ));
+            let Some(latest) = runs.iter().find(|run| run.league == league) else {
+                continue;
+            };
+            let name = league.name();
+            match latest.champion.as_deref() {
+                None => problems.push(format!(
+                    "the last {name} arena run has no recorded champion: play `svanbot arena`",
+                )),
+                Some(played) if played != digest => problems.push(format!(
+                    "the last {name} arena run played champion {played}, not the champion in play: play `svanbot arena`",
+                )),
+                Some(_) => {}
             }
         }
     }

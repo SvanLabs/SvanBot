@@ -9,7 +9,7 @@ use svanbot_runtime::ship::{self, Bar};
 fn fresh(league: League) -> ArenaRun {
     ArenaRun {
         commit: "4c06087aa11b22c33d44e55f66a77b88c99d00e1".into(),
-        champion: "00000000000000aa".into(),
+        champion: Some("00000000000000aa".into()),
         seed: 17,
         league,
         iterations: None,
@@ -90,7 +90,7 @@ fn a_run_stops_as_soon_as_v10_is_read_below_the_policy_in_both_leagues() {
     assert_eq!(recorded, 2 * ship::MIN_BOUTS);
     // What is recorded is what the Arena stage reads: the release check passes on it.
     let faithful = &mut |_: &ArenaRun, row: &ArenaRow, bout: u64| row.bouts[bout as usize];
-    let (commit, champion) = (runs[0].commit.clone(), runs[0].champion.clone());
+    let (commit, champion) = (runs[0].commit.clone(), runs[0].champion.clone().unwrap());
     assert_eq!(ship::arena(&runs, &commit, &champion, faithful), Ok(()));
 }
 

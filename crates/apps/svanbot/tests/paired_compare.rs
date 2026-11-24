@@ -14,7 +14,7 @@ use svanbot_runtime::fleet::{ArenaRow, ArenaRun, League};
 fn run(commit: &str, seed: u64, v10: &[f64]) -> ArenaRun {
     ArenaRun {
         commit: commit.into(),
-        champion: "0123456789abcdef".into(),
+        champion: Some("0123456789abcdef".into()),
         seed,
         league: League::SixMax,
         iterations: Some(20),
