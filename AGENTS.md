@@ -39,7 +39,8 @@ tier runs both:
 - `mise run commit` runs the fast checks: fmt, Biome, the 500-line limit on Rust files, the secret
   scan of staged changes, provenance, the layering check and clippy. The pre-commit hook runs it.
 - `mise run full` adds nextest, the doc tests, `tsc`, the tool tests and the dashboard page's
-  checks, then reports `target/` against its disk budget (`tools/disk.ts`). Run it before you push.
+  checks, then reports every `target/` in the clone, worktrees' included, against one disk
+  budget (`tools/disk.ts`). Run it before you push.
 - `mise run ci` runs cargo-deny (`deny.toml`).
 
 The commit-msg hook refuses a message without a `Generated-by:` line. Cargo builds into

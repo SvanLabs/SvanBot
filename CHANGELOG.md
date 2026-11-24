@@ -12,6 +12,8 @@ v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final
   - restarts the dashboard.
 
   `--canary-only` stops after the canary.
+- The disk budget counts every `target/` in the clone, worktrees' and nested crates' included,
+  not only the root one, and names each tree when the clone is over it (V11-48).
 
 ## 11.1.6: released 2026-11-24
 
