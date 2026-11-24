@@ -2,7 +2,7 @@
 // clone's target/ directories stay under one budget, and the full tier reports it on every run.
 //   bun tools/disk.ts [root]   reports the combined size of every target/ directory, and exits 1 if it is over
 import { existsSync, lstatSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 // A tenth of the box's 93 GiB disk.
 export const BUDGET = 9 * 2 ** 30;
@@ -37,11 +37,16 @@ function bytesUnder(dir: string, seen = new Set<string>()): number {
   return total;
 }
 
+// Neither holds a cargo build, and both are large to walk.
+const UNSEARCHED = new Set([".git", "node_modules"]);
+
+// Every target/ under the root, worktrees' and nested crates' included: each is disk the fleet
+// shares. Symlinks are not followed, so a link cannot count a tree twice or leave the clone.
 function targetDirectoriesUnder(root: string): string[] {
   const targets: string[] = [];
   function collect(dir: string): void {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || UNSEARCHED.has(entry.name)) continue;
       const path = join(dir, entry.name);
       if (entry.name === "target") {
         targets.push(path);
@@ -58,11 +63,15 @@ export function targetUse(root: string, budget = BUDGET): { over: boolean; line:
   const targets =
     existsSync(root) && statSync(root).isDirectory() ? targetDirectoriesUnder(root) : [];
   const seen = new Set<string>();
-  const bytes = targets.reduce((total, target) => total + bytesUnder(target, seen), 0);
+  const sizes = targets
+    .map((target) => ({ target: relative(root, target), bytes: bytesUnder(target, seen) }))
+    .sort((a, b) => b.bytes - a.bytes || a.target.localeCompare(b.target));
+  const bytes = sizes.reduce((total, { bytes }) => total + bytes, 0);
   if (bytes > budget) {
+    const trees = sizes.map(({ target, bytes }) => `\n  ${size(bytes)} ${target}`).join("");
     return {
       over: true,
-      line: `target/ directories hold ${size(bytes)}, over this clone's ${size(budget)} budget: remove build output from every target/ directory in this clone`,
+      line: `target/ directories hold ${size(bytes)}, over this clone's ${size(budget)} budget: remove build output from every target/ directory in this clone${trees}`,
     };
   }
   return {

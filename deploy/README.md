@@ -351,7 +351,8 @@ systemctl --user enable --now svanbot-clean.timer
 ```
 
 It removes build output nobody has touched in 14 days, at idle I/O priority. `tools/disk.ts`
-reports `target/` against its 9 GiB budget after every `mise run full`.
+reports every `target/` in the clone, worktrees' and nested crates' included, against one 9 GiB
+budget after every `mise run full`, and names each tree when it is over.
 
 ## The journal cap (operator, root)
 

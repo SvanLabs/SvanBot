@@ -34,7 +34,9 @@ test("a target over the budget fails and says how to free it", () => {
   const root = tree({ "target/dev/a": 3 * MiB });
   expect(targetUse(root, 2 * MiB)).toEqual({
     over: true,
-    line: "target/ directories hold 3.0 MiB, over this clone's 2.0 MiB budget: remove build output from every target/ directory in this clone",
+    line:
+      "target/ directories hold 3.0 MiB, over this clone's 2.0 MiB budget: remove build output from every target/ directory in this clone\n" +
+      "  3.0 MiB target",
   });
 });
 
@@ -45,8 +47,34 @@ test("nested target directories contribute to the clone-wide budget", () => {
   });
   expect(targetUse(root, 1.5 * MiB)).toEqual({
     over: true,
-    line: "target/ directories hold 2.0 MiB, over this clone's 1.5 MiB budget: remove build output from every target/ directory in this clone",
+    // Equal sizes are named in path order.
+    line:
+      "target/ directories hold 2.0 MiB, over this clone's 1.5 MiB budget: remove build output from every target/ directory in this clone\n" +
+      "  1.0 MiB crates/apps/svanbot/web/target\n" +
+      "  1.0 MiB target",
   });
+});
+
+test("an over-budget clone names each target directory, largest first", () => {
+  const root = tree({
+    "target/dev/a": MiB,
+    ".claude/worktrees/old/target/dev/b": 2 * MiB,
+  });
+  expect(targetUse(root, 2 * MiB).line).toBe(
+    "target/ directories hold 3.0 MiB, over this clone's 2.0 MiB budget: remove build output from every target/ directory in this clone\n" +
+      "  2.0 MiB .claude/worktrees/old/target\n" +
+      "  1.0 MiB target",
+  );
+});
+
+test("git's objects and node_modules are not searched for target directories", () => {
+  const root = tree({
+    ".git/target/a": MiB,
+    "web/node_modules/pkg/target/b": MiB,
+  });
+  expect(targetUse(root, MiB).line).toBe(
+    "target/ directories hold 0 B of this clone's 1.0 MiB budget",
+  );
 });
 
 test("a hard-linked file counts once, as du counts it", () => {
