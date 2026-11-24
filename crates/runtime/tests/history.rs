@@ -350,3 +350,26 @@ fn a_stored_hand_gives_a_shown_a_mucked_and_an_unseen_opponent_and_never_us() {
     assert!(mucked.dead.contains("Kd".parse().unwrap()));
     assert!(!shown.dead.contains("Kd".parse().unwrap()));
 }
+
+#[test]
+fn legacy_all_ins_without_a_call_price_cannot_inflate_profile_raises() {
+    let mut frames = named_frames();
+    let raise = frames
+        .iter_mut()
+        .find(|text| text.contains("\"raise\""))
+        .unwrap();
+    let mut event: serde_json::Value = serde_json::from_str(raise).unwrap();
+    event["action"] = "all_in".into();
+    event.as_object_mut().unwrap().remove("to_call_before");
+    *raise = event.to_string();
+    let hand = Hand {
+        hand_id: "h-all-in".into(),
+        table_id: "t-1".into(),
+        frames,
+        traced: Vec::new(),
+    };
+    let observed = reads(&[hand], "SurSvan");
+    let alpha = observed.get("alpha_bot").unwrap();
+    assert_eq!(alpha.profile_stats().pfr.hands(), 0);
+    assert_eq!(alpha.hands(), 1);
+}

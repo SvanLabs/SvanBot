@@ -135,7 +135,7 @@ impl Facts<'_> {
     pub fn position(&self) -> Option<Position> {
         (self.street() == Street::Preflop).then_some(Position {
             behind: self.players_behind()?,
-            in_position: self.in_position(),
+            in_position: self.in_position()?,
         })
     }
 
@@ -143,8 +143,8 @@ impl Facts<'_> {
         self.spot.players_behind
     }
 
-    pub fn in_position(&self) -> bool {
-        self.spot.in_position
+    pub fn in_position(&self) -> Option<bool> {
+        self.players_behind().map(|_| self.spot.in_position)
     }
 
     pub fn pot(&self) -> Chips {

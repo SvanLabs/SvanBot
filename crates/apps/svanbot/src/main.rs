@@ -220,11 +220,7 @@ fn main() -> ExitCode {
                 let population = model.as_ref().unwrap_or(&baseline);
                 let reads = reads.borrow();
                 let personal = reads.deciding(&named, population, params.exploit);
-                let stats = if ACTIVE.is_empty() {
-                    Vec::new()
-                } else {
-                    reads.profile_stats(&named)
-                };
+                let stats = deciders::active_profile_stats(&reads, &named);
                 let decision = decide_profile(
                     spot,
                     model.as_ref(),

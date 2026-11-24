@@ -71,7 +71,7 @@ impl Session {
         let board = turn.board.iter().copied().collect();
         let dealt: Vec<usize> = turn.players.iter().map(|player| player.seat).collect();
         let players_behind = self.seat.and_then(|hero| {
-            if self.lines.big_blind() == 0 || !dealt.contains(&hero) {
+            if !hand.position_known || self.lines.big_blind() == 0 || !dealt.contains(&hero) {
                 return None;
             }
             let last = if Street::of(board) == Street::Preflop {

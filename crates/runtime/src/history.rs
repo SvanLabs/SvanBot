@@ -192,7 +192,7 @@ pub fn witnesses(hand: &Hand, me: &str) -> Vec<Witness> {
                     name,
                     actions: lines.of(seat).iter().map(Seen::of).collect(),
                     aggressive: false,
-                    profile: Some(Observation::of(lines.of(seat))),
+                    profile: lines.profile_line(seat).map(Observation::of),
                     vs_us: None,
                     vs_others: None,
                 },

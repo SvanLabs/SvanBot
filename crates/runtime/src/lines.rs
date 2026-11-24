@@ -28,6 +28,7 @@ pub struct Lines {
     /// turn order as well as each seat's own line.
     events: Vec<(usize, Act)>,
     folded: BTreeSet<usize>,
+    ambiguous_all_ins: BTreeSet<usize>,
     /// Each seat's chips in on this street.
     committed: BTreeMap<usize, Chips>,
     small_blind: Chips,
@@ -86,6 +87,9 @@ impl Lines {
                     _ => *amount,
                 });
                 let pot = detail.pot_before.unwrap_or(self.pot);
+                if action == "all_in" && self.bet && detail.to_call.is_none() {
+                    self.ambiguous_all_ins.insert(*seat);
+                }
                 let kind = match action.as_str() {
                     "fold" => ActKind::Fold,
                     "check" => ActKind::Check,
@@ -125,6 +129,11 @@ impl Lines {
     /// The seat's actions in this hand, oldest first.
     pub fn of(&self, seat: usize) -> &[Act] {
         self.acts.get(&seat).map_or(&[], Vec::as_slice)
+    }
+
+    /// Complete action evidence for profile stats. The action model keeps its own fallback.
+    pub(crate) fn profile_line(&self, seat: usize) -> Option<&[Act]> {
+        (!self.ambiguous_all_ins.contains(&seat)).then(|| self.of(seat))
     }
 
     /// Every seat that has acted, lowest first.
