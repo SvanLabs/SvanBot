@@ -71,6 +71,25 @@ A refusal comes with its reason. Do what the reason says: do not look for a way 
 4. **Open the PR** with the `pr` skill. Merge it once the gate is green, the review has nothing
    blocking, and, for any behaviour change, a paired sim passes.
 
+## Handing off
+
+Claude Code, Codex, opencode and openclaude all work this map as `svanlabs[bot]`. Any session can
+stop at any moment when its usage limit runs out, so work is left where the next agent can take it:
+
+- **Push after every green slice.** Work that lives only on the box is lost to the next agent.
+- **When you stop mid-ticket**, or feel the limit coming:
+  1. Commit and push what you have.
+  2. Write the note: `bun tools/handoff.ts <ticket> --done "…" --next "…" --traps "…" --by <tool/model>`.
+  3. Post it with `gh issue comment <ticket> --body-file -`.
+  4. Add the label `agent-handoff`, and keep `agent-claimed`.
+- **To take a ticket over**, pick a ticket labelled `agent-handoff`. It is yours even though it is
+  claimed:
+  1. Remove `agent-handoff`.
+  2. Read the newest handoff note.
+  3. `git fetch origin && git switch <branch>`, and carry on from **Next**.
+
+  A claimed ticket without the label still belongs to another session.
+
 ## The hard invariants
 
 - **Poker logic is pure.** Only `runtime` and `apps` touch the network, the store or the clock.

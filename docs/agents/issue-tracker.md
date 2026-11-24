@@ -34,8 +34,11 @@ PRs are not a request surface. `/triage` reads issues only.
   Decisions so far, Not yet specified, and Out of scope.
 - **Ticket:** a sub-issue of the map, titled `V11-<nn>: …`, with a `wayfinder:<type>` label plus
   `v11`.
-- **Frontier:** the map's open sub-issues that have no open blocker and no `agent-claimed` label.
-  The first in map order wins.
+- **Frontier:** the map's open sub-issues that have no open blocker and no `agent-claimed` label,
+  plus every claimed one labelled `agent-handoff`. The first in map order wins.
+- **Handoff:** a session that stops mid-ticket pushes its branch, posts the note from
+  `bun tools/handoff.ts <ticket>` as a comment, and adds `agent-handoff`. The taker removes the
+  label and works on from the branch the note names (`AGENTS.md`, "Handing off").
 - **Claim:** `gh issue edit <n> --add-label agent-claimed`, as the session's first write. The label
   is the claim and nobody is assigned: GitHub cannot assign an issue to an App.
 - **Resolve:**

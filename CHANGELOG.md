@@ -2,7 +2,7 @@
 
 v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final`.
 
-## 11.1.7: unreleased
+## 11.1.7: released 2026-11-24
 
 - The fleet runs from scripts, not systemd (V11-52):
   - `scripts/bot.sh` is the supervisor, installed as `svanbot-bot` from the bundle. It keeps a bot,
@@ -13,7 +13,9 @@ v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final
   - The learner is a loop of `svanbot learn` every half hour, started with the fleet. Cron's
     `@reboot` starts the fleet, and `@daily` runs `scripts/clean.sh`.
   - Every unit, timer and the journald drop-in are gone. `deploy/README.md` has the cutover.
-
+- An agent that stops mid-ticket hands it over (V11-53): it pushes, posts the note from
+  `bun tools/handoff.ts <ticket>`, and labels the ticket `agent-handoff`, so that Codex, opencode
+  or another Claude session takes it over from the branch. `AGENTS.md`, "Handing off".
 - `scripts/update.sh <version>` rolls a release out to the whole fleet in one run (V11-50):
   - installs it if needed;
   - swaps the canary, then each other bot one at a time;
