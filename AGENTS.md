@@ -39,7 +39,8 @@ tier runs both:
 - `mise run commit` runs the fast checks: fmt, Biome, the 500-line limit on Rust files, the secret
   scan of staged changes, provenance, the layering check and clippy. The pre-commit hook runs it.
 - `mise run full` adds nextest, the doc tests, `tsc`, the tool tests and the dashboard page's
-  checks, then reports `target/` against its disk budget (`tools/disk.ts`). Run it before you push.
+  checks, then reports every `target/` in the clone, worktrees' included, against one disk
+  budget (`tools/disk.ts`). Run it before you push.
 - `mise run ci` runs cargo-deny (`deny.toml`).
 
 The commit-msg hook refuses a message without a `Generated-by:` line. Cargo builds into
@@ -95,9 +96,11 @@ a home-made TLS would be a risk: ask the operator before you add to that list or
   built in or edited.
 - Run one build at a time at low priority, with
   `nice -n 15 ionice -c3 cargo … -j4`. Concurrent builds have OOM-killed the fleet.
-- The box runs v11 as systemd user units from `deploy/`, one `svanbot@<name>` per bot, and
-  `deploy/README.md` is their runbook. Never start one with a fleet bot's key while v10 plays: the
-  new connection takes over that bot's live session.
+- The box runs v11 from `scripts/`, one supervisor (`svanbot-bot`, `scripts/bot.sh`) per bot,
+  with no systemd, and `deploy/README.md` is the runbook. Never start a bot with a fleet bot's key
+  while another connection plays it: the new connection takes over that bot's live session.
+- A test of a fleet script puts a refusing `systemctl` first on its PATH, and stubs every tool the
+  script runs. A red run once ran the old `stop.sh` against the real fleet and stopped every bot.
 - The repo is public. Keys, `.env` contents, opponent data and store contents stay out of it: out
   of code, logs, issues and PRs alike.
 

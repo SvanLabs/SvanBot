@@ -25,7 +25,88 @@ fn proposal() -> Proposal {
         harm_margin: 20.0,
         sim_estimate: Some(1.0 / 7.0),
         max_orbits: 3_334,
+        against: None,
     }
+}
+
+#[test]
+fn a_search_proposal_waits_its_turn_and_never_replaces_one_waiting_or_a_probe_running() {
+    let fleet = Fleet::in_dir(scratch("if-free"));
+    let other = Proposal {
+        challenger: Params { exploit: 0.4 },
+        ..proposal()
+    };
+    assert_eq!(fleet.propose_if_free(&proposal()), Ok(true));
+    // One waits: a second is refused, and the first is the one the canary takes.
+    assert_eq!(fleet.propose_if_free(&other), Ok(false));
+    assert_eq!(fleet.probe(), Ok(None));
+    assert_eq!(fleet.take_proposal(), Ok(Some(proposal())));
+    // Taken up, it is the running probe, mirrored for the learner: still no room for another.
+    assert_eq!(fleet.probe(), Ok(Some(proposal())));
+    assert_eq!(fleet.propose_if_free(&other), Ok(false));
+    fleet.end_probe().unwrap();
+    assert_eq!(fleet.probe(), Ok(None));
+    assert_eq!(fleet.propose_if_free(&other), Ok(true));
+    assert_eq!(fleet.take_proposal(), Ok(Some(other)));
+}
+
+#[test]
+fn the_search_log_reads_back_to_the_bit_with_the_last_thing_done_and_keeps_the_newest() {
+    use svanbot_learn::paired::Verdict;
+    use svanbot_learn::search::{Entry, Stage, Step};
+    use svanbot_runtime::fleet::{SEARCH_KEPT, SearchLog};
+
+    let fleet = Fleet::in_dir(scratch("search-log"));
+    assert_eq!(fleet.search_log(), Ok(SearchLog::default()));
+    let simmed = Entry::Simmed {
+        step: Step {
+            champion: Params::DEFAULT.digest(),
+            challenger: CHALLENGER,
+            stage: Stage::Confirmation,
+            // Past 2^53: a seed must not round on its way through the file.
+            seed: u64::MAX - 7,
+        },
+        verdict: Verdict {
+            deals: 2_000,
+            mbb_per_100: 1.0 / 3.0,
+            ci95: 0.1 + 0.2,
+        },
+    };
+    let proposed = Entry::Proposed {
+        champion: Params::DEFAULT.digest(),
+        challenger: CHALLENGER,
+    };
+    fleet.record_search(&[simmed], "simmed", 10).unwrap();
+    fleet.record_search(&[proposed], "proposed", 20).unwrap();
+    assert_eq!(
+        fleet.search_log(),
+        Ok(SearchLog {
+            entries: vec![simmed, proposed],
+            last: Some((20, "proposed".to_owned())),
+        })
+    );
+    // A note with no entry, as when the learner waits.
+    fleet.record_search(&[], "waiting", 30).unwrap();
+    assert_eq!(fleet.search_log().unwrap().entries.len(), 2);
+    fleet
+        .record_search(&vec![simmed; SEARCH_KEPT], "full", 40)
+        .unwrap();
+    let log = fleet.search_log().unwrap();
+    assert_eq!(log.entries.len(), SEARCH_KEPT);
+    assert!(!log.entries.contains(&proposed), "the oldest go first");
+}
+
+#[test]
+fn a_proposal_names_the_champion_it_was_measured_against() {
+    let measured = Proposal {
+        against: Some(Params::DEFAULT.digest()),
+        ..proposal()
+    };
+    assert_eq!(Proposal::from_json(&measured.to_json()), Ok(measured));
+    // A proposal written by hand, or before the search, names none.
+    let mut unnamed: serde_json::Value = serde_json::from_str(&proposal().to_json()).unwrap();
+    unnamed.as_object_mut().unwrap().remove("against");
+    assert_eq!(Proposal::from_json(&unnamed.to_string()), Ok(proposal()));
 }
 
 #[test]
@@ -77,7 +158,7 @@ fn a_proposal_reads_back_from_its_own_text_and_names_its_hypothesis() {
 fn run(commit: &str, seed: u64, mbb: f64) -> ArenaRun {
     ArenaRun {
         commit: commit.into(),
-        champion: "00000000000000aa".into(),
+        champion: Some("00000000000000aa".into()),
         seed,
         league: League::HeadsUp,
         iterations: None,
@@ -169,13 +250,13 @@ fn a_promotion_under_the_same_commit_is_a_run_of_its_own() {
     let before = run("abc1234", 7, 1.0);
     fleet.record_arena(&before).unwrap();
     let after = ArenaRun {
-        champion: "00000000000000bb".into(),
+        champion: Some("00000000000000bb".into()),
         ..before
     };
     fleet.record_arena(&after).unwrap();
     let runs = fleet.arena_runs().unwrap();
     assert_eq!(runs.len(), 2);
-    assert_eq!(runs[0].champion, "00000000000000bb");
+    assert_eq!(runs[0].champion.as_deref(), Some("00000000000000bb"));
 }
 
 #[test]
@@ -306,4 +387,16 @@ fn a_run_keeps_each_bouts_result_and_how_it_was_solved_so_the_gate_can_play_one_
     .unwrap();
     let [read] = Fleet::in_dir(old).arena_runs().unwrap().try_into().unwrap();
     assert_eq!((read.iterations, read.rows[0].bouts.len()), (None, 0));
+}
+
+#[test]
+fn new_arena_evidence_can_be_written_alongside_a_pre_champion_run() {
+    let fleet = Fleet::in_dir(scratch("arena-pre-champion"));
+    let legacy = ArenaRun::from_text(r#"{"commit":"legacy","seed":7,"rows":[]}"#).unwrap();
+    fleet.record_arena(&legacy).unwrap();
+    fleet.record_arena(&run("new", 7, 1.0)).unwrap();
+    let [new, legacy] = fleet.arena_runs().unwrap().try_into().unwrap();
+    assert_eq!(new.commit, "new");
+    assert_eq!(legacy.commit, "legacy");
+    assert_eq!(legacy.as_value()["champion"], serde_json::Value::Null);
 }

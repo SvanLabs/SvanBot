@@ -5,7 +5,7 @@
 //                              README's headline, the site's links, the layering check and clippy
 //   bun tools/gate.ts full     the commit tier, then nextest, the doc tests, tsc, the tool tests and
 //                              the dashboard page's tests,
-//                              and last the disk budget of this clone's target/
+//                              and last the disk budget of every target/ in this clone
 //   bun tools/gate.ts test     the full tier's tests alone: CI runs it beside the commit tier
 //   bun tools/gate.ts ci       cargo-deny, run in CI on every pull request and once a week
 //   bun tools/gate.ts arena    the build CI's Arena job runs the binary from, through the same

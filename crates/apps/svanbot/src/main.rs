@@ -1,6 +1,7 @@
 //! `svanbot`: one bot at the venue. It connects with the bot's key, plays every turn by the
-//! policy (a re-solve heads up after the flop, the pricer otherwise), leaves any table a stablemate sits at, and reconnects with a backoff when the venue
-//! closes the connection, resyncing the table it sat at if the venue still holds the seat.
+//! policy (a re-solve heads up after the flop, the pricer otherwise), leaves any table a stablemate
+//! sits at, and reconnects with a backoff when the venue closes the connection, resyncing the table
+//! it sat at if the venue still holds the seat.
 //!
 //! It reads its setup from the environment, as the venue's docs advise for keys:
 //! - `SVANBOT_API_KEY`: the bot's key. It is never printed.
@@ -27,7 +28,8 @@
 //! ([`download`]). `svanbot fit` fits the action model on the store's hands ([`fit`]). `svanbot
 //! arena` plays the policy against every sparring archetype ([`arena`]). `svanbot paired` runs a
 //! paired sim of the policy against the pricer ([`paired`]). `svanbot propose` puts a challenger
-//! forward for the canary ([`propose`]). `svanbot dashboard` serves the fleet's dashboard on
+//! forward for the canary ([`propose`]), and `svanbot learn` runs one step of the unattended
+//! search for one ([`svanbot::learn`]). `svanbot dashboard` serves the fleet's dashboard on
 //! loopback ([`svanbot::dashboard`]). `svanbot release-check` holds a release to the ship bar
 //! ([`ship`]).
 //!
@@ -101,6 +103,12 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("release-check") {
         let args: Vec<String> = std::env::args().skip(2).collect();
         return ship::run(&args);
+    }
+    // Nor is the learner's unattended step: a timer runs it, and it must never count as a bot's
+    // start in the crash-loop record the updater reads.
+    if std::env::args().nth(1).as_deref() == Some("learn") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return propose::learn(&args);
     }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.
@@ -261,7 +269,7 @@ fn main() -> ExitCode {
             }
             Ok(PlayOutcome::Stopped) => {
                 // Between hands, and the updater has asked for the build: say so, so the updater
-                // knows the table is left, and end. Systemd starts the new build.
+                // knows the table is left, and end. The supervisor starts the new build.
                 eprintln!("svanbot: stopped between hands for an update");
                 if let Err(error) = health.note_stop() {
                     eprintln!("svanbot: could not say it stopped: {error}");
@@ -298,8 +306,8 @@ fn keep(
         Event::Connected => live.connected(),
         Event::Table(table) => live.table(table),
         Event::Incident(incident) => {
-            // `<2>` is journald's priority prefix for crit, so `journalctl -p crit` lists every
-            // incident and nothing else.
+            // `<2>` is the syslog priority prefix for crit, so `grep '^<2>'` on the bot's log
+            // (`~/.local/state/svanbot/<name>.log`) lists every incident and nothing else.
             eprintln!("<2>svanbot: FAIR-PLAY INCIDENT: {incident:?}");
             match store.append_incident(incident, now_ms()) {
                 Ok(()) => live.incident(),

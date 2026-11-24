@@ -41,7 +41,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     let game = deciders::game(seed.unwrap_or(1));
     let fresh = |league| ArenaRun {
         commit: commit.clone(),
-        champion: champion.digest().to_string(),
+        champion: Some(champion.digest().to_string()),
         seed: game.seed,
         league,
         iterations: fixed,

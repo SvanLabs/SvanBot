@@ -218,7 +218,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| ArenaRun::LOCAL_COMMIT.into());
     let run = ArenaRun {
         commit,
-        champion: champion.digest().to_string(),
+        champion: Some(champion.digest().to_string()),
         seed: game.seed,
         league,
         iterations: fixed,

@@ -176,7 +176,7 @@ layers below `runtime` (in blue) are pure: no network, no file, no store, no clo
 | `crates/apps/svanbot` | The bot, and `arena`, `paired`, `propose`, `download`, `fit`, `release-check` and `dashboard` |
 | `crates/apps/updater` | `svanbot-release`: `status`, `install`, `update` and `rollback` |
 | `tools/` | The gate, the release packer, the headline, the site check and the agent hooks, in TypeScript on Bun |
-| `deploy/` | The installer, the systemd user units and their runbook |
+| `deploy/` | The installer and the fleet's runbook |
 | `site/` | The GitHub Pages site, in plain HTML and CSS |
 | `docs/` | The ADRs, the research behind the plan, and the agents' configuration |
 
@@ -216,7 +216,8 @@ passes, quoted in the PR. Every commit, issue and PR carries a `Generated-by:` l
 
 ## Running it on the box
 
-The box runs each bot as a systemd user unit, `svanbot@<name>`. A release is a checksummed bundle
+The box runs each bot under its supervisor, `svanbot-bot` (`scripts/bot.sh`), and the fleet scripts
+in `scripts/` start, stop and update the fleet: there is no systemd. A release is a checksummed bundle
 CI builds on a `v*` tag. `deploy/install.sh` verifies it, refuses one built above the box's CPU,
 and stages it. `svanbot-release update` then swaps `current` between hands, canary first. The
 runbook is [`deploy/README.md`](deploy/README.md).

@@ -37,6 +37,11 @@ impl Params {
         Some(self)
     }
 
+    /// Whether every number is inside the range it is defined on: the exploit budget, 0 to 1.
+    pub fn in_range(&self) -> bool {
+        (0.0..=1.0).contains(&self.exploit)
+    }
+
     /// The digest that names this parameter set.
     pub fn digest(&self) -> Digest {
         let mut hash = FNV_OFFSET;

@@ -33,7 +33,7 @@ pub enum ReleaseError {
     },
     /// There is no program in the release.
     NoProgram(PathBuf),
-    /// The program is not executable, so the unit could not run it.
+    /// The program is not executable, so the supervisor could not run it.
     NotExecutable(PathBuf),
     /// The program's bytes do not hash to the checksum the release published.
     Checksum { expected: String, actual: String },
@@ -132,7 +132,7 @@ impl Release {
         self.dir.join(PROGRAM)
     }
 
-    /// Checks the program's bytes against the checksum and its mode against the exec the unit
+    /// Checks the program's bytes against the checksum and its mode against the exec the supervisor
     /// will do. A release that fails either is not installed.
     pub fn verify(&self) -> Result<(), ReleaseError> {
         let program = self.program();

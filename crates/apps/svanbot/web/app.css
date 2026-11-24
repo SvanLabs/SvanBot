@@ -2276,6 +2276,88 @@ main > * {
   font-variant-numeric: tabular-nums;
 }
 
+/* The unattended search: what the learner last did, what is pending, and its steps. */
+.search-last {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: var(--step-small);
+}
+
+.search-last strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.search-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.search-steps {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--dim);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.025);
+  font-size: var(--step-small);
+}
+
+.search-step.up {
+  border-left-color: var(--emerald);
+}
+
+.search-step.down {
+  border-left-color: var(--rose);
+}
+
+.search-step.proposed {
+  border-color: rgb(167 139 250 / 0.35);
+  border-left-color: var(--violet);
+  background: var(--grad-soft);
+}
+
+.search-what {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-stage {
+  color: var(--dim);
+  font-size: var(--step-tiny);
+  text-transform: capitalize;
+}
+
+.search-result {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.search-step.up .search-result {
+  color: var(--emerald);
+}
+
+.search-step.down .search-result {
+  color: var(--rose);
+}
+
 /* Facts and tables. */
 dl {
   display: grid;

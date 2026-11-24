@@ -165,6 +165,49 @@ test("the activity log is newest first, a bot's own log only its own", () => {
   expect(body(widgets.activityView([], null)).textContent).toContain("Nothing has happened");
 });
 
+test("the search panel says what the learner did, what is pending, and each step newest first", () => {
+  const params = (exploit) => ({ digest: `d-${exploit}`, numbers: { exploit: String(exploit) } });
+  const search = {
+    champion: params(0.5),
+    probe: null,
+    waiting: "d-0.4",
+    last: { at_ms: READ_MS - 120_000, note: "proposed d-0.4 for the canary's harm guard" },
+    simmed: 2,
+    steps: [
+      { stage: "proposed", challenger: params(0.4) },
+      { stage: "confirmation", challenger: params(0.4), mbb_per_100: 250, ci95: 100, deals: 2000 },
+      { stage: "first", challenger: params(0.625), mbb_per_100: -180, ci95: 100, deals: 2000 },
+      { stage: "first", challenger: params(0.45), mbb_per_100: 40, ci95: 100, deals: 2000 },
+    ],
+    error: null,
+  };
+  const panel = body(widgets.searchView(search, READ_MS));
+  expect(panel.textContent).toContain("2m ago");
+  expect(panel.textContent).toContain("proposed d-0.4 for the canary's harm guard");
+  expect(panel.textContent).toContain("exploit 0.5");
+  expect(panel.textContent).toContain("Proposal waiting");
+  const rows = panel.all("li");
+  // A step is up or down only when its whole interval is: one that straddles zero is level.
+  expect(rows.map((row) => row.attrs.class)).toEqual([
+    "search-step proposed",
+    "search-step up",
+    "search-step down",
+    "search-step level",
+  ]);
+  expect(rows[1].textContent).toContain("exploit 0.4");
+  expect(rows[1].textContent).toContain("confirmation");
+  expect(rows[1].textContent).toContain("+250");
+  expect(rows[2].textContent).toContain("−180");
+  // Before the first run: how to start it.
+  const idle = body(
+    widgets.searchView({ ...search, last: null, steps: [], waiting: null }, READ_MS),
+  );
+  expect(idle.textContent).toContain("svanbot-bot start learn");
+  expect(body(widgets.searchView(undefined, READ_MS)).textContent).toContain(
+    "svanbot-bot start learn",
+  );
+});
+
 test("a note is the reader's own: kept as typed, saved under its key", () => {
   const note = widgets.notes("SurSvan", "watch the river overbets");
   const [area] = note.all("textarea");

@@ -2,7 +2,49 @@
 
 v11 starts this changelog afresh. v10's history is at the tag `archive/v10/final`.
 
-## 11.1.5: unreleased
+## 11.1.7: unreleased
+
+- The fleet runs from scripts, not systemd (V11-52):
+  - `scripts/bot.sh` is the supervisor, installed as `svanbot-bot` from the bundle. It keeps a bot,
+    the dashboard or the learner running, restarts a crash after 10 s, stays down after five starts
+    in five minutes, caps memory at 1 GiB, and logs to `~/.local/state/svanbot/<name>.log`.
+  - `start.sh`, `stop.sh` and `update.sh` drive it, and `svanbot-release` stops and starts a bot
+    through it.
+  - The learner is a loop of `svanbot learn` every half hour, started with the fleet. Cron's
+    `@reboot` starts the fleet, and `@daily` runs `scripts/clean.sh`.
+  - Every unit, timer and the journald drop-in are gone. `deploy/README.md` has the cutover.
+
+- `scripts/update.sh <version>` rolls a release out to the whole fleet in one run (V11-50):
+  - installs it if needed;
+  - swaps the canary, then each other bot one at a time;
+  - skips a bot already on the build, so a stopped run can be run again;
+  - stops at the first bot that does not take it;
+  - restarts the dashboard.
+
+  `--canary-only` stops after the canary.
+- The disk budget counts every `target/` in the clone, worktrees' and nested crates' included,
+  not only the root one, and names each tree when the clone is over it (V11-48).
+
+## 11.1.6: released 2026-11-24
+
+- The learner searches for a challenger unattended (V11-49). `svanbot learn` does one step a
+  run from a low-priority timer, `deploy/svanbot-learn.timer`:
+  - Each number is moved a step down and up, in rings of shrinking steps, one paired sim a
+    step, on a seed named by the champion and the challenger, never run twice.
+  - A challenger is proposed only when a first sim and a confirmation on fresh deals both put
+    it above the champion. It still goes through the canary's 3,000-hand harm guard.
+  - The search waits, simming nothing, while a proposal waits or a probe runs. It never
+    replaces a waiting proposal.
+  - A proposal names the champion it was measured against, and the canary drops one whose
+    champion has since been replaced.
+  - The canary mirrors its running probe in `fleet/probe.json`, and the search keeps its log
+    in `fleet/search.json`. Both hold parameter sets and sim numbers only.
+- `scripts/start.sh` and `scripts/stop.sh` bring every configured bot and the dashboard up and
+  down, under the updater's lock (V11-46).
+- Arena history from before champion digests is kept, and the ship bar reports its other
+  clauses beside an unknown champion (V11-47).
+
+## 11.1.5: released 2026-11-24
 
 - The dashboard is remade to a 2026 standard (V11-45): a near-black ground under a slow aurora,
   glass panels with a hairline gradient edge, one violet-to-cyan accent, and the platform's own

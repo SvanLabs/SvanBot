@@ -1,13 +1,13 @@
-//! The updater's [`Window`]: the real waits, against systemd and the bot's health files.
+//! The updater's [`Window`]: the real waits, against the bot's supervisor and its health files.
 //!
 //! `svanbot_runtime::update` never sleeps and never reads a clock. Every wait it needs is a call
 //! that takes a deadline and returns the moment the answer is yes — and the loop that polls until
 //! then, along with the clock it reads, lives here, in an app, where the clock is allowed
 //! (ADR 0003). The two calls that act, `stop` and `start`, are the one thing a file cannot tell
-//! the updater: whether systemd has the bot running, which is [`Systemd`]'s business.
+//! the updater: whether the supervisor has the bot running, which is [`Supervisor`]'s business.
 //!
 //! Three waits make the window: the bot says it stopped (the `.stopped` file the bot writes when
-//! it leaves the table), systemd has stopped it, and systemd has it running again. Each poll is
+//! it leaves the table), the supervisor has stopped it, and it has it running again. Each poll is
 //! short, so a stop that lands just after one is still seen within one poll of it.
 
 use std::fmt;
@@ -18,30 +18,30 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use svanbot_runtime::health::Health;
 use svanbot_runtime::update::Window;
 
-use crate::systemd::Systemd;
+use crate::supervisor::Supervisor;
 
 /// How long to wait between polls of a wait. Short: the bot reads the update request within a read
-/// timeout (`svanbot_runtime::client::READ_WAIT_MS`), and systemd starts and stops a unit in well
-/// under this.
+/// timeout (`svanbot_runtime::client::READ_WAIT_MS`), and the supervisor starts and stops a bot in
+/// well under this.
 const POLL: Duration = Duration::from_millis(100);
 
-/// The real world: systemd for the process work, the bot's health files for the answer.
+/// The real world: the supervisor for the process work, the bot's health files for the answer.
 pub(crate) struct BotWorld<'a> {
-    systemd: &'a Systemd,
+    supervisor: &'a Supervisor,
     health: &'a Health,
 }
 
 impl<'a> BotWorld<'a> {
-    /// A world over `systemd` and the bot's `health` files.
-    pub(crate) fn new(systemd: &'a Systemd, health: &'a Health) -> Self {
-        Self { systemd, health }
+    /// A world over the bot's `supervisor` and its `health` files.
+    pub(crate) fn new(supervisor: &'a Supervisor, health: &'a Health) -> Self {
+        Self { supervisor, health }
     }
 
     /// Polls `until` — returning `true`/`false` — every [`POLL`] until it does, or until `deadline`
-    /// passes, and returns the last answer. The clock is read here, in an app: this is the one place
-    /// the deadline is turned into elapsed time.
+    /// passes, and returns the last answer. The clock is read here, in an app: this is the one
+    /// place the deadline is turned into elapsed time.
     ///
-    /// The error is whatever the wait's own reader gives — an `io::Error` from systemd, a
+    /// The error is whatever the wait's own reader gives — an `io::Error` from the supervisor, a
     /// `HealthError` from a file — and is only reported, so the wait can take either.
     fn poll<E: fmt::Display>(
         &self,
@@ -66,7 +66,7 @@ impl<'a> BotWorld<'a> {
 
 impl Window for BotWorld<'_> {
     fn stop(&mut self) -> io::Result<()> {
-        self.systemd.stop()
+        self.supervisor.stop()
     }
 
     fn bot_stopped(&mut self, deadline_ms: i64) -> bool {
@@ -78,13 +78,13 @@ impl Window for BotWorld<'_> {
     }
 
     fn start(&mut self) -> io::Result<()> {
-        self.systemd.start()
+        self.supervisor.start()
     }
 
     fn restarted(&mut self, deadline_ms: i64) -> bool {
-        // Asked of systemd, not of the log: a build systemd cannot `exec` is a build that is not
+        // Asked of the supervisor, not of the log: a build it cannot `exec` is a build that is not
         // running, and the crash loop is judged by `crash_looped`, from the start log.
-        self.poll(deadline_ms, |world| world.systemd.is_running())
+        self.poll(deadline_ms, |world| world.supervisor.is_running())
     }
 
     fn crash_looped(&mut self, since_ms: i64, limit: usize, deadline_ms: i64) -> bool {
@@ -100,7 +100,7 @@ impl Window for BotWorld<'_> {
     }
 
     fn down(&mut self) -> bool {
-        self.systemd.is_down()
+        self.supervisor.is_down()
     }
 }
 

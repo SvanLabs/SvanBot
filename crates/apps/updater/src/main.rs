@@ -27,7 +27,7 @@
 mod lock;
 mod promote;
 mod status;
-mod systemd;
+mod supervisor;
 mod world;
 
 use std::path::{Path, PathBuf};
@@ -39,7 +39,7 @@ use svanbot_runtime::slot::Slots;
 use svanbot_runtime::update;
 
 use crate::lock::Lock;
-use crate::systemd::Systemd;
+use crate::supervisor::Supervisor;
 use crate::world::{BotWorld, now_ms};
 
 /// How long the bot is given to stop between hands and to come back up, in the plainest possible
@@ -48,7 +48,7 @@ use crate::world::{BotWorld, now_ms};
 const WINDOW_MS: i64 = 2 * 60 * 1_000;
 
 /// The starts inside `health::WINDOW_MS` that mean a crash loop: three, the number the ticket and
-/// the glossary name, which is inside systemd's own five so the updater sees it first.
+/// the glossary name, which is inside the supervisor's own five so the updater sees it first.
 const CRASH_STARTS: usize = 3;
 
 fn main() -> ExitCode {
@@ -151,8 +151,8 @@ fn update_now(version: Option<&str>, fleet: bool) -> Result<(), String> {
     };
     let _lock = Lock::take(&tree)?;
     let health = health_for(&bot)?;
-    let systemd = Systemd::for_bot(&bot);
-    let mut world = BotWorld::new(&systemd, &health);
+    let supervisor = Supervisor::for_bot(&bot);
+    let mut world = BotWorld::new(&supervisor, &health);
     let outcome = update::apply(&mut world, &slots, &health, &build, now_ms(), WINDOW_MS)
         .map_err(|e| format!("{e}"))?;
     match outcome.rolled_back_to {
@@ -167,8 +167,8 @@ fn update_now(version: Option<&str>, fleet: bool) -> Result<(), String> {
             Ok(())
         }
         None => {
-            // The swap is done; whether the build stays is `watch`'s question, asked by watching its
-            // start log for the whole window. A crash loop rolls back and is restarted there.
+            // The swap is done; whether the build stays is `watch`'s question, asked by watching
+            // its start log for the whole window. A crash loop rolls back and is restarted there.
             let watched = update::watch(
                 &mut world,
                 &slots,
@@ -277,7 +277,7 @@ fn health_for(bot: &str) -> Result<Health, String> {
     Ok(Health::in_dir(dir, bot))
 }
 
-/// The bot's store path, by the same rule the bot and `deploy/svanbot@.service` use.
+/// The bot's store path, by the same rule the bot and its supervisor (`scripts/bot.sh`) use.
 fn store_path(bot: &str) -> Result<PathBuf, String> {
     match std::env::var_os("SVANBOT_STORE") {
         Some(path) => Ok(PathBuf::from(path)),

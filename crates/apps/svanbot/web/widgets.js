@@ -6,7 +6,7 @@ import { highlights } from "./activity.js";
 import { h } from "./dom.js";
 import { band } from "./dossier.js";
 import { chips } from "./felt.js";
-import { arenaLeagues, byWinRate, mbbText } from "./fleet.js";
+import { arenaLeagues, byWinRate, duration, mbbText } from "./fleet.js";
 
 /** A time of day, as the log shows it. */
 export function clock(ms) {
@@ -302,6 +302,88 @@ export function notes(key, text) {
     ),
     h("small", { class: "muted" }, "Saved in this browser as you type."),
   );
+}
+
+/**
+ * A parameter set's numbers in words, "exploit 0.4", each to four places: 1/0.9 of a number reads
+ * 0.5556, not to the last bit. The digest names the set exactly.
+ */
+function numbers(params) {
+  return Object.entries(params?.numbers ?? {})
+    .map(([name, value]) => `${name} ${Number(Number(value).toFixed(4))}`)
+    .join(", ");
+}
+
+/** A step's tone: up or down only when its whole 95% interval is. */
+function stepTone(step) {
+  if (step.stage === "proposed") {
+    return "proposed";
+  }
+  if (step.mbb_per_100 - step.ci95 > 0) {
+    return "up";
+  }
+  return step.mbb_per_100 + step.ci95 < 0 ? "down" : "level";
+}
+
+/**
+ * The unattended search (V11-49): what the learner last did and when, the champion it searches
+ * round, what the canary has pending, and the newest steps first: a paired sim each, or a
+ * challenger proposed.
+ */
+export function searchView(search, nowMs) {
+  if (!search || (!search.last && (search.steps ?? []).length === 0)) {
+    return [
+      h("p", { class: "muted" }, "The search has not run yet."),
+      h(
+        "p",
+        { class: "subtle" },
+        "Start it with `svanbot-bot start learn` to run it unattended (deploy/README.md).",
+      ),
+    ];
+  }
+  const pending = search.probe
+    ? ["warn", `Probe running · ${search.probe}`]
+    : search.waiting
+      ? ["warn", `Proposal waiting · ${search.waiting}`]
+      : ["ok", "Canary free"];
+  return [
+    search.last
+      ? h(
+          "p",
+          { class: "search-last" },
+          h("strong", {}, `${duration(nowMs - search.last.at_ms)} ago`),
+          " · ",
+          search.last.note,
+        )
+      : null,
+    h(
+      "div",
+      { class: "search-facts" },
+      h("span", { class: "class-tag" }, `Champion · ${numbers(search.champion) || "unknown"}`),
+      h("span", { class: "class-tag" }, `${search.simmed} sims round it`),
+      h("span", { class: `pill ${pending[0]}` }, pending[1]),
+    ),
+    search.error ? h("p", { class: "bad" }, search.error) : null,
+    h(
+      "ul",
+      { class: "search-steps" },
+      (search.steps ?? []).map((step) =>
+        h(
+          "li",
+          { class: `search-step ${stepTone(step)}` },
+          h("span", { class: "search-what" }, numbers(step.challenger)),
+          h("span", { class: "search-stage" }, step.stage),
+          step.stage === "proposed"
+            ? h("strong", {}, "to the canary")
+            : h(
+                "span",
+                { class: "search-result" },
+                `${mbbText(step.mbb_per_100)} ±${Math.round(step.ci95)}`,
+              ),
+        ),
+      ),
+    ),
+  ];
 }
 
 /** The Arena's latest run a league, best row first, with the full boards a link away. */

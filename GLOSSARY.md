@@ -278,6 +278,18 @@ _Avoid_: round, block, batch
 A challenger the learner puts forward for the canary, as a probe or as a promotion.
 _Avoid_: candidate, request, queue entry
 
+**Search**:
+The learner's unattended hunt for a challenger round the champion: each number moved a step down
+and up, in rings of shrinking steps, one paired sim a step, every step kept in the search log.
+It waits while a proposal waits or a probe runs.
+_Avoid_: optimizer, tuning loop, sweep
+
+**Confirmation**:
+A second paired sim of a challenger on fresh deals, after a first put it above the champion. The
+search proposes only a challenger both put above, so one lucky sim among many cannot become a
+promotion.
+_Avoid_: re-test, replication, validation run
+
 **Ledger**:
 A bot's own record of what each hand won, with the luck of its own draws set beside it.
 _Avoid_: results, bankroll, tracker
@@ -311,6 +323,12 @@ _Avoid_: soak, bake time, watch period
 **Store**:
 SvanBot's own record of hands, decisions, fits and incidents.
 _Avoid_: database, DB, artifacts
+
+**Supervisor**:
+`svanbot-bot` (`scripts/bot.sh`): what keeps one bot, the dashboard or the learner running on the
+box. It restarts a crash, stays down after five starts in five minutes, and keeps a pid and a log
+under `~/.local/state/svanbot/`. The fleet scripts and the updater start and stop bots through it.
+_Avoid_: unit, service, daemon
 
 **Status**:
 One bot's last known state, written beside its store every five seconds: connection, table, hands,
