@@ -29,6 +29,7 @@ use svanbot_learn::ring::ring_seen;
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_sim::sparring::Archetype;
 use svanbot_strategy::params::Params;
+use svanbot_strategy::profile::ACTIVE;
 
 use crate::deciders;
 
@@ -87,7 +88,8 @@ pub(crate) fn play_bout(
         fixed,
         seats,
         Reads::deciding,
-    ));
+    ))
+    .with_profile_stats(!ACTIVE.is_empty());
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;
     // Heads up is the mirrored duel; every bigger table is the ring at its own size.

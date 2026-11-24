@@ -268,12 +268,7 @@ fn send_all<S: std::io::Read + std::io::Write>(
 /// A seed from fresh entropy, for a decision's budget. The pure layers never draw entropy: this
 /// is where it comes from (ADR 0003).
 pub fn fresh_seed() -> u64 {
-    use std::hash::{BuildHasher, Hasher};
-    let mut hasher = std::hash::RandomState::new().build_hasher();
-    hasher.write_u128(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| since.as_nanos()),
-    );
-    hasher.finish()
+    use std::hash::{BuildHasher, RandomState};
+
+    RandomState::new().hash_one("svanbot decision")
 }

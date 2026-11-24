@@ -28,6 +28,7 @@ pub struct Lines {
     /// turn order as well as each seat's own line.
     events: Vec<(usize, Act)>,
     folded: BTreeSet<usize>,
+    ambiguous_all_ins: BTreeSet<usize>,
     /// Each seat's chips in on this street.
     committed: BTreeMap<usize, Chips>,
     small_blind: Chips,
@@ -86,6 +87,9 @@ impl Lines {
                     _ => *amount,
                 });
                 let pot = detail.pot_before.unwrap_or(self.pot);
+                if action == "all_in" && self.bet && detail.to_call.is_none() {
+                    self.ambiguous_all_ins.insert(*seat);
+                }
                 let kind = match action.as_str() {
                     "fold" => ActKind::Fold,
                     "check" => ActKind::Check,
@@ -127,6 +131,11 @@ impl Lines {
         self.acts.get(&seat).map_or(&[], Vec::as_slice)
     }
 
+    /// Complete action evidence for profile stats. The action model keeps its own fallback.
+    pub(crate) fn profile_line(&self, seat: usize) -> Option<&[Act]> {
+        (!self.ambiguous_all_ins.contains(&seat)).then(|| self.of(seat))
+    }
+
     /// Every seat that has acted, lowest first.
     pub fn seats(&self) -> impl Iterator<Item = usize> + '_ {
         self.acts.keys().copied()
@@ -146,21 +155,8 @@ impl Lines {
         if self.street != Some(Street::Preflop) {
             return acted;
         }
-        let mut order: Vec<usize> = dealt.to_vec();
-        order.sort_unstable();
-        order.dedup();
-        // Seat order from the dealer's left round to the dealer.
-        order.sort_by_key(|&at| (at + 6 - self.dealer % 6 - 1) % 6);
-        let (small, big) = match order.as_slice() {
-            [first, second] if order.contains(&self.dealer) => {
-                if *second == self.dealer {
-                    (*second, *first)
-                } else {
-                    (*first, *second)
-                }
-            }
-            [first, second, ..] => (*first, *second),
-            _ => return acted,
+        let Some((small, big)) = self.blind_seats(dealt) else {
+            return acted;
         };
         let posted = if seat == small {
             self.small_blind
@@ -172,10 +168,21 @@ impl Lines {
         acted + posted
     }
 
+    pub(crate) fn blind_seats(&self, dealt: &[usize]) -> Option<(usize, usize)> {
+        let mut order = dealt.to_vec();
+        order.sort_unstable_by_key(|&seat| self.turn_order(seat));
+        order.dedup();
+        match order.as_slice() {
+            [first, second] if *second == self.dealer => Some((*second, *first)),
+            [first, second, ..] => Some((*first, *second)),
+            _ => None,
+        }
+    }
+
     /// How late `seat` acts after the flop: the button's left is 0, and the button is last.
     /// The venue seats six at most.
     pub fn turn_order(&self, seat: usize) -> usize {
-        (seat + 6 - self.dealer % 6 - 1) % 6
+        (seat % 6 + 5 - self.dealer % 6) % 6
     }
 
     /// The hand's big blind.

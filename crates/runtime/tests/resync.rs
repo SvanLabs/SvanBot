@@ -338,3 +338,17 @@ fn a_lost_seat_sends_it_back_to_the_lobby() {
     assert!(matches!(step.send[0], Outbound::JoinLobby { .. }));
     assert!(matches!(gone.on_connect()[0], Outbound::JoinLobby { .. }));
 }
+
+#[test]
+fn an_acting_snapshot_without_dealt_seats_cannot_supply_profile_position() {
+    let mut session = seated();
+    let snapshot = acting(vec![
+        seat(0, "alpha_bot", Some(false)),
+        seat(2, "SurSvan", Some(false)),
+        seat(4, "waiting_bot", None),
+    ]);
+    session.on_frame(Inbound::TableState(snapshot), |spot: &Spot| {
+        assert_eq!(spot.players_behind, None);
+        Action::Call
+    });
+}

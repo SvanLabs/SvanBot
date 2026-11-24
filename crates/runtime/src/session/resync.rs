@@ -87,10 +87,15 @@ impl Session {
             }
         }
         if let Some(hand) = &mut self.hand {
-            if let Some(hero) = &snapshot.hero
-                && !hero.hole.is_empty()
-            {
-                hand.hole = hero.hole.iter().copied().collect();
+            if let Some(hero) = &snapshot.hero {
+                // A turn assembled from a snapshot includes every occupied seat for the
+                // fair-play check. Its list does not establish which seats were dealt in.
+                if hero.turn_token.is_some() {
+                    hand.position_known = false;
+                }
+                if !hero.hole.is_empty() {
+                    hand.hole = hero.hole.iter().copied().collect();
+                }
             }
             // An explicit fold marker wins; a missing one keeps what the hand already knows.
             for seat in &snapshot.seats {

@@ -25,6 +25,7 @@ fn spot(hole: &str, board: &str, pot: u64, legal: Legal) -> Spot {
         committed: 0,
         big_blind: 20,
         in_position: false,
+        players_behind: None,
         lines: vec![],
         seats: vec![],
     }

@@ -19,6 +19,7 @@ fn bare() -> Spot {
         committed: 0,
         big_blind: 0,
         in_position: false,
+        players_behind: None,
         seats: Vec::new(),
         lines: Vec::new(),
     }

@@ -92,6 +92,26 @@ pub struct Legal {
     pub raise: Option<RaiseRange>,
 }
 
+impl Legal {
+    /// The legal action nearest to a requested action.
+    pub fn nearest(self, wanted: Action) -> Action {
+        let passive = if self.call.is_some() {
+            Action::Call
+        } else {
+            Action::Check
+        };
+        match wanted {
+            Action::Fold | Action::Check if self.call.is_none() => Action::Check,
+            Action::Fold | Action::Check => Action::Fold,
+            Action::Call => passive,
+            Action::RaiseTo(to) => match self.raise {
+                Some(range) => Action::RaiseTo(to.clamp(range.min, range.max)),
+                None => passive,
+            },
+        }
+    }
+}
+
 /// An action the rules refuse.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuleError {

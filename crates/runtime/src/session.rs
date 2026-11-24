@@ -120,6 +120,7 @@ struct HandSeen {
     hand_id: String,
     hole: CardSet,
     folded: Vec<usize>,
+    position_known: bool,
     opening: BTreeMap<usize, Player>,
 }
 
@@ -278,6 +279,7 @@ impl Session {
                 self.unacked = None;
                 self.hand = Some(HandSeen {
                     opening: std::mem::take(&mut self.opening),
+                    position_known: true,
                     hand_id,
                     ..HandSeen::default()
                 });

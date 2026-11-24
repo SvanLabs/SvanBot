@@ -12,9 +12,11 @@ use std::collections::BTreeMap;
 use svanbot_core::rules::Street;
 use svanbot_strategy::action::{ActionModel, Move, Seen, Situation};
 use svanbot_strategy::policy::Personal;
+use svanbot_strategy::profile::{OpponentStats, SeatedStats};
 use svanbot_strategy::read::{Class, Read, Trust, personal};
 
 use crate::adapt::classify;
+use crate::profile::Observation;
 
 /// Selective reads cleared the heads-up and six-seat paired gates in V11-35.
 /// This switch is shared by live play, the Arena and the dashboard status.
@@ -29,6 +31,8 @@ pub struct Witness {
     pub actions: Vec<Seen>,
     /// Whether the opponent bet or raised in the hand: the per-hand tally the change point reads.
     pub aggressive: bool,
+    /// Stats from the raw actions, when this hand is an independent observation.
+    pub profile: Option<Observation>,
     /// Whether they folded to one of our bets, when they faced one. The first answer in the hand
     /// stands: the response test asks how they answer us, not how often.
     pub vs_us: Option<bool>,
@@ -43,6 +47,8 @@ pub struct Opponent {
     /// Each hand's actions, oldest first.
     hands: Vec<Vec<Seen>>,
     tallies: Vec<bool>,
+    observations: Vec<Option<Observation>>,
+    profile: OpponentStats,
     vs_us: Vec<bool>,
     vs_others: Vec<bool>,
     class: Class,
@@ -61,6 +67,8 @@ impl Opponent {
             name,
             hands: Vec::new(),
             tallies: Vec::new(),
+            observations: Vec::new(),
+            profile: OpponentStats::default(),
             vs_us: Vec::new(),
             vs_others: Vec::new(),
             class: Class::Unknown,
@@ -79,6 +87,7 @@ impl Opponent {
     /// Adds a hand without classifying: a bulk load classifies once, at the end.
     fn push(&mut self, witness: Witness) {
         self.tallies.push(witness.aggressive);
+        self.observations.push(witness.profile);
         self.vs_us.extend(witness.vs_us);
         self.vs_others.extend(witness.vs_others);
         self.hands.push(witness.actions);
@@ -92,11 +101,15 @@ impl Opponent {
         if change != self.change {
             // The read restarts where the present strategy began.
             self.read = Read::default();
+            self.profile = OpponentStats::default();
             self.actions = 0;
             self.counted = change.unwrap_or(0);
         }
         for hand in &self.hands[self.counted..] {
             count(&mut self.read, &mut self.actions, hand);
+        }
+        for observation in self.observations[self.counted..].iter().flatten() {
+            observation.add_to(&mut self.profile);
         }
         self.counted = self.hands.len();
         self.class = class;
@@ -146,6 +159,10 @@ impl Opponent {
     /// The read: their moves from the change on.
     pub fn read(&self) -> &Read {
         &self.read
+    }
+
+    pub fn profile_stats(&self) -> OpponentStats {
+        self.profile
     }
 
     /// The share of the budget the read has earned over all its actions.
@@ -210,6 +227,19 @@ impl Reads {
     /// Every opponent, by name.
     pub fn opponents(&self) -> impl Iterator<Item = &Opponent> {
         self.opponents.values()
+    }
+
+    /// The profile's evidence for opponents actually at this spot.
+    pub fn profile_stats(&self, seated: &[(usize, &str)]) -> Vec<SeatedStats> {
+        seated
+            .iter()
+            .map(|&(seat, name)| SeatedStats {
+                seat,
+                stats: self
+                    .get(name)
+                    .map_or_else(OpponentStats::default, Opponent::profile_stats),
+            })
+            .collect()
     }
 
     /// The decision's reads of the opponents `seated` (seat, venue name): each one's model is

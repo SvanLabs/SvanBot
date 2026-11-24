@@ -1,7 +1,7 @@
 //! What a live bot decides from: the table as this session sees it, read out as the pure
 //! `Spot` that the policy takes. Nothing here writes, and nothing here reads a clock.
 
-use svanbot_core::rules::{Chips, Legal, RaiseRange};
+use svanbot_core::rules::{Chips, Legal, RaiseRange, Street};
 use svanbot_core::spot::Spot;
 
 use super::{HandSeen, Session};
@@ -68,9 +68,32 @@ impl Session {
             .offer
             .all_in
             .map(|all| RaiseRange { min: all, max: all }));
+        let board = turn.board.iter().copied().collect();
+        let dealt: Vec<usize> = turn.players.iter().map(|player| player.seat).collect();
+        let players_behind = self.seat.and_then(|hero| {
+            if !hand.position_known || self.lines.big_blind() == 0 || !dealt.contains(&hero) {
+                return None;
+            }
+            let last = if Street::of(board) == Street::Preflop {
+                self.lines.blind_seats(&dealt)?.1
+            } else {
+                self.lines.dealer()
+            };
+            let order = |seat: usize| (seat % 6 + 5 - last % 6) % 6;
+            Some(
+                turn.players
+                    .iter()
+                    .filter(|player| {
+                        player.stack > 0
+                            && seats.contains(&player.seat)
+                            && order(player.seat) > order(hero)
+                    })
+                    .count(),
+            )
+        });
         Spot {
             hole: hand.hole,
-            board: turn.board.iter().copied().collect(),
+            board,
             pot: turn.pot,
             callable_pot: mine.and_then(|hero| hand.callable_pot(turn, hero)),
             legal: Legal {
@@ -79,12 +102,12 @@ impl Session {
             },
             opponents: lines.len(),
             stack: mine.map_or(0, |player| player.stack),
-            committed: self.seat.map_or(0, |seat| {
-                let dealt: Vec<usize> = turn.players.iter().map(|player| player.seat).collect();
-                self.lines.committed(seat, &dealt)
-            }),
+            committed: self
+                .seat
+                .map_or(0, |seat| self.lines.committed(seat, &dealt)),
             big_blind: self.lines.big_blind(),
             in_position,
+            players_behind,
             lines,
             seats,
         }

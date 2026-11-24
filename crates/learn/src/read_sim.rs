@@ -64,6 +64,7 @@ pub fn warm_up(
             aggressive: line
                 .iter()
                 .any(|act| matches!(act.kind, ActKind::Bet { .. })),
+            profile: None,
             vs_us: answer,
             vs_others: None,
         });

@@ -85,6 +85,7 @@ fn spot(hole: &str, board: &str, pot: u64, call: u64, opponents: usize) -> Spot 
         committed: 0,
         big_blind: 20,
         in_position: false,
+        players_behind: None,
         lines: vec![],
         seats: vec![],
     }
@@ -253,5 +254,156 @@ fn a_held_read_decides_exactly_as_no_read_and_the_trace_names_only_its_class() {
     for (held, plain) in read.ranges.iter().zip(&none.ranges) {
         assert_eq!(held.masses, plain.masses);
         assert_eq!((held.class, held.trust), (Some(Class::Fixed), None));
+    }
+}
+
+#[test]
+fn the_first_matching_profile_rule_decides_with_a_legal_raise() {
+    use svanbot_strategy::policy::decide_profile;
+    use svanbot_strategy::profile::{Profile, Rule};
+
+    let at = spot("AhAs", "", 30, 20, 1);
+    let rules = [
+        Rule {
+            when: |facts| facts.street() == Street::River,
+            then: |_| Action::Fold,
+        },
+        Rule {
+            when: |facts| facts.street() == Street::Preflop,
+            then: |_| Action::RaiseTo(25),
+        },
+        Rule {
+            when: |_| true,
+            then: |_| Action::Call,
+        },
+    ];
+    let decision = decide_profile(
+        &at,
+        None,
+        &[],
+        &Params::DEFAULT,
+        BUDGET,
+        60,
+        Profile::new(&rules),
+    );
+    assert_eq!(decision.action, Action::RaiseTo(40));
+}
+
+#[test]
+fn unmatched_rules_preserve_both_incumbent_branches() {
+    use svanbot_strategy::policy::decide_profile;
+    use svanbot_strategy::profile::{Profile, Rule};
+
+    let rules = [Rule {
+        when: |facts| facts.street() == Street::Flop,
+        then: |_| panic!("an unmatched rule must never evaluate its action"),
+    }];
+    let profile = Profile::new(&rules);
+    for at in [
+        spot("AhAs", "", 30, 20, 1),
+        spot("AhKh", "QhJhTh2c3d", 400, 200, 1),
+    ] {
+        assert_eq!(
+            decide_profile(&at, None, &[], &Params::DEFAULT, BUDGET, 20, profile),
+            decide_read(&at, None, &[], &Params::DEFAULT, BUDGET, 20),
+        );
+    }
+}
+
+#[test]
+fn a_rule_can_use_starting_hand_class_position_and_big_blinds() {
+    use svanbot_strategy::policy::decide_profile;
+    use svanbot_strategy::profile::{Profile, Rule};
+
+    let mut at = spot("AhKh", "", 100, 20, 4);
+    at.stack = 600;
+    at.players_behind = Some(2);
+    at.in_position = true;
+    let rules = [Rule {
+        when: |facts| {
+            facts.starting_hand_class() == Some(167)
+                && facts
+                    .position()
+                    .is_some_and(|p| p.in_position && p.behind == 2)
+                && facts.pot_bb() == Some(5.0)
+                && facts.stack_bb() == Some(30.0)
+        },
+        then: |_| Action::RaiseTo(100),
+    }];
+    let profile = Profile::new(&rules);
+    assert_eq!(
+        decide_profile(&at, None, &[], &Params::DEFAULT, BUDGET, 20, profile).action,
+        Action::RaiseTo(100),
+    );
+
+    at.players_behind = None;
+    assert_eq!(
+        decide_profile(&at, None, &[], &Params::DEFAULT, BUDGET, 20, profile),
+        decide_read(&at, None, &[], &Params::DEFAULT, BUDGET, 20),
+    );
+}
+
+#[test]
+fn a_profile_variable_can_use_qualified_evidence_and_a_repeatable_draw() {
+    use svanbot_strategy::policy::decide_profile;
+    use svanbot_strategy::profile::{
+        MIN_EVIDENCE_HANDS, OpponentStats, Profile, Rule, SeatedStats, Variable,
+    };
+
+    const BLUFF: Variable<f64> = Variable(|facts| {
+        facts
+            .opponent(4)
+            .and_then(|stats| stats.fold_to_bet.value())
+            .unwrap_or(0.0)
+    });
+    let mut at = spot("7c2d", "Ah2h3h3c", 100, 0, 1);
+    at.legal.call = None;
+    let rules = [Rule {
+        when: |facts| {
+            let texture = facts.board_texture();
+            texture.paired
+                && texture.most_of_suit == 3
+                && texture.straight_ranks == 3
+                && facts.random(0) < BLUFF.get(facts)
+        },
+        then: |_| Action::RaiseTo(75),
+    }];
+    let mut reads = [SeatedStats {
+        seat: 4,
+        stats: OpponentStats::default(),
+    }];
+    let profile = Profile::new(&rules);
+    let baseline = decide_read(&at, None, &[], &Params::DEFAULT, BUDGET, 20);
+    for _ in 0..MIN_EVIDENCE_HANDS - 1 {
+        reads[0].stats.fold_to_bet.observe(1, 1);
+    }
+    assert_eq!(
+        decide_profile(
+            &at,
+            None,
+            &[],
+            &Params::DEFAULT,
+            BUDGET,
+            20,
+            profile.with_opponents(&reads)
+        ),
+        baseline,
+    );
+    reads[0].stats.fold_to_bet.observe(1, 2);
+    // xoshiro256++ with seed 5 yields a draw below 30/31.
+    for _ in 0..2 {
+        assert_eq!(
+            decide_profile(
+                &at,
+                None,
+                &[],
+                &Params::DEFAULT,
+                BUDGET,
+                20,
+                profile.with_opponents(&reads)
+            )
+            .action,
+            Action::RaiseTo(75),
+        );
     }
 }

@@ -1,4 +1,5 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
 
 use svanbot_core::rules::Action;
 use svanbot_core::spot::{Act, ActKind, Spot};
@@ -6,6 +7,7 @@ use svanbot_sim::table::Record;
 use svanbot_strategy::action::Seen;
 
 use crate::paired::Challenger;
+use crate::profile::Observation;
 use crate::read_sim::OPPONENT;
 use crate::reads::{Reads, Witness};
 
@@ -24,6 +26,8 @@ pub struct BoutReader<F> {
     decide: F,
     reads: RefCell<Reads>,
     pending: RefCell<Vec<Witness>>,
+    deal: Cell<usize>,
+    profile_stats: bool,
 }
 
 impl<F: Fn(&Spot, u64, &Reads) -> Action> BoutReader<F> {
@@ -37,7 +41,15 @@ impl<F: Fn(&Spot, u64, &Reads) -> Action> BoutReader<F> {
             decide,
             reads: RefCell::default(),
             pending: RefCell::default(),
+            deal: Cell::default(),
+            profile_stats: false,
         }
+    }
+
+    /// Collect per-opponent evidence when the Arena is playing a profile.
+    pub fn with_profile_stats(mut self, collect: bool) -> Self {
+        self.profile_stats = collect;
+        self
     }
 }
 
@@ -55,6 +67,7 @@ impl<F: Fn(&Spot, u64, &Reads) -> Action> Challenger for BoutReader<F> {
                 aggressive: line
                     .iter()
                     .any(|act| matches!(act.kind, ActKind::Bet { .. })),
+                profile: self.profile_stats.then(|| Observation::of(line)),
                 vs_us: None,
                 vs_others: None,
             };
@@ -80,8 +93,30 @@ impl<F: Fn(&Spot, u64, &Reads) -> Action> Challenger for BoutReader<F> {
 
     fn finished_deal(&self) {
         let mut reads = self.reads.borrow_mut();
-        for witness in self.pending.borrow_mut().drain(..) {
+        let mut pending = self.pending.borrow_mut();
+        if !self.profile_stats {
+            for witness in pending.drain(..) {
+                reads.observe(witness);
+            }
+            return;
+        }
+        // Rotations reuse hole cards. Each opponent contributes one independent hand to the
+        // profile per deal. Rotate which perspective supplies it to cover every seat.
+        let mut by_name = BTreeMap::<&str, Vec<usize>>::new();
+        for (index, witness) in pending.iter().enumerate() {
+            by_name.entry(&witness.name).or_default().push(index);
+        }
+        let deal = self.deal.get();
+        let mut kept = vec![false; pending.len()];
+        for indices in by_name.values() {
+            kept[indices[deal % indices.len()]] = true;
+        }
+        for (mut witness, keep) in pending.drain(..).zip(kept) {
+            if !keep {
+                witness.profile = None;
+            }
             reads.observe(witness);
         }
+        self.deal.set(deal + 1);
     }
 }

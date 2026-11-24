@@ -14,5 +14,6 @@ pub mod params;
 pub mod policy;
 pub mod preflop;
 pub mod pricer;
+pub mod profile;
 pub mod read;
 pub mod resolve;

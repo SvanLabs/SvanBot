@@ -11,6 +11,7 @@ use svanbot_strategy::action::ActionModel;
 use svanbot_strategy::params::Params;
 use svanbot_strategy::policy::{self, Personal};
 use svanbot_strategy::pricer::{self, Budget};
+use svanbot_strategy::profile::{ACTIVE, SeatedStats};
 use svanbot_strategy::resolve::iterations_for;
 
 /// Deals sampled by the pricer per decision in a sim.
@@ -86,7 +87,26 @@ pub(crate) fn reading_policy(
             .map(|&seat| (seat, names[seat].as_str()))
             .collect();
         let personal = take(reads, &named, &baseline, params.exploit);
-        policy::decide_read(spot, None, &personal, params, budget, iterations).action
+        let stats = active_profile_stats(reads, &named);
+        policy::decide_profile(
+            spot,
+            None,
+            &personal,
+            params,
+            budget,
+            iterations,
+            ACTIVE.with_opponents(&stats),
+        )
+        .action
+    }
+}
+
+/// Qualified stats are only consulted when a compiled profile can use them.
+pub(crate) fn active_profile_stats(reads: &Reads, named: &[(usize, &str)]) -> Vec<SeatedStats> {
+    if ACTIVE.is_empty() {
+        Vec::new()
+    } else {
+        reads.profile_stats(named)
     }
 }
 

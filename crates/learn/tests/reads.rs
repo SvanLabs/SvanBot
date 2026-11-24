@@ -33,6 +33,7 @@ fn hand(name: &str, aggressive: bool, vs_us: Option<bool>, vs_others: Option<boo
         name: name.into(),
         actions: vec![seen(if aggressive { Move::Large } else { Move::Check })],
         aggressive,
+        profile: None,
         vs_us,
         vs_others,
     }
@@ -195,4 +196,46 @@ fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
     for read in reads.personal(&seated, &population, 0.0) {
         assert_eq!(read.model, population);
     }
+}
+
+#[test]
+fn profile_stats_count_observed_opportunities_and_require_enough_hands() {
+    use svanbot_core::spot::{Act, ActKind};
+    use svanbot_learn::profile::Observation;
+    use svanbot_strategy::profile::MIN_EVIDENCE_HANDS;
+
+    let action = |street, facing, kind| Act {
+        street,
+        facing,
+        kind,
+        board: CardSet::EMPTY,
+    };
+    let raise = ActKind::Bet {
+        added: 200,
+        pot: 300,
+    };
+    let mut reads = Reads::default();
+    for n in 0..MIN_EVIDENCE_HANDS {
+        let first = n % 2 == 0;
+        let preflop = if first { raise } else { ActKind::Check };
+        let flop = if first { ActKind::Fold } else { raise };
+        let mut witness = hand("alpha_bot", first, None, None);
+        witness.profile = Some(Observation::of(&[
+            action(Street::Preflop, first, preflop),
+            action(Street::Flop, true, flop),
+        ]));
+        reads.observe(witness);
+        let stats = reads.get("ALPHA_BOT").unwrap().profile_stats();
+        assert_eq!(stats.vpip.hands(), n + 1);
+        if n + 1 < MIN_EVIDENCE_HANDS {
+            assert_eq!(stats.vpip.value(), None);
+            assert_eq!(stats.fold_to_bet.value(), None);
+        } else {
+            assert_eq!(stats.vpip.value(), Some(0.5));
+            assert_eq!(stats.pfr.value(), Some(0.5));
+            assert_eq!(stats.fold_to_bet.value(), Some(0.5));
+            assert_eq!(stats.aggression.value(), Some(0.5));
+        }
+    }
+    assert!(Reads::default().get("alpha_bot").is_none());
 }

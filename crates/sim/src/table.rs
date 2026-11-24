@@ -9,7 +9,7 @@
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::eval::strength;
 use svanbot_core::rng::Rng;
-use svanbot_core::rules::{Action, Blinds, Chips, Hand, Legal, Street};
+use svanbot_core::rules::{Action, Blinds, Chips, Hand, Street};
 use svanbot_core::spot::{Act, Spot};
 
 /// The cards of one hand: each seat's hole cards, and the board in the order it comes.
@@ -270,6 +270,13 @@ fn bet(
             .collect();
         let totals = hand.committed();
         let before = totals[seat];
+        let stacks = hand.stacks();
+        let last = if street == Street::Preflop {
+            (button + if seats == 2 { 1 } else { 2 }) % seats
+        } else {
+            button
+        };
+        let order = |at| (at + seats - last - 1) % seats;
         let spot = Spot {
             hole: deal.holes[seat],
             board,
@@ -281,13 +288,20 @@ fn bet(
                 .map(|call| svanbot_core::spot::callable_pot(&totals, before + call)),
             legal,
             opponents: folded.iter().filter(|&&out| !out).count() - 1,
-            stack: hand.stacks()[seat],
+            stack: stacks[seat],
             // The street bet, a posted blind included: a raise-to is this plus what it adds.
             committed: bets[seat],
             big_blind: blinds.big,
             in_position: (0..seats)
                 .filter(|&other| !folded[other])
                 .all(|other| late(other) <= late(seat)),
+            players_behind: Some(
+                (0..seats)
+                    .filter(|&other| {
+                        !folded[other] && stacks[other] > 0 && order(other) > order(seat)
+                    })
+                    .count(),
+            ),
             lines: (0..seats)
                 .filter(|&other| other != seat && !folded[other])
                 .map(|other| lines[other].clone())
@@ -302,14 +316,14 @@ fn bet(
             board: deal.board[..board.len()].to_vec(),
             seats: (0..seats)
                 .map(|at| SeatSeen {
-                    stack: hand.stacks()[at],
+                    stack: stacks[at],
                     bet: bets[at],
                     folded: folded[at],
                 })
                 .collect(),
             record: record.clone(),
         };
-        let action = nearest(decide(seat, &spot, &seen), legal);
+        let action = legal.nearest(decide(seat, &spot, &seen));
         if hand.act(action).is_err() {
             break;
         }
@@ -332,21 +346,4 @@ fn bet(
     }
     finished(&lines, &record);
     (hand, street, stood)
-}
-
-/// The legal action nearest to `wanted`.
-fn nearest(wanted: Action, legal: Legal) -> Action {
-    let passive = match legal.call {
-        Some(_) => Action::Call,
-        None => Action::Check,
-    };
-    match wanted {
-        Action::Fold | Action::Check if legal.call.is_none() => Action::Check,
-        Action::Fold | Action::Check => Action::Fold,
-        Action::Call => passive,
-        Action::RaiseTo(to) => match legal.raise {
-            Some(range) => Action::RaiseTo(to.clamp(range.min, range.max)),
-            None => passive,
-        },
-    }
 }

@@ -11,6 +11,7 @@ use svanbot_core::card::CardSet;
 use svanbot_core::eval::strength;
 use svanbot_core::spot::ActKind;
 use svanbot_learn::fit::{Observed, Outcome};
+use svanbot_learn::profile::Observation;
 use svanbot_learn::reads::{Reads, Witness};
 use svanbot_strategy::action::Seen;
 
@@ -191,6 +192,7 @@ pub fn witnesses(hand: &Hand, me: &str) -> Vec<Witness> {
                     name,
                     actions: lines.of(seat).iter().map(Seen::of).collect(),
                     aggressive: false,
+                    profile: lines.profile_line(seat).map(Observation::of),
                     vs_us: None,
                     vs_others: None,
                 },
