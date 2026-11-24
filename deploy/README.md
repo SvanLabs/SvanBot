@@ -59,6 +59,20 @@ store, in its append-only `incidents` table. To list every incident on the box:
 journalctl --user -p crit -u 'svanbot@*'
 ```
 
+## Start or stop the configured fleet
+
+Run these as the systemd user after installing the units and a release:
+
+```sh
+scripts/start.sh                # starts each bot with a .env file and the dashboard
+scripts/stop.sh                 # stops the loaded bot instances and the dashboard
+scripts/start.sh SurSvan        # starts just this bot and the dashboard
+```
+
+Starting or stopping the fleet leaves the service enablement and release slots as they are.
+Both commands refuse to run during a release update. Stop asks systemd to stop the units
+immediately. Use the release updater for a swap that waits for the end of a hand.
+
 ## Updating the fleet
 
 The fleet never builds. CI builds a release on a `v*` tag and publishes a checksummed bundle; the
