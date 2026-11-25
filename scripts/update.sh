@@ -4,10 +4,12 @@
 # bot that does not take it. The operator or an agent runs it (deploy/README.md, "Updating the
 # fleet").
 #
-#   scripts/update.sh [--canary-only] <version>
+#   scripts/update.sh [--canary-only] [--running-only] <version>
 #
 # Each swap is `svanbot-release update`, which takes the update lock, waits for the bot's gap
 # between hands and watches it for a crash loop, so this never holds the lock itself.
+# `--running-only` leaves a bot that is not running alone, where a swap would start it: the cron
+# job (scripts/auto-update.sh, V11-56) never starts a bot someone stopped.
 set -euo pipefail
 
 here=$(dirname -- "${BASH_SOURCE[0]}")
@@ -15,15 +17,18 @@ here=$(dirname -- "${BASH_SOURCE[0]}")
 source "$here/fleet.sh"
 
 usage() {
-    printf 'Usage: %s [--canary-only] <version>, for example: %s 11.1.7\n' "$0" "$0" >&2
+    printf 'Usage: %s [--canary-only] [--running-only] <version>, for example: %s 11.1.7\n' \
+        "$0" "$0" >&2
     exit 2
 }
 
 canary_only=false
+running_only=false
 version=
 for arg in "$@"; do
     case $arg in
         --canary-only) canary_only=true ;;
+        --running-only) running_only=true ;;
         -*) usage ;;
         *)
             [[ -z $version ]] || usage
@@ -34,6 +39,11 @@ done
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || usage
 
 tree=${SVANBOT_LIB:-"$HOME/.local/lib/svanbot"}
+
+# The cron job's App token (scripts/auto-update.sh) reaches the download and nothing else: the
+# supervisors this script starts live for days, and must not carry it in their environment.
+download_token=${SVANBOT_GH_TOKEN:-}
+unset SVANBOT_GH_TOKEN
 
 # The bots are every env file, as for start.sh; the canary is the one their files name.
 shopt -s nullglob
@@ -72,6 +82,10 @@ runs_it() {
 swap() {
     local bot=$1
     shift
+    if $running_only && ! "$supervisor" pid "$bot" >/dev/null 2>&1; then
+        step "$bot is not running: left alone"
+        return
+    fi
     if runs_it "$bot"; then
         step "$bot already runs $version"
         return
@@ -97,7 +111,7 @@ if [[ ! -d $tree/$version ]]; then
     step "Installing $version"
     download=$(mktemp -d)
     trap 'rm -rf "$download"' EXIT
-    gh release download "v$version" --repo SvanLabs/SvanBot --dir "$download"
+    GH_TOKEN=${download_token:-${GH_TOKEN:-}} gh release download "v$version" --repo SvanLabs/SvanBot --dir "$download"
     bundles=("$download"/svanbot-"$version"-*.tar.gz)
     ((${#bundles[@]} == 1)) || { printf 'v%s has no single bundle to install.\n' "$version" >&2; exit 1; }
     # install.sh checks the checksum and the CPU before anything is staged.
@@ -124,4 +138,8 @@ if "$supervisor" status dashboard >/dev/null; then
     "$supervisor" start dashboard
 fi
 
-printf '\nEvery bot runs %s.\n' "$version"
+if $running_only; then
+    printf '\nEvery running bot runs %s.\n' "$version"
+else
+    printf '\nEvery bot runs %s.\n' "$version"
+fi
