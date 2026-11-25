@@ -111,8 +111,12 @@ a home-made TLS would be a risk: ask the operator before you add to that list or
 
 ## On this box
 
-- Build with `CARGO_TARGET_DIR=target/dev`, in this clone. The checkout that the live fleet runs from is never
-  built in or edited.
+- Everything lives in one folder, `~/NewSvanBot` (operator, 2026-11-25, V11-55): the scripts the
+  fleet runs, the cron line, the work. Keep no second checkout, and no scripts or tools anywhere
+  else. The folder stays on `main`, moved only by `git pull --ff-only`, and is never built in or
+  edited: the running supervisors read `scripts/`.
+- Work in a worktree under `.claude/worktrees/`, named after the ticket, and build there with
+  `CARGO_TARGET_DIR=target/dev`.
 - Run one build at a time at low priority, with
   `nice -n 15 ionice -c3 cargo … -j4`. Concurrent builds have OOM-killed the fleet.
 - The box runs v11 from `scripts/`, one supervisor (`svanbot-bot`, `scripts/bot.sh`) per bot,

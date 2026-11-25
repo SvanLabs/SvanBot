@@ -361,9 +361,10 @@ budget after every `mise run full`, and names each tree when it is over.
 ## From systemd to the scripts (once, the operator)
 
 Until V11-52 the fleet ran as systemd user units. The cutover is a fleet stop and a fleet start, so
-run it when a minute of play can be lost, with nothing else connected. Run it from a checkout of
-`main` that nobody edits, and do the cutover first: until a bot runs under its supervisor, the new
-`svanbot-release update` cannot swap it. Its start refuses a bot that another process still plays.
+run it when a minute of play can be lost, with nothing else connected. Run it from the main
+folder, `~/NewSvanBot`, on `main`, and do the cutover first: until a bot runs under its
+supervisor, the new `svanbot-release update` cannot swap it. Its start refuses a bot that another
+process still plays.
 
 ```sh
 deploy/install.sh <bundle>          # a bundle from V11-52 on installs svanbot-bot beside svanbot-release
