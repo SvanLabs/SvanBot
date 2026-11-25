@@ -6,10 +6,18 @@
 //! A deal is drawn from its own stream of the seed ([`Rng::stream`]), so the deals can be played
 //! in any order, on any number of threads, and add up the same.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Blinds, Chips};
 use svanbot_core::spot::{Act, Spot};
 use svanbot_sim::table::{Record, Seen, deal, play_observed};
+
+use crate::probe::{Decided, corrected};
+
+/// Draws from the current hand, shared by its decision maker and bout reader.
+pub type Draws = Rc<RefCell<Vec<Decided>>>;
 
 /// The challenger in a paired game. A bout can learn between deals while every rotation
 /// within one deal plays from the same read.
@@ -17,6 +25,11 @@ pub trait Challenger {
     fn decide(&self, spot: &Spot, seed: u64) -> Action;
     fn finished_hand(&self, _us: usize, _lines: &[Vec<Act>], _actions: &[Record]) {}
     fn finished_deal(&self) {}
+
+    /// Take and clear the draws used in the hand just played.
+    fn take_decided(&self) -> Vec<Decided> {
+        Vec::new()
+    }
 }
 
 impl<F: Fn(&Spot, u64) -> Action> Challenger for F {
@@ -100,7 +113,7 @@ pub fn duel_seen(
             },
             |lines, actions| challenger.finished_hand(seat, lines, actions),
         );
-        chips += won[seat];
+        chips += corrected(won[seat], &challenger.take_decided());
     }
     challenger.finished_deal();
     chips / (2.0 * game.blinds.big as f64)

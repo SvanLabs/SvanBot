@@ -51,3 +51,50 @@ fn a_style_with_no_rules_collects_none() {
     let policy = Policy::new(PolicyKind::Solving, &BARE, Params::DEFAULT);
     assert!(profile_stats(&policy, &Reads::default(), &[(1, "x")]).is_empty());
 }
+
+#[test]
+fn a_resolved_decision_notes_its_draw_and_a_priced_one_notes_none() {
+    use svanbot_core::{
+        rules::{Legal, RaiseRange},
+        spot::Spot,
+    };
+    use svanbot_learn::{
+        arena::BoutReader,
+        paired::{Challenger, Draws},
+        play::reading,
+    };
+
+    let draws = Draws::default();
+    let policy = Policy::reference(Params::DEFAULT);
+    let decide = reading(policy, Some(20), 2, Reads::deciding, Some(draws.clone()));
+    let reader = BoutReader::new(decide).with_draws(draws);
+    let mut spot = Spot {
+        hole: "AhKh".parse().unwrap(),
+        board: "QhJhTh".parse().unwrap(),
+        pot: 400,
+        legal: Legal {
+            call: Some(200),
+            raise: Some(RaiseRange {
+                min: 400,
+                max: 2000,
+            }),
+        },
+        opponents: 1,
+        stack: 2000,
+        callable_pot: None,
+        committed: 0,
+        big_blind: 20,
+        in_position: false,
+        players_behind: None,
+        lines: vec![],
+        seats: vec![],
+    };
+    reader.decide(&spot, 7);
+    let mut reported = reader.take_decided();
+    assert_eq!(reported.len(), 1);
+    assert!((reported.pop().unwrap().strategy.iter().sum::<f64>() - 1.0).abs() < 1e-12);
+    spot.board = "".parse().unwrap();
+    assert!(reader.take_decided().is_empty());
+    reader.decide(&spot, 7);
+    assert!(reader.take_decided().is_empty());
+}

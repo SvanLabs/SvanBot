@@ -98,3 +98,29 @@ fn the_verdict_is_the_mean_in_mbb_per_100_with_its_95_percent_interval() {
 fn super_verdict() -> svanbot_learn::paired::Verdict {
     verdict(&[1.0, 1.1, 0.9, 1.0])
 }
+
+#[test]
+fn a_draw_a_challenger_reports_has_its_term_taken_off_each_hand() {
+    use svanbot_learn::{
+        paired::{Challenger, duel_seen},
+        probe::Decided,
+    };
+
+    struct ReportsDraw;
+    impl Challenger for ReportsDraw {
+        fn decide(&self, _: &Spot, _: u64) -> Action {
+            Action::Fold
+        }
+        fn take_decided(&self) -> Vec<Decided> {
+            vec![Decided {
+                strategy: vec![0.5, 0.5],
+                values: vec![10.0, 0.0],
+                taken: 0,
+            }]
+        }
+    }
+    let opponent = |_, _: &Spot, _: &svanbot_sim::table::Seen, _| Action::Fold;
+    let base = duel_seen(&MATCH, 0, &folds, &opponent, || {});
+    let corrected = duel_seen(&MATCH, 0, &ReportsDraw, &opponent, || {});
+    assert_eq!(corrected - base, -10.0 / 40.0);
+}

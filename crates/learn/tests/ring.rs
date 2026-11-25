@@ -62,3 +62,26 @@ fn a_ring_repeats_for_its_seed_and_differs_by_its_number() {
     assert_eq!(first, again);
     assert!(first.windows(2).any(|pair| pair[0] != pair[1]), "{first:?}");
 }
+
+#[test]
+fn a_draw_is_taken_off_each_rotation() {
+    use svanbot_learn::{paired::Challenger, probe::Decided, ring::ring_seen};
+
+    struct ReportsDraw;
+    impl Challenger for ReportsDraw {
+        fn decide(&self, _: &Spot, _: u64) -> Action {
+            Action::Fold
+        }
+        fn take_decided(&self) -> Vec<Decided> {
+            vec![Decided {
+                strategy: vec![0.5, 0.5],
+                values: vec![10.0, 0.0],
+                taken: 0,
+            }]
+        }
+    }
+    let opponent = |_, _: &Spot, _: &svanbot_sim::table::Seen, _| Action::Fold;
+    let base = ring_seen(&MATCH, 3, 0, &folds, &opponent, |_| {});
+    let corrected = ring_seen(&MATCH, 3, 0, &ReportsDraw, &opponent, |_| {});
+    assert_eq!(corrected - base, -15.0 / 60.0);
+}

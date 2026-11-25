@@ -62,7 +62,7 @@ pub(crate) fn reading_policy(
     seats: usize,
     take: Take,
 ) -> impl Fn(&Spot, u64, &Reads) -> Action + '_ {
-    play::reading(Policy::reference(*params), fixed, seats, take)
+    play::reading_untracked(Policy::reference(*params), fixed, seats, take)
 }
 
 /// The pricer, as a decider.
