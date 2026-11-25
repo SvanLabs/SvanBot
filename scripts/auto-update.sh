@@ -38,6 +38,13 @@ if ! flock -n 8; then
     exit 0
 fi
 
+# A rollout by hand holds the fleet's update lock while it swaps a bot. Leave it to finish: an update
+# started on top of it is refused, and that refusal is not a bad release.
+if ! (flock -n 9) 9>>"$tree/update.lock"; then
+    log "an update is in progress; trying again next time"
+    exit 0
+fi
+
 # The build each running bot runs, from /proc. A bot that is down has none, and is left alone: it
 # starts on `current`, which the next rollout points at the newest build.
 shopt -s nullglob

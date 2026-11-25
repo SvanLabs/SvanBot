@@ -166,7 +166,8 @@ swaps first and must hold, then the rest follow in the same run. The Arena stage
 pushed, is unchanged.
 
 A release that installed but did not take is left alone for six hours, and a newer one is tried at
-once. One that could not be installed is tried again at the next run. The outcome is in
+once. One that could not be installed is tried again at the next run, and so is any run that finds
+a rollout by hand holding the update lock. The outcome is in
 `~/.local/state/svanbot/cron.log`. To hold an older build on purpose, after a
 `svanbot-release rollback` for one, pause it, and resume by removing the file:
 

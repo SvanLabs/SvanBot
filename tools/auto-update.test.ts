@@ -30,6 +30,8 @@ type Options = {
   state?: Record<string, string>;
   /** Another auto-update holds the lock while this one starts. */
   locked?: boolean;
+  /** A rollout by hand holds the fleet's update lock while this one starts. */
+  updating?: boolean;
 };
 
 function autoUpdate(options: Options = {}) {
@@ -112,7 +114,11 @@ exit "\${SVANBOT_TEST_UPDATE_EXIT:-0}"
       writeFileSync(join(state, file), text);
     }
 
-    const held = options.locked ? ["flock", join(state, "auto-update.lock")] : [];
+    const held = options.locked
+      ? ["flock", join(state, "auto-update.lock")]
+      : options.updating
+        ? ["flock", join(lib, "update.lock")]
+        : [];
     const result = Bun.spawnSync(
       [...held, "bash", join(import.meta.dir, "../scripts/auto-update.sh")],
       {
@@ -239,4 +245,12 @@ test("a second auto-update while one runs does nothing", () => {
   expect(ran.code).toBe(0);
   expect(ran.calls).toEqual([]);
   expect(ran.out).toContain("already running");
+});
+
+test("while a rollout by hand holds the update lock, it waits and records no failure", () => {
+  const ran = autoUpdate({ updating: true, update: 1 });
+  expect(ran.code).toBe(0);
+  expect(ran.calls).toEqual([]);
+  expect(ran.out).toContain("update is in progress");
+  expect(ran.state("auto-update.failed")).toBeNull();
 });
