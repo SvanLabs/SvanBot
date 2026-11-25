@@ -124,6 +124,10 @@ a home-made TLS would be a risk: ask the operator before you add to that list or
   swap bots with `scripts/` and `svanbot-bot` (operator, 2026-11-25, V11-54). Never start a bot with
   a fleet bot's key while another connection plays it: the new connection takes over that bot's
   live session.
+- Every bot runs the newest release (operator, 2026-11-25, V11-56): cron runs
+  `scripts/auto-update.sh` every half hour. To hold an older build on purpose, for example after a
+  `svanbot-release rollback`, `touch ~/.local/state/svanbot/auto-update.pause`; remove the file to
+  resume.
 - A test of a fleet script puts a refusing `systemctl` first on its PATH, and stubs every tool the
   script runs. A red run once ran the old `stop.sh` against the real fleet and stopped every bot.
 - The repo is public. Keys, `.env` contents, opponent data and store contents stay out of it: out

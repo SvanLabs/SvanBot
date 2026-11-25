@@ -8,6 +8,7 @@ the home of the user the fleet runs as.
 | `scripts/bot.sh` | The supervisor, installed as `svanbot-bot`: it keeps one bot, the dashboard or the learner running. |
 | `scripts/start.sh`, `scripts/stop.sh` | Start or stop the whole fleet: every configured bot, the dashboard and the learner. |
 | `scripts/update.sh` | Roll a release out, canary first, then every other bot. |
+| `scripts/auto-update.sh` | Cron runs it every half hour: a running bot on an older build than the newest release gets it, through `update.sh`. |
 | `scripts/clean.sh` | `cargo sweep` of the dev clone's `target/dev`: build output untouched for 14 days. |
 | `deploy/install.sh` | Stages and verifies a release bundle on a box with no toolchain. |
 
@@ -137,7 +138,43 @@ SVANBOT_NAME=<name> svanbot-release update --fleet
 4. It stops at the first bot that does not take the build, a rollback included, and exits 1.
 5. It restarts the dashboard if it runs, onto the new build.
 
-`--canary-only` stops after the canary, for a canary window before the fleet.
+`--canary-only` stops after the canary, for a canary window before the fleet. `--running-only`
+leaves a bot that is not running alone, where a swap would start it: it is what `auto-update.sh`
+uses.
+
+### Always the newest release
+
+The operator's rule (2026-11-25, V11-56): every bot runs the newest release, and
+`scripts/auto-update.sh` keeps it so. Cron runs it every half hour:
+
+```sh
+( crontab -l 2>/dev/null
+  echo "*/30 * * * * $HOME/NewSvanBot/scripts/auto-update.sh >> $HOME/.local/state/svanbot/cron.log 2>&1"
+) | crontab -
+```
+
+Each run:
+1. Reads the build each running bot runs. A bot that is down is left alone: it starts on `current`,
+   which a rollout points at the newest build. With nothing running, there is nothing to do.
+2. Asks GitHub for the newest release as the App: `GH_TOKEN` comes from
+   `~/.config/svanbot/app-token.sh`, never from the operator's own `gh` login.
+3. When any running bot is on an older build, runs `scripts/update.sh --running-only <version>`:
+   the canary first, then the others one at a time, and a rollback for a bot that does not come up.
+
+The canary's window in [the ship bar](#the-ship-bar) no longer holds the fleet back: the canary
+swaps first and must hold, then the rest follow in the same run. The Arena stage, before a tag is
+pushed, is unchanged.
+
+A release that installed but did not take is left alone for six hours, and a newer one is tried at
+once. One that could not be installed is tried again at the next run, and so is any run that finds
+a rollout by hand holding the update lock. The outcome is in
+`~/.local/state/svanbot/cron.log`. To hold an older build on purpose, after a
+`svanbot-release rollback` for one, pause it, and resume by removing the file:
+
+```sh
+touch ~/.local/state/svanbot/auto-update.pause
+rm ~/.local/state/svanbot/auto-update.pause
+```
 
 ```sh
 scripts/update.sh 11.1.7                 # install if needed, canary, then the fleet

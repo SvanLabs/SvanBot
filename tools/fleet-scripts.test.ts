@@ -90,7 +90,13 @@ test("stop brings down the learner, every bot with a pid file, then the dashboar
  */
 function update(
   args: string[],
-  options: { installed?: boolean; rollback?: string; dashboard?: boolean } = {},
+  options: {
+    installed?: boolean;
+    rollback?: string;
+    dashboard?: boolean;
+    running?: string[];
+    token?: string;
+  } = {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-update-"));
   guard(dir);
@@ -108,6 +114,8 @@ function update(
     stub(
       "svanbot-release",
       `printf 'svanbot-release name=%s canary=%s %s\\n' "\${SVANBOT_NAME:-}" "\${SVANBOT_CANARY:-}" "$*" >> "$SVANBOT_TEST_CALLS"
+# What this starts lives on as a supervisor: the cron job's App token must not be in its environment.
+[[ -n "\${SVANBOT_GH_TOKEN:-}\${GH_TOKEN:-}" ]] && echo 'LEAKED the token to svanbot-release' >> "$SVANBOT_TEST_CALLS"
 if [[ $1 == update ]]; then
     bot=\${SVANBOT_NAME:-$SVANBOT_CANARY}
     [[ $2 == --fleet ]] || bot=$SVANBOT_CANARY
@@ -122,14 +130,17 @@ fi
     stub(
       "svanbot-bot",
       `printf 'svanbot-bot %s\\n' "$*" >> "$SVANBOT_TEST_CALLS"
-[[ $1 == pid ]] && exit 3
+if [[ $1 == pid ]]; then
+    [[ " \${SVANBOT_TEST_RUNNING:-} " == *" $2 "* ]] && { echo $$; exit 0; }
+    exit 3
+fi
 [[ $1 == status ]] && exit "\${SVANBOT_TEST_DASHBOARD:-3}"
 exit 0
 `,
     );
     stub(
       "gh",
-      `printf 'gh %s\\n' "$*" >> "$SVANBOT_TEST_CALLS"
+      `printf 'gh %s%s\\n' "$*" "\${GH_TOKEN:+ token=$GH_TOKEN}" >> "$SVANBOT_TEST_CALLS"
 while (($#)); do [[ $1 == --dir ]] && touch "$2/svanbot-11.1.7-x86-64-v2.tar.gz"; shift; done
 `,
     );
@@ -145,6 +156,9 @@ while (($#)); do [[ $1 == --dir ]] && touch "$2/svanbot-11.1.7-x86-64-v2.tar.gz"
         SVANBOT_TEST_CALLS: calls,
         SVANBOT_TEST_ROLLBACK: options.rollback ?? "",
         SVANBOT_TEST_DASHBOARD: options.dashboard ? "0" : "3",
+        SVANBOT_TEST_RUNNING: (options.running ?? []).join(" "),
+        GH_TOKEN: "",
+        SVANBOT_GH_TOKEN: options.token ?? "",
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -186,6 +200,25 @@ test("an installed release is not downloaded again, and --canary-only stops at t
   expect(ran.code).toBe(0);
   expect(ran.calls).toEqual(["svanbot-release name=Second canary=Second update 11.1.7"]);
   expect(ran.out).toContain("--fleet");
+});
+
+test("the App's token reaches the download, and nothing the script starts afterwards", () => {
+  const ran = update(["11.1.7"], { token: "app-token" });
+  expect(ran.code).toBe(0);
+  expect(ran.calls[0]).toMatch(/^gh release download v11\.1\.7 .* token=app-token$/);
+  expect(ran.calls.filter((call) => call.startsWith("LEAKED"))).toEqual([]);
+});
+
+test("--running-only swaps the bots that run and leaves a stopped one alone", () => {
+  const ran = update(["--running-only", "11.1.7"], { installed: true, running: ["First"] });
+  expect(ran.code).toBe(0);
+  // Second is the canary and is down: nothing starts it, and the fleet swap still goes ahead.
+  expect(ran.calls).toEqual([
+    "svanbot-release name=First canary= update --fleet 11.1.7",
+    "svanbot-bot status dashboard",
+  ]);
+  expect(ran.out).toContain("Second is not running");
+  expect(ran.out).toContain("Every running bot runs 11.1.7");
 });
 
 test("a swap that is rolled back stops the rollout there and says so", () => {
