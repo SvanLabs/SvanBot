@@ -263,6 +263,16 @@ pub(crate) fn report(
     let board: Vec<Row> = rows.iter().map(|(row, _)| row.clone()).collect();
     println!("{} league", league.name());
     print!("{}", scoreboard(&board));
+    measurement(league, champion, seed, fixed, rows)
+}
+
+pub(crate) fn measurement(
+    league: League,
+    champion: String,
+    seed: u64,
+    fixed: Option<u64>,
+    rows: Vec<(Row, Vec<f64>)>,
+) -> ArenaRun {
     // A local run has no commit, and is kept as such: `record_arena` tells two of them apart by
     // their own numbers, since there is no commit to play them again from.
     let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| ArenaRun::LOCAL_COMMIT.into());
