@@ -4,11 +4,20 @@ use svanbot_core::card::{CardSet, Rank, Suit};
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Chips, Legal, Street};
 use svanbot_core::spot::Spot;
+use svanbot_sim::equity::sampled;
 
 use crate::preflop::{self, Position};
+use crate::pricer::uniform_range;
+
+/// Deals sampled for [`Facts::equity`] after the flop.
+const EQUITY_SAMPLES: u64 = 256;
+
+/// The stream of a decision's seed that [`Facts::equity`] draws from: a rule's own streams are
+/// small numbers, so this one never moves them.
+const EQUITY_STREAM: u64 = u64::MAX;
 
 /// The profile used in live play and the Arena.
-pub const ACTIVE: Profile<'static> = Profile::new(&[]);
+pub const ACTIVE: Profile<'static> = Profile::new(&crate::first_profile::RULES);
 
 /// One rule. The action is evaluated only when its condition matches.
 pub struct Rule {
@@ -132,6 +141,20 @@ impl Facts<'_> {
         (self.spot.hole.len() == 2).then(|| preflop::class_of(self.spot.hole))
     }
 
+    /// The hand's equity against one opponent holding any two cards: the preflop table before the
+    /// flop, and [`EQUITY_SAMPLES`] seeded deals after it. The draw is the decision's own, so the
+    /// same spot gives the same number.
+    pub fn equity(&self) -> f64 {
+        match self.starting_hand_class() {
+            Some(class) if self.board().is_empty() => preflop::equity(class, 1),
+            _ => {
+                let range = uniform_range(self.hole() | self.board());
+                let seed = Rng::stream(self.seed, EQUITY_STREAM).next_u64();
+                sampled(self.hole(), &[&range], self.board(), EQUITY_SAMPLES, seed)
+            }
+        }
+    }
+
     pub fn position(&self) -> Option<Position> {
         (self.street() == Street::Preflop).then_some(Position {
             behind: self.players_behind()?,
@@ -180,6 +203,20 @@ impl Facts<'_> {
 
     pub fn opponents(&self) -> &[SeatedStats] {
         self.opponents
+    }
+
+    /// What the bot has read of the one opponent left in the hand, when exactly one is. A spot
+    /// that names its seats finds the read by seat; one that names none, a sim's own table, has
+    /// only the one read it was given.
+    pub fn sole_opponent(&self) -> Option<OpponentStats> {
+        if self.spot.opponents != 1 {
+            return None;
+        }
+        match (self.spot.seats.as_slice(), self.opponents) {
+            ([seat], _) => self.opponent(*seat),
+            ([], [only]) => Some(only.stats),
+            _ => None,
+        }
     }
 
     fn in_big_blinds(&self, chips: Chips) -> Option<f64> {

@@ -10,6 +10,7 @@
 //! network, no store, no clock, and the same result for the same inputs.
 
 pub mod action;
+pub mod first_profile;
 pub mod params;
 pub mod policy;
 pub mod preflop;
