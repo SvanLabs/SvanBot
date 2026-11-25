@@ -66,7 +66,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use svanbot::live::{self, Live};
+use svanbot::live_policy::LivePolicy;
 use svanbot::now_ms;
+use svanbot_learn::play::profile_stats;
 use svanbot_learn::probe::Decided;
 use svanbot_learn::reads::Reads;
 use svanbot_runtime::client::{
@@ -79,9 +81,7 @@ use svanbot_runtime::probing::Probing;
 use svanbot_runtime::status::{Play, Status, status_path};
 use svanbot_runtime::store::Store;
 use svanbot_strategy::action::ActionModel;
-use svanbot_strategy::policy::decide_profile;
 use svanbot_strategy::pricer::Budget;
-use svanbot_strategy::profile::ACTIVE;
 use svanbot_strategy::resolve::iterations_for;
 
 /// Deals sampled per decision: a small cost next to the 45 s action clock. `/measure` will size it.
@@ -183,8 +183,10 @@ fn main() -> ExitCode {
     );
     let baseline = ActionModel::baseline();
     let canary = std::env::var("SVANBOT_CANARY").is_ok_and(|name| name == config.me);
-    let (probing, notes) = Probing::open(&store, Fleet::in_dir(fleet_dir()), canary, now_ms());
-    for note in notes {
+    let fleet = Fleet::in_dir(fleet_dir());
+    let (probing, notes) = Probing::open(&store, fleet.clone(), canary, now_ms());
+    let (policies, policy_notes) = LivePolicy::open(fleet, &config.me);
+    for note in notes.into_iter().chain(policy_notes) {
         eprintln!("svanbot: {note}");
     }
     eprintln!(
@@ -229,16 +231,10 @@ fn main() -> ExitCode {
                 let population = model.as_ref().unwrap_or(&baseline);
                 let reads = reads.borrow();
                 let personal = reads.deciding(&named, population, params.exploit);
-                let stats = deciders::active_profile_stats(&reads, &named);
-                let decision = decide_profile(
-                    spot,
-                    model.as_ref(),
-                    &personal,
-                    &params,
-                    budget,
-                    iterations,
-                    ACTIVE.with_opponents(&stats),
-                );
+                let policy = policies.policy(params);
+                let stats = profile_stats(&policy, &reads, &named);
+                let decision =
+                    policy.decide(spot, model.as_ref(), &personal, budget, iterations, &stats);
                 if let Some(drawn) = &decision.drawn {
                     probing.borrow_mut().decided(Decided {
                         strategy: drawn.strategy.clone(),
@@ -251,6 +247,7 @@ fn main() -> ExitCode {
                 decision
             },
             |event| {
+                let finished_hand = matches!(&event, Event::Hand(_));
                 keep(
                     &store,
                     &probing,
@@ -259,6 +256,9 @@ fn main() -> ExitCode {
                     &config.me,
                     event,
                 );
+                if finished_hand && let Some(note) = policies.refresh() {
+                    eprintln!("svanbot: {note}");
+                }
             },
             &stop,
         );

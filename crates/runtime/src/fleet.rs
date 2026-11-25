@@ -26,6 +26,8 @@ use svanbot_strategy::params::{Digest, Params};
 
 use crate::health::write_atomically;
 
+mod policies;
+pub use policies::Assignment;
 mod search;
 
 pub use search::{SEARCH_KEPT, SearchLog};

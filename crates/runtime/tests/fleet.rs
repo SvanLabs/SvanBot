@@ -400,3 +400,65 @@ fn new_arena_evidence_can_be_written_alongside_a_pre_champion_run() {
     assert_eq!(legacy.commit, "legacy");
     assert_eq!(legacy.as_value()["champion"], serde_json::Value::Null);
 }
+
+fn tight() -> svanbot_runtime::fleet::Assignment {
+    use svanbot_strategy::{kind::PolicyKind, style::TIGHT};
+    svanbot_runtime::fleet::Assignment {
+        kind: PolicyKind::Solving,
+        style: &TIGHT,
+    }
+}
+
+#[test]
+fn no_file_and_no_entry_are_both_no_assignment() {
+    let fleet = Fleet::in_dir(scratch("no-assignment"));
+    assert_eq!(fleet.assignment("Svanar").unwrap(), None);
+    fleet.assign("Other", tight(), 1).unwrap();
+    assert_eq!(fleet.assignment("Svanar").unwrap(), None);
+}
+
+#[test]
+fn an_assignment_is_kept_and_read_back_by_the_exact_name_only() {
+    let fleet = Fleet::in_dir(scratch("exact-assignment"));
+    fleet.assign("Svanar", tight(), 1).unwrap();
+    assert_eq!(fleet.assignment("Svanar").unwrap(), Some(tight()));
+    assert_eq!(fleet.assignment("svanar").unwrap(), None);
+    assert_eq!(fleet.assignment("Other").unwrap(), None);
+}
+
+#[test]
+fn reverting_removes_the_entry_and_the_file_with_the_last_one() {
+    let dir = scratch("revert-assignment");
+    let fleet = Fleet::in_dir(&dir);
+    fleet.assign("A", tight(), 1).unwrap();
+    fleet.assign("B", tight(), 2).unwrap();
+    assert!(fleet.revert("A").unwrap());
+    assert!(!fleet.revert("A").unwrap());
+    assert!(dir.join("plays.json").exists());
+    assert!(fleet.revert("B").unwrap());
+    assert!(!dir.join("plays.json").exists());
+}
+
+#[test]
+fn a_file_that_names_an_unknown_style_or_kind_is_refused_with_the_name() {
+    let dir = scratch("bad-assignment");
+    std::fs::create_dir_all(&dir).unwrap();
+    let fleet = Fleet::in_dir(&dir);
+    for (kind, style) in [("nope", "tight"), ("solving", "nope")] {
+        let value = serde_json::json!({"bots":{"A":{"kind":kind,"style":style,"since_ms":1}}});
+        std::fs::write(dir.join("plays.json"), value.to_string()).unwrap();
+        assert!(fleet.assignment("A").unwrap_err().contains("nope"));
+        assert!(fleet.assignments().unwrap_err().contains("nope"));
+    }
+}
+
+#[test]
+fn assignments_are_listed_by_bot_with_the_hour_they_began() {
+    let fleet = Fleet::in_dir(scratch("assignment-order"));
+    fleet.assign("B", tight(), 2).unwrap();
+    fleet.assign("A", tight(), 3).unwrap();
+    assert_eq!(
+        fleet.assignments().unwrap(),
+        [("A".into(), tight(), 3), ("B".into(), tight(), 2)]
+    );
+}

@@ -11,7 +11,6 @@ use svanbot_learn::reads::Reads;
 use svanbot_strategy::params::Params;
 use svanbot_strategy::policy::{self, Policy};
 use svanbot_strategy::pricer::{self, Budget};
-use svanbot_strategy::profile::{ACTIVE, SeatedStats};
 use svanbot_strategy::resolve::iterations_for;
 
 /// The game both sims play, from `seed`: ten-twenty blinds, a hundred big blinds deep.
@@ -64,15 +63,6 @@ pub(crate) fn reading_policy(
     take: Take,
 ) -> impl Fn(&Spot, u64, &Reads) -> Action + '_ {
     play::reading(Policy::reference(*params), fixed, seats, take)
-}
-
-/// Qualified stats are only consulted when a compiled profile can use them.
-pub(crate) fn active_profile_stats(reads: &Reads, named: &[(usize, &str)]) -> Vec<SeatedStats> {
-    if ACTIVE.is_empty() {
-        Vec::new()
-    } else {
-        reads.profile_stats(named)
-    }
 }
 
 /// The pricer, as a decider.
