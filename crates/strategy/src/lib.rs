@@ -11,6 +11,7 @@
 
 pub mod action;
 pub mod first_profile;
+pub mod kind;
 pub mod params;
 pub mod policy;
 pub mod preflop;
@@ -18,3 +19,4 @@ pub mod pricer;
 pub mod profile;
 pub mod read;
 pub mod resolve;
+pub mod style;
