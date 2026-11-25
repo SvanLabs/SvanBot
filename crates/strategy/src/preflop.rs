@@ -173,10 +173,20 @@ impl Position {
             _ => 0.15,
         }
     }
+
+    /// The opening share at this width, capped at every hand.
+    pub fn share_at(self, scale: f64) -> f64 {
+        (self.share() * scale).min(1.0)
+    }
 }
 
 /// Whether `position` opens an unopened pot with `class`: its rank against the players behind is
 /// within the position's share.
 pub fn opens(class: usize, position: Position) -> bool {
-    ranks()[position.behind.clamp(1, MOST) - 1][class.min(CLASSES - 1)] < position.share()
+    opens_at(class, position, 1.0)
+}
+
+/// Whether the position opens this class with the scaled opening share.
+pub fn opens_at(class: usize, position: Position, scale: f64) -> bool {
+    ranks()[position.behind.clamp(1, MOST) - 1][class.min(CLASSES - 1)] < position.share_at(scale)
 }

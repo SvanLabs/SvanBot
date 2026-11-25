@@ -380,3 +380,27 @@ fn a_big_river_bet_from_a_player_who_bets_big_only_when_strong_folds_top_pair() 
     assert_eq!(decide(&spot, None, BUDGET).action, Action::Call);
     assert_eq!(decide(&spot, Some(&polar), BUDGET).action, Action::Fold);
 }
+
+#[test]
+fn a_hand_on_the_edge_of_the_range_opens_only_when_the_width_grows() {
+    use svanbot_strategy::preflop::{self, Position};
+    use svanbot_strategy::pricer::{price_lines, price_lines_at};
+
+    let position = Position {
+        behind: 5,
+        in_position: false,
+    };
+    let class = (0..preflop::CLASSES)
+        .find(|&class| !preflop::opens(class, position) && preflop::opens_at(class, position, 1.25))
+        .expect("a wider range should open at least one more class");
+    let mut at = spot("AhKs", "", 30, facing(20, Some((40, 2000))), 5);
+    at.hole = preflop::example(class);
+    at.lines = vec![vec![]; 5];
+
+    assert_eq!(price_lines(&at, &[], BUDGET).action, Action::Fold);
+    assert_eq!(price_lines_at(&at, &[], BUDGET, 1.0).action, Action::Fold);
+    assert_eq!(
+        price_lines_at(&at, &[], BUDGET, 1.25).action,
+        Action::RaiseTo(50)
+    );
+}
