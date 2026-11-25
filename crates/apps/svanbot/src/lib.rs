@@ -11,6 +11,7 @@
 pub mod dashboard;
 pub mod learn;
 pub mod live;
+pub mod live_policy;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
