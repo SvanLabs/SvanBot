@@ -87,8 +87,16 @@ pub(crate) fn play_bout(
     fixed: Option<u64>,
 ) -> Vec<f64> {
     let seats = league.seats();
-    let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, Reads::deciding, None))
-        .with_profile_stats(!policy.style.profile.is_empty());
+    let draws = svanbot_learn::paired::Draws::default();
+    let challenger = &BoutReader::new(play::reading(
+        *policy,
+        fixed,
+        seats,
+        Reads::deciding,
+        Some(draws.clone()),
+    ))
+    .with_profile_stats(!policy.style.profile.is_empty())
+    .with_draws(draws);
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;
     // Heads up is the mirrored duel; every bigger table is the ring at its own size.
