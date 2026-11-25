@@ -1,0 +1,113 @@
+//! Simulation deciders for a policy and a stablemate.
+
+use svanbot_core::rules::Action;
+use svanbot_core::spot::Spot;
+use svanbot_strategy::action::ActionModel;
+use svanbot_strategy::policy::{Personal, Policy};
+use svanbot_strategy::pricer::Budget;
+use svanbot_strategy::profile::SeatedStats;
+use svanbot_strategy::resolve::iterations_for;
+
+use crate::arena::opponent_name;
+use crate::paired::{Challenger, Match, duel_seen};
+use crate::reads::Reads;
+use crate::ring::ring_seen;
+
+pub const SAMPLES: u64 = 2_000;
+pub const STABLEMATE: &str = "stablemate ";
+
+pub type Take = fn(&Reads, &[(usize, &str)], &ActionModel, f64) -> Vec<Personal>;
+
+/// A decider reading the named opponents through the supplied read policy.
+pub fn reading(
+    policy: Policy,
+    fixed: Option<u64>,
+    seats: usize,
+    take: Take,
+) -> impl Fn(&Spot, u64, &Reads) -> Action {
+    let names: Vec<_> = (0..seats).map(|seat| opponent_name(seats, seat)).collect();
+    let baseline = ActionModel::baseline();
+    move |spot, seed, reads| {
+        let named: Vec<_> = spot
+            .seats
+            .iter()
+            .map(|&seat| (seat, names[seat].as_str()))
+            .collect();
+        let personal = take(reads, &named, &baseline, policy.params.exploit);
+        let stats = profile_stats(&policy, reads, &named);
+        let budget = Budget {
+            samples: SAMPLES,
+            seed,
+        };
+        policy
+            .decide(
+                spot,
+                None,
+                &personal,
+                budget,
+                iterations(spot, fixed),
+                &stats,
+            )
+            .action
+    }
+}
+
+/// A stablemate plays the policy without opponent reads.
+pub fn player(policy: Policy, fixed: Option<u64>) -> impl Fn(&Spot, u64) -> Action {
+    move |spot, seed| {
+        let budget = Budget {
+            samples: SAMPLES,
+            seed,
+        };
+        policy
+            .decide(spot, None, &[], budget, iterations(spot, fixed), &[])
+            .action
+    }
+}
+
+fn iterations(spot: &Spot, fixed: Option<u64>) -> u32 {
+    match fixed {
+        Some(fixed) => u32::try_from(fixed).unwrap_or(u32::MAX),
+        None => iterations_for(spot.pot, spot.big_blind, spot.board.len()),
+    }
+}
+
+pub fn profile_stats(policy: &Policy, reads: &Reads, named: &[(usize, &str)]) -> Vec<SeatedStats> {
+    if policy.style.profile.is_empty() {
+        Vec::new()
+    } else {
+        reads.profile_stats(named)
+    }
+}
+
+pub fn rival_duel(
+    game: &Match,
+    deal: u64,
+    challenger: &impl Challenger,
+    rival: &impl Fn(&Spot, u64) -> Action,
+) -> f64 {
+    duel_seen(
+        game,
+        deal,
+        challenger,
+        &|_, spot, _, seed| rival(spot, seed),
+        || {},
+    )
+}
+
+pub fn rival_ring_at(
+    game: &Match,
+    seats: usize,
+    deal: u64,
+    challenger: &impl Challenger,
+    rival: &impl Fn(&Spot, u64) -> Action,
+) -> f64 {
+    ring_seen(
+        game,
+        seats,
+        deal,
+        challenger,
+        &|_, spot, _, seed| rival(spot, seed),
+        |_| {},
+    )
+}

@@ -4,18 +4,15 @@
 
 use svanbot_core::rules::{Action, Blinds};
 use svanbot_core::spot::Spot;
-use svanbot_learn::arena::opponent_name;
 use svanbot_learn::paired::Match;
+pub(crate) use svanbot_learn::play::SAMPLES;
+use svanbot_learn::play::{self, Take};
 use svanbot_learn::reads::Reads;
-use svanbot_strategy::action::ActionModel;
 use svanbot_strategy::params::Params;
-use svanbot_strategy::policy::{self, Personal};
+use svanbot_strategy::policy::{self, Policy};
 use svanbot_strategy::pricer::{self, Budget};
 use svanbot_strategy::profile::{ACTIVE, SeatedStats};
 use svanbot_strategy::resolve::iterations_for;
-
-/// Deals sampled by the pricer per decision in a sim.
-pub(crate) const SAMPLES: u64 = 2_000;
 
 /// The game both sims play, from `seed`: ten-twenty blinds, a hundred big blinds deep.
 pub(crate) fn game(seed: u64) -> Match {
@@ -45,10 +42,6 @@ pub(crate) fn challenger(
     }
 }
 
-/// How a decision takes its reads of the seats it names: [`Reads::deciding`] or
-/// [`Reads::personal`].
-pub(crate) type Take = fn(&Reads, &[(usize, &str)], &ActionModel, f64) -> Vec<Personal>;
-
 /// [`challenger`] reading the sim's opponent by `reads`, as live play reads each opponent by
 /// theirs. Heads up the villain follows the challenger through the mirror.
 pub(crate) fn reader<'a>(
@@ -70,35 +63,7 @@ pub(crate) fn reading_policy(
     seats: usize,
     take: Take,
 ) -> impl Fn(&Spot, u64, &Reads) -> Action + '_ {
-    let names: Vec<_> = (0..seats).map(|seat| opponent_name(seats, seat)).collect();
-    let baseline = ActionModel::baseline();
-    move |spot, seed, reads| {
-        let iterations = match fixed {
-            Some(fixed) => u32::try_from(fixed).unwrap_or(u32::MAX),
-            None => iterations_for(spot.pot, spot.big_blind, spot.board.len()),
-        };
-        let budget = Budget {
-            samples: SAMPLES,
-            seed,
-        };
-        let named: Vec<(usize, &str)> = spot
-            .seats
-            .iter()
-            .map(|&seat| (seat, names[seat].as_str()))
-            .collect();
-        let personal = take(reads, &named, &baseline, params.exploit);
-        let stats = active_profile_stats(reads, &named);
-        policy::decide_profile(
-            spot,
-            None,
-            &personal,
-            params,
-            budget,
-            iterations,
-            ACTIVE.with_opponents(&stats),
-        )
-        .action
-    }
+    play::reading(Policy::reference(*params), fixed, seats, take)
 }
 
 /// Qualified stats are only consulted when a compiled profile can use them.

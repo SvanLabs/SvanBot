@@ -16,6 +16,7 @@ pub mod exploit;
 pub mod fit;
 pub mod margin;
 pub mod paired;
+pub mod play;
 pub mod prior;
 pub mod probe;
 pub mod profile;
