@@ -11,7 +11,7 @@ use svanbot_strategy::{
 
 pub mod guard;
 mod judge;
-pub use judge::judge;
+pub use judge::{check_bar, check_readings, judge};
 
 pub fn assign(
     fleet: &Fleet,

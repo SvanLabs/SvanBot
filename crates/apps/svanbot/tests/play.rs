@@ -333,3 +333,46 @@ mod guard {
         assert!(fleet.assignment("B").unwrap().is_some());
     }
 }
+
+mod sequential {
+    use super::{ArenaRun, League, run};
+    use svanbot::play::check_bar;
+    use svanbot_learn::margin::MARGIN;
+    use svanbot_runtime::ship::Bar;
+
+    fn comparison(bouts: usize, heads: f64, six: f64) -> [ArenaRun; 4] {
+        let mut runs = [run([0.; 3]), run([heads; 3]), run([0.; 3]), run([six; 3])];
+        for (index, measured) in runs.iter_mut().enumerate() {
+            if index >= 2 {
+                measured.league = League::SixMax;
+            }
+            for row in &mut measured.rows {
+                row.bouts.truncate(bouts);
+            }
+        }
+        runs
+    }
+
+    #[test]
+    fn a_check_reads_nothing_on_fewer_than_thirty_bouts() {
+        assert_eq!(check_bar(&comparison(29, -20., -20.), MARGIN), Bar::Open);
+    }
+
+    #[test]
+    fn a_check_refuses_the_moment_a_league_is_refused() {
+        assert!(matches!(
+            check_bar(&comparison(60, 0., -20.), MARGIN),
+            Bar::Refused(_)
+        ));
+    }
+
+    #[test]
+    fn a_check_clears_only_when_both_leagues_are_admitted() {
+        let mut runs = comparison(60, 0., 0.);
+        assert_eq!(check_bar(&runs, MARGIN), Bar::Clears);
+        for row in &mut runs[3].rows {
+            row.bouts = [100., -100.].repeat(30);
+        }
+        assert_eq!(check_bar(&runs, MARGIN), Bar::Open);
+    }
+}
