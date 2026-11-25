@@ -14,6 +14,7 @@ A decision that changes gets a new record, not an edit.
 | [0002](adr/0002-v11-from-scratch.md) | v11 is written from scratch on its own history |
 | [0003](adr/0003-crate-graph.md) | Six layers, one crate per layer, checked by machine |
 | [0004](adr/0004-reads-are-per-bot.md) | Reads are per bot, and so is the store |
+| [0005](adr/0005-a-bots-policy-is-its-own.md) | A bot's policy is its own |
 
 ## Research: `research/2026-11/`
 
@@ -32,6 +33,17 @@ says what each one settled.
 | [07](research/2026-11/07-dashboard-agentic-docs.md) | The dashboard and the agentic docs |
 | [08](research/2026-11/08-headline-measurement.md) | How the headline is measured |
 | [09](research/2026-11/09-what-a-gate-can-trust.md) | What a gate can trust |
+
+## Designs and plans: `superpowers/`
+
+The design of a program of work and the plans that carry it out, each dated, for work with a map on
+GitHub.
+
+| Document | Subject |
+|---|---|
+| [Five brains](superpowers/specs/2026-11-25-five-brains-design.md) | The design of the map V11-59: a policy of its own for each bot |
+| [Phase 1, the tracer](superpowers/plans/2026-11-25-per-bot-policy-phase-1-tracer.md) | The plan for its first slice |
+| [Phase 0, measurement](superpowers/plans/2026-11-25-per-bot-policy-phase-0-measurement.md) | The plan for sharper measurement |
 
 ## The agents' configuration: `agents/`
 

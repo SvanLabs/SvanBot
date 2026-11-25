@@ -175,8 +175,26 @@ _Avoid_: dummy, test bot, persona
 ### Deciding
 
 **Policy**:
-How a bot chooses a decision at any spot: the chance of each action, sizes included.
-_Avoid_: strategy (for one bot's rules), brain
+How a bot chooses a decision at any spot: the chance of each action, sizes included. It is a kind,
+a style and a parameter set, and a designed one is a brain: Anchor, Hunter, Grinder, Gambler and
+Chameleon are the five planned.
+_Avoid_: strategy (for one bot's rules)
+
+**Policy kind**:
+One of the compiled ways a policy chooses. `solving` is today's: the profile, then the re-solve,
+then the pricer. `pricing` never re-solves.
+_Avoid_: engine, mode
+
+**Style**:
+A named, designed way of playing. It pins some of the numbers a policy plays by and names the
+profile it plays with; the rest come from the bot's champion. `standard` is today's play. A
+sparring archetype is an opponent's scripted style, not ours.
+_Avoid_: persona, personality
+
+**Reference policy**:
+The policy every other is measured against: kind `solving`, style `standard`, the fleet's
+champion. It is today's play.
+_Avoid_: baseline (that trusts no read), control
 
 **Baseline**:
 The policy a bot falls back on when it trusts no read: hard to exploit, not tuned to anyone.
@@ -218,7 +236,7 @@ _Avoid_: seat, slot
 **Opening range**:
 The hands a position opens an unopened pot with: the starting-hand classes whose rank against the
 players behind is within the position's share, from 15% of hands at UTG to 80% on the heads-up
-button. Any other hand folds.
+button. Any other hand folds. A style may scale these shares: its opening width.
 _Avoid_: chart, open list
 
 **Compute budget**:
@@ -302,6 +320,25 @@ _Avoid_: result, outcome
 **Harm guard**:
 The check that stops a probe or a rollout as soon as the challenger is clearly losing.
 _Avoid_: circuit breaker, kill switch
+
+**Margin**:
+How much win rate a policy may give up against the reference policy and still play.
+_Avoid_: tolerance, threshold
+
+**Margin check**:
+A recorded comparison of a policy with the reference policy over the Arena's rows against the
+pricer, v10.0.2 and the sparring archetypes, bout by bout, in both leagues. It is current while the
+champion it was measured against is.
+_Avoid_: approval, qualification
+
+**Assignment**:
+A bot's entry in the fleet's assignment file, naming the kind and style it plays. With no entry it
+plays the reference policy.
+_Avoid_: setting, config
+
+**Control**:
+The bots with no assignment, which an assigned bot's live results are read against.
+_Avoid_: baseline
 
 **Promotion**:
 A challenger becoming the champion: a paired sim puts it above the champion, the canary's harm
@@ -416,6 +453,11 @@ against the same opponents, so it holds every hand in every position and the luc
 cancels as the mirror cancels it heads up. Each seat's decisions draw from that seat's own stream,
 so a policy playing itself breaks even.
 _Avoid_: rotation, orbit
+
+**Stablemate row**:
+An Arena row where the policy under test meets a stablemate's policy, in the sim only. It is
+recorded apart, and the ship bar does not read it.
+_Avoid_: self-play row
 
 **Scoreboard**:
 The Arena's table of results: the opponent, the win rate over it, the 95% interval and the deals
