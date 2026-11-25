@@ -20,8 +20,9 @@ afterEach(() => {
 
 /**
  * A scratch home with one bot, `First`, whose env file carries `env`. The stand-in for
- * `current/svanbot` logs each start, its arguments and its environment to `runs`, then does what
- * `FAKE` says: `serve` runs until it is sent TERM, and `exit:N` exits with N at once.
+ * `current/svanbot` logs each start, its arguments and its environment to `runs` (and, for the
+ * dashboard, where it was told to listen to `runs.dashboard`), then does what `FAKE` says:
+ * `serve` runs until it is sent TERM, and `exit:N` exits with N at once.
  */
 function home(env: Record<string, string> = { FAKE: "serve" }): string {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-bot-"));
@@ -41,6 +42,7 @@ function home(env: Record<string, string> = { FAKE: "serve" }): string {
     join(dir, "lib/current/svanbot"),
     `#!/usr/bin/env bash
 printf 'start %s name=%s store=%s ulimit=%s stray=%s\\n' "$*" "\${SVANBOT_NAME:-}" "\${SVANBOT_STORE:-}" "$(ulimit -v)" "\${SVANBOT_ROSTER:-}" >> "$FAKE_RUNS"
+[[ \${1:-} == dashboard ]] && printf 'addr=%s open=%s\\n' "\${SVANBOT_DASHBOARD_ADDR:-}" "\${SVANBOT_DASHBOARD_OPEN:-}" >> "$FAKE_RUNS.dashboard"
 # A learner step ends at once.
 [[ \${1:-} == learn ]] && exit 0
 case \${FAKE:-serve} in
@@ -55,11 +57,29 @@ esac
 }
 
 function bot(dir: string, ...args: string[]): { code: number; out: string } {
-  return under(dir, [], ...args);
+  return spawn(dir, [], {}, args);
 }
 
-/** `bot`, run under `wrapper` (for example a lock) and with `extra` in the caller's environment. */
+/** `bot`, run under `wrapper`, for example a lock. */
 function under(dir: string, wrapper: string[], ...args: string[]): { code: number; out: string } {
+  return spawn(dir, wrapper, {}, args);
+}
+
+/** `bot`, with `extra` exported in the shell that starts it, as cron or a hand would. */
+function botWith(
+  dir: string,
+  extra: Record<string, string>,
+  ...args: string[]
+): { code: number; out: string } {
+  return spawn(dir, [], extra, args);
+}
+
+function spawn(
+  dir: string,
+  wrapper: string[],
+  extra: Record<string, string>,
+  args: string[],
+): { code: number; out: string } {
   const result = Bun.spawnSync([...wrapper, "bash", SCRIPT, ...args], {
     env: {
       SVANBOT_ROSTER: "the caller's own roster",
@@ -70,6 +90,7 @@ function under(dir: string, wrapper: string[], ...args: string[]): { code: numbe
       SVANBOT_RESTART_SEC: "0",
       SVANBOT_LEARN_EVERY: "0",
       FAKE_RUNS: join(dir, "runs"),
+      ...extra,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -79,6 +100,12 @@ function under(dir: string, wrapper: string[], ...args: string[]): { code: numbe
 
 function runs(dir: string): string[] {
   return readFileSync(join(dir, "runs"), "utf8").split("\n").filter(Boolean);
+}
+
+/** Where each dashboard start was told to listen, and whether it was opened: `addr=… open=…`. */
+function listening(dir: string): string[] {
+  const file = join(dir, "runs.dashboard");
+  return existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean) : [];
 }
 
 /** Polls `status` until it says `word`, for at most five seconds. */
@@ -161,6 +188,28 @@ test("the dashboard and the learner run the program's own commands", () => {
   for (let i = 0; i < 100 && runs(dir).length < 2; i++) Bun.sleepSync(50);
   bot(dir, "stop", "learn");
   expect(runs(dir).filter((line) => line.startsWith("start learn ")).length).toBeGreaterThan(1);
+});
+
+test("the dashboard listens on port 5000, on loopback, unless it is told otherwise", () => {
+  const dir = home();
+  expect(bot(dir, "start", "dashboard").code).toBe(0);
+  expect(until(dir, "dashboard", "running")).toBe("running");
+  bot(dir, "stop", "dashboard");
+  expect(listening(dir)).toEqual(["addr=127.0.0.1:5000 open="]);
+});
+
+test("dashboard.conf sets where the dashboard listens, and wins over the starter's shell", () => {
+  const dir = home();
+  writeFileSync(
+    join(dir, ".config/svanbot/dashboard.conf"),
+    "# this box opens the page to the home network\nSVANBOT_DASHBOARD_ADDR=0.0.0.0:5000\nSVANBOT_DASHBOARD_OPEN=yes\n",
+  );
+  // The shell that starts it (cron, a hand) holds another address: the box's file is the setting.
+  const started = botWith(dir, { SVANBOT_DASHBOARD_ADDR: "127.0.0.1:9999" }, "start", "dashboard");
+  expect(started.code).toBe(0);
+  expect(until(dir, "dashboard", "running")).toBe("running");
+  bot(dir, "stop", "dashboard");
+  expect(listening(dir)).toEqual(["addr=0.0.0.0:5000 open=yes"]);
 });
 
 test("a name that is neither a bot nor a service is refused before anything runs", () => {

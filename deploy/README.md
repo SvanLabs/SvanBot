@@ -35,6 +35,9 @@ install -m 600 /dev/null ~/.config/svanbot/<name>.env
 "${EDITOR:-vi}" ~/.config/svanbot/<name>.env
 ```
 
+Every `*.env` in that folder is a bot to the fleet scripts, so nothing else is named that way: the
+dashboard's setting file is `dashboard.conf` (see "The dashboard").
+
 ```sh
 SVANBOT_API_KEY=<the bot's key>
 SVANBOT_NAME=<name>
@@ -329,14 +332,15 @@ The `fleet` stage runs the Arena stage again first, from the release's own build
 the first time it started on a release, so a rollback and a second update measure from the first.
 ## The dashboard
 
-`svanbot dashboard` serves one page on loopback and pushes the fleet to it over one event stream.
+`svanbot dashboard` serves one page on port 5000 and pushes the fleet to it over one event stream.
 Each bot writes `<name>.status.json` beside its store, mode 600, every five seconds; the dashboard
 calls a status older than fifteen seconds stale, and keeps the last one on screen if the stream
-drops. The page names opponents and shows their stacks, so it is never the public TV.
+drops. The page names opponents and shows their stacks, and it has no login, so it listens on
+loopback unless the operator opens it (below), and it is never the public TV.
 
 ```sh
 svanbot-bot start dashboard            # scripts/start.sh starts it too
-ssh -N -L 8080:127.0.0.1:8080 <box>    # then open http://127.0.0.1:8080
+ssh -N -L 5000:127.0.0.1:5000 <box>    # then open http://127.0.0.1:5000
 ```
 
 **It is up whenever a bot is** (operator, 2026-11-25, V11-57). Cron runs `scripts/ensure-dashboard.sh`
@@ -355,13 +359,34 @@ dashboard last, so a stopped fleet stays stopped. Every run touches
 `~/.local/state/svanbot/ensure-dashboard.ran`: an mtime more than a few minutes old means cron has
 stopped running it.
 
-It reads these variables, with the defaults its supervisor sets:
+**Open to the home network** (operator, 2026-11-25, V11-58). With this box's
+`~/.config/svanbot/dashboard.conf` below, another computer on the home network opens
+`http://<the box's address>:5000`. The supervisor reads the file as it reads a bot's env file, and it
+wins over the shell that starts the dashboard, so cron, the updater and a hand all give the same
+result:
+
+```sh
+install -m 600 /dev/null ~/.config/svanbot/dashboard.conf
+printf 'SVANBOT_DASHBOARD_ADDR=0.0.0.0:5000\nSVANBOT_DASHBOARD_OPEN=yes\n' > ~/.config/svanbot/dashboard.conf
+scripts/bot.sh stop dashboard && scripts/bot.sh start dashboard
+```
+
+The page has no login: anyone on that network reads it, opponents' names and stacks included. Open
+it only on a network you trust, and never forward port 5000 to the internet. It answers `GET`
+alone, so nothing on it changes the fleet. A build from before V11-58 refuses a network address
+and exits 2, so write the file once a release that carries it is the one running. Restart with
+`scripts/bot.sh`, as the fleet scripts do: the installed `svanbot-bot` is a copy that only
+`deploy/install.sh` refreshes.
+
+It reads these variables, from the shell or from `dashboard.conf`, with the defaults its supervisor
+sets:
 
 | Variable | Default | What it is |
 |----------|---------|------------|
 | `SVANBOT_DATA` | `~/.local/share/svanbot` | Every bot's store and status file. |
 | `SVANBOT_LIB` | `~/.local/lib/svanbot` | The install tree, whose slots the Release page shows. |
-| `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:8080` | Where it listens. Keep it on loopback. |
+| `SVANBOT_DASHBOARD_ADDR` | `127.0.0.1:5000` | Where it listens: port 5000, on loopback. |
+| `SVANBOT_DASHBOARD_OPEN` | off | `yes` lets it listen beyond loopback, for example on `0.0.0.0:5000`, every address of the box. Anything else, or nothing, refuses a network address. |
 | `SVANBOT_SEASON` | on | `off` keeps the dashboard off the network: no season board. |
 
 The page is hand-written files compiled into the `svanbot` binary, and the server is our own, on

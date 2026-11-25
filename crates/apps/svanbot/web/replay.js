@@ -7,7 +7,8 @@ import { byStreet, chipsText, exploitText, priceText } from "./fleet.js";
 
 /**
  * One hand's page: every decision in it, street by street, from the trace the bot wrote rather
- * than from a replay of the hand (V11-24). It is loopback only, like every page here.
+ * than from a replay of the hand (V11-24). It is served like every page here: on loopback unless
+ * the operator opened the dashboard.
  */
 export function handPage(state, bot, hand) {
   const title = h("h1", {}, `${bot} `, h("code", {}, hand));

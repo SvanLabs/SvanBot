@@ -129,7 +129,11 @@ a home-made TLS would be a risk: ask the operator before you add to that list or
   `svanbot-release rollback`, `touch ~/.local/state/svanbot/auto-update.pause`; remove the file to
   resume.
 - The dashboard is up whenever a bot is (operator, 2026-11-25, V11-57): cron runs
-  `scripts/ensure-dashboard.sh` every minute and starts it if it is stopped or failed.
+  `scripts/ensure-dashboard.sh` every minute and starts it if it is stopped or failed. It is on
+  port 5000 (operator, 2026-11-25, V11-58): on loopback, unless this box's
+  `~/.config/svanbot/dashboard.conf` opens it to the home network. The page has no login, so never
+  forward its port to the internet. Only a bot's file in `~/.config/svanbot/` ends in `.env`: the
+  fleet scripts take every `*.env` there for a bot.
 - A test of a fleet script puts a refusing `systemctl` first on its PATH, and stubs every tool the
   script runs. A red run once ran the old `stop.sh` against the real fleet and stopped every bot.
 - The repo is public. Keys, `.env` contents, opponent data and store contents stay out of it: out

@@ -30,7 +30,8 @@
 //! paired sim of the policy against the pricer ([`paired`]). `svanbot propose` puts a challenger
 //! forward for the canary ([`propose`]), and `svanbot learn` runs one step of the unattended
 //! search for one ([`svanbot::learn`]). `svanbot dashboard` serves the fleet's dashboard on
-//! loopback ([`svanbot::dashboard`]). `svanbot release-check` holds a release to the ship bar
+//! loopback, port 5000, unless it is opened ([`svanbot::dashboard`]). `svanbot release-check`
+//! holds a release to the ship bar
 //! ([`ship`]).
 //!
 //! A bot run from an installed release marks in its store when it first took that release, so
