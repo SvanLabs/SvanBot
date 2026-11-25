@@ -33,6 +33,7 @@ says what each one settled.
 | [07](research/2026-11/07-dashboard-agentic-docs.md) | The dashboard and the agentic docs |
 | [08](research/2026-11/08-headline-measurement.md) | How the headline is measured |
 | [09](research/2026-11/09-what-a-gate-can-trust.md) | What a gate can trust |
+| [10](research/2026-11/10-the-luck-of-decisions.md) | The luck of decisions |
 
 ## Designs and plans: `superpowers/`
 
