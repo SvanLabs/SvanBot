@@ -1,12 +1,12 @@
-# Every tool v11 builds and checks with, pinned (V11-03). Each pin was the latest stable release on
-# 2026-11-15. `mise run setup` installs them, and `mise run commit` / `mise run full` run the gate.
+# Every tool v11 builds and checks with, pinned (V11-03). Stable versions checked on
+# 2026-11-26. `mise run setup` installs them, and `mise run commit` / `mise run full` run the gate.
 # TypeScript and the Bun types are pinned in tools/package.json, with their lockfile.
 [tools]
 rust = { version = "1.100.0", profile = "minimal", components = "rustfmt,clippy" }
-bun = "1.4.4"
+bun = "1.4.5"
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.152"
-biome = "2.6.7"
-"aqua:EmbarkStudios/cargo-deny" = "0.20.2"
+biome = "2.6.9"
+"aqua:EmbarkStudios/cargo-deny" = "0.22.1"
 
 [tasks.setup]
 description = "Install the pinned tools and the TypeScript packages, and turn the git hooks on"

@@ -2,9 +2,9 @@
   "name": "svanbot-tools",
   "private": true,
   "type": "module",
-  "description": "The Bun tasks behind the gate. Each pin was the latest stable release on 2026-11-15.",
+  "description": "The Bun tasks behind the gate. Stable versions checked on 2026-11-26.",
   "devDependencies": {
-    "@types/bun": "1.4.4",
+    "@types/bun": "1.4.5",
     "typescript": "7.0.2"
   }
 }
