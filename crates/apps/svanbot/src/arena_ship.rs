@@ -17,6 +17,8 @@ use std::time::{Duration, Instant};
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_runtime::ship::{self, Bar, Bout, CAP_HOURS};
 
+use svanbot_strategy::policy::Policy;
+
 use crate::arena::{Opponent, THREADS, play_bout};
 use crate::deciders;
 
@@ -48,7 +50,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         rows: Opponent::all()
             .into_iter()
             .map(|opponent| ArenaRow {
-                opponent: opponent.name().to_owned(),
+                opponent: opponent.name(),
                 deals: 0,
                 mbb_per_100: 0.0,
                 ci95: 0.0,
@@ -63,9 +65,16 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     let mut play = |runs: &[ArenaRun], bouts: &[Bout]| {
         heats += 1;
         let won = heat(runs, bouts, |run, opponent, number| {
-            play_bout(&game, run.league, opponent, number, &champion, fixed)
-                .iter()
-                .sum()
+            play_bout(
+                &game,
+                run.league,
+                opponent,
+                number,
+                &Policy::reference(champion),
+                fixed,
+            )
+            .iter()
+            .sum()
         });
         eprintln!(
             "svanbot arena ship: heat {heats} played, {:.1} h in",

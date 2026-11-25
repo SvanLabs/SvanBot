@@ -24,6 +24,8 @@ use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet};
 use svanbot_runtime::ship::{self, window};
 use svanbot_runtime::store::Store;
 
+use svanbot_strategy::policy::Policy;
+
 use crate::arena::{Opponent, play_bout};
 use crate::deciders;
 
@@ -57,9 +59,16 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             row.opponent
         );
         let game = deciders::game(run.seed);
-        play_bout(&game, run.league, opponent, bout, &champion, run.iterations)
-            .iter()
-            .sum()
+        play_bout(
+            &game,
+            run.league,
+            opponent,
+            bout,
+            &Policy::reference(champion),
+            run.iterations,
+        )
+        .iter()
+        .sum()
     };
     let digest = champion.digest().to_string();
     let mut failed = match ship::arena(&runs, &commit, &digest, &mut replay) {

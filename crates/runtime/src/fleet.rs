@@ -391,7 +391,11 @@ impl Fleet {
 
     /// The Arena's recorded runs, newest first. No file yet is no run yet.
     pub fn arena_runs(&self) -> Result<Vec<ArenaRun>, String> {
-        let Ok(text) = fs::read_to_string(self.dir.join("arena.json")) else {
+        self.runs_in("arena.json")
+    }
+
+    fn runs_in(&self, file: &str) -> Result<Vec<ArenaRun>, String> {
+        let Ok(text) = fs::read_to_string(self.dir.join(file)) else {
             return Ok(Vec::new());
         };
         let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -408,7 +412,11 @@ impl Fleet {
     /// than repeating it; the same commit under another champion is a different run, and keeps
     /// its own line.
     pub fn record_arena(&self, run: &ArenaRun) -> Result<(), String> {
-        let mut runs = self.arena_runs()?;
+        self.record_in("arena.json", run)
+    }
+
+    fn record_in(&self, file: &str, run: &ArenaRun) -> Result<(), String> {
+        let mut runs = self.runs_in(file)?;
         // A run with a commit is played again from it, so commit, champion and seed name it. A
         // local run has no commit to be played from, so it is the same run only if it measured
         // the same: two runs of changed code must not replace one another.
@@ -429,7 +437,7 @@ impl Fleet {
             *count <= ARENA_HISTORY
         });
         let runs: Vec<String> = runs.iter().map(ArenaRun::as_text).collect();
-        self.write("arena.json", &format!("{{\"runs\":[{}]}}", runs.join(",")))
+        self.write(file, &format!("{{\"runs\":[{}]}}", runs.join(",")))
     }
 
     fn write(&self, name: &str, text: &str) -> Result<(), String> {
