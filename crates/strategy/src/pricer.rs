@@ -154,7 +154,7 @@ fn opening(spot: &Spot) -> Option<Decision> {
 }
 
 /// Every pair of hole cards that avoids the `dead` cards, each with weight 1.
-fn uniform_range(dead: CardSet) -> Vec<(CardSet, f64)> {
+pub(crate) fn uniform_range(dead: CardSet) -> Vec<(CardSet, f64)> {
     let deck: Vec<Card> = Rank::ALL
         .into_iter()
         .flat_map(|rank| Suit::ALL.map(|suit| Card::new(rank, suit)))

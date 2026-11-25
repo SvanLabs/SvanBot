@@ -460,6 +460,16 @@ An ordered set of compiled Rust rules. The first matching rule chooses an action
 and the decision fits that action to its legal choices. If no rule matches, the policy uses the
 re-solve or the pricer.
 
+**First profile**:
+The profile in play (`strategy::first_profile`, V11-43). It acts only when one opponent is left in
+the hand and the bot has read that opponent as extreme, on 30 hands or more: a **read station**
+(enters almost every pot, almost never raises, does not fold to a bet) or a **read maniac**
+(enters almost every pot and raises most of them). Against a read station it bets every hand
+ahead of a random one for the pot, never bluffs, and folds to its rare bet unless it holds a
+monster. Against a read maniac it calls when its equity beats the pot odds, re-raises with a hand
+far ahead, and lets it bluff into a check. Every other spot is decided as before.
+_Avoid_: exploit profile
+
 **Opponent stats**:
 A bot's own observed VPIP, preflop raise rate, postflop fold-to-bet rate and postflop aggression
 frequency for an opponent. Each rate records how many hands supplied an opportunity. A profile
