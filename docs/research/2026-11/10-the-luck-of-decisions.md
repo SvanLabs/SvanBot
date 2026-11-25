@@ -27,3 +27,43 @@ decides it. Checks that stay unresolved need more deals.
 
 The regression measures association in this prototype. The count also depends on
 how many legal betting opportunities a deal offered.
+
+## The reference policy's decision draws
+
+V11-71 compared the Arena before and after enabling the decision-draw correction.
+The baseline was the V11-70 merge tree (`8e921ed`). The experimental wiring
+was `5fb469e`. Each run used default champion parameters, 20 bouts (1,000 deals
+per row), 20 re-solve iterations, and a scratch fleet. Seeds 7 and 11 were
+measured in both leagues. A ratio above 1 means the correction reduced variance.
+
+For each row, the ratio is the square of the baseline 95% half-width divided by
+the corrected half-width. For each pooled ratio, the seven standard rows were
+averaged per matching bout, then the variance of those 20 bout means was compared.
+This keeps the covariance across opponents that played the same seed.
+
+| Opponent | Heads up, 7 | Heads up, 11 | 6-max, 7 | 6-max, 11 |
+|---|---:|---:|---:|---:|
+| pricer | 0.962× | 0.980× | 1.000× | 0.980× |
+| v10.0.2 | 0.969× | 0.985× | 0.961× | 1.003× |
+| calling station | 0.992× | 0.997× | 1.000× | 1.000× |
+| nit | 1.000× | 1.000× | 1.000× | 1.000× |
+| maniac | 0.973× | 0.987× | 1.000× | 1.000× |
+| switching | 0.961× | 0.996× | 1.000× | 1.000× |
+| learning | 0.984× | 0.980× | 1.000× | 1.000× |
+| Pooled | 0.824× | 0.955× | 1.006× | 1.008× |
+
+All before/after row means agreed within the wider corresponding interval.
+
+The pooled heads-up ratio missed the 2× threshold, so the Arena wiring
+stays experimental. The opt-in hook remains available. Runs made with the
+experimental wiring use corrected results and cannot be compared bout for bout
+with runs that use the original measurement.
+
+| Run | Baseline wall time | Corrected wall time |
+|---|---:|---:|
+| Heads up, seed 7 | 12m43.133s | 18m37.147s |
+| Heads up, seed 11 | 17m11.620s | 19m44.090s |
+| 6-max, seed 7 | 19m31.797s | 18m54.894s |
+| 6-max, seed 11 | 19m30.665s | 10m7.156s |
+
+Wall times include contention from other runs and checks in the same workspace.
