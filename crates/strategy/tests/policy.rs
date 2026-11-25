@@ -407,3 +407,93 @@ fn a_profile_variable_can_use_qualified_evidence_and_a_repeatable_draw() {
         );
     }
 }
+
+#[test]
+fn the_reference_policy_decides_what_decide_profile_decides() {
+    use svanbot_strategy::policy::{Policy, decide_profile};
+    use svanbot_strategy::profile::ACTIVE;
+
+    let mut preflop = spot("AhKs", "", 30, 20, 5);
+    preflop.lines = vec![vec![]; 5];
+    let mut heads_up = spot("AhKh", "QhJhTh", 400, 200, 1);
+    heads_up.lines = vec![vec![]];
+    heads_up.seats = vec![3];
+    let mut three_way = spot("AhKh", "QhJhTh", 400, 200, 2);
+    three_way.lines = vec![vec![], vec![]];
+    three_way.seats = vec![1, 3];
+    let personal = [Personal {
+        seat: 3,
+        model: calls_only_the_nuts(),
+        class: Class::Fixed,
+        trust: Some(0.62),
+    }];
+    let reference = Policy::reference(Params::DEFAULT);
+    for at in [preflop, heads_up, three_way] {
+        for reads in [&personal[..], &[][..]] {
+            assert_eq!(
+                reference.decide(&at, None, reads, BUDGET, 20, &[]),
+                decide_profile(&at, None, reads, &Params::DEFAULT, BUDGET, 20, ACTIVE),
+            );
+        }
+    }
+}
+
+#[test]
+fn a_pricing_policy_never_resolves() {
+    use svanbot_strategy::{kind::PolicyKind, policy::Policy, style::STANDARD};
+
+    let at = spot("AhKh", "QhJhTh", 400, 200, 1);
+    let policy = Policy::new(PolicyKind::Pricing, &STANDARD, Params::DEFAULT);
+    let decision = policy.decide(&at, None, &[], BUDGET, 20, &[]);
+    assert_eq!(decision.trace.unwrap().branch, Branch::Priced);
+    assert!(decision.drawn.is_none());
+}
+
+#[test]
+fn a_style_changes_how_wide_a_policy_opens() {
+    use svanbot_strategy::{
+        kind::PolicyKind,
+        policy::Policy,
+        preflop,
+        style::{LOOSE, TIGHT},
+    };
+
+    let position = preflop::Position {
+        behind: 5,
+        in_position: false,
+    };
+    let mut at = spot("AhKs", "", 30, 20, 5);
+    at.lines = vec![vec![]; 5];
+    let reference = Policy::reference(Params::DEFAULT);
+    let action = |policy: Policy, at: &Spot| policy.decide(at, None, &[], BUDGET, 20, &[]).action;
+    for (style, lower, upper) in [(&TIGHT, 0.75, 1.0), (&LOOSE, 1.0, 1.25)] {
+        let class = (0..preflop::CLASSES)
+            .find(|&class| {
+                !preflop::opens_at(class, position, lower)
+                    && preflop::opens_at(class, position, upper)
+            })
+            .expect("the wider range opens additional hands");
+        at.hole = preflop::example(class);
+        let variant = Policy::new(PolicyKind::Solving, style, Params::DEFAULT);
+        let (folds, opens) = if lower < 1.0 {
+            (variant, reference)
+        } else {
+            (reference, variant)
+        };
+        assert_eq!(action(folds, &at), Action::Fold);
+        assert_eq!(action(opens, &at), Action::RaiseTo(50));
+    }
+}
+
+#[test]
+fn a_policy_names_its_kind_and_style() {
+    use svanbot_strategy::{kind::PolicyKind, policy::Policy, style::TIGHT};
+    assert_eq!(
+        Policy::new(PolicyKind::Solving, &TIGHT, Params::DEFAULT).name(),
+        "solving/tight"
+    );
+    assert_eq!(
+        Policy::reference(Params::DEFAULT).name(),
+        "solving/standard"
+    );
+}
