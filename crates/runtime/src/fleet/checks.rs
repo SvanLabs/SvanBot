@@ -89,7 +89,7 @@ impl Fleet {
     }
 
     pub fn record_check(&self, check: &Check) -> Result<(), String> {
-        let _lock = self.lock_policy_file(CHECKS)?;
+        let _lock = self.lock_fleet_file(CHECKS)?;
         let mut checks = self.checks()?;
         let same = |held: &Check| held.kind == check.kind && held.style == check.style;
         if checks

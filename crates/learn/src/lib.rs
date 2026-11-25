@@ -11,6 +11,7 @@
 
 pub mod adapt;
 pub mod arena;
+pub mod calibration;
 pub mod drift;
 pub mod exploit;
 pub mod fit;

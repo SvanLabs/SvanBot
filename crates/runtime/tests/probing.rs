@@ -234,3 +234,36 @@ fn a_promotion_taken_back_by_hand_reaches_the_canary_too() {
     play(&mut canary, 0, 1, 0);
     assert_eq!(canary.params(), Params::DEFAULT);
 }
+
+fn ended_calibration(
+    name: &str,
+    sim_estimate: Option<f64>,
+) -> Vec<svanbot_learn::calibration::Point> {
+    let dir = scratch(name);
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
+    fleet
+        .propose(&Proposal {
+            sim_estimate,
+            ..guard(120)
+        })
+        .unwrap();
+    play(&mut canary, 0, 2 + 20 * ORBIT, 0);
+    assert_eq!(fleet.champion(), Ok(CHALLENGER));
+    assert!(fleet.probe().unwrap().is_none());
+    fleet.calibration().unwrap()
+}
+
+#[test]
+fn a_probe_that_ends_with_a_sim_estimate_leaves_a_calibration_point() {
+    let points = ended_calibration("calibrated", Some(2.));
+    assert_eq!(points.len(), 1);
+    assert_eq!(points[0].sim, 2.);
+    assert!(points[0].live.is_finite() && points[0].radius.is_finite());
+}
+
+#[test]
+fn a_probe_with_no_sim_estimate_leaves_none() {
+    assert!(ended_calibration("no-calibration", None).is_empty());
+}
