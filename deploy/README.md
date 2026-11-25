@@ -473,3 +473,18 @@ scripts/update.sh <version>         # then the release, canary first, through th
 
 Then add the cron lines above. `/etc/systemd/journald.conf.d/svanbot.conf`, if root installed it,
 can go too: no bot logs to the journal now.
+
+## Archived v10 dashboard preview
+
+From the server's checkout, run `scripts/v10-dashboard-preview.sh` with Node.js
+22.12 or newer and npm. It fetches the archived v10 source if needed, installs
+the locked frontend dependencies in a temporary directory, and serves the
+Control Room with sample data on loopback port 5555. Keep the launcher running
+for the duration of the preview.
+
+From your own machine, forward the preview port and open
+`http://127.0.0.1:5555/` in a browser.
+
+```sh
+ssh -N -L 5555:127.0.0.1:5555 <box>
+```
