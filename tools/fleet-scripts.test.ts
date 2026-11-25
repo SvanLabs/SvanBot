@@ -96,6 +96,8 @@ function update(
     dashboard?: boolean;
     running?: string[];
     token?: string;
+    /** The dashboard is already running again when `update` starts it: the watchdog got there. */
+    raced?: boolean;
   } = {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), "svanbot-update-"));
@@ -135,6 +137,10 @@ if [[ $1 == pid ]]; then
     exit 3
 fi
 [[ $1 == status ]] && exit "\${SVANBOT_TEST_DASHBOARD:-3}"
+if [[ $1 == start && $2 == dashboard && -n "\${SVANBOT_TEST_RACED:-}" ]]; then
+    echo "svanbot-bot: dashboard is already running" >&2
+    exit 1
+fi
 exit 0
 `,
     );
@@ -156,6 +162,7 @@ while (($#)); do [[ $1 == --dir ]] && touch "$2/svanbot-11.1.7-x86-64-v2.tar.gz"
         SVANBOT_TEST_CALLS: calls,
         SVANBOT_TEST_ROLLBACK: options.rollback ?? "",
         SVANBOT_TEST_DASHBOARD: options.dashboard ? "0" : "3",
+        SVANBOT_TEST_RACED: options.raced ? "1" : "",
         SVANBOT_TEST_RUNNING: (options.running ?? []).join(" "),
         GH_TOKEN: "",
         SVANBOT_GH_TOKEN: options.token ?? "",
@@ -207,6 +214,12 @@ test("the App's token reaches the download, and nothing the script starts afterw
   expect(ran.code).toBe(0);
   expect(ran.calls[0]).toMatch(/^gh release download v11\.1\.7 .* token=app-token$/);
   expect(ran.calls.filter((call) => call.startsWith("LEAKED"))).toEqual([]);
+});
+
+test("a dashboard the watchdog started first does not fail a finished rollout", () => {
+  const ran = update(["11.1.7"], { installed: true, dashboard: true, raced: true });
+  expect(ran.code).toBe(0);
+  expect(ran.out).toContain("Every bot runs 11.1.7");
 });
 
 test("--running-only swaps the bots that run and leaves a stopped one alone", () => {

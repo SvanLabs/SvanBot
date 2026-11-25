@@ -9,6 +9,7 @@ the home of the user the fleet runs as.
 | `scripts/start.sh`, `scripts/stop.sh` | Start or stop the whole fleet: every configured bot, the dashboard and the learner. |
 | `scripts/update.sh` | Roll a release out, canary first, then every other bot. |
 | `scripts/auto-update.sh` | Cron runs it every half hour: a running bot on an older build than the newest release gets it, through `update.sh`. |
+| `scripts/ensure-dashboard.sh` | Cron runs it every minute: with a bot running, a dashboard that is stopped or failed is started. |
 | `scripts/clean.sh` | `cargo sweep` of the dev clone's `target/dev`: build output untouched for 14 days. |
 | `deploy/install.sh` | Stages and verifies a release bundle on a box with no toolchain. |
 
@@ -337,6 +338,22 @@ drops. The page names opponents and shows their stacks, so it is never the publi
 svanbot-bot start dashboard            # scripts/start.sh starts it too
 ssh -N -L 8080:127.0.0.1:8080 <box>    # then open http://127.0.0.1:8080
 ```
+
+**It is up whenever a bot is** (operator, 2026-11-25, V11-57). Cron runs `scripts/ensure-dashboard.sh`
+every minute:
+
+```sh
+( crontab -l 2>/dev/null
+  echo "* * * * * $HOME/NewSvanBot/scripts/ensure-dashboard.sh >> $HOME/.local/state/svanbot/cron.log 2>&1"
+) | crontab -
+```
+
+When any bot is running, or waiting to restart, and the dashboard is stopped or failed, it starts the
+dashboard and says so in `cron.log`. A dashboard that runs, or is restarting under its supervisor, is
+left alone, and so is one with no bot to serve: `scripts/stop.sh` stops the bots first and the
+dashboard last, so a stopped fleet stays stopped. Every run touches
+`~/.local/state/svanbot/ensure-dashboard.ran`: an mtime more than a few minutes old means cron has
+stopped running it.
 
 It reads these variables, with the defaults its supervisor sets:
 
