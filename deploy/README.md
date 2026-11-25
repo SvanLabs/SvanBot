@@ -146,6 +146,16 @@ SVANBOT_NAME=<name> svanbot-release update --fleet
 leaves a bot that is not running alone, where a swap would start it: it is what `auto-update.sh`
 uses.
 
+### Guarding a styled bot
+
+After the release supports policy assignments, run the guard every half hour. It waits
+for 3,000 corrected hands from the styled bot and 3,000 from the unassigned control over
+the same window. A clear loss reverts that bot to the reference and logs a `CRIT` line.
+
+```cron
+*/30 * * * * $HOME/NewSvanBot/scripts/guard.sh >> $HOME/.local/state/svanbot/cron.log 2>&1
+```
+
 ### Always the newest release
 
 The operator's rule (2026-11-25, V11-56): every bot runs the newest release, and

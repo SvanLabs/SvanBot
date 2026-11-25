@@ -3,7 +3,9 @@
 use std::path::Path;
 use std::process::ExitCode;
 
+use svanbot::learn::{GUARD_HANDS, GUARD_MARGIN};
 use svanbot::play;
+use svanbot::play::guard::{Guarded, guard};
 use svanbot_learn::arena::BOUT;
 use svanbot_learn::margin::{Admission, MARGIN};
 use svanbot_runtime::fleet::{Check, Fleet, League};
@@ -18,7 +20,8 @@ const USAGE: &str = "usage: svanbot play arena <solving|pricing> <standard|tight
        svanbot play check <kind> <style> <bouts> [seed] [iterations]
        svanbot play assign <bot> <kind> <style>
        svanbot play revert <bot>
-       svanbot play status";
+       svanbot play status
+       svanbot play guard";
 
 type CommandResult = Result<ExitCode, (u8, String)>;
 
@@ -62,6 +65,18 @@ fn command(args: &[String]) -> CommandResult {
         [name, bot] if name == "revert" => say(play::revert(&fleet, bot)),
         [name] if name == "status" => {
             print!("{}", play::status(&fleet).map_err(|error| (2, error))?);
+            Ok(ExitCode::SUCCESS)
+        }
+        [name] if name == "guard" => {
+            for (bot, result) in guard(&fleet, data_dir, GUARD_HANDS as usize, GUARD_MARGIN)
+                .map_err(|error| (1, error))?
+            {
+                match result {
+                    Guarded::NotYet(note) => println!("{bot}: {note}"),
+                    Guarded::Holds(note) => println!("{bot}: holds, {note}"),
+                    Guarded::Trips(_) => (),
+                }
+            }
             Ok(ExitCode::SUCCESS)
         }
         _ => Err(usage()),

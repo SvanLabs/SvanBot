@@ -9,6 +9,7 @@ use svanbot_strategy::{
     style::{self, Style},
 };
 
+pub mod guard;
 mod judge;
 pub use judge::judge;
 

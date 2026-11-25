@@ -56,6 +56,16 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// The luck-corrected result of each hand kept at or after `since_ms`, in big blinds.
+    pub fn corrected_since(&self, since_ms: i64) -> Result<Vec<f64>, StoreError> {
+        let mut query = self.db.prepare(
+            "SELECT (net - luck) / big_blind FROM played
+             WHERE recorded_ms >= ?1 ORDER BY rowid",
+        )?;
+        let rows = query.query_map([since_ms], |row| row.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     /// Every export hand's start and result. The item is read in SQLite, so a season's export is
     /// never held whole in memory.
     pub fn export_lines(&self) -> Result<Vec<ExportLine>, StoreError> {
