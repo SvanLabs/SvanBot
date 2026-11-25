@@ -135,7 +135,12 @@ done
 if "$supervisor" status dashboard >/dev/null; then
     step "Dashboard"
     "$supervisor" stop dashboard
-    "$supervisor" start dashboard
+    # The watchdog (scripts/ensure-dashboard.sh, V11-57) may have started it again in between: it
+    # then runs the new build all the same, and a rollout that has finished is not a failure.
+    if ! said=$("$supervisor" start dashboard 2>&1) && [[ $said != *"is already running"* ]]; then
+        printf '%s\n' "$said" >&2
+        exit 1
+    fi
 fi
 
 if $running_only; then

@@ -128,6 +128,8 @@ a home-made TLS would be a risk: ask the operator before you add to that list or
   `scripts/auto-update.sh` every half hour. To hold an older build on purpose, for example after a
   `svanbot-release rollback`, `touch ~/.local/state/svanbot/auto-update.pause`; remove the file to
   resume.
+- The dashboard is up whenever a bot is (operator, 2026-11-25, V11-57): cron runs
+  `scripts/ensure-dashboard.sh` every minute and starts it if it is stopped or failed.
 - A test of a fleet script puts a refusing `systemctl` first on its PATH, and stubs every tool the
   script runs. A red run once ran the old `stop.sh` against the real fleet and stopped every bot.
 - The repo is public. Keys, `.env` contents, opponent data and store contents stay out of it: out
