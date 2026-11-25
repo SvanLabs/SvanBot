@@ -89,6 +89,28 @@ impl Fleet {
     pub fn revert(&self, bot: &str) -> Result<bool, String> {
         let _lock = self.lock_policy_file(PLAYS)?;
         let mut bots = self.plays()?;
+        self.remove_play(bot, &mut bots)
+    }
+
+    /// Revert only the assignment whose own hands the guard measured.
+    pub fn revert_if(
+        &self,
+        bot: &str,
+        assignment: Assignment,
+        since_ms: i64,
+    ) -> Result<bool, String> {
+        let _lock = self.lock_policy_file(PLAYS)?;
+        let mut bots = self.plays()?;
+        let Some(entry) = bots.get(bot) else {
+            return Ok(false);
+        };
+        if parse(bot, entry)? != (assignment, since_ms) {
+            return Ok(false);
+        }
+        self.remove_play(bot, &mut bots)
+    }
+
+    fn remove_play(&self, bot: &str, bots: &mut Map<String, Value>) -> Result<bool, String> {
         if bots.remove(bot).is_none() {
             return Ok(false);
         }

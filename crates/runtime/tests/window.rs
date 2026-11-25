@@ -121,3 +121,29 @@ fn a_start_is_read_as_rfc_3339() {
         assert_eq!(started_ms(refused), None, "{refused}");
     }
 }
+
+#[test]
+fn corrected_results_are_net_less_luck_in_big_blinds_since_the_hour() {
+    let dir = scratch("window-corrected");
+    let store = Store::open(&dir.join("A.db"), "A").unwrap();
+    store.append_played(&played("before", 500), 999).unwrap();
+    store
+        .append_played(
+            &Played {
+                luck: 5.0,
+                ..played("exact", 25)
+            },
+            1_000,
+        )
+        .unwrap();
+    store
+        .append_played(
+            &Played {
+                luck: -5.0,
+                ..played("after", -15)
+            },
+            2_000,
+        )
+        .unwrap();
+    assert_eq!(store.corrected_since(1_000).unwrap(), [1.0, -0.5]);
+}
