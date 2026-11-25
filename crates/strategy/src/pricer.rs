@@ -48,7 +48,17 @@ pub fn decide(spot: &Spot, model: Option<&ActionModel>, budget: Budget) -> Decis
 /// [`decide`] with each opponent's line read by its own model: `models[i]` reads `spot.lines[i]`.
 /// A line without a model is read as uniform.
 pub fn price_lines(spot: &Spot, models: &[&ActionModel], budget: Budget) -> Decision {
-    if let Some(decision) = opening(spot) {
+    price_lines_at(spot, models, budget, 1.0)
+}
+
+/// Like [`price_lines`], with a scaled opening range in unopened pots.
+pub fn price_lines_at(
+    spot: &Spot,
+    models: &[&ActionModel],
+    budget: Budget,
+    open_scale: f64,
+) -> Decision {
+    if let Some(decision) = opening(spot, open_scale) {
         return decision;
     }
     let uniform = uniform_range(spot.hole | spot.board);
@@ -117,12 +127,12 @@ fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64)
     best
 }
 
-/// The decision in an unopened pot, from the opening range ([`preflop::opens`]): before the flop,
+/// The decision in an unopened pot, from the opening range ([`preflop::opens_at`]): before the flop,
 /// with nobody yet to have acted, every opponent still in is behind us. A hand the position opens is
 /// raised to the table's standard open, and any other folds (or checks, when it is free). `None`
 /// when the pot has been opened, when a raise is not open to us, or when the caller did not follow
 /// the hand: with no lines, an unopened pot cannot be told from a raised one.
-fn opening(spot: &Spot) -> Option<Decision> {
+fn opening(spot: &Spot, open_scale: f64) -> Option<Decision> {
     if !spot.board.is_empty() || spot.lines.is_empty() || spot.legal.raise.is_none() {
         return None;
     }
@@ -139,7 +149,7 @@ fn opening(spot: &Spot) -> Option<Decision> {
         behind: spot.opponents,
         in_position: spot.in_position,
     };
-    let action = if preflop::opens(class, position) {
+    let action = if preflop::opens_at(class, position, open_scale) {
         Action::RaiseTo(*ev::sizes(spot).first()?)
     } else if spot.legal.call.is_none() {
         Action::Check

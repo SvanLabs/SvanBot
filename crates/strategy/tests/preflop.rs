@@ -3,7 +3,7 @@
 //! the published all-in figures, not numbers derived from the code under test.
 
 use svanbot_core::card::CardSet;
-use svanbot_strategy::preflop::{CLASSES, Position, class_of, equity, name, opens};
+use svanbot_strategy::preflop::{CLASSES, Position, class_of, equity, name, opens, opens_at};
 
 fn class(hole: &str) -> usize {
     class_of(hole.parse::<CardSet>().unwrap())
@@ -86,4 +86,46 @@ fn each_position_opens_its_best_hands_and_the_later_positions_open_more() {
         count(button)
     );
     assert!(count(button) < count(heads_up_button));
+}
+
+fn opening_positions() -> impl Iterator<Item = Position> {
+    (1..=5).flat_map(|behind| {
+        [false, true].map(move |in_position| Position {
+            behind,
+            in_position,
+        })
+    })
+}
+
+#[test]
+fn the_standard_width_is_the_opening_range_it_always_was() {
+    for position in opening_positions() {
+        for class in 0..CLASSES {
+            assert_eq!(opens_at(class, position, 1.0), opens(class, position));
+        }
+    }
+}
+
+#[test]
+fn a_wider_width_never_closes_a_class_a_narrower_one_opens() {
+    for position in opening_positions() {
+        for class in 0..CLASSES {
+            assert!(!opens_at(class, position, 0.75) || opens(class, position));
+            assert!(!opens(class, position) || opens_at(class, position, 1.25));
+        }
+    }
+}
+
+#[test]
+fn a_share_never_passes_every_hand() {
+    let button = Position {
+        behind: 1,
+        in_position: true,
+    };
+    let under_the_gun = Position {
+        behind: 5,
+        in_position: false,
+    };
+    assert_eq!(button.share_at(1.25), 1.0);
+    assert!((under_the_gun.share_at(1.25) - 0.1875).abs() < 1e-12);
 }
