@@ -7,8 +7,9 @@ use serde_json::{Map, Value, json};
 use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::style::{self, Style};
 
-use super::Fleet;
+use super::{ArenaRun, Fleet};
 
+const POLICY_RUNS: &str = "policy-runs.json";
 const PLAYS: &str = "plays.json";
 
 #[derive(Clone, Copy, Debug)]
@@ -42,6 +43,16 @@ fn parse(bot: &str, entry: &Value) -> Result<(Assignment, i64), String> {
 }
 
 impl Fleet {
+    /// The policy Arena's history, separate from the runs the ship bar reads.
+    pub fn policy_arena_runs(&self) -> Result<Vec<ArenaRun>, String> {
+        self.runs_in(POLICY_RUNS)
+    }
+
+    /// Record a policy Arena run without updating the release Arena.
+    pub fn record_policy_arena(&self, run: &ArenaRun) -> Result<(), String> {
+        self.record_in(POLICY_RUNS, run)
+    }
+
     pub fn assignment(&self, bot: &str) -> Result<Option<Assignment>, String> {
         self.plays()?
             .get(bot)

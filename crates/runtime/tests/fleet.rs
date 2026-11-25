@@ -462,3 +462,30 @@ fn assignments_are_listed_by_bot_with_the_hour_they_began() {
         [("A".into(), tight(), 3), ("B".into(), tight(), 2)]
     );
 }
+
+#[test]
+fn a_policy_run_is_kept_apart_from_the_arena_the_ship_bar_reads() {
+    let dir = scratch("policy-arena");
+    let fleet = Fleet::in_dir(&dir);
+    let policy = run("policy", 1, 100.0);
+    fleet.record_policy_arena(&policy).unwrap();
+    assert!(!dir.join("arena.json").exists());
+    assert!(fleet.arena_runs().unwrap().is_empty());
+    assert_eq!(fleet.policy_arena_runs().unwrap(), [policy]);
+}
+
+#[test]
+fn a_policy_run_replaces_its_own_line_and_keeps_a_bounded_history() {
+    let fleet = Fleet::in_dir(scratch("policy-arena-history"));
+    for seed in 0..=ARENA_HISTORY as u64 {
+        fleet
+            .record_policy_arena(&run("policy", seed, 100.0))
+            .unwrap();
+    }
+    let replacement = run("policy", ARENA_HISTORY as u64, 300.0);
+    fleet.record_policy_arena(&replacement).unwrap();
+    let runs = fleet.policy_arena_runs().unwrap();
+    assert_eq!(runs.len(), ARENA_HISTORY);
+    assert_eq!(runs[0], replacement);
+    assert_eq!(runs.last().unwrap().seed, 1);
+}

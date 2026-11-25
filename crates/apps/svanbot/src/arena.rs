@@ -24,12 +24,14 @@ use svanbot_learn::arena::{
     BOUT, BoutReader, Row, bout, ring_bout_at, scoreboard, v10_duel, v10_ring_at,
 };
 use svanbot_learn::paired::{Match, duel_seen, verdict};
+use svanbot_learn::play::{self, STABLEMATE};
 use svanbot_learn::reads::Reads;
 use svanbot_learn::ring::ring_seen;
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Fleet, League};
 use svanbot_sim::sparring::Archetype;
-use svanbot_strategy::params::Params;
-use svanbot_strategy::profile::ACTIVE;
+use svanbot_strategy::kind::PolicyKind;
+use svanbot_strategy::policy::Policy;
+use svanbot_strategy::style::Style;
 
 use crate::deciders;
 
@@ -44,6 +46,7 @@ pub(crate) enum Opponent {
     /// v10.0.2, ported (`sim::v10`): the bar a release must clear.
     V10,
     Sparring(Archetype),
+    Stablemate(&'static Style),
 }
 
 impl Opponent {
@@ -55,11 +58,12 @@ impl Opponent {
             .collect()
     }
 
-    pub(crate) fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> String {
         match self {
-            Self::Pricer => "pricer",
-            Self::V10 => svanbot_sim::v10::seat::NAME,
-            Self::Sparring(archetype) => archetype.name(),
+            Self::Pricer => "pricer".into(),
+            Self::V10 => svanbot_sim::v10::seat::NAME.into(),
+            Self::Sparring(archetype) => archetype.name().into(),
+            Self::Stablemate(style) => format!("{STABLEMATE}{}", style.name),
         }
     }
 
@@ -79,21 +83,29 @@ pub(crate) fn play_bout(
     league: League,
     opponent: Opponent,
     number: u64,
-    params: &Params,
+    policy: &Policy,
     fixed: Option<u64>,
 ) -> Vec<f64> {
     let seats = league.seats();
-    let challenger = &BoutReader::new(deciders::reading_policy(
-        params,
-        fixed,
-        seats,
-        Reads::deciding,
-    ))
-    .with_profile_stats(!ACTIVE.is_empty());
+    let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, Reads::deciding))
+        .with_profile_stats(!policy.style.profile.is_empty());
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;
     // Heads up is the mirrored duel; every bigger table is the ring at its own size.
     match (league, opponent) {
+        (_, Opponent::Stablemate(style)) => {
+            let rival = play::player(
+                Policy::new(PolicyKind::Solving, style, policy.params),
+                fixed,
+            );
+            deals
+                .map(|deal| match league {
+                    League::HeadsUp => play::rival_duel(game, deal, challenger, &rival),
+                    _ => play::rival_ring_at(game, seats, deal, challenger, &rival),
+                })
+                .collect()
+        }
+
         (League::HeadsUp, Opponent::Sparring(archetype)) => {
             bout(game, archetype, number, challenger)
         }
@@ -162,23 +174,51 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         }
     };
     let game = deciders::game(seed.unwrap_or(1));
+    let reference = Policy::reference(champion);
+    let rows = play_rows(
+        &Opponent::all(),
+        Opponent::name,
+        bouts,
+        |opponent, number| play_bout(&game, league, opponent, number, &reference, fixed),
+    );
+    let run = report(
+        league,
+        champion.digest().to_string(),
+        game.seed,
+        fixed,
+        rows,
+    );
+    if let Err(error) = Fleet::in_dir(crate::fleet_dir()).record_arena(&run) {
+        eprintln!("svanbot arena: the run was not recorded: {error}");
+        return ExitCode::from(1);
+    }
+    if let Some(path) = args.get(3)
+        && let Err(error) = std::fs::write(path, run.as_text() + "\n")
+    {
+        eprintln!("svanbot arena: {path} was not written: {error}");
+        return ExitCode::from(1);
+    }
+    ExitCode::SUCCESS
+}
+
+pub(crate) fn play_rows<R: Copy + Send + Sync>(
+    opponents: &[R],
+    name: impl Fn(R) -> String,
+    bouts: u64,
+    play: impl Fn(R, u64) -> Vec<f64> + Sync,
+) -> Vec<(Row, Vec<f64>)> {
     let mut rows = Vec::new();
-    for opponent in Opponent::all() {
+    for &opponent in opponents {
         // Thread `k` plays bouts k, k + THREADS, …; put back in order, the verdict is the
         // same on any number of threads.
         let played: Vec<Vec<(u64, Vec<f64>)>> = std::thread::scope(|scope| {
             let workers: Vec<_> = (0..THREADS)
                 .map(|k| {
-                    let (game, champion) = (&game, &champion);
+                    let play = &play;
                     scope.spawn(move || {
                         (k..bouts)
                             .step_by(THREADS as usize)
-                            .map(|number| {
-                                (
-                                    number,
-                                    play_bout(game, league, opponent, number, champion, fixed),
-                                )
-                            })
+                            .map(|number| (number, play(opponent, number)))
                             .collect()
                     })
                 })
@@ -204,22 +244,32 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             .flat_map(|(_, results)| results)
             .collect();
         let row = Row {
-            opponent: opponent.name().to_owned(),
+            opponent: name(opponent),
             verdict: verdict(&results),
         };
         eprintln!("svanbot arena: {} done", row.opponent);
         rows.push((row, sums));
     }
+    rows
+}
+
+pub(crate) fn report(
+    league: League,
+    champion: String,
+    seed: u64,
+    fixed: Option<u64>,
+    rows: Vec<(Row, Vec<f64>)>,
+) -> ArenaRun {
     let board: Vec<Row> = rows.iter().map(|(row, _)| row.clone()).collect();
     println!("{} league", league.name());
     print!("{}", scoreboard(&board));
     // A local run has no commit, and is kept as such: `record_arena` tells two of them apart by
     // their own numbers, since there is no commit to play them again from.
     let commit = std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| ArenaRun::LOCAL_COMMIT.into());
-    let run = ArenaRun {
+    ArenaRun {
         commit,
-        champion: Some(champion.digest().to_string()),
-        seed: game.seed,
+        champion: Some(champion),
+        seed,
         league,
         iterations: fixed,
         rows: rows
@@ -232,16 +282,5 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
                 bouts,
             })
             .collect(),
-    };
-    if let Err(error) = Fleet::in_dir(crate::fleet_dir()).record_arena(&run) {
-        eprintln!("svanbot arena: the run was not recorded: {error}");
-        return ExitCode::from(1);
     }
-    if let Some(path) = args.get(3)
-        && let Err(error) = std::fs::write(path, run.as_text() + "\n")
-    {
-        eprintln!("svanbot arena: {path} was not written: {error}");
-        return ExitCode::from(1);
-    }
-    ExitCode::SUCCESS
 }

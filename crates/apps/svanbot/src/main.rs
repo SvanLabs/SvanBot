@@ -55,6 +55,7 @@ mod fit;
 mod paired;
 mod paired_compare;
 mod paired_reads;
+mod play_arena;
 mod propose;
 mod ship;
 mod tables;
@@ -110,6 +111,10 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("learn") {
         let args: Vec<String> = std::env::args().skip(2).collect();
         return propose::learn(&args);
+    }
+    if std::env::args().nth(1).as_deref() == Some("play") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return play_arena::run(&args);
     }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.
