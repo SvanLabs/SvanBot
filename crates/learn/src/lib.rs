@@ -15,6 +15,7 @@ pub mod drift;
 pub mod exploit;
 pub mod fit;
 pub mod paired;
+pub mod play;
 pub mod prior;
 pub mod probe;
 pub mod profile;
