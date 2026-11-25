@@ -15,6 +15,7 @@
 //! Nothing here stops play: a failure of the store or of a fleet file is a note to the operator.
 
 use serde_json::{Value, json};
+use svanbot_learn::calibration::Point;
 use svanbot_learn::probe::{Decided, Verdict};
 use svanbot_strategy::params::Params;
 
@@ -146,11 +147,24 @@ impl<'a> Probing<'a> {
                 self.ledger.finish(promote);
                 self.running = None;
                 self.fleet.end_probe()?;
-                Ok(Some(format!(
+                let mut note = format!(
                     "probe {id:016x} of {} ended {name}: {edge:+.1} bb/100, 95% ±{radius:.1}{}",
                     proposal.challenger.digest(),
                     if promote { ", promoted" } else { "" },
-                )))
+                );
+                if let Some(sim) = proposal.sim_estimate {
+                    let point = Point {
+                        sim,
+                        live: edge,
+                        radius,
+                    };
+                    if point.is_valid()
+                        && let Err(error) = self.fleet.record_calibration(id, &point, name, now_ms)
+                    {
+                        note.push_str(&format!(". Calibration was not recorded: {error}"));
+                    }
+                }
+                Ok(Some(note))
             }
             _ => {
                 // With no probe running the canary follows the champion file too, so a

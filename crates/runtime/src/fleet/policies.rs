@@ -73,7 +73,7 @@ impl Fleet {
     }
 
     pub fn assign(&self, bot: &str, assignment: Assignment, since_ms: i64) -> Result<(), String> {
-        let _lock = self.lock_policy_file(PLAYS)?;
+        let _lock = self.lock_fleet_file(PLAYS)?;
         let mut bots = self.plays()?;
         bots.insert(
             bot.into(),
@@ -87,7 +87,7 @@ impl Fleet {
     }
 
     pub fn revert(&self, bot: &str) -> Result<bool, String> {
-        let _lock = self.lock_policy_file(PLAYS)?;
+        let _lock = self.lock_fleet_file(PLAYS)?;
         let mut bots = self.plays()?;
         self.remove_play(bot, &mut bots)
     }
@@ -99,7 +99,7 @@ impl Fleet {
         assignment: Assignment,
         since_ms: i64,
     ) -> Result<bool, String> {
-        let _lock = self.lock_policy_file(PLAYS)?;
+        let _lock = self.lock_fleet_file(PLAYS)?;
         let mut bots = self.plays()?;
         let Some(entry) = bots.get(bot) else {
             return Ok(false);
@@ -141,7 +141,7 @@ impl Fleet {
     }
 
     // Writers share a separate lock so replacing or removing plays.json cannot move the lock.
-    pub(super) fn lock_policy_file(&self, file: &str) -> Result<File, String> {
+    pub(super) fn lock_fleet_file(&self, file: &str) -> Result<File, String> {
         let error = |error| format!("{file}: {error}");
         fs::create_dir_all(&self.dir).map_err(error)?;
         let lock = OpenOptions::new()

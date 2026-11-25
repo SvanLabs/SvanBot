@@ -26,6 +26,7 @@ use svanbot_strategy::params::{Digest, Params};
 
 use crate::health::write_atomically;
 
+mod calibration;
 mod checks;
 pub use checks::Check;
 mod policies;

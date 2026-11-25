@@ -49,6 +49,7 @@
 
 mod arena;
 mod arena_ship;
+mod calibration;
 mod deciders;
 mod download;
 mod fit;
@@ -115,6 +116,9 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("play") {
         let args: Vec<String> = std::env::args().skip(2).collect();
         return play_arena::run(&args);
+    }
+    if std::env::args().nth(1).as_deref() == Some("calibration") {
+        return calibration::run();
     }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.
