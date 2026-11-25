@@ -26,7 +26,7 @@ use crate::fleet::{ArenaRow, ArenaRun, League};
 pub mod sample;
 pub mod window;
 
-pub use sample::{Bar, Bout, CAP_HOURS, judge, sample};
+pub use sample::{Bar, Bout, CAP_HOURS, judge, sample, sample_with};
 
 /// The bouts of each run the ship bar plays again.
 pub const REPLAYS: usize = 3;

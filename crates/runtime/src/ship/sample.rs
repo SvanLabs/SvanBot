@@ -67,6 +67,30 @@ pub fn sample(
     out_of_time: &mut dyn FnMut() -> bool,
     record: &mut dyn FnMut(&ArenaRun),
 ) -> Bar {
+    sample_judged(runs, play, out_of_time, record, &judge, &|runs| {
+        runs.iter().flat_map(bar).collect()
+    })
+}
+
+/// Sample complete heats with a caller-supplied judge.
+pub fn sample_with(
+    runs: &mut [ArenaRun],
+    play: &mut Player<'_>,
+    out_of_time: &mut dyn FnMut() -> bool,
+    record: &mut dyn FnMut(&ArenaRun),
+    judge: &dyn Fn(&[ArenaRun]) -> Bar,
+) -> Bar {
+    sample_judged(runs, play, out_of_time, record, judge, &|_| Vec::new())
+}
+
+fn sample_judged(
+    runs: &mut [ArenaRun],
+    play: &mut Player<'_>,
+    out_of_time: &mut dyn FnMut() -> bool,
+    record: &mut dyn FnMut(&ArenaRun),
+    judge: &dyn Fn(&[ArenaRun]) -> Bar,
+    cap_reasons: &dyn Fn(&[ArenaRun]) -> Vec<String>,
+) -> Bar {
     let mut heats = 0;
     loop {
         let bouts: Vec<Bout> = runs
@@ -81,7 +105,11 @@ pub fn sample(
             })
             .collect();
         let won = play(runs, &bouts);
-        assert_eq!(won.len(), bouts.len(), "a bout player answers every bout");
+        if won.len() != bouts.len() || won.iter().any(|result| !result.is_finite()) {
+            return Bar::Refused(vec![
+                "the bout player did not return a complete heat".into(),
+            ]);
+        }
         for (bout, won) in bouts.iter().zip(won) {
             add(&mut runs[bout.run].rows[bout.row], won);
         }
@@ -94,7 +122,7 @@ pub fn sample(
                 let mut why = vec![format!(
                     "the bar is not decided within the cap: {heats} heats"
                 )];
-                why.extend(runs.iter().flat_map(bar));
+                why.extend(cap_reasons(runs));
                 return Bar::Refused(why);
             }
             Bar::Open => {}

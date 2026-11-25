@@ -2,22 +2,24 @@
 
 use std::path::Path;
 use std::process::ExitCode;
+use std::time::{Duration, Instant};
 
 use svanbot::learn::{GUARD_HANDS, GUARD_MARGIN};
 use svanbot::play;
 use svanbot::play::guard::{Guarded, guard};
 use svanbot_learn::arena::BOUT;
 use svanbot_learn::margin::{Admission, MARGIN};
-use svanbot_runtime::fleet::{Check, Fleet, League};
+use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Check, Fleet, League};
+use svanbot_runtime::ship::{self, Bar, Bout, CAP_HOURS};
 use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::policy::Policy;
 use svanbot_strategy::style::{self, Style};
 
 use crate::arena::{self, Opponent};
-use crate::deciders;
+use crate::{arena_ship, deciders};
 
 const USAGE: &str = "usage: svanbot play arena <solving|pricing> <standard|tight|loose> [league] <bouts> [seed] [iterations] [out.json]
-       svanbot play check <kind> <style> <bouts> [seed] [iterations]
+       svanbot play check <kind> <style> <bouts|--until-decided> [seed] [iterations]
        svanbot play assign <bot> <kind> <style>
        svanbot play revert <bot>
        svanbot play status
@@ -165,10 +167,15 @@ fn play_arena(
 }
 
 fn check(fleet: &Fleet, kind: PolicyKind, style: &'static Style, args: &[String]) -> CommandResult {
-    let settings = settings(args)?;
     let champion = fleet.champion().map_err(|error| (2, error))?;
     let reference = Policy::reference(champion);
     let candidate = Policy::new(kind, style, champion);
+    if let Some((flag, tail)) = args.split_first()
+        && flag == "--until-decided"
+    {
+        return check_until_decided(fleet, reference, candidate, tail);
+    }
+    let settings = settings(args)?;
     let game = deciders::game(settings.seed);
     let opponents = Opponent::all();
     let measure = |league, policy: Policy| {
@@ -191,12 +198,97 @@ fn check(fleet: &Fleet, kind: PolicyKind, style: &'static Style, args: &[String]
     let (heads, heads_up) = judge(League::HeadsUp)?;
     let (ring, six_max) = judge(League::SixMax)?;
     let admitted = heads.admission == Admission::Admitted && ring.admission == Admission::Admitted;
+    record_check(fleet, candidate, settings, admitted, heads_up, six_max)
+}
+
+fn check_until_decided(
+    fleet: &Fleet,
+    reference: Policy,
+    candidate: Policy,
+    args: &[String],
+) -> CommandResult {
+    let number = |index: usize| args.get(index).map(|text| text.parse::<u64>()).transpose();
+    let (Ok(seed), Ok(fixed)) = (number(0), number(1)) else {
+        return Err(usage());
+    };
+    if args.len() > 2 {
+        return Err(usage());
+    }
+    let game = deciders::game(seed.unwrap_or(1));
+    let fresh = |league, policy: Policy| ArenaRun {
+        commit: std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| ArenaRun::LOCAL_COMMIT.into()),
+        champion: Some(format!("{}@{}", policy.name(), policy.params.digest())),
+        seed: game.seed,
+        league,
+        iterations: fixed,
+        rows: Opponent::all()
+            .into_iter()
+            .map(|opponent| ArenaRow {
+                opponent: opponent.name(),
+                deals: 0,
+                mbb_per_100: 0.,
+                ci95: 0.,
+                bouts: Vec::new(),
+            })
+            .collect(),
+    };
+    let mut runs = [
+        fresh(League::HeadsUp, reference),
+        fresh(League::HeadsUp, candidate),
+        fresh(League::SixMax, reference),
+        fresh(League::SixMax, candidate),
+    ];
+    let started = Instant::now();
+    let cap = Duration::from_secs(3600 * CAP_HOURS);
+    let mut play = |runs: &[ArenaRun], bouts: &[Bout]| {
+        arena_ship::heat(runs, bouts, |index, run, opponent, number| {
+            let policy = if index.is_multiple_of(2) {
+                &reference
+            } else {
+                &candidate
+            };
+            arena::play_bout(&game, run.league, opponent, number, policy, fixed)
+                .into_iter()
+                .sum()
+        })
+    };
+    let outcome = ship::sample_with(
+        &mut runs,
+        &mut play,
+        &mut || started.elapsed() >= cap,
+        &mut |_| {},
+        &|runs| play::check_bar(runs, MARGIN),
+    );
+    let [(heads, heads_up), (_, six_max)] =
+        play::check_readings(&runs, MARGIN).map_err(|error| (1, error))?;
+    let admitted = outcome == Bar::Clears;
+    if let Bar::Refused(reasons) = outcome {
+        for reason in reasons {
+            eprintln!("svanbot play check: {reason}");
+        }
+    }
+    let settings = Settings {
+        bouts: heads.bouts as u64,
+        seed: game.seed,
+        fixed,
+    };
+    record_check(fleet, candidate, settings, admitted, heads_up, six_max)
+}
+
+fn record_check(
+    fleet: &Fleet,
+    policy: Policy,
+    settings: Settings,
+    admitted: bool,
+    heads_up: String,
+    six_max: String,
+) -> CommandResult {
     println!("{heads_up}\n{six_max}");
     fleet
         .record_check(&Check {
-            kind,
-            style: style.name.into(),
-            reference: champion.digest(),
+            kind: policy.kind,
+            style: policy.style.name.into(),
+            reference: policy.params.digest(),
             seed: settings.seed,
             iterations: settings.fixed,
             bouts: settings.bouts,

@@ -126,3 +126,66 @@ fn a_run_still_undecided_when_the_cap_runs_out_is_refused() {
     );
     assert_eq!(runs[0].rows[0].bouts.len(), 40);
 }
+
+#[test]
+fn sample_with_stops_at_the_heat_its_judge_decides() {
+    let mut runs = [fresh(League::HeadsUp), fresh(League::SixMax)];
+    let mut recorded = 0;
+    let outcome = ship::sample_with(
+        &mut runs,
+        &mut scripted(|_| (1., 0.)),
+        &mut || false,
+        &mut |_| recorded += 1,
+        &|runs| {
+            if runs[0].rows[0].bouts.len() == 3 {
+                Bar::Clears
+            } else {
+                Bar::Open
+            }
+        },
+    );
+    assert_eq!(outcome, Bar::Clears);
+    assert_eq!(recorded, 6);
+    assert!(
+        runs.iter()
+            .flat_map(|run| &run.rows)
+            .all(|row| row.bouts.len() == 3)
+    );
+}
+
+#[test]
+fn sample_with_refuses_when_the_cap_runs_out_undecided() {
+    let mut runs = [fresh(League::HeadsUp), fresh(League::SixMax)];
+    let mut looks = 0;
+    let outcome = ship::sample_with(
+        &mut runs,
+        &mut scripted(|_| (1., 0.)),
+        &mut || {
+            looks += 1;
+            looks == 2
+        },
+        &mut |_| {},
+        &|_| Bar::Open,
+    );
+    assert!(matches!(outcome, Bar::Refused(_)));
+    assert!(
+        runs.iter()
+            .flat_map(|run| &run.rows)
+            .all(|row| row.bouts.len() == 2)
+    );
+}
+
+#[test]
+fn sample_with_refuses_an_incomplete_heat_without_recording_it() {
+    let mut runs = [fresh(League::HeadsUp), fresh(League::SixMax)];
+    let before = runs.clone();
+    let outcome = ship::sample_with(
+        &mut runs,
+        &mut |_, bouts| vec![0.; bouts.len() - 1],
+        &mut || false,
+        &mut |_| panic!("an incomplete heat must not be recorded"),
+        &|_| Bar::Open,
+    );
+    assert!(matches!(outcome, Bar::Refused(_)));
+    assert_eq!(runs, before);
+}

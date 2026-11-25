@@ -64,7 +64,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     let mut heats = 0;
     let mut play = |runs: &[ArenaRun], bouts: &[Bout]| {
         heats += 1;
-        let won = heat(runs, bouts, |run, opponent, number| {
+        let won = heat(runs, bouts, |_, run, opponent, number| {
             play_bout(
                 &game,
                 run.league,
@@ -111,10 +111,10 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
 /// Plays a heat's bouts over [`THREADS`] threads, each taking the next bout not yet taken, so a
 /// costly 6-max bout does not hold the others back. Each bout stands alone, so what it won does
 /// not depend on which thread played it; the answers come back in the heat's order.
-fn heat(
+pub(crate) fn heat(
     runs: &[ArenaRun],
     bouts: &[Bout],
-    play: impl Fn(&ArenaRun, Opponent, u64) -> f64 + Sync,
+    play: impl Fn(usize, &ArenaRun, Opponent, u64) -> f64 + Sync,
 ) -> Vec<f64> {
     let next = AtomicUsize::new(0);
     let mut won = vec![f64::NAN; bouts.len()];
@@ -131,7 +131,7 @@ fn heat(
                         let run = &runs[bout.run];
                         let opponent = Opponent::named(&run.rows[bout.row].opponent)
                             .expect("a ship run's rows are the Arena's opponents");
-                        played.push((at, play(run, opponent, bout.number)));
+                        played.push((at, play(bout.run, run, opponent, bout.number)));
                     }
                 })
             })
