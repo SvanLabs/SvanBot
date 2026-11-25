@@ -9,7 +9,8 @@
 #   svanbot-bot pid <name>      print the program's pid while it runs
 #   svanbot-bot run <name>      the supervisor itself, in the foreground (what start runs)
 #
-# <name> is a bot with an env file in ~/.config/svanbot/, `dashboard` or `learn`.
+# <name> is a bot with an env file in ~/.config/svanbot/, `dashboard` or `learn`. The dashboard
+# listens on 127.0.0.1:5000 unless ~/.config/svanbot/dashboard.conf says otherwise (V11-58).
 #
 # What the units gave, kept:
 #   - a bot restarts 10 s after a crash, never after exit 0, 1 (the venue refused the key) or 2 (the
@@ -203,9 +204,13 @@ run() {
     local program="$lib/current/svanbot" memory=$((1024 * 1024)) delay=$restart_sec
     case $name in
         dashboard)
+            # Where it listens is this box's setting: dashboard.conf is read as a bot's env file is,
+            # and wins over the shell that started it. It is not named `.env`: the fleet scripts
+            # take every `*.env` in that folder for a bot.
+            if [[ -f $config/dashboard.conf ]]; then load_env "$config/dashboard.conf"; fi
             export SVANBOT_DATA=${SVANBOT_DATA:-"$HOME/.local/share/svanbot"}
             export SVANBOT_LIB=$lib
-            export SVANBOT_DASHBOARD_ADDR=${SVANBOT_DASHBOARD_ADDR:-127.0.0.1:8080}
+            export SVANBOT_DASHBOARD_ADDR=${SVANBOT_DASHBOARD_ADDR:-127.0.0.1:5000}
             argv=("$program" dashboard)
             delay=$((restart_sec < 5 ? restart_sec : 5))
             ;;

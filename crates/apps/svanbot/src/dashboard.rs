@@ -1,8 +1,9 @@
 //! `svanbot dashboard`: the operator's status-first view of the fleet (V11-11).
 //!
 //! It reads every `*.status.json` in the data directory and the slots of the install tree, serves
-//! the page, and pushes the fleet over one server-sent event stream. It is loopback only: the
-//! status names opponents and shows their stacks, so it is never the public TV.
+//! the page, and pushes the fleet over one server-sent event stream. It is loopback only unless
+//! the operator opens it ([`Server::bind_open`]): the status names opponents and shows their
+//! stacks and the page has no login, so it is never the public TV.
 //!
 //! The server and the page are our own: a `TcpListener` with one thread per connection, and
 //! three hand-written files compiled into this binary ([`page`]). The box runs nothing else for
@@ -10,7 +11,8 @@
 //!
 //! `SVANBOT_DATA` is the directory of every bot's store and status, `~/.local/share/svanbot`
 //! unless set. `SVANBOT_LIB` is the install tree, `~/.local/lib/svanbot` unless set.
-//! `SVANBOT_DASHBOARD_ADDR` is `127.0.0.1:5000` unless set.
+//! `SVANBOT_DASHBOARD_ADDR` is `127.0.0.1:5000` unless set, and an address beyond loopback needs
+//! `SVANBOT_DASHBOARD_OPEN=yes` beside it.
 
 use std::io::{self, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -70,15 +72,29 @@ pub struct Server {
 const INTERNAL_ERROR: u16 = 500;
 
 impl Server {
-    /// Binds `config.addr`, port 0 included. The dashboard is loopback only: its status names
-    /// opponents and shows their stacks, so it is never the public TV.
+    /// Binds `config.addr`, port 0 included. The dashboard is loopback only unless it is opened
+    /// ([`Server::bind_open`]): its status names opponents and shows their stacks, so it is never
+    /// the public TV.
     pub fn bind(config: Config) -> io::Result<Server> {
+        Server::listen(config, false)
+    }
+
+    /// [`Server::bind`] for a dashboard the operator opened (`SVANBOT_DASHBOARD_OPEN=yes`): any
+    /// address will do. The page has no login, so the caller asks the operator first.
+    pub fn bind_open(config: Config) -> io::Result<Server> {
+        Server::listen(config, true)
+    }
+
+    /// Binds `config.addr`, and refuses an address beyond loopback unless `open`.
+    fn listen(config: Config, open: bool) -> io::Result<Server> {
         let listener = TcpListener::bind(&config.addr)?;
         let addr = listener.local_addr()?;
-        if !addr.ip().is_loopback() {
+        if !open && !addr.ip().is_loopback() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("the dashboard is loopback only, not {addr}"),
+                format!(
+                    "the dashboard is loopback only, not {addr}: SVANBOT_DASHBOARD_OPEN=yes opens it"
+                ),
             ));
         }
         Ok(Server {
@@ -443,13 +459,21 @@ pub fn run(fleet_dir: PathBuf) -> ExitCode {
     if std::env::var("SVANBOT_SEASON").as_deref() != Ok("off") {
         season::watch(season.clone(), data_dir.clone());
     }
-    let server = match Server::bind(Config {
+    // Only the word `yes` opens it: the page has no login and names opponents.
+    let open = std::env::var("SVANBOT_DASHBOARD_OPEN").as_deref() == Ok("yes");
+    let config = Config {
         addr: addr.clone(),
         data_dir: data_dir.clone(),
         fleet_dir,
         lib_dir,
         season,
-    }) {
+    };
+    let bound = if open {
+        Server::bind_open(config)
+    } else {
+        Server::bind(config)
+    };
+    let server = match bound {
         Ok(server) => server,
         Err(error) => {
             eprintln!("svanbot dashboard: cannot listen on {addr}: {error}");
@@ -461,6 +485,9 @@ pub fn run(fleet_dir: PathBuf) -> ExitCode {
         server.addr(),
         data_dir.display()
     );
+    if !server.addr().ip().is_loopback() {
+        eprintln!("svanbot dashboard: open to the network, and the page has no login");
+    }
     match server.run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

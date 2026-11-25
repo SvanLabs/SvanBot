@@ -347,8 +347,9 @@ dashboard only reads statuses; nothing in a bot's play reads them.
 _Avoid_: live feed, telemetry loop, beat
 
 **Dashboard**:
-The loopback-only page and server that read every bot's status and push the fleet live. It shows
-the fleet; it never plays. Both are our own code, and the page is compiled into the `svanbot`
+The page and server, on port 5000, that read every bot's status and push the fleet live. They
+listen on loopback unless the operator opens them (`SVANBOT_DASHBOARD_OPEN=yes`): the page has no
+login. It shows the fleet; it never plays. Both are our own code, and the page is compiled into the `svanbot`
 binary. Its page is laid out after v10's control room: a tab per bot, hero tiles, the signal rail,
 then a board of panels the reader arranges and views a slice of at a time: each bot's table drawn
 live, the fleet race ranking the bots by win rate, the season board, opponent intel and the
