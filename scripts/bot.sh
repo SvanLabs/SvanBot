@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The fleet's supervisor (V11-52): keeps one bot, the dashboard or the learner running in the
 # background, in place of a systemd unit. Installed as `svanbot-bot`; the fleet scripts and the
-# updater (`svanbot-release`) drive it. The operator's to run (deploy/README.md).
+# updater (`svanbot-release`) drive it. The operator or an agent runs it (deploy/README.md).
 #
 #   svanbot-bot start <name>    start it in the background; refused if it is already running
 #   svanbot-bot stop <name>     stop it and wait until it has exited (TERM, then KILL after 90 s)

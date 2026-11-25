@@ -25,5 +25,6 @@ These are the two layers that touch the world: the venue, the store, files and t
   repo, a log line quoted in an issue, or a PR.
 - The clock and fresh entropy live here and are passed down as inputs. The decision stays
   in-process (`docs/adr/0001-decision-path-stays-in-process.md`).
-- Never start, stop or swap a fleet bot from an agent session. The hook refuses it; the operator
-  runs it (`deploy/README.md`).
+- Agents run the fleet: start, stop and swap a bot with `scripts/` and `svanbot-bot`
+  (`deploy/README.md`, V11-54). Never start a bot with a key another connection plays: the new
+  connection takes over that bot's live session.

@@ -71,32 +71,6 @@ export function refusal(command: string, env: Record<string, string | undefined>
         }
       }
     }
-    const starts =
-      tool === "systemctl" &&
-      args.some((arg) => /^(start|stop|restart|enable|disable|reload-or-restart)$/.test(arg)) &&
-      args.some((arg) => /svanbot/.test(arg));
-    const swaps = tool === "svanbot-release" && args.some((arg) => /^(update|rollback)$/.test(arg));
-    const script =
-      tool === "bash" || tool === "sh"
-        ? args.includes("-n")
-          ? undefined
-          : args.find((arg) => !arg.startsWith("-"))
-        : tool;
-    const fleetScript =
-      /(?:^|\/)scripts\/(?:start|stop|update)\.sh$|^\.\/(?:start|stop|update)\.sh$/.test(
-        script?.replace(/^['"]|['"]$/g, "") ?? "",
-      );
-    // The supervisor (`svanbot-bot`, `scripts/bot.sh`) starts and stops a bot as systemctl did. Its
-    // `status` and `pid` only ask, and the dashboard and the learner never reach the venue.
-    const bare = script?.replace(/^['"]|['"]$/g, "") ?? "";
-    const rest = script === tool ? args : args.slice(args.indexOf(script ?? "") + 1);
-    const supervises =
-      /(?:^|\/)(?:svanbot-bot|bot\.sh)$/.test(bare) &&
-      /^(start|stop|restart|run)$/.test(rest[0] ?? "") &&
-      !/^(dashboard|learn)$/.test(rest[1] ?? "");
-    if (starts || swaps || fleetScript || supervises) {
-      return "Starting, stopping or swapping a bot is the operator's move: a new connection takes over that bot's live session. Say what should run, and let the operator run it.";
-    }
   }
   return null;
 }

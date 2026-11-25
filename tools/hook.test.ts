@@ -65,7 +65,10 @@ test("a release build is refused: CI builds what the fleet runs", () => {
   );
 });
 
-test("starting a bot is the operator's move", () => {
+// V11-54: the operator handed the fleet to the agents. These commands were refused before; the
+// takeover rule in AGENTS.md (a second connection with a bot's key takes over its live session) is
+// a fact for the agent to mind, not a refusal for the hook to hold.
+test("starting, stopping or swapping a bot goes ahead", () => {
   for (const command of [
     "systemctl --user start svanbot@SurSvan",
     "systemctl --user enable --now svanbot@SurSvan",
@@ -85,11 +88,11 @@ test("starting a bot is the operator's move", () => {
     "scripts/bot.sh stop SurSvan",
     "cd scripts && ./bot.sh start SurSvan",
   ]) {
-    expect(refusal(command, DEV)).toContain("operator");
+    expect(refusal(command, DEV)).toBeNull();
   }
   expect(refusal("svanbot-release status", DEV)).toBeNull();
   expect(refusal("bash -n scripts/start.sh", DEV)).toBeNull();
-  // Asking after a bot changes nothing, and the dashboard and the learner never reach the venue.
+  // Asking after a bot, and the dashboard and the learner, went ahead before and still do.
   for (const command of [
     "svanbot-bot status SurSvan",
     "svanbot-bot pid SurSvan",
@@ -100,7 +103,7 @@ test("starting a bot is the operator's move", () => {
   ]) {
     expect(refusal(command, DEV)).toBeNull();
   }
-  expect(refusal("systemctl --user stop svanbot@SurSvan", DEV)).toContain("operator");
+  expect(refusal("systemctl --user stop svanbot@SurSvan", DEV)).toBeNull();
 });
 
 test("an edit of a crate manifest is one the layering check follows", () => {

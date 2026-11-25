@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Starts the fleet: every bot with an env file in ~/.config/svanbot/, the dashboard and the learner,
 # each under its supervisor (scripts/bot.sh, V11-52). One already running is left as it is. The
-# operator's to run (deploy/README.md); a crontab `@reboot` line runs it after a reboot.
+# operator or an agent runs it (deploy/README.md); a crontab `@reboot` line runs it on a reboot.
 set -euo pipefail
 
 here=$(dirname -- "${BASH_SOURCE[0]}")

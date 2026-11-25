@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Rolls a release out to the whole fleet in one run (V11-50): installs it when it is not installed
 # yet, swaps the canary, then every other configured bot, one at a time, and stops at the first
-# bot that does not take it. The operator's to run (deploy/README.md, "Updating the fleet").
+# bot that does not take it. The operator or an agent runs it (deploy/README.md, "Updating the
+# fleet").
 #
 #   scripts/update.sh [--canary-only] <version>
 #

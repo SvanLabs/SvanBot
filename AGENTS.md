@@ -54,7 +54,7 @@ commit tier, the test tier and cargo-deny, side by side. A PR merges only when a
 Some rules below are held by a machine, in any Claude Code session (`.claude/settings.json`,
 `tools/hook.ts`):
 - Before a shell command, the hook refuses a push to `main`, a forced push, a build outside
-  `target/dev`, a release build, and starting, stopping or swapping a bot.
+  `target/dev`, and a release build.
 - After an edit of a `Cargo.toml`, it runs the layering check.
 - Before the agent stops, a changed tree must pass the gate's commit tier.
 
@@ -116,8 +116,10 @@ a home-made TLS would be a risk: ask the operator before you add to that list or
 - Run one build at a time at low priority, with
   `nice -n 15 ionice -c3 cargo … -j4`. Concurrent builds have OOM-killed the fleet.
 - The box runs v11 from `scripts/`, one supervisor (`svanbot-bot`, `scripts/bot.sh`) per bot,
-  with no systemd, and `deploy/README.md` is the runbook. Never start a bot with a fleet bot's key
-  while another connection plays it: the new connection takes over that bot's live session.
+  with no systemd, and `deploy/README.md` is the runbook. Agents run the fleet: start, stop and
+  swap bots with `scripts/` and `svanbot-bot` (operator, 2026-11-25, V11-54). Never start a bot with
+  a fleet bot's key while another connection plays it: the new connection takes over that bot's
+  live session.
 - A test of a fleet script puts a refusing `systemctl` first on its PATH, and stubs every tool the
   script runs. A red run once ran the old `stop.sh` against the real fleet and stopped every bot.
 - The repo is public. Keys, `.env` contents, opponent data and store contents stay out of it: out
