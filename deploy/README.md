@@ -69,8 +69,8 @@ grep -h '^<2>' ~/.local/state/svanbot/*.log
 
 ## Start or stop the configured fleet
 
-The operator runs these after installing a release. Before starting, check the warning above about
-any bot keys the v10 fleet still uses.
+The operator or an agent runs these after installing a release. Before starting, check the warning
+above about any bot keys the v10 fleet still uses.
 
 ```sh
 scripts/start.sh                # each bot with a .env file, the dashboard and the learner
