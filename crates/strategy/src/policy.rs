@@ -9,12 +9,14 @@ use svanbot_core::rules::{Action, Street};
 use svanbot_core::spot::Spot;
 
 use crate::action::{ActionModel, BUCKETS, Seen, masses, range, ranked};
+use crate::kind::PolicyKind;
 use crate::params::Params;
 use crate::pricer::{self, Budget};
-use crate::profile::{ACTIVE, Profile};
+use crate::profile::{ACTIVE, Profile, SeatedStats};
 use crate::read::Class;
 pub use crate::resolve::Abstract;
 use crate::resolve::resolve;
+use crate::style::{STANDARD, Style};
 
 /// The action to play at `spot`: the re-solve's after `iterations` when it covers the spot, and
 /// the pricer's otherwise. Both read the opponents' ranges from their lines, by `model` or, with
@@ -197,86 +199,148 @@ pub fn decide_profile(
     iterations: u32,
     profile: Profile<'_>,
 ) -> Decision {
-    if let Some(action) = profile.action(spot, budget.seed) {
-        return action.into();
+    Policy::reference(*params)
+        .decide_with_profile(spot, model, personal, budget, iterations, profile)
+}
+
+/// A policy's decision logic, style and parameter set.
+#[derive(Clone, Copy, Debug)]
+pub struct Policy {
+    pub kind: PolicyKind,
+    pub style: &'static Style,
+    pub params: Params,
+}
+
+impl Policy {
+    pub fn new(kind: PolicyKind, style: &'static Style, params: Params) -> Self {
+        Self {
+            kind,
+            style,
+            params,
+        }
     }
 
-    // Until a fit passes the gate, the baseline reads the opponents' lines. A model present is a
-    // model that passed it (`svanbot fit`), so its presence is the gate's answer.
-    let gated = model.is_some();
-    let baseline = ActionModel::baseline();
-    let population = model.unwrap_or(&baseline);
-    // Each line's own read, by the seat the spot names it with.
-    let reads: Vec<Option<&Personal>> = (0..spot.lines.len())
-        .map(|ordinal| {
-            let seat = spot.seats.get(ordinal)?;
-            personal.iter().find(|read| read.seat == *seat)
-        })
-        .collect();
-    let models: Vec<&ActionModel> = reads
-        .iter()
-        .map(|read| read.map_or(population, |read| &read.model))
-        .collect();
-    let model = models.first().copied().unwrap_or(population);
-    let street = Street::of(spot.board);
-    match resolve(spot, Some(model), params.exploit, iterations, budget.seed) {
-        Some(resolved) => {
-            let strategy: Vec<f64> = resolved
-                .strategy
-                .iter()
-                .map(|&(_, chance)| chance)
-                .collect();
-            Decision {
-                action: resolved.action,
-                drawn: Some(Drawn {
-                    strategy: strategy.clone(),
-                    values: resolved.values.clone(),
-                    taken: resolved.taken,
-                }),
-                trace: Some(Trace {
-                    branch: Branch::Resolved,
-                    street,
-                    hole: spot.hole,
-                    board: spot.board,
-                    resolved: Some(ResolvedTrace {
-                        values: resolved.values,
-                        strategy,
-                        taken: resolved.taken,
-                        actions: resolved
-                            .strategy
-                            .into_iter()
-                            .map(|(action, _)| action)
-                            .collect(),
-                        ranges: read_ranges(spot, population, &reads, 1),
-                    }),
-                    priced: None,
-                }),
-            }
+    pub fn reference(params: Params) -> Self {
+        Self::new(PolicyKind::Solving, &STANDARD, params)
+    }
+
+    pub fn name(&self) -> String {
+        format!("{}/{}", self.kind.name(), self.style.name)
+    }
+
+    pub fn decide(
+        &self,
+        spot: &Spot,
+        model: Option<&ActionModel>,
+        personal: &[Personal],
+        budget: Budget,
+        iterations: u32,
+        stats: &[SeatedStats],
+    ) -> Decision {
+        let profile = self.style.profile.with_opponents(stats);
+        self.decide_with_profile(spot, model, personal, budget, iterations, profile)
+    }
+
+    fn decide_with_profile(
+        &self,
+        spot: &Spot,
+        model: Option<&ActionModel>,
+        personal: &[Personal],
+        budget: Budget,
+        iterations: u32,
+        profile: Profile<'_>,
+    ) -> Decision {
+        if let Some(action) = profile.action(spot, budget.seed) {
+            return action.into();
         }
-        None => {
-            let priced = pricer::price_lines(spot, &models, budget);
-            Decision {
-                action: priced.action,
-                drawn: None,
-                trace: Some(Trace {
-                    branch: Branch::Priced,
-                    street,
-                    hole: spot.hole,
-                    board: spot.board,
-                    resolved: None,
-                    priced: Some(PricedTrace {
-                        equity: priced.equity,
-                        // What the pricer compared against, not a second reading of the spot.
-                        price: priced.price,
-                        exploit: (gated
-                            || reads
-                                .iter()
-                                .flatten()
-                                .any(|read| read.trust.is_some_and(|trust| trust > 0.0)))
-                        .then_some(params.exploit),
-                        ranges: read_ranges(spot, population, &reads, spot.opponents.max(1)),
+
+        // Until a fit passes the gate, the baseline reads the opponents' lines. A model present is a
+        // model that passed it (`svanbot fit`), so its presence is the gate's answer.
+        let gated = model.is_some();
+        let baseline = ActionModel::baseline();
+        let population = model.unwrap_or(&baseline);
+        // Each line's own read, by the seat the spot names it with.
+        let reads: Vec<Option<&Personal>> = (0..spot.lines.len())
+            .map(|ordinal| {
+                let seat = spot.seats.get(ordinal)?;
+                personal.iter().find(|read| read.seat == *seat)
+            })
+            .collect();
+        let models: Vec<&ActionModel> = reads
+            .iter()
+            .map(|read| read.map_or(population, |read| &read.model))
+            .collect();
+        let model = models.first().copied().unwrap_or(population);
+        let street = Street::of(spot.board);
+        let resolved = match self.kind {
+            PolicyKind::Solving => resolve(
+                spot,
+                Some(model),
+                self.params.exploit,
+                iterations,
+                budget.seed,
+            ),
+            PolicyKind::Pricing => None,
+        };
+        match resolved {
+            Some(resolved) => {
+                let strategy: Vec<f64> = resolved
+                    .strategy
+                    .iter()
+                    .map(|&(_, chance)| chance)
+                    .collect();
+                Decision {
+                    action: resolved.action,
+                    drawn: Some(Drawn {
+                        strategy: strategy.clone(),
+                        values: resolved.values.clone(),
+                        taken: resolved.taken,
                     }),
-                }),
+                    trace: Some(Trace {
+                        branch: Branch::Resolved,
+                        street,
+                        hole: spot.hole,
+                        board: spot.board,
+                        resolved: Some(ResolvedTrace {
+                            values: resolved.values,
+                            strategy,
+                            taken: resolved.taken,
+                            actions: resolved
+                                .strategy
+                                .into_iter()
+                                .map(|(action, _)| action)
+                                .collect(),
+                            ranges: read_ranges(spot, population, &reads, 1),
+                        }),
+                        priced: None,
+                    }),
+                }
+            }
+            None => {
+                let priced = pricer::price_lines_at(spot, &models, budget, self.style.open_scale);
+                Decision {
+                    action: priced.action,
+                    drawn: None,
+                    trace: Some(Trace {
+                        branch: Branch::Priced,
+                        street,
+                        hole: spot.hole,
+                        board: spot.board,
+                        resolved: None,
+                        priced: Some(PricedTrace {
+                            equity: priced.equity,
+                            // What the pricer compared against, not a second reading of the spot.
+                            price: priced.price,
+                            exploit: (gated
+                                || reads
+                                    .iter()
+                                    .flatten()
+                                    .any(|read| read.trust.is_some_and(|trust| trust > 0.0)))
+                            .then_some(self.params.exploit),
+                            ranges: read_ranges(spot, population, &reads, spot.opponents.max(1)),
+                        }),
+                    }),
+                }
             }
         }
     }
