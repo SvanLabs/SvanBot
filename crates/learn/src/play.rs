@@ -9,7 +9,8 @@ use svanbot_strategy::profile::SeatedStats;
 use svanbot_strategy::resolve::iterations_for;
 
 use crate::arena::opponent_name;
-use crate::paired::{Challenger, Match, duel_seen};
+use crate::paired::{Challenger, Draws, Match, duel_seen};
+use crate::probe::Decided;
 use crate::reads::Reads;
 use crate::ring::ring_seen;
 
@@ -24,7 +25,35 @@ pub fn reading(
     fixed: Option<u64>,
     seats: usize,
     take: Take,
+    draws: Option<Draws>,
 ) -> impl Fn(&Spot, u64, &Reads) -> Action {
+    reading_with(policy, fixed, seats, take, move |drawn| {
+        if let Some(draws) = &draws {
+            draws.borrow_mut().push(drawn);
+        }
+    })
+}
+
+/// The same decision maker without a handle, for comparisons shared across threads.
+pub fn reading_untracked(
+    policy: Policy,
+    fixed: Option<u64>,
+    seats: usize,
+    take: Take,
+) -> impl Fn(&Spot, u64, &Reads) -> Action + Sync {
+    reading_with(policy, fixed, seats, take, |_| {})
+}
+
+fn reading_with<F>(
+    policy: Policy,
+    fixed: Option<u64>,
+    seats: usize,
+    take: Take,
+    report: F,
+) -> impl Fn(&Spot, u64, &Reads) -> Action
+where
+    F: Fn(Decided),
+{
     let names: Vec<_> = (0..seats).map(|seat| opponent_name(seats, seat)).collect();
     let baseline = ActionModel::baseline();
     move |spot, seed, reads| {
@@ -39,16 +68,22 @@ pub fn reading(
             samples: SAMPLES,
             seed,
         };
-        policy
-            .decide(
-                spot,
-                None,
-                &personal,
-                budget,
-                iterations(spot, fixed),
-                &stats,
-            )
-            .action
+        let decision = policy.decide(
+            spot,
+            None,
+            &personal,
+            budget,
+            iterations(spot, fixed),
+            &stats,
+        );
+        if let Some(drawn) = decision.drawn {
+            report(Decided {
+                strategy: drawn.strategy,
+                values: drawn.values,
+                taken: drawn.taken,
+            });
+        }
+        decision.action
     }
 }
 

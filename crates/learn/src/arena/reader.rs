@@ -6,7 +6,8 @@ use svanbot_core::spot::{Act, ActKind, Spot};
 use svanbot_sim::table::Record;
 use svanbot_strategy::action::Seen;
 
-use crate::paired::Challenger;
+use crate::paired::{Challenger, Draws};
+use crate::probe::Decided;
 use crate::profile::Observation;
 use crate::read_sim::OPPONENT;
 use crate::reads::{Reads, Witness};
@@ -28,6 +29,7 @@ pub struct BoutReader<F> {
     pending: RefCell<Vec<Witness>>,
     deal: Cell<usize>,
     profile_stats: bool,
+    draws: Option<Draws>,
 }
 
 impl<F: Fn(&Spot, u64, &Reads) -> Action> BoutReader<F> {
@@ -43,6 +45,7 @@ impl<F: Fn(&Spot, u64, &Reads) -> Action> BoutReader<F> {
             pending: RefCell::default(),
             deal: Cell::default(),
             profile_stats: false,
+            draws: None,
         }
     }
 
@@ -51,11 +54,22 @@ impl<F: Fn(&Spot, u64, &Reads) -> Action> BoutReader<F> {
         self.profile_stats = collect;
         self
     }
+    /// Share the current hand's reported draws with the simulation.
+    pub fn with_draws(mut self, draws: Draws) -> Self {
+        self.draws = Some(draws);
+        self
+    }
 }
 
 impl<F: Fn(&Spot, u64, &Reads) -> Action> Challenger for BoutReader<F> {
     fn decide(&self, spot: &Spot, seed: u64) -> Action {
         (self.decide)(spot, seed, &self.reads.borrow())
+    }
+
+    fn take_decided(&self) -> Vec<Decided> {
+        self.draws
+            .as_ref()
+            .map_or_else(Vec::new, |draws| std::mem::take(&mut *draws.borrow_mut()))
     }
 
     fn finished_hand(&self, us: usize, lines: &[Vec<Act>], actions: &[Record]) {

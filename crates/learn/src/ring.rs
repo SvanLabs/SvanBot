@@ -13,6 +13,7 @@ use svanbot_core::spot::Spot;
 use svanbot_sim::table::{Seen, deal, play_observed};
 
 use crate::paired::{Challenger, Match};
+use crate::probe::corrected;
 
 /// Seats at a full 6-max table: the venue's game.
 pub const SIX_MAX: usize = 6;
@@ -94,7 +95,7 @@ pub fn ring_seen(
             },
             |lines, actions| challenger.finished_hand(us, lines, actions),
         );
-        chips += won[us];
+        chips += corrected(won[us], &challenger.take_decided());
     }
     challenger.finished_deal();
     chips / (seats as f64 * game.blinds.big as f64)
