@@ -56,8 +56,14 @@ impl<'a> Probing<'a> {
             ));
             String::new()
         });
-        let champion = match fleet.champion_for(&bot) {
-            Ok(champion) => champion,
+        let champion = match fleet.champion_slot(&bot) {
+            Ok(Some(slot)) => slot,
+            Ok(None) => fleet.champion().unwrap_or_else(|why| {
+                notes.push(format!(
+                    "the champion file is refused ({why}): playing the default"
+                ));
+                Params::DEFAULT
+            }),
             Err(why) => {
                 // A slot that cannot be read is not one to play by. The fleet champion still is,
                 // and the default is the last resort, as it is for a refused champion.json.

@@ -2,7 +2,7 @@
 
 use serde_json::{Map, Value, json};
 use svanbot_strategy::params::Params;
-use svanbot_strategy::style;
+use svanbot_strategy::style::STANDARD;
 
 use super::{Fleet, params_from, params_json};
 
@@ -37,10 +37,10 @@ impl Fleet {
         if bots.contains_key(bot) {
             return Err(format!("{CHAMPIONS}: {bot} already has a champion slot"));
         }
-        let style = self
+        let assigned = self
             .assignment(bot)?
-            .map_or(&style::STANDARD, |assignment| assignment.style);
-        let seeded = style.seed(self.champion()?);
+            .map_or(&STANDARD, |assignment| assignment.style);
+        let seeded = assigned.seed(self.champion()?);
         bots.insert(bot.into(), params_json(&seeded));
         self.write(CHAMPIONS, &json!({ "bots": bots }).to_string())?;
         Ok(seeded)
