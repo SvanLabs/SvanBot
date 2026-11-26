@@ -8,12 +8,14 @@ use svanbot_strategy::params::Params;
 const CHAMPION: Params = Params {
     exploit: 0.5,
     spread: 0.0,
+    ..Params::DEFAULT
 };
 
 fn at(exploit: f64) -> Params {
     Params {
         exploit,
         spread: 0.0,
+        ..Params::DEFAULT
     }
 }
 

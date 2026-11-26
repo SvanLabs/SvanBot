@@ -51,10 +51,12 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
     let a = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let b = Params {
         exploit: 0.6,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &a).unwrap();
     fleet.set_champion("B", &b).unwrap();
@@ -90,7 +92,8 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
             calls[0].2,
             Params {
                 exploit: 0.4 * 0.8,
-                spread: 0.0
+                spread: 0.0,
+                ..Params::DEFAULT
             }
         );
         assert_eq!(calls[0].3, a);
@@ -103,7 +106,8 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
             calls[1].2,
             Params {
                 exploit: 0.6 * 0.8,
-                spread: 0.0
+                spread: 0.0,
+                ..Params::DEFAULT
             }
         );
         assert_eq!(calls[1].3, b);
@@ -123,6 +127,7 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
     let promoted = Params {
         exploit: 0.35,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &promoted).unwrap();
     let note = bot_step(&fleet, 200, 1_600, 500, &sim).unwrap();
@@ -134,6 +139,7 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
         Params {
             exploit: 0.35 * 0.8,
             spread: 0.0,
+            ..Params::DEFAULT
         }
     );
     assert_eq!(last.3, promoted);
@@ -148,10 +154,12 @@ fn promising_candidates_get_the_long_confirmation_and_become_a_candidate() {
     let champion = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let promising = Params {
         exploit: 0.4 * 0.8,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &champion).unwrap();
     fleet.assign("A", tight(), 1).unwrap();
@@ -210,10 +218,12 @@ fn a_confirmation_budget_that_expires_without_a_verdict_holds_the_incumbent() {
     let champion = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let promising = Params {
         exploit: 0.4 * 0.8,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &champion).unwrap();
     let sim = |_challenger: &Policy, _champion: &Policy, step: &Step, deals: u64| {
@@ -244,10 +254,12 @@ fn a_bot_with_a_candidate_waiting_is_not_searched_again() {
     let a = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let b = Params {
         exploit: 0.6,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &a).unwrap();
     fleet.set_champion("B", &b).unwrap();
@@ -255,6 +267,7 @@ fn a_bot_with_a_candidate_waiting_is_not_searched_again() {
         challenger: Params {
             exploit: 0.32,
             spread: 0.0,
+            ..Params::DEFAULT
         },
         kind: PolicyKind::Solving,
         style: "standard",
@@ -314,6 +327,7 @@ fn the_cli_searches_the_slotted_bot() {
     let champion = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &champion).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
@@ -351,10 +365,12 @@ fn a_candidate_is_offered_to_another_bot_which_screens_it_against_its_own_champi
     let a = Params {
         exploit: 0.5,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let b = Params {
         exploit: 0.7,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &a).unwrap();
     fleet.set_champion("B", &b).unwrap();

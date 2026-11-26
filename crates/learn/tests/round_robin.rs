@@ -16,6 +16,7 @@ fn params(value: u64) -> Params {
     Params {
         exploit: value as f64 / 10.0,
         spread: 0.0,
+        ..Params::DEFAULT
     }
 }
 

@@ -20,6 +20,7 @@ fn params(spread: f64) -> Params {
     Params {
         exploit: 0.25,
         spread,
+        ..Params::DEFAULT
     }
 }
 
@@ -70,6 +71,7 @@ fn anchor_seeds_its_mixing_spread_and_caps_the_exploit_budget() {
     let learned = style::ANCHOR.seed(Params {
         exploit: 0.9,
         spread: 0.4,
+        ..Params::DEFAULT
     });
     assert_eq!(learned.exploit, 0.25);
     assert_eq!(learned.spread, 0.4);
@@ -86,6 +88,7 @@ fn the_exploit_cap_is_real_even_when_the_parameter_set_is_not_seeded() {
         Params {
             exploit: 1.0,
             spread: 0.1,
+            ..Params::DEFAULT
         },
     );
     assert_eq!(balanced.exploit(), 0.25);
@@ -97,6 +100,7 @@ fn the_exploit_cap_is_real_even_when_the_parameter_set_is_not_seeded() {
     let reference = Policy::reference(Params {
         exploit: 1.0,
         spread: 0.0,
+        ..Params::DEFAULT
     });
     assert_eq!(reference.exploit(), 1.0);
 }

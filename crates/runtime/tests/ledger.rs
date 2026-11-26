@@ -8,6 +8,7 @@ use svanbot_strategy::params::Params;
 const CHALLENGER: Params = Params {
     exploit: 0.9,
     spread: 0.0,
+    ..Params::DEFAULT
 };
 
 /// A hand at `table` that leaves our seat, 2, with `stack` chips, in the venue's own frames.

@@ -12,6 +12,7 @@ fn hypothesis(kind: Kind) -> Hypothesis {
         challenger: Params {
             exploit: 0.25,
             spread: 0.0,
+            ..Params::DEFAULT
         }
         .digest(),
         kind,

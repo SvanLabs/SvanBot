@@ -78,6 +78,7 @@ fn the_fleet_carries_the_search_newest_step_first_with_what_the_canary_has_pendi
             challenger: Params {
                 exploit,
                 spread: 0.0,
+                ..Params::DEFAULT
             },
             stage,
             seed: 7,
@@ -96,6 +97,7 @@ fn the_fleet_carries_the_search_newest_step_first_with_what_the_canary_has_pendi
             challenger: Params {
                 exploit: 0.4,
                 spread: 0.0,
+                ..Params::DEFAULT
             },
         },
     ];
@@ -105,6 +107,7 @@ fn the_fleet_carries_the_search_newest_step_first_with_what_the_canary_has_pendi
             challenger: Params {
                 exploit: 0.4,
                 spread: 0.0,
+                ..Params::DEFAULT
             },
             kind: Kind::Guard { hands: 3_000 },
             harm_margin: 20.0,
@@ -121,7 +124,8 @@ fn the_fleet_carries_the_search_newest_step_first_with_what_the_canary_has_pendi
         search["waiting"],
         Params {
             exploit: 0.4,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }
         .digest()
         .to_string()
@@ -249,6 +253,7 @@ fn a_run_of_a_champion_the_fleet_no_longer_plays_is_a_problem_in_the_fleet() {
         .promote(&Params {
             exploit: 0.9,
             spread: 0.0,
+            ..Params::DEFAULT
         })
         .unwrap();
     let (_, body) = get(addr, "/api/fleet");
@@ -275,6 +280,7 @@ fn each_league_is_checked_for_the_champion_in_play() {
         .promote(&Params {
             exploit: 0.9,
             spread: 0.0,
+            ..Params::DEFAULT
         })
         .unwrap();
     fleet

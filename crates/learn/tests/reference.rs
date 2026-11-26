@@ -58,6 +58,7 @@ fn the_estimate_recovers_the_policy_s_edge_through_a_one_in_ten_arm() {
     let policy = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     }
     .digest();
     let mut estimate = Estimate::new(reference, policy);
@@ -82,6 +83,7 @@ fn the_guard_clears_a_level_arm_and_trips_a_losing_one() {
     let policy = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     }
     .digest();
     let seed = bot_seed("SurSvan");

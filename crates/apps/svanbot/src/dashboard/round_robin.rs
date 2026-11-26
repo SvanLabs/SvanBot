@@ -198,6 +198,7 @@ mod tests {
         Params {
             exploit,
             spread: 0.0,
+            ..Params::DEFAULT
         }
     }
 
