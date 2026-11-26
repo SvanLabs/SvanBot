@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use svanbot_core::card::CardSet;
 use svanbot_core::rules::{Chips, Street};
 use svanbot_core::spot::Spot;
-use svanbot_sim::equity::Showdown;
+use svanbot_sim::equity::{MAX_OPPONENTS, Showdown};
 
 use crate::action::{ActionModel, Move, Situation};
 
@@ -43,46 +43,43 @@ pub(super) struct Answer {
     pub goes_on: f64,
 }
 
-/// Each opponent's answer, in each deal, to a bet at the model's reference size:
-/// `[deal][opponent]`.
+/// Each opponent's answer, in each deal, to a bet at the model's reference size, flattened:
+/// `deals × per_deal` entries, a deal's opponents consecutive and in their ranges' order.
 pub(super) fn references(
     spot: &Spot,
     dealt: &[Showdown],
     models: &[&ActionModel],
     ranked: &BTreeMap<CardSet, usize>,
-) -> Vec<Vec<Answer>> {
+) -> Vec<Answer> {
     let facing = Situation {
         street: Street::of(spot.board),
         facing: true,
     };
-    dealt
-        .iter()
-        .map(|deal| {
-            deal.holes
-                .iter()
-                .zip(models)
-                .map(|(hole, model)| {
-                    // Every live pair is ranked on the board; a pair the table does not know
-                    // reads as the middle of the range.
-                    let bucket = ranked
-                        .get(hole)
-                        .copied()
-                        .unwrap_or(crate::action::BUCKETS / 2);
-                    Answer {
-                        goes_on: 1.0 - model.prob(facing, bucket, Move::Fold),
-                    }
-                })
-                .collect()
-        })
-        .collect()
+    let mut answers = Vec::with_capacity(dealt.len() * models.len());
+    for deal in dealt {
+        for (hole, model) in deal.holes().iter().zip(models) {
+            // Every live pair is ranked on the board; a pair the table does not know
+            // reads as the middle of the range.
+            let bucket = ranked
+                .get(hole)
+                .copied()
+                .unwrap_or(crate::action::BUCKETS / 2);
+            answers.push(Answer {
+                goes_on: 1.0 - model.prob(facing, bucket, Move::Fold),
+            });
+        }
+    }
+    answers
 }
 
 /// What raising to add `added` chips is worth, on average over `dealt`, when a call costs `call`
 /// and the pot is `pot`. Each opponent that calls is taken to add the raise less our call: the
 /// whole of it for the player who bet, a little less than the whole for anyone yet to act.
+/// `references` is [`references`]' flat output, `per_deal` answers a deal.
 pub(super) fn raise(
     dealt: &[Showdown],
-    references: &[Vec<Answer>],
+    references: &[Answer],
+    per_deal: usize,
     pot: Chips,
     call: Chips,
     added: Chips,
@@ -90,11 +87,13 @@ pub(super) fn raise(
     let (pot, call, added) = ((pot as f64), (call as f64), (added as f64));
     let share = (added - call) / (pot + call).max(1.0);
     let mut total = 0.0;
-    for (deal, reference) in dealt.iter().zip(references) {
-        let goes_on: Vec<f64> = reference
-            .iter()
-            .map(|answer| continues(answer.goes_on, share))
-            .collect();
+    for (deal, reference) in dealt.iter().zip(references.chunks_exact(per_deal.max(1))) {
+        // Stack storage: the sample is thousands of deals, and a Vec here is an allocation each.
+        let mut goes_on = [0.0f64; MAX_OPPONENTS];
+        for (at, answer) in reference.iter().enumerate() {
+            goes_on[at] = continues(answer.goes_on, share);
+        }
+        let goes_on = &goes_on[..reference.len()];
         let opponents = goes_on.len();
         for callers in 0u64..(1 << opponents) {
             let mut chance = 1.0;
