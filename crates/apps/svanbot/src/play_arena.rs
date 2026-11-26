@@ -21,7 +21,7 @@ use crate::{arena_ship, deciders};
 mod model;
 
 const USAGE: &str = "usage: svanbot play arena <solving|pricing> <standard|tight|loose> [league] <bouts> [seed] [iterations] [out.json]
-       svanbot play compare-model <candidate> <baseline|incumbent> <bouts> [seed] [iterations]
+       svanbot play compare-model <candidate> <baseline|incumbent> <bouts> [seed] [iterations] [--confirm <fresh-seed>]
        svanbot play check <kind> <style> <bouts|--until-decided> [seed] [iterations]
        svanbot play assign <bot> <kind> <style>
        svanbot play revert <bot>

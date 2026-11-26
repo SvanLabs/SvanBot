@@ -49,6 +49,33 @@ fn the_paired_decider_supplies_the_fitted_model_as_the_population_prior() {
 }
 
 #[test]
+fn each_paired_decider_supplies_its_own_model_as_the_population_prior() {
+    use std::cell::RefCell;
+    use svanbot_learn::arena::BoutReader;
+    use svanbot_strategy::{action::ActionModel, policy::Personal};
+
+    thread_local! {
+        static SEEN: RefCell<Vec<ActionModel>> = const { RefCell::new(Vec::new()) };
+    }
+    fn record(_: &Reads, _: &[(usize, &str)], population: &ActionModel, _: f64) -> Vec<Personal> {
+        SEEN.with(|seen| seen.borrow_mut().push(population.clone()));
+        Vec::new()
+    }
+
+    let policy = Policy::reference(Params::DEFAULT);
+    let reference = player(policy, Some(2));
+    for model in [ActionModel::uniform(), ActionModel::baseline()] {
+        SEEN.with(|seen| seen.borrow_mut().clear());
+        let decider = reading_model(policy, Some(2), 6, record, Some(model.clone()));
+        let reader = BoutReader::new(decider);
+        assert!(rival_ring_at(&GAME, 6, 1, &reader, &reference).is_finite());
+        let seen = SEEN.with(|seen| seen.borrow().clone());
+        assert!(!seen.is_empty());
+        assert!(seen.iter().all(|seen| *seen == model));
+    }
+}
+
+#[test]
 fn a_style_with_rules_collects_stats_per_seat() {
     let policy = Policy::reference(Params::DEFAULT);
     let stats = profile_stats(&policy, &Reads::default(), &[(1, "x"), (3, "y")]);
