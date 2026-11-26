@@ -243,25 +243,26 @@ fn bot_challengers(champion: &Params, style: &Style) -> Vec<Params> {
 
 /// The screening verdict already logged for `challenger` against `champion`, if it ran.
 fn screening(champion: Digest, challenger: Params, log: &[Entry]) -> Option<Verdict> {
-    log.iter().find_map(|entry| match *entry {
-        Entry::Simmed { step, verdict }
-            if step.champion == champion
-                && step.challenger == challenger
-                && step.stage == Stage::First =>
-        {
-            Some(verdict)
-        }
-        _ => None,
-    })
+    verdict_at(champion, challenger, Stage::First, log)
 }
 
 /// The confirmation verdict already logged for `challenger` against `champion`, if it ran.
 fn confirmation(champion: Digest, challenger: Params, log: &[Entry]) -> Option<Verdict> {
+    verdict_at(champion, challenger, Stage::Confirmation, log)
+}
+
+/// The verdict already logged for `challenger` against `champion` at `stage`, if it ran.
+fn verdict_at(
+    champion: Digest,
+    challenger: Params,
+    stage: Stage,
+    log: &[Entry],
+) -> Option<Verdict> {
     log.iter().find_map(|entry| match *entry {
         Entry::Simmed { step, verdict }
             if step.champion == champion
                 && step.challenger == challenger
-                && step.stage == Stage::Confirmation =>
+                && step.stage == stage =>
         {
             Some(verdict)
         }

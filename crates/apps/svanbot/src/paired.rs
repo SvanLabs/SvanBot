@@ -49,15 +49,10 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     }
 }
 
-/// Plays `deals` deals of `game` between two policies and returns the challenger's verdict.
-pub(crate) fn sim(
-    game: &Match,
-    deals: u64,
-    challenger: &(impl Fn(&Spot, u64) -> Action + Sync),
-    champion: &(impl Fn(&Spot, u64) -> Action + Sync),
-) -> Verdict {
-    // Thread `k` plays deals k, k + THREADS, …; put back in order, the sum is the same on any
-    // number of threads.
+/// Plays `deals` deals with `play`, thread `k` taking deals `k`, `k + THREADS`, …, and puts the
+/// results back in deal order: the sum is the same on any number of threads.
+fn play_deals(deals: u64, play: impl Fn(u64) -> f64 + Sync) -> Vec<f64> {
+    let play = &play;
     let mut results = vec![0.0; deals as usize];
     let played: Vec<Vec<(u64, f64)>> = std::thread::scope(|scope| {
         let workers: Vec<_> = (0..THREADS)
@@ -65,7 +60,7 @@ pub(crate) fn sim(
                 scope.spawn(move || {
                     (k..deals)
                         .step_by(THREADS as usize)
-                        .map(|deal| (deal, duel(game, deal, challenger, champion)))
+                        .map(|deal| (deal, play(deal)))
                         .collect()
                 })
             })
@@ -82,7 +77,19 @@ pub(crate) fn sim(
     for (deal, result) in played.into_iter().flatten() {
         results[deal as usize] = result;
     }
-    verdict(&results)
+    results
+}
+
+/// Plays `deals` deals of `game` between two policies and returns the challenger's verdict.
+pub(crate) fn sim(
+    game: &Match,
+    deals: u64,
+    challenger: &(impl Fn(&Spot, u64) -> Action + Sync),
+    champion: &(impl Fn(&Spot, u64) -> Action + Sync),
+) -> Verdict {
+    verdict(&play_deals(deals, |deal| {
+        duel(game, deal, challenger, champion)
+    }))
 }
 
 /// Plays `deals` deals of 6-max ring of the challenger against five seats of the champion, and
@@ -94,32 +101,11 @@ pub(crate) fn ring_sim(
     challenger: &(impl Fn(&Spot, u64) -> Action + Sync),
     champion: &(impl Fn(&Spot, u64) -> Action + Sync),
 ) -> Verdict {
-    let mut results = vec![0.0; deals as usize];
-    let played: Vec<Vec<(u64, f64)>> = std::thread::scope(|scope| {
-        let workers: Vec<_> = (0..THREADS)
-            .map(|k| {
-                scope.spawn(move || {
-                    (k..deals)
-                        .step_by(THREADS as usize)
-                        .map(|deal| {
-                            let won = ring(game, SIX_MAX, deal, challenger, &|_, spot, seed| {
-                                champion(spot, seed)
-                            });
-                            (deal, won)
-                        })
-                        .collect()
-                })
-            })
-            .collect();
-        workers
-            .into_iter()
-            .map(|worker| worker.join().expect("a paired ring worker panicked"))
-            .collect()
-    });
-    for (deal, result) in played.into_iter().flatten() {
-        results[deal as usize] = result;
-    }
-    verdict(&results)
+    verdict(&play_deals(deals, |deal| {
+        ring(game, SIX_MAX, deal, challenger, &|_, spot, seed| {
+            champion(spot, seed)
+        })
+    }))
 }
 
 #[cfg(test)]
