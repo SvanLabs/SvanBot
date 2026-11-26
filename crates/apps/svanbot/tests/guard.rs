@@ -3,10 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use svanbot::play::guard::{Guarded, guard, judge};
-use svanbot_runtime::fleet::{Assignment, Fleet};
-use svanbot_runtime::ledger::Played;
-use svanbot_runtime::store::Store;
+use svanbot_runtime::fleet::Fleet;
 use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
 use svanbot_strategy::style::TIGHT;
@@ -17,6 +14,41 @@ fn fixture(name: &str, _store: bool) -> (PathBuf, Fleet) {
     std::fs::create_dir_all(&dir).unwrap();
     let fleet = Fleet::in_dir(dir.join("fleet"));
     (dir, fleet)
+}
+
+use svanbot::play::guard::{Guarded, guard, judge};
+use svanbot_runtime::{fleet::Assignment, ledger::Played, store::Store};
+
+#[test]
+fn the_guard_waits_for_the_hands_before_it_says_anything() {
+    assert!(matches!(
+        judge(&[-10.; 10], &[0.; 10], 3_000, 20.),
+        Guarded::NotYet(_)
+    ));
+}
+
+#[test]
+fn a_styled_bot_clearly_losing_to_the_control_trips() {
+    assert!(matches!(
+        judge(&[-0.4; 3_000], &[0.; 3_000], 3_000, 20.),
+        Guarded::Trips(_)
+    ));
+}
+
+#[test]
+fn a_styled_bot_level_with_the_control_holds() {
+    assert!(matches!(
+        judge(&[0.; 20], &[0.; 20], 20, 20.),
+        Guarded::Holds(_)
+    ));
+}
+
+#[test]
+fn an_empty_control_is_not_yet_never_a_trip() {
+    assert!(matches!(
+        judge(&[-0.4; 20], &[], 20, 20.),
+        Guarded::NotYet(_)
+    ));
 }
 
 fn hands(dir: &Path, name: &str, count: i64, net: i64) {
@@ -51,38 +83,6 @@ fn assign(fleet: &Fleet, bot: &str) {
             1,
         )
         .unwrap();
-}
-
-#[test]
-fn the_guard_waits_for_the_hands_before_it_says_anything() {
-    assert!(matches!(
-        judge(&[-10.; 10], &[0.; 10], 3_000, 20.),
-        Guarded::NotYet(_)
-    ));
-}
-
-#[test]
-fn a_styled_bot_clearly_losing_to_the_control_trips() {
-    assert!(matches!(
-        judge(&[-0.4; 3_000], &[0.; 3_000], 3_000, 20.),
-        Guarded::Trips(_)
-    ));
-}
-
-#[test]
-fn a_styled_bot_level_with_the_control_holds() {
-    assert!(matches!(
-        judge(&[0.; 20], &[0.; 20], 20, 20.),
-        Guarded::Holds(_)
-    ));
-}
-
-#[test]
-fn an_empty_control_is_not_yet_never_a_trip() {
-    assert!(matches!(
-        judge(&[-0.4; 20], &[], 20, 20.),
-        Guarded::NotYet(_)
-    ));
 }
 
 #[test]

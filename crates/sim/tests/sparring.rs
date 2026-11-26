@@ -168,3 +168,84 @@ fn at_a_full_table_the_learning_archetype_learns_from_the_seat_it_watches() {
     }
     assert_eq!(watching.decide(&facing, 1, 40), Action::Call);
 }
+
+#[test]
+fn the_sizing_archetype_makes_its_bet_size_the_tell() {
+    let sizing = Sparring::new(Archetype::Sizing);
+    // A set of kings bets the pot: its big size is its strong hand.
+    let strong = spot("KcKd", BOARD, 200, None);
+    // Ace high has nothing: when it bets, it bets a quarter pot, and otherwise checks.
+    let weak = spot("Ac3d", BOARD, 200, None);
+    let mut small = 0;
+    for seed in 0..200 {
+        assert_eq!(sizing.decide(&strong, seed, 0), Action::RaiseTo(200));
+        match sizing.decide(&weak, seed, 0) {
+            Action::RaiseTo(to) => {
+                assert_eq!(to, 50, "a weak hand bets small");
+                small += 1;
+            }
+            Action::Check => (),
+            other => panic!("ace high took {other:?}"),
+        }
+    }
+    assert!((30..=110).contains(&small), "{small} of 200 small bets");
+}
+
+#[test]
+fn the_bluffer_bets_nothing_and_slows_down_with_a_monster() {
+    let bluffer = Sparring::new(Archetype::Bluffer);
+    let weak = spot("Ac3d", BOARD, 200, None);
+    let strong = spot("KcKd", BOARD, 200, None);
+    let bluffs = (0..200)
+        .filter(|&seed| matches!(bluffer.decide(&weak, seed, 0), Action::RaiseTo(_)))
+        .count();
+    assert!((100..=170).contains(&bluffs), "{bluffs} of 200 bluffs");
+    for seed in 0..20 {
+        assert_eq!(bluffer.decide(&strong, seed, 0), Action::Check);
+    }
+    // Facing a bet it mostly gives up with nothing, and raises the rest as a bluff; the set
+    // only calls.
+    let facing = spot("Ac3d", BOARD, 400, Some(200));
+    let mut raises = 0;
+    for seed in 0..200 {
+        match bluffer.decide(&facing, seed, 0) {
+            Action::Fold => (),
+            Action::RaiseTo(_) => raises += 1,
+            other => panic!("ace high took {other:?}"),
+        }
+    }
+    assert!((20..=100).contains(&raises), "{raises} of 200 bluff raises");
+    assert_eq!(
+        bluffer.decide(&spot("KcKd", BOARD, 400, Some(200)), 0, 0),
+        Action::Call
+    );
+}
+
+#[test]
+fn the_mixing_regular_mixes_by_its_seed() {
+    let mixing = Sparring::new(Archetype::Mixing);
+    // A set of kings checked to bets some of the time and checks the rest.
+    let strong = spot("KcKd", BOARD, 200, None);
+    let (mut bets, mut checks) = (0, 0);
+    for seed in 0..200 {
+        match mixing.decide(&strong, seed, 0) {
+            Action::RaiseTo(_) => bets += 1,
+            Action::Check => checks += 1,
+            other => panic!("the set took {other:?}"),
+        }
+    }
+    assert!(bets > 20 && checks > 20, "{bets} bets, {checks} checks");
+    // A mix is still a decision: one seed draws one action every time.
+    assert_eq!(mixing.decide(&strong, 7, 0), mixing.decide(&strong, 7, 0));
+    // Facing a bet, second pair calls some of the time and folds the rest.
+    let facing = spot("9c3d", BOARD, 400, Some(200));
+    let (mut calls, mut folds) = (0, 0);
+    for seed in 0..200 {
+        match mixing.decide(&facing, seed, 0) {
+            Action::Call => calls += 1,
+            Action::Fold => folds += 1,
+            other => panic!("second pair took {other:?}"),
+        }
+    }
+    assert!(calls > 20 && folds > 20, "{calls} calls, {folds} folds");
+}

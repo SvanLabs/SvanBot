@@ -174,7 +174,7 @@ fn play_arena(
         Reads::deciding
     };
     let game = deciders::game(settings.seed);
-    let mut opponents = Opponent::all();
+    let mut opponents = Opponent::shared();
     opponents.extend(style::ALL.map(Opponent::Stablemate));
     let rows = arena::play_rows(
         &opponents,
