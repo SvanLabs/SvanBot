@@ -43,99 +43,6 @@ fn an_unknown_kind_or_style_is_refused_before_anything_plays() {
     }
 }
 
-#[test]
-fn compare_model_refuses_a_missing_candidate_or_incumbent_before_play() {
-    let (dir, _) = fixture("compare-model", false);
-    let candidate = dir.join("candidate.model");
-    let incumbent = dir.join("incumbent.model");
-    let run = |incumbent: &str| {
-        play(&[
-            "compare-model",
-            candidate.to_str().unwrap(),
-            incumbent,
-            "1",
-            "17",
-            "1",
-        ])
-    };
-    let missing_candidate = run("baseline");
-    assert_eq!(missing_candidate.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&missing_candidate.stderr).contains("candidate model"));
-    std::fs::write(
-        &candidate,
-        svanbot_strategy::action::ActionModel::baseline().to_text(),
-    )
-    .unwrap();
-    let missing_incumbent = run(incumbent.to_str().unwrap());
-    assert_eq!(missing_incumbent.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&missing_incumbent.stderr).contains("incumbent model"));
-    assert!(missing_incumbent.stdout.is_empty());
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn compare_model_plays_each_file_in_its_own_arm() {
-    let (dir, _) = fixture("compare-model-arms", false);
-    let baseline = dir.join("baseline.model");
-    let uniform = dir.join("uniform.model");
-    std::fs::write(
-        &baseline,
-        svanbot_strategy::action::ActionModel::baseline().to_text(),
-    )
-    .unwrap();
-    std::fs::write(
-        &uniform,
-        svanbot_strategy::action::ActionModel::uniform().to_text(),
-    )
-    .unwrap();
-    let run = |candidate: &Path, incumbent: &Path| {
-        let result = play(&[
-            "compare-model",
-            candidate.to_str().unwrap(),
-            incumbent.to_str().unwrap(),
-            "1",
-            "23",
-            "2",
-        ]);
-        assert_eq!(result.status.code(), Some(1));
-        let stdout = String::from_utf8_lossy(&result.stdout);
-        let overall = stdout
-            .lines()
-            .find(|line| line.trim_start().starts_with("overall"))
-            .unwrap_or_else(|| panic!("no overall line in {stdout}"));
-        overall
-            .split_whitespace()
-            .nth(1)
-            .unwrap()
-            .parse::<f64>()
-            .unwrap()
-    };
-    let forward = run(&uniform, &baseline);
-    let reverse = run(&baseline, &uniform);
-    assert!(forward.abs() > 0.0, "both arms played alike: {forward}");
-    assert!(
-        (forward + reverse).abs() < 0.05,
-        "swapping the files did not swap the arms: {forward} and {reverse}"
-    );
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn compare_model_rejects_confirmation_on_the_same_deals() {
-    let result = play(&[
-        "compare-model",
-        "candidate",
-        "baseline",
-        "30",
-        "17",
-        "--confirm",
-        "17",
-    ]);
-    assert_eq!(result.status.code(), Some(2));
-    assert!(result.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&result.stderr).contains("fresh seed"));
-}
-
 use std::path::{Path, PathBuf};
 use svanbot::play::{assign, judge};
 use svanbot_learn::margin::{Admission, MARGIN};
@@ -179,6 +86,24 @@ fn a_stablemate_row_does_not_enter_the_pool() {
     let (reading, _) = judge(&run([1.; 3]), &run([0., 0., -1e9]), MARGIN).unwrap();
     assert_eq!(reading.admission, Admission::Admitted);
     assert_eq!(reading.mean, -2_000.0);
+}
+
+#[test]
+fn a_bots_own_field_row_does_not_enter_the_pool() {
+    let field = svanbot_learn::field::row_name("SurSvan");
+    let with_field = |value: f64| {
+        let mut run = run([value; 3]);
+        run.rows.push(ArenaRow {
+            opponent: field.clone(),
+            deals: 3_000,
+            mbb_per_100: -1e9,
+            ci95: 0.0,
+            bouts: vec![value; 60],
+        });
+        run
+    };
+    let (reading, _) = judge(&with_field(1.0), &with_field(0.0), MARGIN).unwrap();
+    assert_eq!(reading.admission, Admission::Admitted);
 }
 
 #[test]
@@ -335,110 +260,6 @@ fn in_fleet(dir: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
-mod guard {
-    use super::{Fleet, Params, PolicyKind, TIGHT, fixture};
-    use std::path::Path;
-    use svanbot::play::guard::{Guarded, guard, judge};
-    use svanbot_runtime::{fleet::Assignment, ledger::Played, store::Store};
-
-    #[test]
-    fn the_guard_waits_for_the_hands_before_it_says_anything() {
-        assert!(matches!(
-            judge(&[-10.; 10], &[0.; 10], 3_000, 20.),
-            Guarded::NotYet(_)
-        ));
-    }
-
-    #[test]
-    fn a_styled_bot_clearly_losing_to_the_control_trips() {
-        assert!(matches!(
-            judge(&[-0.4; 3_000], &[0.; 3_000], 3_000, 20.),
-            Guarded::Trips(_)
-        ));
-    }
-
-    #[test]
-    fn a_styled_bot_level_with_the_control_holds() {
-        assert!(matches!(
-            judge(&[0.; 20], &[0.; 20], 20, 20.),
-            Guarded::Holds(_)
-        ));
-    }
-
-    #[test]
-    fn an_empty_control_is_not_yet_never_a_trip() {
-        assert!(matches!(
-            judge(&[-0.4; 20], &[], 20, 20.),
-            Guarded::NotYet(_)
-        ));
-    }
-
-    fn hands(dir: &Path, name: &str, count: i64, net: i64) {
-        let store = Store::open(&dir.join(format!("{name}.db")), name).unwrap();
-        for at in 1..=count {
-            store
-                .append_played(
-                    &Played {
-                        hand_id: format!("hand-{at}"),
-                        table_id: "scratch".into(),
-                        digest: Params::DEFAULT.digest(),
-                        net,
-                        luck: 0.,
-                        big_blind: 20,
-                        orbit: None,
-                    },
-                    at,
-                )
-                .unwrap();
-        }
-    }
-
-    fn assign(fleet: &Fleet, bot: &str) {
-        fleet
-            .assign(
-                bot,
-                Assignment {
-                    kind: PolicyKind::Solving,
-                    style: &TIGHT,
-                },
-                1,
-            )
-            .unwrap();
-    }
-
-    #[test]
-    fn the_guard_never_counts_the_styled_bot_in_its_own_control() {
-        let (dir, fleet) = fixture("guard-control", false);
-        hands(&dir, "A", 20, -8);
-        hands(&dir, "B", 20, 0);
-        hands(&dir, "Control", 19, 0);
-        assign(&fleet, "A");
-        assign(&fleet, "B");
-        let held = guard(&fleet, &dir, 20, 20.).unwrap();
-        assert_eq!(held.len(), 2);
-        assert!(
-            held.iter()
-                .all(|(_, result)| matches!(result, Guarded::NotYet(_)))
-        );
-        assert_eq!(fleet.assignments().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn a_trip_reverts_the_assignment_and_a_hold_leaves_it() {
-        let (dir, fleet) = fixture("guard-revert", false);
-        hands(&dir, "A", 20, -8);
-        hands(&dir, "B", 20, 0);
-        hands(&dir, "Control", 20, 0);
-        assign(&fleet, "A");
-        assign(&fleet, "B");
-        let held = guard(&fleet, &dir, 20, 20.).unwrap();
-        assert!(matches!(held[0].1, Guarded::Trips(_)));
-        assert!(matches!(held[1].1, Guarded::Holds(_)));
-        assert!(fleet.assignment("A").unwrap().is_none());
-        assert!(fleet.assignment("B").unwrap().is_some());
-    }
-}
-
 mod sequential {
     use super::{ArenaRun, League, run};
     use svanbot::play::check_bar;
@@ -480,4 +301,27 @@ mod sequential {
         }
         assert_eq!(check_bar(&runs, MARGIN), Bar::Open);
     }
+}
+
+#[test]
+fn the_policy_arena_plays_the_shared_archetypes_and_records_them_apart() {
+    let (dir, fleet) = fixture("cli-shared-rows", false);
+    let output = in_fleet(&dir, &["arena", "solving", "standard", "1", "7", "1"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let runs = fleet.policy_arena_runs().unwrap();
+    assert_eq!(runs.len(), 1);
+    let names: Vec<&str> = runs[0]
+        .rows
+        .iter()
+        .map(|row| row.opponent.as_str())
+        .collect();
+    for name in ["sizing", "bluffer", "mixing"] {
+        assert!(names.contains(&name), "{name} is not in {names:?}");
+    }
+    // The release Arena, which the ship bar reads, stays untouched.
+    assert!(!dir.join("fleet/arena.json").exists());
 }

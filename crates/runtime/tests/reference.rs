@@ -10,7 +10,7 @@ use svanbot_runtime::fleet::{Fleet, Proposal};
 use svanbot_strategy::params::Params;
 
 fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("svanbot-reference-{}-{name}", std::process::id()));
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&dir);
     dir
 }
@@ -33,8 +33,14 @@ fn a_freeze_records_the_champion_in_play_with_its_digest_and_cutover_and_a_resta
     assert_eq!(restarted.champion(), Ok(FIRST));
     // The file records the digest and the cutover time.
     let text = std::fs::read_to_string(dir.join("reference.json")).unwrap();
-    assert!(text.contains(&FIRST.digest().to_string()), "{text}");
-    assert!(text.contains("\"cutover_ms\":1000"), "{text}");
+    assert!(
+        text.contains(&FIRST.digest().to_string()),
+        "the reference file does not record the digest"
+    );
+    assert!(
+        text.contains("\"cutover_ms\":1000"),
+        "the reference file does not record the cutover time"
+    );
 }
 
 fn proposal() -> Proposal {

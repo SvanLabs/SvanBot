@@ -140,6 +140,12 @@ What SvanBot believes about an opponent it has not yet seen enough of, taken fro
 population.
 _Avoid_: default, baseline profile
 
+**Field**:
+The players a bot meets, cloned as one identity-free action model fitted from that bot's own
+store. It plays as one Arena row for that bot, recorded apart from the release rows, and never
+crosses to a stablemate.
+_Avoid_: population, pool, opponent set
+
 **Read**:
 An opponent's own departure from the prior, learned from their hands alone. One bot's reads are its
 own, never pooled across stablemates.
@@ -165,11 +171,14 @@ exploit budget.
 _Avoid_: opponent type, style
 
 **Sparring archetype**:
-A scripted opponent style that the sim plays against, standing in for a kind of real opponent. Five
+A scripted opponent style that the sim plays against, standing in for a kind of real opponent. Eight
 so far: the **calling station** (calls any bet, bets only its best hands), the **nit** (folds all
 but strong hands to a bet, raises those), the **maniac** (bets and raises with anything), the
-**switching** one (a nit, then a maniac, turn about every 20 hands), and the **learning** one
-(adapts to how often we bet).
+**switching** one (a nit, then a maniac, turn about every 20 hands), the **learning** one (adapts to
+how often we bet), the **sizing** one (bets big with strong hands and small with weak ones), the
+**bluffer** (bets and raises nothing, and slows down with its monsters), and the **mixing** regular
+(a solid player that mixes its action at the borderline). All eight are shared rows of a policy's
+Arena run; the release gate reads only the five older ones.
 _Avoid_: dummy, test bot, persona
 
 ### Deciding
@@ -332,6 +341,13 @@ _Avoid_: experiment pair, trial, A/B test
 **Arm**:
 One of the two parameter sets in a probe.
 _Avoid_: variant, side
+
+**Standing reference arm**:
+A bot's own live control: one orbit in ten plays the frozen reference policy, drawn from the bot's
+name and the orbit's number, so a restart draws the same arm again and the bot has a control from
+the same tables in the same hours. The hand records the reference digest and the chance its arm
+was drawn, and the probe's propensity-weighted estimate reads that chance.
+_Avoid_: baseline arm, control arm
 
 **Orbit**:
 Six counted hands at one table, once round the seats. A probe plays one arm for a whole orbit, and
@@ -503,6 +519,12 @@ _Avoid_: rotation, orbit
 An Arena row where the policy under test meets a stablemate's policy, in the sim only. It is
 recorded apart, and the ship bar does not read it.
 _Avoid_: self-play row
+
+**Shared row**:
+An Arena row every policy's run plays: a sparring archetype, the `pricer` or `v10.0.2`. A shared
+archetype added after a release goes in the policy runs and is recorded apart from the release
+Arena, so the ship bar reads the rows it was measured on and no others.
+_Avoid_: extra row, non-gating row
 
 **Scoreboard**:
 The Arena's table of results: the opponent, the win rate over it, the 95% interval and the deals

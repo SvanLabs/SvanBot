@@ -124,7 +124,7 @@ fn while_a_proposal_waits_or_a_probe_runs_a_run_sims_nothing_and_says_it_waits()
 
 #[test]
 fn a_frozen_reference_stops_the_search_and_a_restart_does_not_resume_it() {
-    let dir = std::env::temp_dir().join(format!("svanbot-learn-frozen-{}", std::process::id()));
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("frozen-search");
     let _ = std::fs::remove_dir_all(&dir);
     let fleet = Fleet::in_dir(&dir);
     fleet.freeze(100).unwrap();
