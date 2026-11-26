@@ -1,8 +1,8 @@
 # Research, 2026-11-15
 
-The eight notes behind the v11 plan (map: V11-00). Each one names its sources, and the decisions
-they led to live on the V11 tickets, not here. The notes describe v10 as it was. Paths like
-`crates/apps/...` refer to `archive/v10/final`, not to the v11 tree.
+Notes 00–07 describe the v10 system behind the v11 plan. Their crate paths refer to
+`archive/v10/final`. Later notes link to v11 sources. Each note names its sources and the
+tickets that carry its decisions.
 
 | Note | Feeds |
 |---|---|

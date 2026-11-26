@@ -70,8 +70,8 @@ For Anchor, test mixed pricing with measured action probabilities. These experim
   tabular prototype with repeatable chance nodes. [CCS-MCCFR §§4–6 and Appendix G](https://arxiv.org/html/2607.27035v1).
 - **Real-Time Parallel CFR** (May preprint). The authors report a **3.3–3.4×** postflop
   speedup on heads-up no-limit trees against their own single-thread baseline. The pipeline
-  uses five CPU threads and a GPU on NVIDIA DGX Spark, with GPU batches for leaf values.
-  The performance numbers do not establish a CPU-only or multiway latency budget.
+  uses five CPU threads and a GPU on NVIDIA DGX Spark. Flop and turn evaluation use GPU
+  leaf batches. River solving runs on the CPU. SvanBot still needs its own CPU and multiway timing.
   [Real-Time Parallel CFR §§4–6](https://arxiv.org/html/2605.19928v1).
 - **PokerSkill** (May preprint). A structured rule library plus frontier API models improved
   heads-up results against GTO Wizard over default prompts. Its best model in the report still
@@ -85,7 +85,8 @@ For Anchor, test mixed pricing with measured action probabilities. These experim
 - **SHARINGAN-2** (November author technical report). The six-player, 100-BB blueprint used
   **183 billion** external-sampling MCCFR iterations on rented CPU servers, with optional
   bounded turn and river search. In its reported four-million-deal duplicate **3-vs-3** test,
-  the final blueprint beat its own early checkpoint by **5.09 ± 1.16 mbb/hand**. The report
+  the final blueprint beat its own early checkpoint by **5.09 ± 1.16 mbb/hand**, with AIVAT
+  correction and a 95% interval. The report
   describes a severe bug from translating a legal small bet to a check in the old internal
   tree and shows that another attacker still beats the fixed blueprint without search.
   Three-vs-three self-cross-play measures a different setup from one SvanBot at a six-player
@@ -97,7 +98,7 @@ For Anchor, test mixed pricing with measured action probabilities. These experim
   reports a positive gain for a learned leaf estimate, including **+174 ± 100 mbb/hand** versus
   the no-model baseline after exact turn solving was added to both arms. This is a useful reason
   to compare search with a cheap leaf table and without one at equal work. Results are specific
-  to that engine and opponent pool. [NoRegrets results and baseline ledger](https://github.com/conorarmstrong/noregrets#results).
+  to that engine and opponent pool. [NoRegrets results](https://github.com/conorarmstrong/noregrets#results).
 - **Pluribus** (2019, historical reference). Six-player no-limit results support offline
   external-sampling MCCFR and depth-limited search with multiple continuation policies.
   They give no general Nash-convergence guarantee for six-player no-limit play. For the
@@ -106,16 +107,16 @@ For Anchor, test mixed pricing with measured action probabilities. These experim
 
 ### Measuring changes
 
-- **GTO Wizard Benchmark** (March preprint). The 200-BB heads-up benchmark reports GTO
-  Wizard AI beating Slumbot by **19.4 ± 4.1 bb/100**, and roughly a threefold reduction in
-  standard deviation using AIVAT. This is an external heads-up benchmark with its own rules
+- **GTO Wizard Benchmark** (March preprint). The preprint recalls a 2022 match in which GTO
+  Wizard AI beat Slumbot by **19.4 ± 4.1 bb/100**. In the 200-BB heads-up benchmark the authors
+  report roughly a threefold reduction in standard deviation using AIVAT. The benchmark has its own rules
   and access to correction inputs. [GTO Wizard Benchmark §§3–4](https://arxiv.org/html/2603.23660v1).
 - **AV-AIVAT** (August preprint). Across 71,439 paired heads-up raw and corrected observations,
   reported median stopping improvement was **74×** for the asymptotic confidence sequence at
   nominal 95% confidence and ±1 BB precision. For the empirical-Bernstein sequence it was
-  **1.37×**, with a corrected-payoff bound drawn from the observed series, so that benchmark
-  execution is descriptive. A finite-sample certificate needs a bound justified independently
-  of observations. Their online value estimator is predictable, learning from past games only.
+  **1.37×** over 14 evaluable runs. The replay rounded the pooled observed maximum up to
+  200 BB. The raw stream has that structural bound. For corrected outcomes, the paper
+  supplies no corresponding analytic bound, so the result is descriptive. A finite-sample certificate needs a justified bound on those outcomes. Their online value estimator is predictable, learning from past games only.
   [AV-AIVAT §§4–7 and Appendix D](https://arxiv.org/html/2608.06362v1).
 - **Heuristic Pathologies in AIVAT** (May preprint). Fitting the correction heuristic on the
   evaluated hands can manufacture small variance and steer the test statistic. The paper's
@@ -145,11 +146,13 @@ The river has no further continuation to pin.
 1. In sim, predeclare fixed, zero and evidence-capped arms. Keep profile overrides, sampled
    runouts, iterations, action menu and range model the same. Reuse permitted read evidence
    and adaptivity class. Where evidence for next-street facing and unfaced actions is
-   available separately, use the lower supported share for a first prototype. Pin the prior
-   at the established reference level only in the fixed arm.
+   available separately, use the lower supported share for a first prototype. Give all three
+   arms the same selected action model for the range and continuation. Override the pin after
+   model selection, keeping the configured read-mixing budget fixed.
 2. Verify that held and unsupported reads earn no personal continuation pin, admitted reads
-   can earn it, a change point resets the earned pin, and the learning class stays damped.
-   As a control, equal model and seed give identical river results when only pin changes.
+   can earn it, and a change point resets it. The existing admission rule gives switching
+   and learning classes no personal pin. Measure eligibility and reacquisition by row. As
+   a control, equal model and seed give identical river results when only pin changes.
    Test flop and turn separately and record how many decisions actually change.
 3. Use fixed sparring archetypes, the calling station, an order-preserving switch sequence,
    the learning archetype, and the reference policy. Report matched per-row win-rate
