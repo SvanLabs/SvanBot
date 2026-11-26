@@ -1,9 +1,9 @@
 # V11-123: the release-profile experiment. Dispatch-only on purpose, and it publishes **no
 # release**: the built binaries are workflow artifacts, so the fleet's auto-updater can never see
-# them. Build the same commit twice — today's release profile, and LTO thin with
-# codegen-units = 1 — then benchmark both on the box with the standard workload. Adopt the
-# profile only on a >= 5% wall-time gain at identical mbb (`svanbot paired compare` reading
-# `+0 mbb/100, 95% CI ±0`).
+# them. Build the same commit three ways — today's release profile, LTO thin with
+# codegen-units = 1, and a profile-guided build trained on a fixed-seed workload — then benchmark
+# them on the box. Adopt a profile only on a >= 5% wall-time gain at identical mbb
+# (`svanbot paired compare` reading `+0 mbb/100, 95% CI ±0`).
 name: profile-experiment
 
 on:
@@ -65,6 +65,51 @@ jobs:
           if-no-files-found: error
           path: |
             target/dev/release/svanbot
-            target/dev/release/svanbot-updater
+            target/dev/release/profile.txt
+            target/dev/release/sha256
+
+  pgo:
+    name: build (pgo)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: ". -> target/dev"
+          cache-workspace-crates: false
+          shared-key: profile-pgo
+      - name: install the LLVM profile tools
+        run: rustup component add llvm-tools-preview
+      - name: build the instrumented binary
+        run: |
+          echo "RUSTFLAGS=-C target-cpu=x86-64-v2 -Cprofile-generate=$PWD/target/pgo" >> "$GITHUB_ENV"
+          mkdir -p target/pgo
+          nice -n 15 ionice -c3 cargo build --release --locked -j4 --bins
+      - name: train on the fixed-seed workload
+        run: bun tools/pgo-workload.ts target/dev/release/svanbot
+      - name: merge the raw profiles
+        run: |
+          sysroot=$(rustc --print sysroot)
+          host=$(rustc -vV | sed -n 's/^host: //p')
+          "$sysroot/lib/rustlib/$host/bin/llvm-profdata" merge -o target/pgo/merged.profdata target/pgo/*.profraw
+      - name: rebuild with the profile
+        run: |
+          echo "RUSTFLAGS=-C target-cpu=x86-64-v2 -Cprofile-use=$PWD/target/pgo/merged.profdata -Cllvm-args=-pgo-warn-missing-function" >> "$GITHUB_ENV"
+          nice -n 15 ionice -c3 cargo build --release --locked -j4 --bins
+          {
+            echo "commit $(git rev-parse HEAD)"
+            echo "tag ${GITHUB_REF_NAME}"
+            echo "rustc $(rustc -V)"
+            echo "profile pgo, target-cpu=x86-64-v2"
+          } > target/dev/release/profile.txt
+          sha256sum target/dev/release/svanbot | tee target/dev/release/sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: svanbot-pgo
+          if-no-files-found: error
+          path: |
+            target/dev/release/svanbot
             target/dev/release/profile.txt
             target/dev/release/sha256
