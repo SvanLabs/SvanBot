@@ -51,11 +51,21 @@ pub(crate) enum Opponent {
 }
 
 impl Opponent {
-    /// Every row, in the scoreboard's order.
+    /// Every row the release gate reads, in the scoreboard's order. New shared rows go in
+    /// [`Self::shared`], never here: a release's bar is the rows it was measured on.
     pub(crate) fn all() -> Vec<Self> {
         [Self::Pricer, Self::V10]
             .into_iter()
             .chain(Archetype::ALL.map(Self::Sparring))
+            .collect()
+    }
+
+    /// Every row a policy's Arena run plays: [`Self::all`] and the shared archetypes. They are
+    /// recorded apart from the release Arena (`Fleet::record_policy_arena`).
+    pub(crate) fn shared() -> Vec<Self> {
+        Self::all()
+            .into_iter()
+            .chain(Archetype::SHARED.map(Self::Sparring))
             .collect()
     }
 
@@ -70,7 +80,7 @@ impl Opponent {
 
     /// The opponent a scoreboard row names.
     pub(crate) fn named(name: &str) -> Option<Self> {
-        Self::all()
+        Self::shared()
             .into_iter()
             .find(|opponent| opponent.name() == name)
     }
@@ -346,7 +356,31 @@ pub(crate) fn measurement(
 
 #[cfg(test)]
 mod tests {
-    use super::play_rows;
+    use super::{Opponent, play_rows};
+
+    #[test]
+    fn the_shared_rows_carry_the_new_archetypes_and_leave_the_release_rows_alone() {
+        // The release gate reads this list and no other, so a row added below must not move it.
+        let release: Vec<String> = Opponent::all().into_iter().map(Opponent::name).collect();
+        assert_eq!(
+            release,
+            [
+                "pricer",
+                "v10.0.2",
+                "calling station",
+                "nit",
+                "maniac",
+                "switching",
+                "learning",
+            ]
+        );
+        let shared: Vec<String> = Opponent::shared().into_iter().map(Opponent::name).collect();
+        assert_eq!(&shared[..release.len()], release);
+        assert_eq!(&shared[release.len()..], ["sizing", "bluffer", "mixing"]);
+        for name in ["sizing", "bluffer", "mixing"] {
+            assert!(Opponent::named(name).is_some(), "{name} is not named");
+        }
+    }
 
     #[test]
     fn short_rows_share_workers_and_keep_scoreboard_order() {

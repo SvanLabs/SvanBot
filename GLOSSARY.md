@@ -165,11 +165,14 @@ exploit budget.
 _Avoid_: opponent type, style
 
 **Sparring archetype**:
-A scripted opponent style that the sim plays against, standing in for a kind of real opponent. Five
+A scripted opponent style that the sim plays against, standing in for a kind of real opponent. Eight
 so far: the **calling station** (calls any bet, bets only its best hands), the **nit** (folds all
 but strong hands to a bet, raises those), the **maniac** (bets and raises with anything), the
-**switching** one (a nit, then a maniac, turn about every 20 hands), and the **learning** one
-(adapts to how often we bet).
+**switching** one (a nit, then a maniac, turn about every 20 hands), the **learning** one (adapts to
+how often we bet), the **sizing** one (bets big with strong hands and small with weak ones), the
+**bluffer** (bets and raises nothing, and slows down with its monsters), and the **mixing** regular
+(a solid player that mixes its action at the borderline). All eight are shared rows of a policy's
+Arena run; the release gate reads only the five older ones.
 _Avoid_: dummy, test bot, persona
 
 ### Deciding
@@ -492,6 +495,12 @@ _Avoid_: rotation, orbit
 An Arena row where the policy under test meets a stablemate's policy, in the sim only. It is
 recorded apart, and the ship bar does not read it.
 _Avoid_: self-play row
+
+**Shared row**:
+An Arena row every policy's run plays: a sparring archetype, the `pricer` or `v10.0.2`. A shared
+archetype added after a release goes in the policy runs and is recorded apart from the release
+Arena, so the ship bar reads the rows it was measured on and no others.
+_Avoid_: extra row, non-gating row
 
 **Scoreboard**:
 The Arena's table of results: the opponent, the win rate over it, the 95% interval and the deals

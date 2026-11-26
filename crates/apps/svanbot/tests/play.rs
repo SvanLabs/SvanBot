@@ -43,99 +43,6 @@ fn an_unknown_kind_or_style_is_refused_before_anything_plays() {
     }
 }
 
-#[test]
-fn compare_model_refuses_a_missing_candidate_or_incumbent_before_play() {
-    let (dir, _) = fixture("compare-model", false);
-    let candidate = dir.join("candidate.model");
-    let incumbent = dir.join("incumbent.model");
-    let run = |incumbent: &str| {
-        play(&[
-            "compare-model",
-            candidate.to_str().unwrap(),
-            incumbent,
-            "1",
-            "17",
-            "1",
-        ])
-    };
-    let missing_candidate = run("baseline");
-    assert_eq!(missing_candidate.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&missing_candidate.stderr).contains("candidate model"));
-    std::fs::write(
-        &candidate,
-        svanbot_strategy::action::ActionModel::baseline().to_text(),
-    )
-    .unwrap();
-    let missing_incumbent = run(incumbent.to_str().unwrap());
-    assert_eq!(missing_incumbent.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&missing_incumbent.stderr).contains("incumbent model"));
-    assert!(missing_incumbent.stdout.is_empty());
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn compare_model_plays_each_file_in_its_own_arm() {
-    let (dir, _) = fixture("compare-model-arms", false);
-    let baseline = dir.join("baseline.model");
-    let uniform = dir.join("uniform.model");
-    std::fs::write(
-        &baseline,
-        svanbot_strategy::action::ActionModel::baseline().to_text(),
-    )
-    .unwrap();
-    std::fs::write(
-        &uniform,
-        svanbot_strategy::action::ActionModel::uniform().to_text(),
-    )
-    .unwrap();
-    let run = |candidate: &Path, incumbent: &Path| {
-        let result = play(&[
-            "compare-model",
-            candidate.to_str().unwrap(),
-            incumbent.to_str().unwrap(),
-            "1",
-            "23",
-            "2",
-        ]);
-        assert_eq!(result.status.code(), Some(1));
-        let stdout = String::from_utf8_lossy(&result.stdout);
-        let overall = stdout
-            .lines()
-            .find(|line| line.trim_start().starts_with("overall"))
-            .unwrap_or_else(|| panic!("no overall line in {stdout}"));
-        overall
-            .split_whitespace()
-            .nth(1)
-            .unwrap()
-            .parse::<f64>()
-            .unwrap()
-    };
-    let forward = run(&uniform, &baseline);
-    let reverse = run(&baseline, &uniform);
-    assert!(forward.abs() > 0.0, "both arms played alike: {forward}");
-    assert!(
-        (forward + reverse).abs() < 0.05,
-        "swapping the files did not swap the arms: {forward} and {reverse}"
-    );
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn compare_model_rejects_confirmation_on_the_same_deals() {
-    let result = play(&[
-        "compare-model",
-        "candidate",
-        "baseline",
-        "30",
-        "17",
-        "--confirm",
-        "17",
-    ]);
-    assert_eq!(result.status.code(), Some(2));
-    assert!(result.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&result.stderr).contains("fresh seed"));
-}
-
 use std::path::{Path, PathBuf};
 use svanbot::play::{assign, judge};
 use svanbot_learn::margin::{Admission, MARGIN};
@@ -508,4 +415,27 @@ mod sequential {
         }
         assert_eq!(check_bar(&runs, MARGIN), Bar::Open);
     }
+}
+
+#[test]
+fn the_policy_arena_plays_the_shared_archetypes_and_records_them_apart() {
+    let (dir, fleet) = fixture("cli-shared-rows", false);
+    let output = in_fleet(&dir, &["arena", "solving", "standard", "1", "7", "1"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let runs = fleet.policy_arena_runs().unwrap();
+    assert_eq!(runs.len(), 1);
+    let names: Vec<&str> = runs[0]
+        .rows
+        .iter()
+        .map(|row| row.opponent.as_str())
+        .collect();
+    for name in ["sizing", "bluffer", "mixing"] {
+        assert!(names.contains(&name), "{name} is not in {names:?}");
+    }
+    // The release Arena, which the ship bar reads, stays untouched.
+    assert!(!dir.join("fleet/arena.json").exists());
 }

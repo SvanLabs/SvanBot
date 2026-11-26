@@ -9,6 +9,11 @@
 //! - The **switching** archetype is a nit, then a maniac, turn about, every [`PERIOD`] hands.
 //! - The **learning** archetype plays a plain solid game and adapts to how often we bet: it
 //!   calls lighter against a bettor, and folds more and steals more against a passive player.
+//! - The **sizing** archetype bets its strong hands big and its weak ones small: the size is
+//!   the tell.
+//! - The **bluffer** bets and raises nothing, and slows down with its monsters.
+//! - The **mixing** regular plays a solid game, and mixes its action at the borderline: it
+//!   bets or checks a strong hand by its seed, and calls or folds a marginal one.
 
 use std::cell::Cell;
 
@@ -27,6 +32,9 @@ pub enum Archetype {
     Maniac,
     Switching,
     Learning,
+    Sizing,
+    Bluffer,
+    Mixing,
 }
 
 impl Archetype {
@@ -38,6 +46,11 @@ impl Archetype {
         Self::Learning,
     ];
 
+    /// The shared archetypes added after the release rows (ADR 0005): every policy's Arena run
+    /// meets them, and they are recorded apart. They are not in [`Self::ALL`], so the release
+    /// gate's rows, and the ship bar that reads them, do not move when one is added.
+    pub const SHARED: [Self; 3] = [Self::Sizing, Self::Bluffer, Self::Mixing];
+
     /// The archetype's name on a scoreboard.
     pub const fn name(self) -> &'static str {
         match self {
@@ -46,6 +59,9 @@ impl Archetype {
             Self::Maniac => "maniac",
             Self::Switching => "switching",
             Self::Learning => "learning",
+            Self::Sizing => "sizing",
+            Self::Bluffer => "bluffer",
+            Self::Mixing => "mixing",
         }
     }
 }
@@ -134,6 +150,9 @@ impl Sparring {
             Archetype::Switching if (hand / PERIOD).is_multiple_of(2) => nit(spot, equity),
             Archetype::Switching => maniac(spot, equity, roll),
             Archetype::Learning => self.learning(spot, equity, roll),
+            Archetype::Sizing => sizing(spot, equity, roll),
+            Archetype::Bluffer => bluffer(spot, equity, roll),
+            Archetype::Mixing => mixing(spot, equity, roll),
         }
     }
 
@@ -182,6 +201,68 @@ fn nit(spot: &Spot, equity: f64) -> Action {
     match spot.legal.call {
         _ if equity > 0.92 => bet(spot, 1.0),
         Some(_) => Action::Fold,
+        None => Action::Check,
+    }
+}
+
+/// Bets the pot with a strong hand and a quarter of it with nothing, so the size gives it away.
+fn sizing(spot: &Spot, equity: f64, roll: f64) -> Action {
+    match spot.legal.call {
+        Some(call) => {
+            let price = call as f64 / (spot.pot + call) as f64;
+            if equity > 0.85 {
+                bet(spot, 1.0)
+            } else if equity >= price + 0.15 {
+                Action::Call
+            } else {
+                Action::Fold
+            }
+        }
+        None if equity > 0.75 => bet(spot, 1.0),
+        None if roll < 0.35 => bet(spot, 0.25),
+        None => Action::Check,
+    }
+}
+
+/// Bets and raises its weak hands, and checks or calls its strong ones.
+fn bluffer(spot: &Spot, equity: f64, roll: f64) -> Action {
+    match spot.legal.call {
+        Some(_) if equity > 0.75 => Action::Call,
+        Some(_) if equity < 0.45 && roll < 0.3 => bet(spot, 0.75),
+        Some(_) => Action::Fold,
+        None if equity < 0.5 && roll < 0.7 => bet(spot, 0.75),
+        None => Action::Check,
+    }
+}
+
+/// Plays a solid game, mixing its action by the roll at the borderline.
+fn mixing(spot: &Spot, equity: f64, roll: f64) -> Action {
+    match spot.legal.call {
+        Some(call) => {
+            let price = call as f64 / (spot.pot + call) as f64;
+            if equity > 0.85 {
+                if roll < 0.75 {
+                    bet(spot, 1.0)
+                } else {
+                    Action::Call
+                }
+            } else if equity >= price + 0.15 {
+                if roll < 2.0 / 3.0 {
+                    Action::Call
+                } else {
+                    Action::Fold
+                }
+            } else {
+                Action::Fold
+            }
+        }
+        None if equity > 0.7 => {
+            if roll < 0.6 {
+                bet(spot, 0.75)
+            } else {
+                Action::Check
+            }
+        }
         None => Action::Check,
     }
 }
