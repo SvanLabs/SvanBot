@@ -65,6 +65,11 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
         active[seat] = true;
     }
     let mut acted = [false; 6];
+    let round_complete = |lines: &Lines, active: &[bool; 6], acted: &[bool; 6], highest| {
+        dealt
+            .iter()
+            .all(|&seat| !active[seat] || (acted[seat] && lines.committed(seat, &dealt) == highest))
+    };
     for (_, action) in actions {
         let who = seat(&action["seat"])?;
         let at = match action["street"].as_str()? {
@@ -77,10 +82,8 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
         }
         // The closing move can already carry the next street's label. Finish the current
         // betting round before revealing any new board cards to the fit.
-        let betting_complete = dealt.iter().all(|&seat| {
-            !active[seat] || (acted[seat] && lines.committed(seat, &dealt) == highest)
-        });
-        if at > street && betting_complete {
+        let closing_move = at > street && !round_complete(&lines, &active, &acted, highest);
+        if at > street && !closing_move {
             let through = board_len(at);
             let frame = Inbound::CommunityCards {
                 cards: board.get(dealt_cards..through)?.to_vec(),
@@ -122,6 +125,11 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
         acted[who] = true;
         if matches!(kind, "fold" | "all_in") {
             active[who] = false;
+        }
+        // A short all-in call can be exported simply as "call". If the newly labeled street
+        // cannot be produced by this move, the export cannot prove the betting context.
+        if closing_move && !round_complete(&lines, &active, &acted, highest) {
+            return None;
         }
     }
     let reported = hand["pot_total"].as_u64()?;
