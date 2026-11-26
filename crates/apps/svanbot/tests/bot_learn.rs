@@ -16,7 +16,7 @@ use svanbot_strategy::policy::Policy;
 use svanbot_strategy::style::{LOOSE, TIGHT};
 
 fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("svanbot-bot-learn-{}-{name}", std::process::id()));
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&dir);
     dir
 }

@@ -12,7 +12,7 @@ use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
 
 fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("svanbot-searches-{}-{name}", std::process::id()));
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&dir);
     dir
 }
