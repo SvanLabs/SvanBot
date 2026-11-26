@@ -21,7 +21,10 @@ fn digest(value: u64) -> Digest {
 }
 
 fn params(exploit: f64) -> Params {
-    Params { exploit }
+    Params {
+        exploit,
+        spread: 0.0,
+    }
 }
 
 fn row(name: &str, table: Table, archive: Option<u64>, bouts: Vec<f64>) -> RowRecord {

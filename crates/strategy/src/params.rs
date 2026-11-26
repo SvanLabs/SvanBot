@@ -1,7 +1,9 @@
 //! Parameter sets (`GLOSSARY.md`): the tuned numbers a policy plays by, named by a digest.
 //!
 //! The digest is FNV-1a over each number's name and bits, written here: a pure layer takes no
-//! crate for it. Two equal parameter sets have one digest, on any machine.
+//! crate for it. Two equal parameter sets have one digest, on any machine. Only the numbers that
+//! differ from their defaults are hashed, except `exploit`, which is always hashed: that keeps
+//! the digest of every champion written before the mixing spread existed.
 //!
 //! The pricer once read two numbers of its own, a value margin and a raise share. Since V11-39 it
 //! values every action in chips instead, so neither is a number it plays by, and both are gone.
@@ -15,15 +17,21 @@ pub struct Params {
     /// The exploit budget, 0 to 1: how far the re-solve holds a villain to their fitted action
     /// model past its depth limit.
     pub exploit: f64,
+    /// The `Balanced` kind's mixing spread, in chips of the pot: actions worth no less than the
+    /// best minus this share of the pot are eligible for its draw. Zero is no mixing.
+    pub spread: f64,
 }
 
 impl Params {
     /// What the bots play by until a challenger is promoted.
-    pub const DEFAULT: Self = Self { exploit: 0.5 };
+    pub const DEFAULT: Self = Self {
+        exploit: 0.5,
+        spread: 0.0,
+    };
 
     /// Each number with its name.
-    pub fn named(&self) -> [(&'static str, f64); 1] {
-        [("exploit", self.exploit)]
+    pub fn named(&self) -> [(&'static str, f64); 2] {
+        [("exploit", self.exploit), ("spread", self.spread)]
     }
 
     /// This parameter set with the number called `name` set to `value`, or `None` for a name no
@@ -32,20 +40,32 @@ impl Params {
     pub fn with(mut self, name: &str, value: f64) -> Option<Self> {
         match name {
             "exploit" => self.exploit = value,
+            "spread" => self.spread = value,
             _ => return None,
         }
         Some(self)
     }
 
-    /// Whether every number is inside the range it is defined on: the exploit budget, 0 to 1.
+    /// Whether every number is inside the range it is defined on: the exploit budget and the
+    /// mixing spread, each 0 to 1.
     pub fn in_range(&self) -> bool {
-        (0.0..=1.0).contains(&self.exploit)
+        (0.0..=1.0).contains(&self.exploit) && (0.0..=1.0).contains(&self.spread)
     }
 
     /// The digest that names this parameter set.
     pub fn digest(&self) -> Digest {
         let mut hash = FNV_OFFSET;
         for (name, value) in self.named() {
+            // `exploit` is always hashed, so the champion named before `spread` existed keeps its
+            // digest. Every other number is hashed only when it differs from its default.
+            let default = Self::DEFAULT
+                .named()
+                .into_iter()
+                .find(|(each, _)| *each == name)
+                .map_or(f64::NAN, |(_, value)| value);
+            if name != "exploit" && value.to_bits() == default.to_bits() {
+                continue;
+            }
             let bytes = name.bytes().chain([0]).chain(value.to_bits().to_le_bytes());
             for byte in bytes {
                 hash = (hash ^ u64::from(byte)).wrapping_mul(FNV_PRIME);

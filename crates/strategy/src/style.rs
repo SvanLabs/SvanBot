@@ -2,8 +2,9 @@
 
 use std::fmt;
 
+use crate::kind::BALANCED_EXPLOIT_CAP;
 use crate::params::Params;
-use crate::profile::{ACTIVE, Profile};
+use crate::profile::{ACTIVE, EMPTY, Profile};
 
 pub struct Style {
     pub name: &'static str,
@@ -22,20 +23,18 @@ impl fmt::Debug for Style {
 }
 
 impl Style {
-    /// `params` with this style's pins applied: the numbers a new champion slot starts from.
-    /// The width is pinned in the style itself, and the policy reads it from there, so seeding
-    /// moves no parameter-set number and no digest. A parameter-set number the style pins (a
-    /// zero-width bound) is set here.
+    /// `params` with this style's bounds applied: a number outside its range is clamped into it,
+    /// and a zero-width bound (a pin) sets the number exactly. A new champion slot starts here.
+    /// The width is pinned in the style itself, and the policy reads it from there, so seeding the
+    /// width moves no parameter-set number.
     #[must_use]
     pub fn seed(&self, params: Params) -> Params {
         self.bounds
             .iter()
             .fold(params, |params, (name, low, high)| {
-                if low == high {
-                    params.with(name, *low).unwrap_or(params)
-                } else {
-                    params
-                }
+                params
+                    .with(name, params_value(&params, name).clamp(*low, *high))
+                    .unwrap_or(params)
             })
     }
 
@@ -50,26 +49,45 @@ impl Style {
     }
 }
 
+/// The current value of `name`, for a seed to clamp. A name the set does not have reads as the
+/// neutral zero, though every bound here names a real number.
+fn params_value(params: &Params, name: &str) -> f64 {
+    params
+        .named()
+        .into_iter()
+        .find(|(each, _)| *each == name)
+        .map_or(0.0, |(_, value)| value)
+}
+
 pub const STANDARD: Style = Style {
     name: "standard",
     open_scale: 1.0,
     profile: ACTIVE,
-    bounds: &[],
+    bounds: &[("spread", 0.0, 0.0)],
 };
 pub const TIGHT: Style = Style {
     name: "tight",
     open_scale: 0.75,
     profile: ACTIVE,
-    bounds: &[],
+    bounds: &[("spread", 0.0, 0.0)],
 };
 pub const LOOSE: Style = Style {
     name: "loose",
     open_scale: 1.25,
     profile: ACTIVE,
-    bounds: &[],
+    bounds: &[("spread", 0.0, 0.0)],
+};
+/// Anchor, the `Balanced` brain: the baseline made a brain. It mixes near-best actions and
+/// blends the opening boundary, holds reads, and caps exploit low. Its slot learns the spread
+/// and the capped exploit between the bounds.
+pub const ANCHOR: Style = Style {
+    name: "anchor",
+    open_scale: 1.0,
+    profile: EMPTY,
+    bounds: &[("exploit", 0.0, BALANCED_EXPLOIT_CAP), ("spread", 0.1, 0.5)],
 };
 
-pub const ALL: [&Style; 3] = [&STANDARD, &TIGHT, &LOOSE];
+pub const ALL: [&Style; 4] = [&STANDARD, &TIGHT, &LOOSE, &ANCHOR];
 
 pub fn named(name: &str) -> Option<&'static Style> {
     ALL.into_iter().find(|style| style.name == name)

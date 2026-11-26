@@ -7,12 +7,19 @@ use svanbot_learn::archive::{
 use svanbot_strategy::params::{Digest, Params};
 
 fn digest(exploit: f64) -> Digest {
-    Params { exploit }.digest()
+    Params {
+        exploit,
+        spread: 0.0,
+    }
+    .digest()
 }
 
 fn archived(exploit: f64) -> Archived {
     Archived {
-        params: Params { exploit },
+        params: Params {
+            exploit,
+            spread: 0.0,
+        },
         style: "tight",
         promotion: Vec::new(),
     }

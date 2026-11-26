@@ -9,10 +9,10 @@ use svanbot_core::rules::{Action, Street};
 use svanbot_core::spot::Spot;
 
 use crate::action::{ActionModel, BUCKETS, Seen, Situation, masses, range, ranked};
-use crate::kind::PolicyKind;
+use crate::kind::{BALANCED_EXPLOIT_CAP, PolicyKind};
 use crate::params::Params;
 use crate::pricer::{self, Budget};
-use crate::profile::{ACTIVE, Profile, SeatedStats};
+use crate::profile::{ACTIVE, EMPTY, Profile, SeatedStats};
 use crate::read::{Class, Read};
 pub use crate::resolve::Abstract;
 use crate::resolve::resolve;
@@ -242,6 +242,16 @@ impl Policy {
         format!("{}/{}", self.kind.name(), self.style.name)
     }
 
+    /// The exploit budget this policy may spend. `Balanced` caps it low even when its slot was
+    /// seeded before the cap existed; every other kind spends the number it was given.
+    pub fn exploit(&self) -> f64 {
+        if self.kind == PolicyKind::Balanced {
+            self.params.exploit.clamp(0.0, BALANCED_EXPLOIT_CAP)
+        } else {
+            self.params.exploit
+        }
+    }
+
     /// Varies the continuation pin for an experiment while leaving the selected range model and
     /// the read-mixing parameters in place.
     #[must_use]
@@ -272,6 +282,12 @@ impl Policy {
         iterations: u32,
         profile: Profile<'_>,
     ) -> Decision {
+        // A caller may pass any profile; the Balanced kind still decides without one.
+        let profile = if self.kind == PolicyKind::Balanced {
+            EMPTY
+        } else {
+            profile
+        };
         if let Some(action) = profile.action(spot, budget.seed) {
             return action.into();
         }
@@ -281,21 +297,27 @@ impl Policy {
         let gated = model.is_some();
         let baseline = ActionModel::baseline();
         let population = model.unwrap_or(&baseline);
-        // Each line's own read, by the seat the spot names it with.
-        let reads: Vec<Option<&Personal>> = (0..spot.lines.len())
-            .map(|ordinal| {
-                let seat = spot.seats.get(ordinal)?;
-                personal.iter().find(|read| read.seat == *seat)
-            })
-            .collect();
+        // Each line's own read, by the seat the spot names it with. Balanced holds every read:
+        // its lines are read by the population, as if no read existed.
+        let reads: Vec<Option<&Personal>> = if self.kind == PolicyKind::Balanced {
+            vec![None; spot.lines.len()]
+        } else {
+            (0..spot.lines.len())
+                .map(|ordinal| {
+                    let seat = spot.seats.get(ordinal)?;
+                    personal.iter().find(|read| read.seat == *seat)
+                })
+                .collect()
+        };
         let models: Vec<&ActionModel> = reads
             .iter()
             .map(|read| read.map_or(population, |read| &read.model))
             .collect();
         let model = models.first().copied().unwrap_or(population);
         let street = Street::of(spot.board);
+        let exploit = self.exploit();
         let pin = match self.continuation_pin {
-            ContinuationPin::Fixed => self.params.exploit,
+            ContinuationPin::Fixed => exploit,
             ContinuationPin::Zero => 0.0,
             ContinuationPin::EvidenceCap => {
                 let trust = reads
@@ -336,12 +358,12 @@ impl Policy {
                     })
                     .filter(|trust| trust.is_finite())
                     .unwrap_or(0.0);
-                self.params.exploit.clamp(0.0, 1.0) * trust.clamp(0.0, 1.0)
+                exploit.clamp(0.0, 1.0) * trust.clamp(0.0, 1.0)
             }
         };
         let resolved = match self.kind {
             PolicyKind::Solving => resolve(spot, Some(model), pin, iterations, budget.seed),
-            PolicyKind::Pricing => None,
+            PolicyKind::Balanced | PolicyKind::Pricing => None,
         };
         match resolved {
             Some(resolved) => {
@@ -378,10 +400,39 @@ impl Policy {
                 }
             }
             None => {
-                let priced = pricer::price_lines_at(spot, &models, budget, self.style.open_scale);
+                // Balanced draws among near-best actions and blends the opening boundary;
+                // Pricing takes the best, as it always did.
+                let (priced, drawn) = match self.kind {
+                    PolicyKind::Balanced => {
+                        let balanced = pricer::price_lines_balanced(
+                            spot,
+                            &models,
+                            budget,
+                            self.style.open_scale,
+                            self.params.spread,
+                        );
+                        let drawn = (!balanced.strategy.is_empty()).then(|| Drawn {
+                            strategy: balanced.strategy.clone(),
+                            values: balanced.values.clone(),
+                            taken: balanced.taken,
+                        });
+                        (
+                            pricer::Decision {
+                                action: balanced.action,
+                                equity: balanced.equity,
+                                price: balanced.price,
+                            },
+                            drawn,
+                        )
+                    }
+                    _ => (
+                        pricer::price_lines_at(spot, &models, budget, self.style.open_scale),
+                        None,
+                    ),
+                };
                 Decision {
                     action: priced.action,
-                    drawn: None,
+                    drawn,
                     trace: Some(Trace {
                         branch: Branch::Priced,
                         street,
@@ -397,7 +448,7 @@ impl Policy {
                                     .iter()
                                     .flatten()
                                     .any(|read| read.trust.is_some_and(|trust| trust > 0.0)))
-                            .then_some(self.params.exploit),
+                            .then_some(exploit),
                             ranges: read_ranges(spot, population, &reads, spot.opponents.max(1)),
                         }),
                     }),

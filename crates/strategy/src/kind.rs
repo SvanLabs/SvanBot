@@ -1,17 +1,24 @@
 //! The logic a policy uses to decide.
 
+/// The most exploit the `Balanced` kind may spend. The style's own bound is this number, and the
+/// policy clamps to it even when a slot was seeded before the bound existed.
+pub const BALANCED_EXPLOIT_CAP: f64 = 0.25;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PolicyKind {
     Solving,
+    /// The pricer with a mixing draw and a blended opening boundary, reads held and no profile.
+    Balanced,
     Pricing,
 }
 
 impl PolicyKind {
-    pub const ALL: [Self; 2] = [Self::Solving, Self::Pricing];
+    pub const ALL: [Self; 3] = [Self::Solving, Self::Balanced, Self::Pricing];
 
     pub const fn name(self) -> &'static str {
         match self {
             Self::Solving => "solving",
+            Self::Balanced => "balanced",
             Self::Pricing => "pricing",
         }
     }

@@ -195,7 +195,10 @@ mod tests {
     }
 
     fn params(exploit: f64) -> Params {
-        Params { exploit }
+        Params {
+            exploit,
+            spread: 0.0,
+        }
     }
 
     fn row(

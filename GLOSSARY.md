@@ -191,7 +191,9 @@ _Avoid_: strategy (for one bot's rules)
 
 **Policy kind**:
 One of the compiled ways a policy chooses. `solving` is today's: the profile, then the re-solve,
-then the pricer. `pricing` never re-solves.
+then the pricer. `balanced` is the baseline made a brain: the pricer, but it draws among actions
+within the mixing spread of the best and blends the opening boundary, with reads held and no
+profile. `pricing` never re-solves.
 _Avoid_: engine, mode
 
 **Continuation pin**:
@@ -201,8 +203,9 @@ selected range model reads the current hand.
 
 **Style**:
 A named, designed way of playing. It pins some of the numbers a policy plays by and names the
-profile it plays with; the rest come from the bot's champion. `standard` is today's play. A
-sparring archetype is an opponent's scripted style, not ours.
+profile it plays with; the rest come from the bot's champion. `standard` is today's play; `anchor`
+is the `Balanced` brain's style, with no profile and the exploit capped low. A sparring archetype
+is an opponent's scripted style, not ours.
 _Avoid_: persona, personality
 
 **Reference policy**:
@@ -220,6 +223,16 @@ The built-in population prior used when a bot has no fitted action model.
 **Exploit budget**:
 How far the policy may move from the baseline toward what the reads suggest.
 _Avoid_: aggression, exploit level
+
+**Mixing spread**:
+The share of the pot within which the `Balanced` kind may take an action that is not the best, and
+the scale of its draw's temperature. A parameter-set number (`spread`); zero takes only the best.
+_Avoid_: temperature, noise, epsilon
+
+**Opening blend**:
+The band around an opening range's cut over which the `Balanced` kind opens a class with a chance
+rather than all or nothing. A compiled rule, not a number the slot learns.
+_Avoid_: soft boundary, fuzzy cut
 
 **Re-solve**:
 Working out the policy for the current spot while the action clock runs, a few actions deep, with

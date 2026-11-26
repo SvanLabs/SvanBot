@@ -75,7 +75,10 @@ fn the_fleet_carries_the_search_newest_step_first_with_what_the_canary_has_pendi
     let simmed = |exploit: f64, stage, mbb: f64| Entry::Simmed {
         step: Step {
             champion: champion.digest(),
-            challenger: Params { exploit },
+            challenger: Params {
+                exploit,
+                spread: 0.0,
+            },
             stage,
             seed: 7,
         },
@@ -90,13 +93,19 @@ fn the_fleet_carries_the_search_newest_step_first_with_what_the_canary_has_pendi
         simmed(0.4, Stage::Confirmation, 250.0),
         Entry::Proposed {
             champion: champion.digest(),
-            challenger: Params { exploit: 0.4 },
+            challenger: Params {
+                exploit: 0.4,
+                spread: 0.0,
+            },
         },
     ];
     fleet.record_search(&entries, "proposed it", 1_234).unwrap();
     fleet
         .propose(&Proposal {
-            challenger: Params { exploit: 0.4 },
+            challenger: Params {
+                exploit: 0.4,
+                spread: 0.0,
+            },
             kind: Kind::Guard { hands: 3_000 },
             harm_margin: 20.0,
             sim_estimate: Some(0.25),
@@ -110,7 +119,12 @@ fn the_fleet_carries_the_search_newest_step_first_with_what_the_canary_has_pendi
     assert_eq!(search["champion"]["digest"], champion.digest().to_string());
     assert_eq!(
         search["waiting"],
-        Params { exploit: 0.4 }.digest().to_string()
+        Params {
+            exploit: 0.4,
+            spread: 0.0
+        }
+        .digest()
+        .to_string()
     );
     assert_eq!(search["probe"], Value::Null);
     assert_eq!(search["last"]["note"], "proposed it");
@@ -232,7 +246,10 @@ fn a_run_of_a_champion_the_fleet_no_longer_plays_is_a_problem_in_the_fleet() {
     let (addr, dir) = serve("arena-promoted");
     // The promotion: a champion the run's line was not played with.
     Fleet::in_dir(dir.join("data/fleet"))
-        .promote(&Params { exploit: 0.9 })
+        .promote(&Params {
+            exploit: 0.9,
+            spread: 0.0,
+        })
         .unwrap();
     let (_, body) = get(addr, "/api/fleet");
     let fleet: Value = serde_json::from_str(&body).unwrap();
@@ -254,7 +271,12 @@ fn each_league_is_checked_for_the_champion_in_play() {
     // shows the old champion, and the page has to say so though the newest run is current.
     let (addr, dir) = serve("arena-promoted-league");
     let fleet = Fleet::in_dir(dir.join("data/fleet"));
-    fleet.promote(&Params { exploit: 0.9 }).unwrap();
+    fleet
+        .promote(&Params {
+            exploit: 0.9,
+            spread: 0.0,
+        })
+        .unwrap();
     fleet
         .record_arena(&ArenaRun {
             commit: "abc1234".into(),

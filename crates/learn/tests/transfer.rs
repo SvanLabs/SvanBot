@@ -27,7 +27,10 @@ const PINNED: Style = Style {
 };
 
 fn at(exploit: f64) -> Params {
-    Params { exploit }
+    Params {
+        exploit,
+        spread: 0.0,
+    }
 }
 
 fn found(mbb: f64) -> svanbot_learn::paired::Verdict {

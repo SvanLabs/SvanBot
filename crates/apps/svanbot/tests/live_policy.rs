@@ -72,7 +72,10 @@ fn the_champions_numbers_ride_along() {
     let fleet = Fleet::in_dir(scratch("champion"));
     fleet.assign("A", TIGHT_PLAY, 1).unwrap();
     let (live, _) = LivePolicy::open(fleet, "A");
-    let params = Params { exploit: 0.3 };
+    let params = Params {
+        exploit: 0.3,
+        spread: 0.0,
+    };
     assert_eq!(live.policy(params).params, params);
 }
 
@@ -80,11 +83,17 @@ fn the_champions_numbers_ride_along() {
 fn a_seeded_slot_plays_the_bots_style_and_its_own_numbers() {
     let dir = scratch("slot");
     let fleet = Fleet::in_dir(&dir);
-    let reference = Params { exploit: 0.4 };
+    let reference = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
     fleet.assign("A", TIGHT_PLAY, 1).unwrap();
     fleet.promote(&reference).unwrap();
     assert_eq!(fleet.seed_champion("A"), Ok(reference));
-    let slot = Params { exploit: 0.2 };
+    let slot = Params {
+        exploit: 0.2,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &slot).unwrap();
     let store = Store::open(&dir.join("A.db"), "A").unwrap();
     let (live, _) = LivePolicy::open(fleet.clone(), "A");
@@ -100,7 +109,10 @@ fn a_seeded_slot_plays_the_bots_style_and_its_own_numbers() {
 fn a_bot_without_a_slot_plays_the_fleet_champion_exactly() {
     let dir = scratch("no-slot");
     let fleet = Fleet::in_dir(&dir);
-    let champion = Params { exploit: 0.3 };
+    let champion = Params {
+        exploit: 0.3,
+        spread: 0.0,
+    };
     fleet.promote(&champion).unwrap();
     let store = Store::open(&dir.join("A.db"), "A").unwrap();
     let (live, notes) = LivePolicy::open(fleet.clone(), "A");

@@ -188,5 +188,22 @@ pub fn opens(class: usize, position: Position) -> bool {
 
 /// Whether the position opens this class with the scaled opening share.
 pub fn opens_at(class: usize, position: Position, scale: f64) -> bool {
-    ranks()[position.behind.clamp(1, MOST) - 1][class.min(CLASSES - 1)] < position.share_at(scale)
+    rank(class, position) < position.share_at(scale)
+}
+
+/// The share of hands over which the `Balanced` kind turns the opening cut into a chance: half
+/// inside the width and half outside. It is a compiled rule, not a number the slot learns.
+pub const OPEN_BLEND: f64 = 0.02;
+
+/// The chance the position opens this class under a blended boundary. It is 1 well inside the
+/// width, 0 well outside it, and runs linearly across [`OPEN_BLEND`] around the cut, so a class
+/// exactly on the boundary opens half the time. `opens_at` is the same boundary without the
+/// blend.
+pub fn open_chance(class: usize, position: Position, scale: f64) -> f64 {
+    let edge = position.share_at(scale) - rank(class, position);
+    (edge / OPEN_BLEND + 0.5).clamp(0.0, 1.0)
+}
+
+fn rank(class: usize, position: Position) -> f64 {
+    ranks()[position.behind.clamp(1, MOST) - 1][class.min(CLASSES - 1)]
 }

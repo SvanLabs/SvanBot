@@ -6,6 +6,9 @@
 //! - It raises for value when its equity is well above its fair share of the pot.
 //! - It calls when its equity covers the price of the call.
 //! - It checks when the check is free, and it never folds then.
+//!
+//! The `Balanced` kind uses the same prices, then draws among the actions within a spread of the
+//! best instead of taking it ([`mix`]).
 
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
 use svanbot_core::rules::{Action, Street};
@@ -13,9 +16,11 @@ use svanbot_core::spot::Spot;
 use svanbot_sim::equity::{Showdown, equity_over, showdowns};
 
 use crate::action::{ActionModel, Seen, range, ranked};
+use crate::preflop;
 
 mod ev;
-use crate::preflop;
+mod mix;
+pub use mix::{Balanced, draw_within_spread};
 
 /// The work a decision may do, passed in so the decision never reads the clock: how many deals
 /// to sample, and the seed they are drawn from.
@@ -61,6 +66,64 @@ pub fn price_lines_at(
     if let Some(decision) = opening(spot, open_scale) {
         return decision;
     }
+    let baseline = ActionModel::baseline();
+    let sampled = sampled(spot, models, &baseline, budget);
+    Decision {
+        action: mix::choose(spot, &sampled.dealt, &sampled.folding, sampled.equity),
+        equity: sampled.equity,
+        price: price_of(spot),
+    }
+}
+
+/// Like [`price_lines_at`] for the `Balanced` kind: the same prices, but a draw among the actions
+/// within `spread` of the best, and a blended opening boundary. `spread` is in chips of the pot.
+pub fn price_lines_balanced(
+    spot: &Spot,
+    models: &[&ActionModel],
+    budget: Budget,
+    open_scale: f64,
+    spread: f64,
+) -> Balanced {
+    if let Some(decision) = mix::opening(spot, open_scale, budget.seed) {
+        return Balanced::opening(decision);
+    }
+    let baseline = ActionModel::baseline();
+    let sampled = sampled(spot, models, &baseline, budget);
+    let values = mix::values(spot, &sampled.dealt, &sampled.folding, sampled.equity);
+    let drawn = mix::draw(&values, spot.pot, spread, budget.seed);
+    Balanced {
+        action: drawn.action,
+        equity: sampled.equity,
+        price: price_of(spot),
+        strategy: drawn.strategy,
+        values: drawn.values,
+        actions: drawn.actions,
+        taken: drawn.taken,
+    }
+}
+
+/// The share a call costs: `call / (callable pot + call)`. Without known contributions use the
+/// ordinary pot price. `None` when there is nothing to call.
+pub fn price_of(spot: &Spot) -> Option<f64> {
+    spot.legal.call.map(|call| {
+        (call as f64) / ((spot.callable_pot.unwrap_or(spot.pot) as f64) + (call as f64))
+    })
+}
+
+/// The sampled deals, the models that answer a raise, and the equity over them. Shared by the
+/// taking pricer and the mixing one, so both price the same spot from the same deals.
+pub(super) struct Sampled<'a> {
+    pub dealt: Vec<Showdown>,
+    pub folding: Vec<&'a ActionModel>,
+    pub equity: f64,
+}
+
+pub(super) fn sampled<'a>(
+    spot: &Spot,
+    models: &[&'a ActionModel],
+    baseline: &'a ActionModel,
+    budget: Budget,
+) -> Sampled<'a> {
     let uniform = uniform_range(spot.hole | spot.board);
     let read: Vec<Vec<(CardSet, f64)>> = spot
         .lines
@@ -77,62 +140,32 @@ pub fn price_lines_at(
     let dealt = showdowns(spot.hole, &ranges, spot.board, budget.samples, budget.seed);
     let equity = equity_over(&dealt);
     // A line with no model of its own answers a raise as the baseline's sound opponent would.
-    let baseline = ActionModel::baseline();
-    let folding: Vec<&ActionModel> = (0..ranges.len())
-        .map(|at| models.get(at).copied().unwrap_or(&baseline))
+    let folding = (0..ranges.len())
+        .map(|at| models.get(at).copied().unwrap_or(baseline))
         .collect();
-    Decision {
-        action: choose(spot, &dealt, &folding, equity),
+    Sampled {
+        dealt,
+        folding,
         equity,
-        price: price_of(spot),
     }
 }
 
-/// The share a call costs: `call / (callable pot + call)`. Without known contributions use the
-/// ordinary pot price. `None` when there is nothing to call.
-pub fn price_of(spot: &Spot) -> Option<f64> {
-    spot.legal.call.map(|call| {
-        (call as f64) / ((spot.callable_pot.unwrap_or(spot.pot) as f64) + (call as f64))
-    })
-}
-
-/// The action worth the most chips from here on ([`ev`]). The passive action is worth our share
-/// of the pot it is played into, a call against every opponent still in the hand (V11-42); a raise
-/// must beat it outright, so a tie stays passive, and a free check is never folded.
-fn choose(spot: &Spot, dealt: &[Showdown], models: &[&ActionModel], equity: f64) -> Action {
-    let (mut best, mut worth) = match spot.legal.call {
-        None => (Action::Check, equity * (spot.pot as f64)),
-        Some(call) => {
-            let pot = spot.callable_pot.unwrap_or(spot.pot);
-            let called = equity * ((pot as f64) + (call as f64)) - (call as f64);
-            if called >= 0.0 {
-                (Action::Call, called)
-            } else {
-                (Action::Fold, 0.0)
-            }
-        }
-    };
-    let sizes = ev::sizes(spot);
-    if !sizes.is_empty() {
-        // Each opponent's fold chances, built only when there is a raise to price.
-        let references = ev::references(spot, dealt, models, &ranked(spot.board));
-        let call = spot.legal.call.unwrap_or(0);
-        for to in sizes {
-            let raised = ev::raise(dealt, &references, spot.pot, call, to - spot.committed);
-            if raised > worth {
-                (best, worth) = (Action::RaiseTo(to), raised);
-            }
-        }
-    }
-    best
-}
-
-/// The decision in an unopened pot, from the opening range ([`preflop::opens_at`]): before the flop,
-/// with nobody yet to have acted, every opponent still in is behind us. A hand the position opens is
-/// raised to the table's standard open, and any other folds (or checks, when it is free). `None`
-/// when the pot has been opened, when a raise is not open to us, or when the caller did not follow
-/// the hand: with no lines, an unopened pot cannot be told from a raised one.
+/// The decision in an unopened pot, from the opening range ([`preflop::opens_at`]): before the
+/// flop, with nobody yet to have acted, every opponent still in is behind us. A hand the position
+/// opens is raised to the table's standard open, and any other folds (or checks, when it is free).
+/// `None` when the pot has been opened, when a raise is not open to us, or when the caller did not
+/// follow the hand: with no lines, an unopened pot cannot be told from a raised one.
 fn opening(spot: &Spot, open_scale: f64) -> Option<Decision> {
+    let class = opening_class(spot)?;
+    let position = preflop::Position {
+        behind: spot.opponents,
+        in_position: spot.in_position,
+    };
+    opening_with(spot, preflop::opens_at(class, position, open_scale))
+}
+
+/// The class and position of an unopened pot, or `None` when this is not one.
+pub(super) fn opening_class(spot: &Spot) -> Option<usize> {
     if !spot.board.is_empty() || spot.lines.is_empty() || spot.legal.raise.is_none() {
         return None;
     }
@@ -144,12 +177,14 @@ fn opening(spot: &Spot, open_scale: f64) -> Option<Decision> {
     {
         return None;
     }
+    Some(preflop::class_of(spot.hole))
+}
+
+/// The unopened pot's decision when `open` says the class opens.
+pub(super) fn opening_with(spot: &Spot, open: bool) -> Option<Decision> {
+    opening_class(spot)?;
     let class = preflop::class_of(spot.hole);
-    let position = preflop::Position {
-        behind: spot.opponents,
-        in_position: spot.in_position,
-    };
-    let action = if preflop::opens_at(class, position, open_scale) {
+    let action = if open {
         Action::RaiseTo(*ev::sizes(spot).first()?)
     } else if spot.legal.call.is_none() {
         Action::Check

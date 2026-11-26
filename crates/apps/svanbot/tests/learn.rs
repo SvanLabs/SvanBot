@@ -57,7 +57,13 @@ fn each_run_sims_one_step_logs_it_and_the_next_run_sims_the_next() {
     assert_eq!(asked.len(), 1, "one sim a run");
     let (first, deals) = asked[0];
     assert_eq!(deals, 2_000);
-    assert_eq!(first.challenger, Params { exploit: 0.4 });
+    assert_eq!(
+        first.challenger,
+        Params {
+            exploit: 0.4,
+            spread: 0.0
+        }
+    );
     assert!(note.contains("simmed"), "{note}");
     let log = fleet.search_log().unwrap();
     assert_eq!(log.entries.len(), 1);
@@ -90,7 +96,13 @@ fn a_challenger_two_sims_put_above_is_proposed_for_the_harm_guard_against_its_ch
         .waiting()
         .unwrap()
         .expect("a proposal waits for the canary");
-    assert_eq!(proposal.challenger, Params { exploit: 0.4 });
+    assert_eq!(
+        proposal.challenger,
+        Params {
+            exploit: 0.4,
+            spread: 0.0
+        }
+    );
     assert_eq!(proposal.kind, Kind::Guard { hands: GUARD_HANDS });
     assert_eq!(proposal.against, Some(Params::DEFAULT.digest()));
     assert_eq!(proposal.sim_estimate, Some(0.3));
@@ -104,7 +116,10 @@ fn a_challenger_two_sims_put_above_is_proposed_for_the_harm_guard_against_its_ch
 fn while_a_proposal_waits_or_a_probe_runs_a_run_sims_nothing_and_says_it_waits() {
     let fleet = scratch("waits");
     let waiting = Proposal {
-        challenger: Params { exploit: 0.7 },
+        challenger: Params {
+            exploit: 0.7,
+            spread: 0.0,
+        },
         kind: Kind::Probe,
         harm_margin: 5.0,
         sim_estimate: None,
@@ -150,7 +165,12 @@ fn a_spent_search_sims_nothing_until_the_champion_changes() {
     let note = step(&fleet, 2_000, 10, &never).unwrap();
     assert!(note.contains("spent"), "{note}");
     // A new champion is searched afresh.
-    fleet.promote(&Params { exploit: 0.4 }).unwrap();
+    fleet
+        .promote(&Params {
+            exploit: 0.4,
+            spread: 0.0,
+        })
+        .unwrap();
     step(&fleet, 2_000, 20, &level.sim()).unwrap();
     assert_eq!(level.asked.borrow().len(), 7);
 }

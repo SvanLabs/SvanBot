@@ -47,7 +47,11 @@ impl LivePolicy {
     /// Use the current hand's parameter set with the held assignment or reference.
     pub fn policy(&self, params: Params) -> Policy {
         match *self.current.borrow() {
-            Ok(Some(assignment)) => Policy::new(assignment.kind, assignment.style, params),
+            Ok(Some(assignment)) => Policy::new(
+                assignment.kind,
+                assignment.style,
+                assignment.style.seed(params),
+            ),
             _ => Policy::reference(params),
         }
     }

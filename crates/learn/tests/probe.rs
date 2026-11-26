@@ -9,7 +9,11 @@ use svanbot_strategy::params::Params;
 fn hypothesis(kind: Kind) -> Hypothesis {
     Hypothesis {
         champion: Params::DEFAULT.digest(),
-        challenger: Params { exploit: 0.25 }.digest(),
+        challenger: Params {
+            exploit: 0.25,
+            spread: 0.0,
+        }
+        .digest(),
         kind,
         harm_margin: 0.0,
         sim_estimate: None,

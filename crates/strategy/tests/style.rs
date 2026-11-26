@@ -1,7 +1,7 @@
 use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
 use svanbot_strategy::profile::ACTIVE;
-use svanbot_strategy::style::{self, LOOSE, STANDARD, Style, TIGHT};
+use svanbot_strategy::style::{self, ANCHOR, LOOSE, STANDARD, Style, TIGHT};
 
 #[test]
 fn a_kind_and_a_style_are_known_by_the_name_they_print() {
@@ -50,7 +50,15 @@ fn a_style_seeds_a_slot_with_its_pins_applied() {
     // no digest: the policy reads the width from the style it plays.
     assert_eq!(TIGHT.seed(Params::DEFAULT), Params::DEFAULT);
     assert_eq!(LOOSE.seed(Params::DEFAULT), Params::DEFAULT);
-    assert_eq!(TIGHT.seed(Params { exploit: 0.25 }).exploit, 0.25);
+    assert_eq!(
+        TIGHT
+            .seed(Params {
+                exploit: 0.25,
+                spread: 0.0
+            })
+            .exploit,
+        0.25
+    );
 }
 
 #[test]
@@ -74,12 +82,38 @@ fn a_style_bounds_the_numbers_its_search_may_move_and_pins_the_zero_width_ones()
     assert!(BOUNDED.allows("unknown", 99.0));
     // Seeding applies a pin, and a pin is a zero-width bound: the search never moves it.
     assert_eq!(
-        BOUNDED.seed(Params { exploit: 0.5 }),
-        Params { exploit: 0.5 }
+        BOUNDED.seed(Params {
+            exploit: 0.5,
+            spread: 0.0
+        }),
+        Params {
+            exploit: 0.5,
+            spread: 0.0
+        }
     );
-    assert_eq!(PINNED.seed(Params { exploit: 0.5 }).exploit, 0.4);
+    assert_eq!(
+        PINNED
+            .seed(Params {
+                exploit: 0.5,
+                spread: 0.0
+            })
+            .exploit,
+        0.4
+    );
     assert!(PINNED.allows("exploit", 0.4));
     assert!(!PINNED.allows("exploit", 0.5));
+}
+
+#[test]
+fn anchor_bounds_its_two_numbers_and_seeds_the_design_values() {
+    let seeded = ANCHOR.seed(Params::DEFAULT);
+    assert_eq!(seeded.exploit, 0.25);
+    assert_eq!(seeded.spread, 0.1);
+    assert!(ANCHOR.allows("exploit", 0.25));
+    assert!(!ANCHOR.allows("exploit", 0.26));
+    assert!(ANCHOR.allows("spread", 0.5));
+    assert!(!ANCHOR.allows("spread", 0.51));
+    assert!(ANCHOR.profile.is_empty());
 }
 
 #[test]
@@ -116,7 +150,10 @@ fn a_seeded_style_decides_exactly_as_the_same_style_without_seeding() {
         samples: 3_200,
         seed: 5,
     };
-    let params = Params { exploit: 0.35 };
+    let params = Params {
+        exploit: 0.25,
+        spread: 0.1,
+    };
     for style in style::ALL {
         let seeded = Policy::new(PolicyKind::Solving, style, style.seed(params));
         let raw = Policy::new(PolicyKind::Solving, style, params);

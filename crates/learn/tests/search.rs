@@ -5,10 +5,16 @@ use svanbot_learn::paired::Verdict;
 use svanbot_learn::search::{Entry, Next, Stage, Step, next};
 use svanbot_strategy::params::Params;
 
-const CHAMPION: Params = Params { exploit: 0.5 };
+const CHAMPION: Params = Params {
+    exploit: 0.5,
+    spread: 0.0,
+};
 
 fn at(exploit: f64) -> Params {
-    Params { exploit }
+    Params {
+        exploit,
+        spread: 0.0,
+    }
 }
 
 /// The sim `next` asks for, or a panic naming what it asked for instead.
