@@ -57,22 +57,39 @@ pub fn equity_over(dealt: &[Showdown]) -> f64 {
     units as f64 / (WHOLE * (dealt.len() as u64).max(1)) as f64
 }
 
+/// The most opponents one sampled deal holds: five, the other seats of a six-max table.
+pub const MAX_OPPONENTS: usize = 5;
+
 /// One sampled deal of [`showdowns`]: the cards each opponent was dealt, and the strength of every
 /// hand on the full board, hero's first and then the opponents' in the order of their ranges.
+///
+/// The cards live inline, not behind a `Vec`: a priced decision samples thousands of deals, and a
+/// heap allocation per deal would cost more than the equity arithmetic it feeds.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Showdown {
-    pub holes: Vec<CardSet>,
-    pub strengths: Vec<Strength>,
+    holes: [CardSet; MAX_OPPONENTS],
+    strengths: [Strength; MAX_OPPONENTS + 1],
+    opponents: u8,
 }
 
 impl Showdown {
+    /// Each opponent's hole cards, in the order of their ranges.
+    pub fn holes(&self) -> &[CardSet] {
+        &self.holes[..usize::from(self.opponents)]
+    }
+
+    /// Every hand's strength on the full board: hero's first, then the opponents' in order.
+    pub fn strengths(&self) -> &[Strength] {
+        &self.strengths[..usize::from(self.opponents) + 1]
+    }
+
     /// Hero's share of the pot against the opponents in `against` (a bit an opponent, in the order
     /// of [`Showdown::holes`]), the others out of the hand: 1 when no opponent left in beats hero,
     /// split among ties, 0 when one does.
     pub fn share_against(&self, against: u64) -> f64 {
         let hero = self.strengths[0];
         let mut tied = 1;
-        for (at, &strength) in self.strengths[1..].iter().enumerate() {
+        for (at, &strength) in self.strengths()[1..].iter().enumerate() {
             if against & (1 << at) != 0 {
                 if strength > hero {
                     return 0.0;
@@ -84,8 +101,9 @@ impl Showdown {
     }
 
     fn hero_units(&self) -> u64 {
-        let mut units = vec![0; self.strengths.len()];
-        share(&self.strengths, &mut units);
+        let mut units = [0u64; MAX_OPPONENTS + 1];
+        let played = usize::from(self.opponents) + 1;
+        share(&self.strengths[..played], &mut units[..played]);
         units[0]
     }
 }
@@ -99,6 +117,11 @@ pub fn showdowns(
     samples: u64,
     seed: u64,
 ) -> Vec<Showdown> {
+    assert!(
+        ranges.len() <= MAX_OPPONENTS,
+        "a deal holds at most {MAX_OPPONENTS} opponents, got {}",
+        ranges.len()
+    );
     let ranges: Vec<Weighted> = ranges.iter().map(|range| Weighted::new(range)).collect();
     let mut dealt = Vec::with_capacity(samples as usize);
     for block in 0..BLOCKS {
@@ -119,13 +142,13 @@ fn deal_once(
     rng: &mut Rng,
 ) -> Option<Showdown> {
     let mut dead = hero | board;
-    let mut opponents = Vec::with_capacity(ranges.len());
-    for range in ranges {
+    let mut holes = [CardSet::EMPTY; MAX_OPPONENTS];
+    for (at, range) in ranges.iter().enumerate() {
         let cards = (0..100)
             .map_while(|_| range.draw(rng))
             .find(|&cards| cards.is_disjoint(dead))?;
         dead |= cards;
-        opponents.push(cards);
+        holes[at] = cards;
     }
     let mut full = board;
     while full.len() < 5 {
@@ -137,11 +160,14 @@ fn deal_once(
         }
     }
     let key = Key::of(full);
-    let mut strengths = vec![add(key, hero).strength()];
-    strengths.extend(opponents.iter().map(|&cards| add(key, cards).strength()));
+    let mut strengths = [add(key, hero).strength(); MAX_OPPONENTS + 1];
+    for (at, &cards) in holes[..ranges.len()].iter().enumerate() {
+        strengths[at + 1] = add(key, cards).strength();
+    }
     Some(Showdown {
-        holes: opponents,
+        holes,
         strengths,
+        opponents: ranges.len() as u8,
     })
 }
 

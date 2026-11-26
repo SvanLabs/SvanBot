@@ -87,7 +87,14 @@ pub(super) fn values(
         let references = ev::references(spot, dealt, models, &ranked(spot.board));
         let call = spot.legal.call.unwrap_or(0);
         for to in sizes {
-            let raised = ev::raise(dealt, &references, spot.pot, call, to - spot.committed);
+            let raised = ev::raise(
+                dealt,
+                &references,
+                models.len(),
+                spot.pot,
+                call,
+                to - spot.committed,
+            );
             values.push((Action::RaiseTo(to), raised));
         }
     }
