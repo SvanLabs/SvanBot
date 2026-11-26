@@ -1,8 +1,8 @@
 //! The child half of the SvanDB crash test (V11-128): appends hands for ever, printing each
 //! index only after its append returned. The test kills this process with SIGKILL; the printed
 //! indices are the writes the store acknowledged. A separate binary so the test spawns it by a
-//! compile-time path (`CARGO_BIN_EXE_…`), and its log path comes from a compile-time root plus
-//! the round number it parses, never from a caller's path.
+//! compile-time path (`CARGO_BIN_EXE_…`), and the log is a constant name in the working directory
+//! the test chooses, so no path or number is ever read from outside.
 #![allow(
     clippy::disallowed_macros,
     clippy::disallowed_methods,
@@ -17,16 +17,7 @@ use svanbot_runtime::record::Hand;
 use svanbot_runtime::store::{Source, Svandb};
 
 fn main() {
-    let round: u64 = std::env::args()
-        .nth(1)
-        .expect("a round number")
-        .parse()
-        .expect("a round number");
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/dev/svandb-crash")
-        .join(format!("round-{round}"));
-    std::fs::create_dir_all(&dir).expect("create the round's directory");
-    let db = Svandb::open(&dir.join("A.svandb"), "A").expect("open the log");
+    let db = Svandb::open(Path::new("A.svandb"), "A").expect("open the log");
     let mut at = 0u64;
     loop {
         let id = format!("h-{at}");

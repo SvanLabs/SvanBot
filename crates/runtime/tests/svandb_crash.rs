@@ -20,8 +20,8 @@ use svanbot_runtime::store::{Source, Svandb};
 /// The crash child, by the compile-time path cargo gives this package's tests.
 const CHILD: &str = env!("CARGO_BIN_EXE_svandb-crash-child");
 
-/// The round's directory, under a compile-time root: the child computes the same path from the
-/// round number alone.
+/// The round's directory, under a compile-time root. The child runs with it as its working
+/// directory and opens its constant `A.svandb` there.
 fn scratch(round: u64) -> PathBuf {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/dev/svandb-crash")
@@ -50,7 +50,7 @@ fn a_kill_9_leaves_every_acknowledged_hand_and_reads_back_cleanly() {
         let dir = scratch(round);
         let path = dir.join("A.svandb");
         let mut child = Command::new(CHILD)
-            .arg(round.to_string())
+            .current_dir(&dir)
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
