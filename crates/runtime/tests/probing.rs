@@ -81,6 +81,53 @@ fn a_canary_that_opens_with_no_probe_in_its_store_clears_a_mirror_left_behind() 
 }
 
 #[test]
+fn a_frozen_reference_ends_a_running_probe_without_promoting() {
+    let dir = scratch("frozen-probe");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
+    fleet.propose(&guard(120)).unwrap();
+    let next = play(&mut canary, 0, 1, 0);
+    assert!(store.open_probe().unwrap().is_some());
+    fleet.freeze(600).unwrap();
+    // Enough hands for the guard to clear, which after the freeze must not promote.
+    let notes = (next..next + 1 + 20 * ORBIT)
+        .flat_map(|number| canary.on_hand(&hand(number, 1_000_000), 2_000).notes)
+        .collect::<Vec<_>>();
+    assert!(
+        notes.iter().any(|note| note.contains("frozen")),
+        "{notes:?}"
+    );
+    assert_eq!(store.open_probe().unwrap(), None);
+    assert_eq!(fleet.champion(), Ok(Params::DEFAULT));
+    assert_eq!(canary.params(), Params::DEFAULT);
+    assert_eq!(fleet.probe(), Ok(None));
+}
+
+#[test]
+fn a_restarted_canary_does_not_take_a_probe_up_after_the_freeze() {
+    let dir = scratch("frozen-restart");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
+    fleet.propose(&guard(120)).unwrap();
+    let next = play(&mut canary, 0, 1 + 5 * ORBIT, 0);
+    drop(canary);
+    fleet.freeze(600).unwrap();
+
+    let (mut restarted, notes) = Probing::open(&store, fleet.clone(), true, 500);
+    assert!(
+        notes.iter().any(|note| note.contains("frozen")),
+        "{notes:?}"
+    );
+    assert_eq!(store.open_probe().unwrap(), None);
+    assert_eq!(fleet.probe(), Ok(None));
+    play(&mut restarted, next, 1 + 20 * ORBIT, 0);
+    assert_eq!(fleet.champion(), Ok(Params::DEFAULT));
+    assert_eq!(restarted.params(), Params::DEFAULT);
+}
+
+#[test]
 fn a_proposal_measured_against_another_champion_is_dropped_unplayed() {
     let dir = scratch("stale");
     let fleet = Fleet::in_dir(dir.join("fleet"));
@@ -178,10 +225,10 @@ fn a_guard_that_clears_promotes_the_challenger_and_the_fleet_adopts_it() {
     );
     assert_eq!(store.open_probe().unwrap(), None);
     assert_eq!(fleet.champion(), Ok(CHALLENGER));
-    assert_eq!(canary.params(), CHALLENGER);
-    // The others adopt between hands.
+    assert_eq!(canary.champion(), CHALLENGER);
+    // The others adopt between hands. A reference-arm hand still plays the reference.
     play(&mut other, 2, 1, 0);
-    assert_eq!(other.params(), CHALLENGER);
+    assert_eq!(other.champion(), CHALLENGER);
 }
 
 #[test]
@@ -229,10 +276,10 @@ fn a_promotion_taken_back_by_hand_reaches_the_canary_too() {
     fleet.promote(&CHALLENGER).unwrap();
     let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
     let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
-    assert_eq!(canary.params(), CHALLENGER);
+    assert_eq!(canary.champion(), CHALLENGER);
     std::fs::remove_file(dir.join("fleet").join("champion.json")).unwrap();
     play(&mut canary, 0, 1, 0);
-    assert_eq!(canary.params(), Params::DEFAULT);
+    assert_eq!(canary.champion(), Params::DEFAULT);
 }
 
 #[test]
@@ -247,16 +294,20 @@ fn a_bot_plays_its_own_slot_and_a_slot_update_waits_for_the_next_hand() {
     let b_store = Store::open(&dir.join("B.db"), "B").unwrap();
     let mut a = Probing::open(&a_store, fleet.clone(), false, 500).0;
     let b = Probing::open(&b_store, fleet.clone(), false, 500).0;
+    // A's first standing orbit is its policy's, so it plays its slot. B's is the reference,
+    // so B's hand in play is the reference until that orbit ends; its slot is still its own.
     assert_eq!(a.params(), slot_a);
-    assert_eq!(b.params(), slot_b);
+    assert_eq!(b.champion(), slot_b);
+    assert!(b.on_reference());
+    assert_eq!(b.params(), Params::DEFAULT);
     let updated = Params { exploit: 0.3 };
     fleet.set_champion("A", &updated).unwrap();
     // Between hands only: the hand in play keeps the champion it began with.
     assert_eq!(a.params(), slot_a);
-    assert_eq!(b.params(), slot_b);
+    assert_eq!(b.champion(), slot_b);
     play(&mut a, 0, 1, 0);
     assert_eq!(a.params(), updated);
-    assert_eq!(b.params(), slot_b);
+    assert_eq!(b.champion(), slot_b);
     assert_eq!(fleet.champion(), Ok(Params::DEFAULT));
 }
 
@@ -270,7 +321,11 @@ fn a_bot_without_a_slot_plays_and_adopts_the_fleet_champion() {
     fleet.promote(&CHALLENGER).unwrap();
     assert_eq!(probing.params(), Params::DEFAULT);
     play(&mut probing, 0, 1, 0);
-    assert_eq!(probing.params(), CHALLENGER);
+    // The first hand is uncounted and MegaSvan's first orbit is the standing reference, so the
+    // hand in play stays the reference while the champion it owns has moved.
+    assert!(probing.on_reference());
+    assert_eq!(probing.params(), Params::DEFAULT);
+    assert_eq!(probing.champion(), CHALLENGER);
 }
 
 #[test]

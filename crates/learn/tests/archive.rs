@@ -12,7 +12,8 @@ fn digest(exploit: f64) -> Digest {
 
 fn archived(exploit: f64) -> Archived {
     Archived {
-        digest: digest(exploit),
+        params: Params { exploit },
+        style: "tight",
         promotion: Vec::new(),
     }
 }
@@ -43,7 +44,7 @@ fn a_sixth_promotion_evicts_the_oldest_and_the_archive_holds_five() {
     assert_eq!(archive.len(), KEEP);
     let held: Vec<Digest> = archive
         .champions()
-        .map(|champion| champion.digest)
+        .map(|champion| champion.digest())
         .collect();
     let newest_first = (2..=6).rev().map(|step| digest(0.1 * f64::from(step)));
     assert_eq!(held, newest_first.collect::<Vec<_>>());
@@ -61,7 +62,7 @@ fn a_champion_promoted_again_moves_to_the_newest() {
     assert_eq!(archive.len(), KEEP);
     let held: Vec<Digest> = archive
         .champions()
-        .map(|champion| champion.digest)
+        .map(|champion| champion.digest())
         .collect();
     let expected = [0.3, 0.5, 0.4, 0.2, 0.1].map(digest);
     assert_eq!(held, expected);
@@ -79,11 +80,11 @@ fn each_bot_keeps_its_own_five() {
     let hunter = archives.get("hunter").expect("hunter has an archive");
     assert_eq!(anchor.len(), KEEP);
     assert_eq!(hunter.len(), 1);
-    assert_eq!(hunter.champions().next().unwrap().digest, digest(0.9));
+    assert_eq!(hunter.champions().next().unwrap().digest(), digest(0.9));
     assert!(
         !anchor
             .champions()
-            .any(|champion| champion.digest == digest(0.9)),
+            .any(|champion| champion.digest() == digest(0.9)),
         "a champion of one bot never reaches a stablemate's archive"
     );
     assert!(archives.get("grinder").is_none());

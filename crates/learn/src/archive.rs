@@ -2,8 +2,10 @@
 //! a promotion must clear against every one of them.
 //!
 //! One bot's archive is its own, like every other thing it learns (`docs/adr/0004-reads-are-per-bot.md`):
-//! a stablemate never reads it. Each champion is kept by its digest, with the paired bouts that
-//! promoted it. The newest five are held, newest first; a sixth promotion evicts the oldest.
+//! a stablemate never reads it. Each champion is kept with its parameter set and the style it was
+//! promoted under, and with the paired bouts that promoted it. The newest five are held, newest
+//! first; a sixth promotion evicts the oldest. The style is kept so a refresh (`crate::refresh`)
+//! can put a champion back without changing the bot's style.
 //!
 //! The regression rule reads the candidate's paired bouts against each archived champion and
 //! refuses the promotion when the candidate's edge is wholly below zero at the 95% bound. A tie,
@@ -12,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use svanbot_strategy::params::Digest;
+use svanbot_strategy::params::{Digest, Params};
 
 use crate::margin::MIN_BOUTS;
 use crate::probe::Sequence;
@@ -26,13 +28,32 @@ pub const KEEP: usize = 5;
 /// means "convincingly losing": a tie never refuses, it holds.
 pub const REGRESSION_MARGIN: f64 = 0.0;
 
-/// One archived champion: the parameter set, and the paired bouts that promoted it.
+/// One archived champion: the parameter set, the style it played, and the paired bouts that
+/// promoted it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Archived {
-    pub digest: Digest,
+    pub params: Params,
+    /// The style the champion was promoted under. A refresh never moves a bot out of its style.
+    pub style: &'static str,
     /// The bout differences against the champion it replaced, in mbb/100, candidate minus
     /// champion.
     pub promotion: Vec<f64>,
+}
+
+impl Archived {
+    /// The digest that names the champion's parameter set.
+    pub fn digest(&self) -> Digest {
+        self.params.digest()
+    }
+
+    /// The lower 95% bound of the paired bouts that promoted it, in mbb/100, when there are
+    /// enough to establish the promotion.
+    pub fn established(&self) -> Option<f64> {
+        (self.promotion.len() >= MIN_BOUTS).then(|| {
+            let (mean, radius) = edge(&self.promotion);
+            mean - radius
+        })
+    }
 }
 
 /// One bot's champions, newest first.
@@ -62,9 +83,33 @@ impl Archive {
 
     /// Record a promotion: the champion becomes the newest, and the oldest beyond [`KEEP`] goes.
     pub fn record(&mut self, champion: Archived) {
-        self.entries.retain(|held| held.digest != champion.digest);
+        self.entries
+            .retain(|held| held.digest() != champion.digest());
         self.entries.insert(0, champion);
         self.entries.truncate(KEEP);
+    }
+
+    /// The best eligible archived champion of `style` to refresh `incumbent`: the one whose
+    /// promotion evidence has the strongest lower 95% bound, the newest first on a tie.
+    ///
+    /// An entry is eligible when it played `style`, is not the incumbent itself, and its
+    /// promotion is still established: enough bouts and an edge wholly above zero. `None` keeps
+    /// the incumbent.
+    pub fn best_eligible(&self, style: &str, incumbent: Digest) -> Option<&Archived> {
+        let mut best: Option<(&Archived, f64)> = None;
+        for held in self
+            .entries
+            .iter()
+            .filter(|held| held.style == style && held.digest() != incumbent)
+        {
+            let Some(lower) = held.established().filter(|lower| *lower > 0.0) else {
+                continue;
+            };
+            if best.is_none_or(|(_, best_lower)| lower > best_lower) {
+                best = Some((held, lower));
+            }
+        }
+        best.map(|(held, _)| held)
     }
 }
 
@@ -123,7 +168,7 @@ pub fn regression(archive: &Archive, bouts: &[Bouts]) -> Regression {
     for champion in archive.champions() {
         let Some(reading) = bouts
             .iter()
-            .find(|reading| reading.champion == champion.digest)
+            .find(|reading| reading.champion == champion.digest())
         else {
             unresolved = true;
             continue;
@@ -135,7 +180,7 @@ pub fn regression(archive: &Archive, bouts: &[Bouts]) -> Regression {
         let (mean, radius) = edge(&reading.differences);
         if mean + radius < -REGRESSION_MARGIN {
             return Regression::Refused {
-                champion: champion.digest,
+                champion: champion.digest(),
             };
         }
         if mean - radius <= 0.0 {

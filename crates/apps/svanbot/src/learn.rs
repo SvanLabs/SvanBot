@@ -18,6 +18,10 @@
 //! nothing else ([`Fleet::propose_if_free`]); and says the search round this champion is
 //! **spent**, until a promotion gives it a new one.
 //!
+//! Once the reference is frozen (Phase 2's cutover), the fleet-wide search is retired: a run
+//! sims nothing, records that the reference is frozen, and a restart does not resume it
+//! (`docs/adr/0006-the-reference-is-frozen.md`).
+//!
 //! Every run notes what it did in the search log, so its progress shows without anyone watching.
 
 use svanbot_learn::paired::Verdict;
@@ -43,6 +47,15 @@ pub fn step(
     now_ms: i64,
     sim: &dyn Fn(&Step, u64) -> Verdict,
 ) -> Result<String, String> {
+    if let Some(reference) = fleet.reference()? {
+        let note = format!(
+            "frozen: the reference is {} since {}; the fleet-wide search is stopped",
+            reference.digest(),
+            reference.cutover_ms
+        );
+        fleet.record_search(&[], &note, now_ms)?;
+        return Ok(note);
+    }
     let champion = fleet.champion()?;
     if let Some(probe) = fleet.probe()? {
         let note = format!(

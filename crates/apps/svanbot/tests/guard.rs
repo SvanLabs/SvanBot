@@ -64,6 +64,7 @@ fn hands(dir: &Path, name: &str, count: i64, net: i64) {
                     luck: 0.,
                     big_blind: 20,
                     orbit: None,
+                    reference: None,
                 },
                 at,
             )
