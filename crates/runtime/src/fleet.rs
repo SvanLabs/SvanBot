@@ -1,9 +1,9 @@
 //! What the fleet's bots share about parameter sets, through two files in one directory beside
 //! their stores:
 //!
-//! - `champion.json`: the parameter set every bot plays by. The canary writes it when a
-//!   promotion's harm guard clears, and each bot reads it between hands. With no file, the
-//!   champion is [`Params::DEFAULT`].
+//! - `champion.json`: the parameter set every bot plays by before the freeze. The canary writes
+//!   it when a promotion's harm guard clears, and each bot reads it between hands. With no file,
+//!   the champion is [`Params::DEFAULT`]. Once `reference.json` exists this file is ignored.
 //! - `champions.json`: each bot's own champion slot, seeded from `champion.json` and moved only
 //!   by that bot's search and promotion (Phase 2). A bot with no entry plays the fleet champion.
 //! - `reference.json`: the frozen reference (Phase 2's cutover): the champion in play, its digest
