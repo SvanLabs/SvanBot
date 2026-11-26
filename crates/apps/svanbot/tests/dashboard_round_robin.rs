@@ -37,10 +37,13 @@ fn the_fleet_carries_the_round_robin_board_with_each_bot_brain_check_and_guard()
             policy: "solving/tight".into(),
             champion: Params::DEFAULT,
             archive: Vec::new(),
+            exploiter_log: Vec::new(),
+            exploiter: None,
             rows: vec![RowRecord {
                 row: "nit".into(),
                 table: Table::HeadsUp,
                 archive: None,
+                exploiter: None,
                 bouts: vec![1_000.0; 2],
                 mean: 1_000.0,
                 radius: Some(500.0),

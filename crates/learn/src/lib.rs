@@ -6,8 +6,9 @@
 //! sims ([`paired`]), and gives probe verdicts and the harm guard ([`probe`]), and scores the Arena
 //! ([`arena`]). It keeps each bot's last five champions and the regression rule that a promotion
 //! must clear against them ([`archive`]), refreshes a dominated lineage to its best eligible
-//! archived champion of its own style ([`refresh`]), and plans and runs the bounded round-robin
-//! over a bot's gauntlet ([`round_robin`]). It clones a bot's own field ([`field`]) and plans the
+//! archived champion of its own style ([`refresh`]), plans and runs the bounded round-robin
+//! over a bot's gauntlet ([`round_robin`]), and searches an exploiter against a brain's champion
+//! ([`exploiter`]). It clones a bot's own field ([`field`]) and plans the
 //! unattended search for a challenger ([`search`]), and offers a candidate one bot's search cleared
 //! to another's, inside the receiver's style ([`transfer`]). It takes hands as values and returns
 //! its results. Reading and writing the store is `runtime`'s job.
@@ -21,6 +22,7 @@ pub mod arena;
 pub mod calibration;
 pub mod drift;
 pub mod exploit;
+pub mod exploiter;
 pub mod field;
 pub mod fit;
 pub mod margin;

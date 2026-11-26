@@ -33,7 +33,6 @@ use svanbot_learn::probe::{Hypothesis, Kind};
 use svanbot_strategy::params::{Digest, Params};
 
 use crate::health::write_atomically;
-
 mod calibration;
 mod champions;
 mod checks;
@@ -47,6 +46,7 @@ mod searches;
 pub use searches::{BotSearch, Candidate};
 
 pub use search::{SEARCH_KEPT, SearchLog};
+pub(crate) use search::{entry_from, entry_json};
 
 /// Where the fleet's files live, derived from a bot's store: the `fleet` directory beside it.
 pub fn beside_store(store: impl AsRef<Path>) -> PathBuf {

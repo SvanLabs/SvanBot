@@ -5,7 +5,9 @@
 use std::cell::RefCell;
 
 use svanbot_learn::archive::{Archive, Archived, Regression};
-use svanbot_learn::round_robin::{Budget, MAX_ROWS, Table, plan, read, regression, run};
+use svanbot_learn::round_robin::{
+    Budget, MAX_ROWS, Scored, Table, plan, plan_with_exploiter, read, regression, run,
+};
 use svanbot_strategy::params::{Digest, Params};
 
 fn digest(value: u64) -> Digest {
@@ -81,6 +83,30 @@ fn a_plan_is_ten_shared_pairs_heads_up_then_the_same_ring_then_the_archive() {
     assert_eq!(plan.rows[20].archive, Some(archived_digest(2)));
     assert_eq!(plan.rows[21].archive, Some(archived_digest(1)));
     assert_eq!(plan.rows[20].table, Table::SixMax);
+}
+
+#[test]
+fn an_exploiter_row_joins_the_gauntlet_and_never_gates_the_regression_rule() {
+    let mut archive = Archive::new();
+    archive.record(archived(1));
+    let exploiter = digest(7);
+    let plan = plan_with_exploiter("Alpha", digest(9), &shared(), &archive, Some(exploiter));
+
+    assert_eq!(plan.rows.len(), 22);
+    let row = plan.rows.last().unwrap();
+    assert_eq!(row.name, format!("exploiter {exploiter}"));
+    assert_eq!(row.table, Table::HeadsUp);
+    assert_eq!(row.exploiter, Some(exploiter));
+    assert_eq!(row.archive, None);
+    // A losing exploiter row is not archive evidence: the rule has no evidence about its
+    // champion and lets the incumbent hold, rather than refusing the promotion on this row.
+    let bouts = vec![-5_000.0, -5_000.0];
+    let played = vec![Scored {
+        row: row.clone(),
+        reading: read(&bouts),
+        bouts,
+    }];
+    assert_eq!(regression(&archive, &played), Regression::Unresolved);
 }
 
 #[test]

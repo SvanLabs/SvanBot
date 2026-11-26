@@ -40,6 +40,14 @@ function fleet() {
             bouts: 60,
           },
           guard: { state: "watching", since_ms: NOW - 300_000 },
+          exploitability: {
+            mbb_per_100: 4_000,
+            radius: 300,
+            deals: 500,
+            champion: "308e7da4b29fd533",
+            fresh: true,
+            within_bound: true,
+          },
         },
         {
           bot: "Beta",
@@ -50,6 +58,7 @@ function fleet() {
           brain: null,
           check: null,
           guard: null,
+          exploitability: null,
         },
       ],
       matrix: [
@@ -64,6 +73,13 @@ function fleet() {
           table: "6-max",
           archive: "0000000000000001",
           cells: [null, { mean: 0, radius: null, bouts: 1, verdict: "unresolved" }],
+        },
+        {
+          row: "exploiter 0000000000000007",
+          table: "heads-up",
+          archive: null,
+          exploiter: "0000000000000007",
+          cells: [null, { mean: -2_000, radius: 400, bouts: 3, verdict: "behind" }],
         },
       ],
     },
@@ -91,7 +107,7 @@ test("the board shows the matrix and each bot's brain, check and guard", () => {
   expect(heads.textContent).toContain("Alpha");
   expect(heads.textContent).toContain("Beta");
   const rows = matrix.all("tr").slice(1);
-  expect(rows.length).toBe(2);
+  expect(rows.length).toBe(3);
   expect(rows[0].textContent).toContain("nit");
   expect(rows[0].textContent).toContain("heads-up");
   expect(rows[0].textContent).toContain("ahead");
@@ -101,17 +117,21 @@ test("the board shows the matrix and each bot's brain, check and guard", () => {
   expect(rows[1].all("td")[2].textContent).toBe("—");
   expect(rows[1].textContent).toContain("archive 00000000");
   expect(rows[1].textContent).toContain("no reading");
+  expect(rows[2].textContent).toContain("exploiter 00000000");
+  expect(rows[2].textContent).toContain("behind");
 
   const brains = view.all("table")[1];
   expect(brains.textContent).toContain("Alpha");
   expect(brains.textContent).toContain("solving/tight");
   expect(brains.textContent).toContain("admitted · 1m ago");
   expect(brains.textContent).toContain("watching since 5m ago");
+  expect(brains.textContent).toContain("+4000.0 mbb/100 ±300 over 500 deals");
   expect(brains.textContent).toContain("Beta");
   expect(brains.textContent).toContain("reference policy");
   expect(brains.textContent).toContain("matrix for solving/loose");
   expect(brains.textContent).toContain("no check");
   expect(brains.textContent).toContain("not assigned");
+  expect(brains.textContent).toContain("not measured");
 });
 
 test("an absent record is an empty board with the command that makes one", () => {

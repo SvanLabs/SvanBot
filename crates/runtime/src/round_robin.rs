@@ -16,9 +16,10 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use svanbot_learn::archive::Regression;
 use svanbot_learn::round_robin::{Reading, Table};
+use svanbot_learn::search::Entry;
 use svanbot_strategy::params::{Digest, Params};
 
-use crate::fleet::{params_from, params_json};
+use crate::fleet::{entry_from, entry_json, params_from, params_json};
 use crate::health::write_atomically;
 
 /// The record's file in the fleet directory.
@@ -46,6 +47,8 @@ pub struct RowRecord {
     pub table: Table,
     /// The archived champion this row measured, for an archive row.
     pub archive: Option<Digest>,
+    /// The exploiter this row measured, for an exploiter row.
+    pub exploiter: Option<Digest>,
     /// The paired bouts in mbb/100; for an archive row, the bot minus its champion.
     pub bouts: Vec<f64>,
     pub mean: f64,
@@ -64,6 +67,22 @@ impl RowRecord {
     }
 }
 
+/// The best exploiter found against one bot's champion (V11-100): the numbers it plays, and the
+/// win rate it confirmed against that champion. That win rate is the brain's exploitability.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExploiterRecord {
+    pub params: Params,
+    /// The champion the exploiter was measured against. Evidence about another champion is not
+    /// evidence about this one, so a champion change starts the search afresh.
+    pub champion: Digest,
+    /// The exploiter's win rate against the champion, in mbb/100.
+    pub win_rate: f64,
+    /// The confirmation's half-width, in mbb/100.
+    pub radius: f64,
+    /// The deals the confirmation played.
+    pub deals: u64,
+}
+
 /// One bot's line in the matrix.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BotRecord {
@@ -75,6 +94,10 @@ pub struct BotRecord {
     pub champion: Params,
     /// The bot's previous champions, newest first.
     pub archive: Vec<ArchivedChampion>,
+    /// The exploiter search's log against `champion`, as the per-bot search keeps its own.
+    pub exploiter_log: Vec<Entry>,
+    /// The best exploiter a confirmation put above the champion, when one has.
+    pub exploiter: Option<ExploiterRecord>,
     pub rows: Vec<RowRecord>,
     pub regression: Regression,
 }
@@ -190,6 +213,8 @@ fn bot_value(bot: &BotRecord) -> Value {
         "archive": bot.archive.iter().map(|held| json!({
             "champion": params_json(&held.params),
         })).collect::<Vec<_>>(),
+        "exploiter_log": bot.exploiter_log.iter().map(entry_json).collect::<Vec<_>>(),
+        "exploiter": bot.exploiter.as_ref().map(exploiter_value),
         "rows": bot.rows.iter().map(row_value).collect::<Vec<_>>(),
         "regression": regression_name(bot.regression),
     })
@@ -216,6 +241,20 @@ fn bot_from(value: &Value) -> Result<BotRecord, String> {
                 })
             })
             .collect::<Result<Vec<_>, String>>()?,
+        // Absent in a record written before exploiters existed: none ran for that bot.
+        exploiter_log: match &value["exploiter_log"] {
+            Value::Null => Vec::new(),
+            held => held
+                .as_array()
+                .ok_or("a round-robin bot's exploiter log is not a list")?
+                .iter()
+                .map(entry_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        },
+        exploiter: match &value["exploiter"] {
+            Value::Null => None,
+            held => Some(exploiter_from(held)?),
+        },
         rows: value["rows"]
             .as_array()
             .ok_or("a round-robin bot has no rows")?
@@ -235,6 +274,7 @@ fn row_value(row: &RowRecord) -> Value {
         "row": row.row,
         "table": row.table.name(),
         "archive": row.archive.map(|champion| champion.to_string()),
+        "exploiter": row.exploiter.map(|exploiter| exploiter.to_string()),
         "bouts": row.bouts,
         "mean": row.mean,
         "radius": row.radius,
@@ -261,6 +301,15 @@ fn row_from(value: &Value) -> Result<RowRecord, String> {
                     .map_err(|_| "a round-robin row's archive is not a digest".to_owned())?,
             ),
         },
+        exploiter: match &value["exploiter"] {
+            Value::Null => None,
+            held => Some(
+                held.as_str()
+                    .ok_or("a round-robin row's exploiter is not a digest")?
+                    .parse()
+                    .map_err(|_| "a round-robin row's exploiter is not a digest".to_owned())?,
+            ),
+        },
         bouts: value["bouts"]
             .as_array()
             .ok_or("a round-robin row has no bouts")?
@@ -277,6 +326,35 @@ fn row_from(value: &Value) -> Result<RowRecord, String> {
                     .ok_or("a round-robin row's radius is not a number")?,
             ),
         },
+    })
+}
+
+fn exploiter_value(exploiter: &ExploiterRecord) -> Value {
+    json!({
+        "params": params_json(&exploiter.params),
+        "champion": exploiter.champion.to_string(),
+        "win_rate": exploiter.win_rate,
+        "radius": exploiter.radius,
+        "deals": exploiter.deals,
+    })
+}
+
+fn exploiter_from(value: &Value) -> Result<ExploiterRecord, String> {
+    Ok(ExploiterRecord {
+        params: params_from(&value["params"])?,
+        champion: value["champion"]
+            .as_str()
+            .and_then(|text| text.parse().ok())
+            .ok_or("a round-robin exploiter's champion is not a digest")?,
+        win_rate: value["win_rate"]
+            .as_f64()
+            .ok_or("a round-robin exploiter has no win rate")?,
+        radius: value["radius"]
+            .as_f64()
+            .ok_or("a round-robin exploiter has no radius")?,
+        deals: value["deals"]
+            .as_u64()
+            .ok_or("a round-robin exploiter has no deals")?,
     })
 }
 

@@ -41,6 +41,18 @@ function cell(value, bot) {
 /** The matrix: one row a gauntlet row, one column a bot, each cell that bot's read. */
 function matrixTable(board) {
   const columns = board.columns;
+  const name = (row) => {
+    if (row.archive !== null && row.archive !== undefined) {
+      return `archive ${row.archive.slice(0, 8)}`;
+    }
+    if (row.exploiter !== null && row.exploiter !== undefined) {
+      return `exploiter ${row.exploiter.slice(0, 8)}`;
+    }
+    return row.row;
+  };
+  const mono = (row) =>
+    (row.archive !== null && row.archive !== undefined) ||
+    (row.exploiter !== null && row.exploiter !== undefined);
   return table(
     "Each gauntlet row and every bot's read against it",
     [["Row", null], ["Table", null], ...columns.map((column) => [column.bot, "number"])],
@@ -48,11 +60,7 @@ function matrixTable(board) {
       h(
         "tr",
         {},
-        h(
-          "td",
-          { class: row.archive === null ? "" : "mono" },
-          row.archive === null ? row.row : `archive ${row.archive.slice(0, 8)}`,
-        ),
+        h("td", { class: mono(row) ? "mono" : "" }, name(row)),
         h("td", {}, row.table),
         row.cells.map((value, at) => cell(value, columns[at]?.bot ?? "")),
       ),
@@ -75,6 +83,18 @@ function guardText(guard, nowMs) {
   return guard ? `${guard.state} since ${ago(guard.since_ms, nowMs)}` : "not assigned";
 }
 
+/** A brain's exploitability: the best exploiter's win rate against its champion, or that none
+ * has been measured yet. A measurement about a champion that has since changed reads as stale. */
+function exploitabilityText(found) {
+  if (!found) {
+    return "not measured";
+  }
+  const radius = Number.isFinite(found.radius) ? ` ±${found.radius.toFixed(0)}` : "";
+  const over = found.within_bound === false ? " · over the bound" : "";
+  const stale = found.fresh === false ? ", stale" : "";
+  return `${mbbText(found.mbb_per_100)}${radius} over ${found.deals} deals${over}${stale}`;
+}
+
 /** Each bot's brain, its latest check and the live guard's window. */
 function brainsTable(board, nowMs) {
   return table(
@@ -84,6 +104,7 @@ function brainsTable(board, nowMs) {
       ["Brain", null],
       ["Check", null],
       ["Guard", null],
+      ["Exploitability", null],
       ["Regression", null],
     ],
     board.columns.map((column) =>
@@ -101,6 +122,7 @@ function brainsTable(board, nowMs) {
         ),
         h("td", {}, checkText(column.check, nowMs)),
         h("td", {}, guardText(column.guard, nowMs)),
+        h("td", {}, exploitabilityText(column.exploitability)),
         h("td", {}, column.regression),
       ),
     ),
