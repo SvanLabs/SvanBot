@@ -32,6 +32,7 @@ import { openPalette } from "./palette.js";
 import { patch } from "./patch.js";
 import { handPage } from "./replay.js";
 import { botTabs } from "./room.js";
+import { roundRobinPage } from "./round_robin.js";
 
 /** Each room's views and default arrangement. */
 const ROOMS = {
@@ -121,7 +122,11 @@ export function note(key, text) {
 
 /** Whether `path` is one of the dashboard's own pages, which the page can show without a load. */
 function isPage(path) {
-  return path === "/" || /^\/(release|scoreboard|dossier)$/.test(path) || path.startsWith("/bot/");
+  return (
+    path === "/" ||
+    /^\/(release|scoreboard|dossier|round-robin)$/.test(path) ||
+    path.startsWith("/bot/")
+  );
 }
 
 /**
@@ -480,6 +485,7 @@ function render() {
       ),
     dossiers: () => dossierIndex(state.fleet),
     release: () => releasePage(state.fleet, nowMs),
+    "round-robin": () => roundRobinPage(state.fleet, nowMs),
     scoreboard: () => scoreboardPage(state.fleet),
   };
   const view = (pages[at.view] ?? (() => fleetRoom(room("fleet"))))();

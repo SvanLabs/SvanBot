@@ -287,7 +287,8 @@ fn table_from(name: &str) -> Result<Table, String> {
         .ok_or_else(|| format!("no round-robin table is called {name}"))
 }
 
-fn regression_name(verdict: Regression) -> String {
+/// The regression verdict as the record writes it.
+pub fn regression_name(verdict: Regression) -> String {
     match verdict {
         Regression::Admitted => "admitted".into(),
         Regression::Unresolved => "unresolved".into(),
