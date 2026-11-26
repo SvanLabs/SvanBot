@@ -123,6 +123,24 @@ fn while_a_proposal_waits_or_a_probe_runs_a_run_sims_nothing_and_says_it_waits()
 }
 
 #[test]
+fn a_frozen_reference_stops_the_search_and_a_restart_does_not_resume_it() {
+    let dir = std::env::temp_dir().join(format!("svanbot-learn-frozen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let fleet = Fleet::in_dir(&dir);
+    fleet.freeze(100).unwrap();
+
+    let first = step(&fleet, 2_000, 200, &never).unwrap();
+    assert!(first.contains("frozen"), "{first}");
+    // A restart is a fresh Fleet over the same files, as the timer's next process is.
+    let restarted = Fleet::in_dir(&dir);
+    let second = step(&restarted, 2_000, 300, &never).unwrap();
+    assert!(second.contains("frozen"), "{second}");
+    assert_eq!(restarted.search_log().unwrap().entries, Vec::new());
+    assert_eq!(restarted.search_log().unwrap().last, Some((300, second)));
+    assert!(restarted.waiting().unwrap().is_none());
+}
+
+#[test]
 fn a_spent_search_sims_nothing_until_the_champion_changes() {
     let fleet = scratch("spent");
     let level = Stub::finding(0.0);

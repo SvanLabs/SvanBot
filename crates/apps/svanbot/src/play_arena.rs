@@ -29,7 +29,9 @@ const USAGE: &str = "usage: svanbot play arena <solving|pricing> <standard|tight
        svanbot play seed <bot>
        svanbot play revert <bot>
        svanbot play status
-       svanbot play guard";
+       svanbot play guard
+       svanbot play freeze
+       svanbot play rebase <name>=<value> …";
 
 type CommandResult = Result<ExitCode, (u8, String)>;
 
@@ -88,6 +90,22 @@ fn command(args: &[String]) -> CommandResult {
         }
         [name, bot] if name == "seed" => say(play::seed(&fleet, data_dir, bot)),
         [name, bot] if name == "revert" => say(play::revert(&fleet, bot)),
+        [name] if name == "freeze" => say(play::freeze(&fleet, svanbot::now_ms())),
+        [name, numbers @ ..] if name == "rebase" && !numbers.is_empty() => {
+            let current = fleet.champion().map_err(|error| (2, error))?;
+            let params = numbers.iter().try_fold(current, |params, number| {
+                let (name, value) = number
+                    .split_once('=')
+                    .ok_or_else(|| (2, format!("unknown rebase number {number}\n{USAGE}")))?;
+                let value = value
+                    .parse()
+                    .map_err(|_| (2, format!("unknown rebase number {number}\n{USAGE}")))?;
+                params
+                    .with(name, value)
+                    .ok_or_else(|| (2, format!("unknown parameter {name}\n{USAGE}")))
+            })?;
+            say(play::rebase(&fleet, params, svanbot::now_ms()))
+        }
         [name] if name == "status" => {
             print!("{}", play::status(&fleet).map_err(|error| (2, error))?);
             Ok(ExitCode::SUCCESS)

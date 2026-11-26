@@ -10,7 +10,9 @@
 //!   it has no slot; so does the canary while no probe runs.
 //!
 //! A restarted canary takes its probe up from the store: the start's detail and the orbits its
-//! played hands add up to.
+//! played hands add up to. Once the fleet's reference is frozen (Phase 2's cutover), the
+//! fleet-wide probe is retired instead: one in flight ends without promoting, and one the store
+//! left open is not taken up again (`docs/adr/0006-the-reference-is-frozen.md`).
 //!
 //! Nothing here stops play: a failure of the store or of a fleet file is a note to the operator.
 
@@ -87,10 +89,19 @@ impl<'a> Probing<'a> {
             running: None,
         };
         if canary {
-            match probing.resume(now_ms) {
-                Ok(Some(note)) => notes.push(note),
-                Ok(None) => {}
-                Err(why) => notes.push(format!("the open probe is not taken up: {why}")),
+            match probing.fleet.reference() {
+                // A frozen reference retires the fleet-wide probe: it is not taken up again.
+                Ok(Some(_)) => match probing.abandon(now_ms) {
+                    Ok(Some(note)) => notes.push(note),
+                    Ok(None) => {}
+                    Err(why) => notes.push(format!("the open probe is not taken up: {why}")),
+                },
+                Ok(None) => match probing.resume(now_ms) {
+                    Ok(Some(note)) => notes.push(note),
+                    Ok(None) => {}
+                    Err(why) => notes.push(format!("the open probe is not taken up: {why}")),
+                },
+                Err(why) => notes.push(format!("the frozen reference is refused: {why}")),
             }
         }
         (probing, notes)
@@ -156,6 +167,9 @@ impl<'a> Probing<'a> {
 
     /// The canary ends a probe that has its verdict, or takes up a waiting proposal.
     fn between_hands(&mut self, now_ms: i64) -> Result<Option<String>, String> {
+        if self.fleet.reference()?.is_some() {
+            return self.after_freeze(now_ms);
+        }
         let store = |error| format!("probe: {error}");
         match (self.ledger.verdict(), self.running) {
             (Some(Verdict::Running), _) => Ok(None),
@@ -242,6 +256,53 @@ impl<'a> Probing<'a> {
                 )))
             }
         }
+    }
+
+    /// A frozen reference stops the fleet-wide probe: one in flight ends without promoting, and
+    /// the canary then plays its own slot, or the frozen reference.
+    fn after_freeze(&mut self, now_ms: i64) -> Result<Option<String>, String> {
+        let note = match self.running.take() {
+            Some((id, proposal)) => {
+                let (edge, radius) = self.ledger.estimate().unwrap_or((0.0, f64::INFINITY));
+                let detail = json!({
+                    "edge": edge.to_string(),
+                    "radius": radius.to_string(),
+                    "reason": "the reference is frozen",
+                });
+                self.store
+                    .append_probe(id, "frozen", &detail.to_string(), now_ms)
+                    .map_err(|error| format!("probe: {error}"))?;
+                self.ledger.finish(false);
+                self.fleet.end_probe()?;
+                Some(format!(
+                    "probe {id:016x} of {} ended: the reference is frozen, so it was not promoted",
+                    proposal.challenger.digest()
+                ))
+            }
+            None => None,
+        };
+        let adopted = self.adopt()?;
+        Ok(note.or(adopted))
+    }
+
+    /// Closes a probe the store left open when the reference froze: no arm is replayed, and no
+    /// promotion may come of it.
+    fn abandon(&mut self, now_ms: i64) -> Result<Option<String>, String> {
+        let Some((id, _)) = self
+            .store
+            .open_probe()
+            .map_err(|error| format!("probe: {error}"))?
+        else {
+            self.fleet.end_probe()?;
+            return Ok(None);
+        };
+        self.store
+            .append_probe(id, "frozen", "{}", now_ms)
+            .map_err(|error| format!("probe: {error}"))?;
+        self.fleet.end_probe()?;
+        Ok(Some(format!(
+            "probe {id:016x} ended: the reference is frozen, so it was not taken up"
+        )))
     }
 
     /// Takes up the probe the store left open, if it is against today's champion. One against

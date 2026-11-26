@@ -81,6 +81,53 @@ fn a_canary_that_opens_with_no_probe_in_its_store_clears_a_mirror_left_behind() 
 }
 
 #[test]
+fn a_frozen_reference_ends_a_running_probe_without_promoting() {
+    let dir = scratch("frozen-probe");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
+    fleet.propose(&guard(120)).unwrap();
+    let next = play(&mut canary, 0, 1, 0);
+    assert!(store.open_probe().unwrap().is_some());
+    fleet.freeze(600).unwrap();
+    // Enough hands for the guard to clear, which after the freeze must not promote.
+    let notes = (next..next + 1 + 20 * ORBIT)
+        .flat_map(|number| canary.on_hand(&hand(number, 1_000_000), 2_000).notes)
+        .collect::<Vec<_>>();
+    assert!(
+        notes.iter().any(|note| note.contains("frozen")),
+        "{notes:?}"
+    );
+    assert_eq!(store.open_probe().unwrap(), None);
+    assert_eq!(fleet.champion(), Ok(Params::DEFAULT));
+    assert_eq!(canary.params(), Params::DEFAULT);
+    assert_eq!(fleet.probe(), Ok(None));
+}
+
+#[test]
+fn a_restarted_canary_does_not_take_a_probe_up_after_the_freeze() {
+    let dir = scratch("frozen-restart");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
+    fleet.propose(&guard(120)).unwrap();
+    let next = play(&mut canary, 0, 1 + 5 * ORBIT, 0);
+    drop(canary);
+    fleet.freeze(600).unwrap();
+
+    let (mut restarted, notes) = Probing::open(&store, fleet.clone(), true, 500);
+    assert!(
+        notes.iter().any(|note| note.contains("frozen")),
+        "{notes:?}"
+    );
+    assert_eq!(store.open_probe().unwrap(), None);
+    assert_eq!(fleet.probe(), Ok(None));
+    play(&mut restarted, next, 1 + 20 * ORBIT, 0);
+    assert_eq!(fleet.champion(), Ok(Params::DEFAULT));
+    assert_eq!(restarted.params(), Params::DEFAULT);
+}
+
+#[test]
 fn a_proposal_measured_against_another_champion_is_dropped_unplayed() {
     let dir = scratch("stale");
     let fleet = Fleet::in_dir(dir.join("fleet"));
