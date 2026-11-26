@@ -156,6 +156,7 @@ fn each_opponent_is_read_by_their_own_model_and_the_trace_names_their_class_and_
         model: calls_only_the_nuts(),
         class: Class::Fixed,
         trust: Some(0.62),
+        read: None,
     }];
     let decision = decide_read(&spot, None, &personal, &Params::DEFAULT, BUDGET, 60);
     let trace = decision.trace.unwrap();
@@ -213,6 +214,7 @@ fn a_read_that_folds_to_any_bet_is_bet_into_at_a_table_of_three() {
         model: folds.clone(),
         class: Class::Fixed,
         trust: Some(0.5),
+        read: None,
     });
     let plain = decide_read(&spot, None, &[], &Params::DEFAULT, BUDGET, 60);
     let read = decide_read(&spot, None, &personal, &Params::DEFAULT, BUDGET, 60);
@@ -239,6 +241,7 @@ fn a_held_read_decides_exactly_as_no_read_and_the_trace_names_only_its_class() {
         model: ActionModel::baseline(),
         class: Class::Fixed,
         trust: None,
+        read: None,
     });
     let read = decide_read(&spot, None, &held, &Params::DEFAULT, BUDGET, 60);
     let none = decide_drawn(&spot, None, &Params::DEFAULT, BUDGET, 60);
@@ -407,7 +410,6 @@ fn a_profile_variable_can_use_qualified_evidence_and_a_repeatable_draw() {
         );
     }
 }
-
 #[test]
 fn the_reference_policy_decides_what_decide_profile_decides() {
     use svanbot_strategy::policy::{Policy, decide_profile};
@@ -426,6 +428,7 @@ fn the_reference_policy_decides_what_decide_profile_decides() {
         model: calls_only_the_nuts(),
         class: Class::Fixed,
         trust: Some(0.62),
+        read: None,
     }];
     let reference = Policy::reference(Params::DEFAULT);
     for at in [preflop, heads_up, three_way] {
@@ -437,7 +440,6 @@ fn the_reference_policy_decides_what_decide_profile_decides() {
         }
     }
 }
-
 #[test]
 fn a_pricing_policy_never_resolves() {
     use svanbot_strategy::{kind::PolicyKind, policy::Policy, style::STANDARD};
@@ -448,7 +450,6 @@ fn a_pricing_policy_never_resolves() {
     assert_eq!(decision.trace.unwrap().branch, Branch::Priced);
     assert!(decision.drawn.is_none());
 }
-
 #[test]
 fn a_style_changes_how_wide_a_policy_opens() {
     use svanbot_strategy::{
@@ -484,7 +485,6 @@ fn a_style_changes_how_wide_a_policy_opens() {
         assert_eq!(action(opens, &at), Action::RaiseTo(50));
     }
 }
-
 #[test]
 fn a_policy_names_its_kind_and_style() {
     use svanbot_strategy::{kind::PolicyKind, policy::Policy, style::TIGHT};

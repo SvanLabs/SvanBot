@@ -8,12 +8,12 @@ use svanbot_core::card::CardSet;
 use svanbot_core::rules::{Action, Street};
 use svanbot_core::spot::Spot;
 
-use crate::action::{ActionModel, BUCKETS, Seen, masses, range, ranked};
+use crate::action::{ActionModel, BUCKETS, Seen, Situation, masses, range, ranked};
 use crate::kind::PolicyKind;
 use crate::params::Params;
 use crate::pricer::{self, Budget};
 use crate::profile::{ACTIVE, Profile, SeatedStats};
-use crate::read::Class;
+use crate::read::{Class, Read};
 pub use crate::resolve::Abstract;
 use crate::resolve::resolve;
 use crate::style::{STANDARD, Style};
@@ -142,6 +142,9 @@ pub struct Personal {
     /// The share of the exploit budget the read earned, or `None` when it is held and decides
     /// nothing: the line is then read by the population's model.
     pub trust: Option<f64>,
+    /// The evidence behind the read, when the caller kept it, so a decision can cap a pin by
+    /// what the read knows at the situation that follows. `None` for a held read.
+    pub read: Option<Read>,
 }
 
 /// What the pricer decided from: our equity against the opponents' ranges, the price of the call
@@ -299,7 +302,32 @@ impl Policy {
                     .copied()
                     .flatten()
                     .filter(|read| read.class == Class::Fixed)
-                    .and_then(|read| read.trust)
+                    .and_then(|read| {
+                        let next = next_street(street)?;
+                        read.read
+                            .as_ref()
+                            .map(|evidence| {
+                                let budget = read.class.budget();
+                                let facing = evidence.trust(
+                                    Situation {
+                                        street: next,
+                                        facing: true,
+                                    },
+                                    budget,
+                                );
+                                let open = evidence.trust(
+                                    Situation {
+                                        street: next,
+                                        facing: false,
+                                    },
+                                    budget,
+                                );
+                                // The lower supported share: a pin needs evidence for both
+                                // answers the opponent can give on the next street.
+                                facing.min(open)
+                            })
+                            .or(read.trust)
+                    })
                     .filter(|trust| trust.is_finite())
                     .unwrap_or(0.0);
                 self.params.exploit.clamp(0.0, 1.0) * trust.clamp(0.0, 1.0)
@@ -371,6 +399,12 @@ impl Policy {
             }
         }
     }
+}
+
+/// The street after `street`, or `None` on the river, where no continuation is left to pin.
+fn next_street(street: Street) -> Option<Street> {
+    let at = Street::ALL.iter().position(|&each| each == street)?;
+    Street::ALL.get(at + 1).copied()
 }
 
 /// The opponents' ranges from `model` and their lines, summarised by strength bucket: one per

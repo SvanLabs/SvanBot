@@ -265,6 +265,7 @@ impl Reads {
                         model: personal(population, opponent.read(), trust),
                         class,
                         trust: Some(opponent.earned()),
+                        read: Some(opponent.read().clone()),
                     }
                 }
                 opponent => Personal {
@@ -272,6 +273,7 @@ impl Reads {
                     model: population.clone(),
                     class: opponent.map_or(Class::Unknown, Opponent::class),
                     trust: Some(0.0),
+                    read: None,
                 },
             })
             .collect()
@@ -303,6 +305,7 @@ impl Reads {
                 model: population.clone(),
                 class: self.get(name).map_or(Class::Unknown, Opponent::class),
                 trust: None,
+                read: None,
             })
             .collect()
     }
