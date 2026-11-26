@@ -376,3 +376,26 @@ mod sequential {
         assert_eq!(check_bar(&runs, MARGIN), Bar::Open);
     }
 }
+
+#[test]
+fn the_policy_arena_plays_the_shared_archetypes_and_records_them_apart() {
+    let (dir, fleet) = fixture("cli-shared-rows", false);
+    let output = in_fleet(&dir, &["arena", "solving", "standard", "1", "7", "1"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let runs = fleet.policy_arena_runs().unwrap();
+    assert_eq!(runs.len(), 1);
+    let names: Vec<&str> = runs[0]
+        .rows
+        .iter()
+        .map(|row| row.opponent.as_str())
+        .collect();
+    for name in ["sizing", "bluffer", "mixing"] {
+        assert!(names.contains(&name), "{name} is not in {names:?}");
+    }
+    // The release Arena, which the ship bar reads, stays untouched.
+    assert!(!dir.join("fleet/arena.json").exists());
+}

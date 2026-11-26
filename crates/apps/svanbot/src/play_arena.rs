@@ -144,7 +144,7 @@ fn play_arena(
     let champion = fleet.champion().map_err(|error| (2, error))?;
     let policy = Policy::new(kind, style, champion);
     let game = deciders::game(settings.seed);
-    let mut opponents = Opponent::all();
+    let mut opponents = Opponent::shared();
     opponents.extend(style::ALL.map(Opponent::Stablemate));
     let rows = arena::play_rows(
         &opponents,
