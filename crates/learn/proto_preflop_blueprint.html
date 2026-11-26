@@ -1,0 +1,3134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V11-103 · E4 preflop blueprint prototype</title>
+<style>
+  :root {
+    --ink: #17242c;
+    --muted: #5d6d77;
+    --line: #d7e0e4;
+    --bg: #f6f8f9;
+    --card: #ffffff;
+    --accent: #0b6e7f;
+    --accent-soft: #e6f2f4;
+    --good: #2c7a4b;
+    --good-soft: #e8f5ec;
+    --bad: #b23a48;
+    --bad-soft: #fbecee;
+    --warn: #8a6415;
+    --warn-soft: #fbf4e2;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(23, 36, 44, 0.05);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  header {
+    background: linear-gradient(180deg, #ffffff 0%, #f0f6f7 100%);
+    border-bottom: 1px solid var(--line);
+    padding: 40px 0 26px;
+  }
+  .kicker {
+    margin: 0 0 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 { margin: 0 0 12px; font-size: clamp(26px, 4vw, 40px); line-height: 1.12; letter-spacing: -0.02em; }
+  .lede { max-width: 860px; margin: 0 0 16px; font-size: 18px; color: #33444e; }
+  .proto-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border: 1px solid #e3c98a;
+    border-radius: 999px;
+    background: #fffaf0;
+    color: #6b4e0c;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  nav.tabs {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(246, 248, 249, 0.96);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--line);
+  }
+  nav.tabs .wrap { display: flex; gap: 6px; overflow-x: auto; padding-top: 8px; padding-bottom: 8px; }
+  nav.tabs button {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  nav.tabs button:hover { background: #eef3f4; color: var(--ink); }
+  nav.tabs button.active { background: var(--accent-soft); color: var(--accent); border-color: #c9e1e5; }
+  main { padding: 26px 0 60px; }
+  section.tab { display: none; }
+  section.tab.active { display: block; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 22px;
+    margin-bottom: 18px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 18px; letter-spacing: -0.01em; }
+  .card h3 { margin: 0 0 4px; font-size: 15px; }
+  .sub { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  @media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  label.field { display: block; margin: 0 0 12px; font-size: 13px; font-weight: 700; color: var(--muted); }
+  label.field select, label.field input[type="text"], label.field input[type="number"] {
+    display: block;
+    width: 100%;
+    margin-top: 5px;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+  }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  button.action {
+    appearance: none;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 9px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  button.action:hover { filter: brightness(1.06); }
+  button.action.secondary { background: #fff; color: var(--accent); }
+  button.action:disabled { opacity: 0.45; cursor: default; }
+  button.pill {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  button.pill:hover { border-color: var(--accent); color: var(--accent); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row.end { justify-content: flex-end; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 7px 8px; border-bottom: 1px solid #edf1f2; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  tbody tr:hover { background: #fafcfc; }
+  tr.muted-row td { opacity: 0.55; }
+  .num { font-variant-numeric: tabular-nums; }
+  .good { color: var(--good); }
+  .bad { color: var(--bad); }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 14px;
+    border-radius: 0 8px 8px 0;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .callout.warn { border-left-color: #d9a441; background: var(--warn-soft); }
+  .callout.bad { border-left-color: var(--bad); background: var(--bad-soft); }
+  .verdict {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 4px 0 18px;
+    background: #fbfdfd;
+  }
+  .verdict.admitted { border-color: #b9ddc5; background: var(--good-soft); }
+  .verdict.refused { border-color: #e8c0c5; background: var(--bad-soft); }
+  .verdict.unresolved { border-color: #ead6a7; background: var(--warn-soft); }
+  .verdict .word { font-size: clamp(22px, 3vw, 30px); font-weight: 800; letter-spacing: -0.02em; margin: 2px 0 6px; }
+  .verdict.admitted .word { color: var(--good); }
+  .verdict.refused .word { color: var(--bad); }
+  .verdict.unresolved .word { color: var(--warn); }
+  .verdict .numbers { font-size: 15px; color: #33444e; }
+  .headline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: baseline;
+    background: #f3faf5;
+    border: 1px solid #b9ddc5;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-top: 18px;
+    font-size: 14px;
+  }
+  .headline .hv-kicker { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .headline strong { font-size: 16px; }
+  .headline .pill { margin-left: auto; }
+  .statgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 0; }
+  @media (max-width: 700px) { .statgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+  .stat .v { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .hand-grid {
+    display: grid;
+    grid-template-columns: repeat(13, minmax(0, 1fr));
+    gap: 3px;
+    max-width: 760px;
+    margin-top: 10px;
+  }
+  .hand-grid button {
+    appearance: none;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 4px;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    font: inherit;
+    font-size: clamp(7px, 0.85vw, 11px);
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .hand-grid button:hover { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .hand-grid button.sel { outline: 2px solid #111; outline-offset: 1px; }
+  .legend { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid rgba(0, 0, 0, 0.08); }
+  .open-table td.cell { min-width: 52px; }
+  .open-cell { border-radius: 4px; padding: 3px 4px; font-size: 11px; font-weight: 700; display: inline-block; min-width: 44px; }
+  .bar { height: 8px; background: #e8eef0; border-radius: 999px; overflow: hidden; margin: 10px 0 6px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.15s linear; }
+  .chart { width: 100%; height: auto; display: block; margin-top: 8px; }
+  .coverage-grid { display: grid; grid-template-columns: 70px repeat(8, minmax(0, 1fr)); gap: 3px; font-size: 11px; align-items: center; margin-top: 8px; }
+  .coverage-grid .pos { font-weight: 700; color: var(--muted); }
+  .cov-cell { display: flex; gap: 2px; justify-content: center; }
+  .cov-dot { width: 10px; height: 10px; border-radius: 2px; background: #e3e9eb; border: 1px solid #d3dcdf; }
+  .cov-dot.on { background: var(--accent); border-color: var(--accent); }
+  .step {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  .step.done { border-color: #b9ddc5; background: #f8fdf9; }
+  .step.next { border-color: #b9dbe1; background: #f7fcfd; }
+  .step .step-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .step .step-body { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+  .step button { font-size: 13px; }
+  .log { background: #f4f7f8; border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 13px; max-height: 220px; overflow: auto; }
+  .log p { margin: 0 0 6px; }
+  .tabs-inline { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tabs-inline button { appearance: none; border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .tabs-inline button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+  pre.code { background: #f4f7f8; border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; font-size: 12px; line-height: 1.5; }
+  footer { border-top: 1px solid var(--line); padding: 22px 0 40px; color: var(--muted); font-size: 12px; }
+  .nowrap { white-space: nowrap; }
+  .tiny { font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">V11-103 · E4 preflop blueprint · throwaway prototype</p>
+    <h1>Can a per-bot preflop blueprint fit the action clock and the margin?</h1>
+    <p class="lede">
+      A precomputed preflop blueprint is frozen once per bot, behind its own eight-bucket
+      abstraction. This page asks two questions about it: what a decision costs against the
+      venue's 45-second action clock, and whether it stays inside the 20 bb/100 margin of the
+      reference policy over paired 6-max bouts.
+    </p>
+    <span class="proto-badge">PROTOTYPE · NOT PRODUCTION · ONE SELF-CONTAINED FILE</span>
+    <div class="headline" id="headline-verdict"></div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="wrap">
+    <button data-tab="explore" class="active">1 · Explore a decision</button>
+    <button data-tab="blueprint">2 · The per-bot blueprint</button>
+    <button data-tab="study">3 · Margin study</button>
+    <button data-tab="walkthroughs">4 · Guided walkthroughs</button>
+    <button data-tab="constants">5 · Constants &amp; limits</button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<!-- ============================ EXPLORE ============================ -->
+<section class="tab active" id="tab-explore">
+  <div class="grid2">
+    <div class="card">
+      <h2>Pick a spot</h2>
+      <p class="sub">One bot, one position, one starting hand, one price. The reference and the
+      blueprint see exactly the same spot.</p>
+      <label class="field">Bot
+        <select id="explore-bot"></select>
+      </label>
+      <label class="field">Position
+        <select id="explore-pos"></select>
+      </label>
+      <label class="field">Facing
+        <select id="explore-facing"></select>
+      </label>
+      <div class="row">
+        <button class="pill" id="explore-random">Deal a random class</button>
+        <button class="pill" id="explore-reset">Reset to AKs on the button</button>
+      </div>
+      <p class="hint">Click any cell in the 13 × 13 grid below to choose the hand. The colour is the
+      bot's own bucket, not a shared chart.</p>
+    </div>
+
+    <div class="card">
+      <h2>Decision</h2>
+      <p class="sub" id="explore-spot">—</p>
+      <div id="explore-out"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>The bot's own 13 × 13 hand grid</h2>
+    <p class="sub" id="explore-grid-sub">—</p>
+    <div class="hand-grid" id="explore-grid"></div>
+    <div class="legend" id="explore-legend"></div>
+  </div>
+
+  <div class="card">
+    <h2>Why these two answers can differ</h2>
+    <div class="grid3">
+      <div>
+        <h3>Reference</h3>
+        <p class="small muted">The repo's opening range and pricer rules: a class opens when its
+        rank against the players behind is inside the position's share, and a raise is priced
+        from the hand's own equity against the live opponents.</p>
+      </div>
+      <div>
+        <h3>Blueprint</h3>
+        <p class="small muted">The opening decision reads a precomputed per-bot bucket table. The
+        boundary bucket opens with a chance, so a 19% range is not rounded to 25%. When facing a
+        raise, the hand still knows its own cards; the frozen per-bot thresholds price the call,
+        and the raise test asks for a 3% price edge where the reference asks for 8%.</p>
+      </div>
+      <div>
+        <h3>The clock</h3>
+        <p class="small muted">A table read is about <strong id="explore-lookup">15 ns</strong>;
+        a full blueprint decision is about <strong id="explore-decision">29 ns</strong>. The
+        action clock is 45,000 ms.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ BLUEPRINT ============================ -->
+<section class="tab" id="tab-blueprint">
+  <div class="grid2">
+    <div class="card">
+      <h2>Blueprint for one bot</h2>
+      <p class="sub">Each bot measures its own view of the shipped preflop table, adds its own
+      sampling noise, and cuts that view into eight equal-mass strength buckets. The table below
+      is that bot's frozen blueprint.</p>
+      <label class="field">Bot
+        <select id="blueprint-bot"></select>
+      </label>
+      <div class="hand-grid" id="blueprint-grid"></div>
+      <div class="legend" id="blueprint-legend"></div>
+    </div>
+    <div class="card">
+      <h2>Buckets</h2>
+      <p class="sub">Bucket 0 is the strongest view; bucket 7 the weakest. Equity columns are the
+      combo-weighted average of the classes in the bucket, against 1 and 5 random hands.</p>
+      <div id="blueprint-buckets"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Opening table</h2>
+    <p class="sub">The share of the position's opening range, spread across the boundary bucket.
+    “open” means the whole bucket opens; a percentage is the chance stored for that bucket.</p>
+    <div id="blueprint-open"></div>
+  </div>
+
+  <div class="card">
+    <h2>Defence table</h2>
+    <p class="sub">What the bucket does facing a normal open (2.5 bb) and a 3-bet (7.5 bb), as the
+    share of the bucket's classes. The class's own equity decides inside the bucket; the table is
+    a view of the frozen thresholds, not a separate per-bucket entry.</p>
+    <div id="blueprint-defence"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Frozen parameters</h2>
+      <p class="sub">The recorded margin run uses the frozen values. Move the width to see the
+      opening table move; the study below uses whatever is set here when you press run.</p>
+      <label class="field">Opening width <span class="mono" id="bp-width-val">1.00</span>
+        <input type="range" id="bp-width" min="0.85" max="1.15" step="0.01" value="1">
+      </label>
+      <div class="row">
+        <button class="pill" id="bp-reset">Reset frozen parameters</button>
+      </div>
+      <table style="margin-top:12px">
+        <tbody>
+          <tr><td>openWidth</td><td class="num mono" id="bp-p-open">1.00</td></tr>
+          <tr><td>callAdj</td><td class="num mono" id="bp-p-call">0.00</td></tr>
+          <tr><td>raiseAdj</td><td class="num mono" id="bp-p-raise">0.10</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">callAdj is added to the pot price before calling. raiseAdj is added to the
+      fair share (1 / (opponents + 1)) before raising. Both start at the reference's own numbers;
+      the raise test also asks for a 3% price edge, where the reference asks for 8%.</p>
+    </div>
+    <div class="card">
+      <h2>Size and cost</h2>
+      <table>
+        <tbody>
+          <tr><td>Packed table per bot</td><td class="num" id="bp-bytes">725 B</td></tr>
+          <tr><td>Full probability table per bot</td><td class="num" id="bp-fullbytes">1,728 B</td></tr>
+          <tr><td>Build, median of 20 (recorded)</td><td class="num" id="bp-build">0.08 ms</td></tr>
+          <tr><td>Table lookup (recorded median)</td><td class="num" id="bp-lookup">15 ns</td></tr>
+          <tr><td>Full decision (recorded median)</td><td class="num" id="bp-decision">29 ns</td></tr>
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:12px">
+        <button class="pill" id="bp-measure">Measure in this browser</button>
+      </div>
+      <p class="hint" id="bp-measure-out">The recorded numbers come from Node 24 on this box.
+      A browser measurement is shown here when you ask for it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ STUDY ============================ -->
+<section class="tab" id="tab-study">
+  <div class="card">
+    <h2>Margin study</h2>
+    <p class="sub">A paired 6-max ring: every deal is played once from every seat with the
+    blueprint in that seat, and once with the reference in it. The cards are the same, so the
+    deal's luck cancels. A bout is 50 deals. The row difference is summed over the bout, pooled
+    over rows, and read through the repo's confidence sequence. Reference against itself is zero
+    on every deal by construction, which is the pairing's sanity check.</p>
+
+    <div class="row" style="margin-bottom:14px">
+      <label class="field" style="margin:0;min-width:130px">Bot
+        <select id="study-bot"></select>
+      </label>
+      <label class="field" style="margin:0;min-width:130px">Bouts
+        <select id="study-bouts">
+          <option value="1">1</option>
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="30" selected>30 (minimum)</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+      <label class="field" style="margin:0;min-width:150px">Seed
+        <input type="text" id="study-seed" value="0xB10E">
+      </label>
+      <div style="align-self:flex-end;padding-bottom:12px">
+        <button class="action" id="study-run">Run study</button>
+        <button class="action secondary" id="study-all">Run all 5 bots</button>
+      </div>
+    </div>
+    <div class="bar"><i id="study-bar"></i></div>
+    <p class="hint" id="study-status">Recorded run shown. Press run to play fresh deals.</p>
+
+    <div id="study-verdict"></div>
+    <div id="study-rows"></div>
+  </div>
+
+  <div class="card">
+    <h2>Per-bout difference</h2>
+    <p class="sub" id="study-chart-sub">The pooled blueprint-minus-reference difference for each
+    bout, in mbb/100. The dashed lines are the 20 bb/100 margin; the band is the 95% confidence
+    sequence around the mean.</p>
+    <div id="study-chart"></div>
+  </div>
+
+  <div class="card">
+    <h2>Compute budget against the 45-second action clock</h2>
+    <p class="sub">The blueprint is precomputed; at the table it is a table read plus a few
+    comparisons. The build and the study are shown for scale, not because they run at a decision.
+    The action clock is 45,000 ms in public play (venue docs, revision 2026-09-02).</p>
+    <table>
+      <thead><tr><th>Operation</th><th>Measured</th><th>1,000 of them</th><th>Share of one clock</th></tr></thead>
+      <tbody>
+        <tr><td>Table lookup</td><td class="num" id="budget-lookup">15 ns</td><td class="num" id="budget-lookup-1000">15 µs</td><td class="num" id="budget-lookup-share">3.3e-8%</td></tr>
+        <tr><td>Full blueprint decision</td><td class="num" id="budget-decision">29 ns</td><td class="num" id="budget-decision-1000">29 µs</td><td class="num" id="budget-decision-share">6.5e-8%</td></tr>
+        <tr><td>Build one bot's table (warm)</td><td class="num" id="budget-build">0.08 ms</td><td class="num" id="budget-build-1000">82 ms</td><td class="num" id="budget-build-share">0.00018%</td></tr>
+        <tr><td>Cold first build of one bot</td><td class="num" id="budget-cold">1.3 ms</td><td class="num" id="budget-cold-1000">1.3 s</td><td class="num" id="budget-cold-share">0.0029%</td></tr>
+        <tr><td>Recorded 30-bout study (offline)</td><td class="num" id="budget-study">0.5 s</td><td class="num">—</td><td class="num" id="budget-study-share">1.1%</td></tr>
+      </tbody>
+    </table>
+    <p class="hint">A decision is not a solve. The measured decision is an array index, a bucket
+    equity read, a price and two comparisons; the precomputed table is what keeps the clock free.
+    A real MCCFR solve is a separate, offline cost and is not measured here.</p>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Fleet of five</h2>
+      <p class="sub">Recorded 30-bout run, seed 0xB10E. Each bot has its own abstraction, so each
+      row is a different blueprint.</p>
+      <div id="study-fleet"></div>
+      <div id="study-live-fleet"></div>
+    </div>
+    <div class="card">
+      <h2>Seed sweep</h2>
+      <p class="sub">Bot 0, 30 bouts each. A verdict that changes with the seed is not a verdict;
+      this is the cheap stability check the prototype can afford.</p>
+      <div id="study-seeds"></div>
+      <div id="study-long"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Visit coverage</h2>
+    <p class="sub">Not every blueprint cell is reached in 30 bouts. The count is the number of
+    distinct (position, bucket, node) cells seen; the grid shows which. Open and facing are the
+    two small squares in each cell.</p>
+    <div id="study-coverage"></div>
+  </div>
+</section>
+
+<!-- ============================ WALKTHROUGHS ============================ -->
+<section class="tab" id="tab-walkthroughs">
+  <div class="card">
+    <h2>Guided walkthroughs</h2>
+    <p class="sub">Each step is a real button. It changes the page and leaves the state visible,
+    so you can see what the blueprint is doing rather than trust a paragraph.</p>
+    <div class="tabs-inline" id="walk-tabs"></div>
+    <div id="walk-intro"></div>
+    <div id="walk-steps"></div>
+    <div class="row" style="margin:12px 0">
+      <button class="pill" id="walk-reset">Reset this walkthrough</button>
+    </div>
+    <h3>Log</h3>
+    <div class="log" id="walk-log"><p class="muted">No steps run yet.</p></div>
+  </div>
+</section>
+
+<!-- ============================ CONSTANTS ============================ -->
+<section class="tab" id="tab-constants">
+  <div class="card">
+    <h2>The question, and the answer this prototype can support</h2>
+    <div class="callout">
+      <strong>The question.</strong> A per-bot, precomputed preflop blueprint: does the
+      abstraction fit inside the venue's 45-second action clock, and does the policy stay inside
+      the 20 bb/100 margin of the reference over paired 6-max rows?
+    </div>
+    <div class="callout warn">
+      <strong>What this prototype is.</strong> The blueprint is the reference policy frozen through
+      each bot's own eight-bucket abstraction: the opening range is bucket-level with a mixed
+      boundary, the price response uses the hand's own equity. This is the <em>representation</em>
+      test, not an MCCFR solve. It is the cheap end of E4: if the representation and the lookup
+      fail, a solve cannot rescue them; if they pass, a solve is worth costing.
+    </div>
+    <div class="callout">
+      <strong>What is missing from a full E4 answer.</strong> A real MCCFR solve, all of the
+      Arena's 6-max rows (v10.0.2 and the learning/switching archetypes are not here), postflop
+      continuation values, exploiters, and AIVAT/luck correction. The GO below is for the
+      abstraction and the clock, not for a solved blueprint's strength.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Constants, and where they come from</h2>
+    <table>
+      <thead><tr><th>Constant</th><th>Value used here</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td>Opening share, UTG / HJ / CO</td><td>15% / 19% / 27%</td><td><span class="mono">crates/strategy/src/preflop.rs</span>, <span class="mono">Position::share</span></td></tr>
+        <tr><td>Opening share, BTN / SB / BB (out of position)</td><td>45% / 42% / 42%</td><td>same</td></tr>
+        <tr><td>Opening share, heads-up button</td><td>80%</td><td>same</td></tr>
+        <tr><td>Open raise</td><td>2.5 bb (50 chips at 10/20)</td><td><span class="mono">crates/strategy/src/pricer/ev.rs</span>, <span class="mono">sizes</span></td></tr>
+        <tr><td>Re-raise</td><td>3× facing ≤ 4 bb; 2.3× above</td><td>same</td></tr>
+        <tr><td>Preflop equity table</td><td>169 classes × 1..5 random hands</td><td><span class="mono">crates/strategy/src/data/preflop.txt</span></td></tr>
+        <tr><td>Margin</td><td>20,000 mbb/100 = 20 bb/100</td><td><span class="mono">crates/learn/src/margin.rs</span>, <span class="mono">MARGIN</span></td></tr>
+        <tr><td>Minimum bouts</td><td>30</td><td>same, <span class="mono">MIN_BOUTS</span></td></tr>
+        <tr><td>Confidence sequence</td><td><span class="mono">Sequence::new(200.0)</span>, radius at α = 0.05</td><td><span class="mono">crates/learn/src/probe.rs</span></td></tr>
+        <tr><td>Bout</td><td>50 deals</td><td><span class="mono">crates/learn/src/arena.rs</span>, <span class="mono">BOUT</span></td></tr>
+        <tr><td>Ring</td><td>6 seats, one deal played from every seat</td><td><span class="mono">crates/learn/src/ring.rs</span>, <span class="mono">SIX_MAX</span></td></tr>
+        <tr><td>Action clock</td><td>45 seconds in public play</td><td>venue docs, revision 2026-09-02, <span class="mono">llms-full.txt</span></td></tr>
+        <tr><td>Blinds / stack</td><td>10 / 20, 2,000 chips (100 bb)</td><td>venue docs, same revision</td></tr>
+        <tr><td>Blueprint table</td><td>8 buckets; 12 position keys × 8 buckets of opening chances</td><td>this page</td></tr>
+        <tr><td>Packed size</td><td>725 B per bot; 1,728 B if stored as full f32 probabilities</td><td>measured in the page</td></tr>
+        <tr><td>Lookup / decision</td><td>15 ns / 29 ns median, 1,000,000 calls</td><td>measured in Node 24</td></tr>
+        <tr><td>Build</td><td>0.08 ms median per bot, 20 builds</td><td>measured in Node 24</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>How the margin read is computed</h2>
+    <pre class="code">differences[b] = mean_over_rows(blueprint_bout_sum[b] - reference_bout_sum[b]) × (100,000 / 50)
+sequence = Sequence(tuned_for = 200)
+mean = sequence.mean()
+radius = sequence.radius(alpha = 0.05)
+if bouts &lt; 30:                  UNRESOLVED
+else if mean + radius &lt; -20,000: REFUSED
+else if radius &gt; 20,000:         UNRESOLVED
+else:                            ADMITTED</pre>
+    <p class="sub" style="margin-top:12px">This is <span class="mono">learn::margin::pooled</span>
+    followed by <span class="mono">learn::margin::read</span>. The unit is mbb/100. A bout's row
+    sum is in big blinds won over its 50 deals, so the multiplication by 2,000 is the conversion
+    the repo uses.</p>
+  </div>
+
+  <div class="card">
+    <h2>What the prototype models, and what it does not</h2>
+    <div class="grid2">
+      <div>
+        <h3>Modelled</h3>
+        <ul class="small">
+          <li>Preflop only, 6-max, 10/20 blinds, 2,000-chip stacks, no postflop betting.</li>
+          <li>The repo's opening shares, 2.5 bb open, 3× / 2.3× re-raises, and the shipped 169 × 5 equity table.</li>
+          <li>One abstraction per bot: its own jittered view of the table, eight equal-mass buckets.</li>
+          <li>Paired cards: every deal is played from all six seats for both policies.</li>
+          <li>Four independent rows: pricer, station, nit, maniac.</li>
+          <li>The repo's bout size, confidence sequence, minimum bouts and margin rule.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Not modelled</h3>
+        <ul class="small">
+          <li>A real MCCFR/DCFR solve; this blueprint is a frozen abstraction of the reference.</li>
+          <li>v10.0.2, the switching and learning archetypes, and the whole Arena row set.</li>
+          <li>Postflop play, leaf values, and the production pricer's sampled EV/fold-equity model.</li>
+          <li>Exploiters, action-model fits, and AIVAT/luck correction beyond card pairing.</li>
+          <li>Network latency and the venue's real action-clock queue.</li>
+          <li>All-in side pots; the prototype caps re-raises at four and never reaches a side pot.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recorded result</h2>
+    <p class="sub" id="constants-recorded"></p>
+    <p class="small muted" id="constants-provenance"></p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><strong>Throwaway prototype.</strong> No opponent data, no store contents, no keys, no
+    network calls. It opens by double-click and runs entirely in the page. The repo is public;
+    nothing here is private.</p>
+    <p>Ticket #1257 · V11-103 · E4 preflop blueprint · design: <span class="mono">docs/superpowers/specs/2026-11-25-five-brains-design.md</span> (Phase 4) · venue docs revision 2026-09-02.</p>
+    <p class="mono">Generated-by: opencode/deepseek-flash</p>
+  </div>
+</footer>
+
+<script>
+/*
+ * Throwaway prototype model for V11-103 (E4 preflop blueprint).
+ * Pure JS: no DOM.  Mirrors the repo's shipped preflop table, position shares,
+ * preflop raise sizes and the margin rule closely enough to ask one question:
+ * can a per-bot bucket blueprint be looked up inside the action clock, and is
+ * it within the 20 bb/100 margin of the reference over 6-max bouts?
+ */
+(function (root) {
+  "use strict";
+
+  // ---- shipped constants (crates/strategy/src/data/preflop.txt, preflop.rs) ----
+  var TABLE = [{"name":"22","eq":[0.504386,0.306621,0.219689,0.176895,0.154551]},{"name":"32o","eq":[0.323465,0.197505,0.139985,0.107892,0.089385]},{"name":"42o","eq":[0.332622,0.206764,0.146938,0.114437,0.095714]},{"name":"52o","eq":[0.342296,0.215481,0.154674,0.121033,0.100531]},{"name":"62o","eq":[0.340175,0.208347,0.146048,0.113082,0.091864]},{"name":"72o","eq":[0.345747,0.204796,0.142924,0.108149,0.086109]},{"name":"82o","eq":[0.367017,0.21837,0.152239,0.11466,0.09059]},{"name":"92o","eq":[0.391731,0.23071,0.161519,0.121882,0.096697]},{"name":"T2o","eq":[0.41779,0.247976,0.172748,0.133168,0.106777]},{"name":"J2o","eq":[0.443551,0.26523,0.185827,0.142099,0.11464]},{"name":"Q2o","eq":[0.473659,0.28699,0.2016,0.154183,0.124775]},{"name":"K2o","eq":[0.504406,0.312194,0.221651,0.16976,0.137984]},{"name":"A2o","eq":[0.548821,0.351999,0.253703,0.198625,0.162716]},{"name":"32s","eq":[0.361095,0.237383,0.182176,0.15168,0.130173]},{"name":"33","eq":[0.537015,0.337101,0.240159,0.189946,0.161619]},{"name":"43o","eq":[0.351156,0.226249,0.162902,0.130027,0.107645]},{"name":"53o","eq":[0.362949,0.234999,0.17168,0.136307,0.113738]},{"name":"63o","eq":[0.360749,0.228432,0.164711,0.128176,0.105502]},{"name":"73o","eq":[0.367088,0.225292,0.158987,0.122733,0.099033]},{"name":"83o","eq":[0.376215,0.225393,0.156238,0.118572,0.094851]},{"name":"93o","eq":[0.400593,0.23869,0.168043,0.126728,0.101748]},{"name":"T3o","eq":[0.427181,0.256246,0.180108,0.137807,0.109908]},{"name":"J3o","eq":[0.45432,0.274125,0.192484,0.146845,0.11784]},{"name":"Q3o","eq":[0.481311,0.294048,0.208074,0.159815,0.129405]},{"name":"K3o","eq":[0.514916,0.321622,0.228034,0.176593,0.143274]},{"name":"A3o","eq":[0.558438,0.363611,0.262904,0.204548,0.168963]},{"name":"42s","eq":[0.368478,0.24691,0.188174,0.156582,0.135691]},{"name":"43s","eq":[0.386931,0.26428,0.204208,0.169349,0.147613]},{"name":"44","eq":[0.569145,0.367755,0.262789,0.206192,0.173668]},{"name":"54o","eq":[0.38167,0.254378,0.188335,0.150408,0.126498]},{"name":"64o","eq":[0.380241,0.247455,0.183005,0.144221,0.120549]},{"name":"74o","eq":[0.385181,0.2452,0.178691,0.138887,0.114301]},{"name":"84o","eq":[0.394226,0.244539,0.174619,0.134138,0.108367]},{"name":"94o","eq":[0.406414,0.243944,0.172958,0.131288,0.104562]},{"name":"T4o","eq":[0.433334,0.2645,0.186774,0.143213,0.113805]},{"name":"J4o","eq":[0.46092,0.281209,0.199687,0.152145,0.122844]},{"name":"Q4o","eq":[0.49158,0.30225,0.21602,0.166032,0.13289]},{"name":"K4o","eq":[0.524134,0.330839,0.236021,0.181722,0.147368]},{"name":"A4o","eq":[0.566916,0.371747,0.271006,0.213188,0.175512]},{"name":"52s","eq":[0.378846,0.254473,0.194952,0.161009,0.140661]},{"name":"53s","eq":[0.398382,0.273083,0.212141,0.174955,0.152421]},{"name":"54s","eq":[0.414077,0.290922,0.226371,0.189422,0.16466]},{"name":"55","eq":[0.603276,0.400697,0.289749,0.223354,0.186115]},{"name":"65o","eq":[0.399551,0.267058,0.200651,0.159938,0.133502]},{"name":"75o","eq":[0.405828,0.264229,0.195956,0.155288,0.127886]},{"name":"85o","eq":[0.415083,0.265096,0.193883,0.150565,0.123534]},{"name":"95o","eq":[0.427105,0.2655,0.191546,0.148806,0.118735]},{"name":"T5o","eq":[0.442578,0.271613,0.19236,0.148208,0.118551]},{"name":"J5o","eq":[0.471635,0.292063,0.206355,0.159323,0.127664]},{"name":"Q5o","eq":[0.501189,0.313155,0.224011,0.171168,0.138643]},{"name":"K5o","eq":[0.532674,0.339452,0.243915,0.187512,0.152878]},{"name":"A5o","eq":[0.577534,0.38184,0.281262,0.220402,0.179829]},{"name":"62s","eq":[0.377273,0.248225,0.188608,0.15339,0.132514]},{"name":"63s","eq":[0.394759,0.266806,0.206174,0.169596,0.146629]},{"name":"64s","eq":[0.41429,0.285935,0.221827,0.184288,0.159008]},{"name":"65s","eq":[0.431136,0.30113,0.236916,0.197493,0.169944]},{"name":"66","eq":[0.634185,0.432867,0.314302,0.245943,0.200671]},{"name":"76o","eq":[0.423442,0.283674,0.215501,0.170523,0.141703]},{"name":"86o","eq":[0.432266,0.28439,0.213493,0.167473,0.138321]},{"name":"96o","eq":[0.445725,0.285328,0.211041,0.165286,0.134321]},{"name":"T6o","eq":[0.459948,0.291746,0.212008,0.165169,0.133696]},{"name":"J6o","eq":[0.478965,0.297642,0.214076,0.165958,0.131731]},{"name":"Q6o","eq":[0.509771,0.323543,0.230723,0.179143,0.144125]},{"name":"K6o","eq":[0.541966,0.348136,0.251847,0.196852,0.159153]},{"name":"A6o","eq":[0.577852,0.378735,0.274876,0.214028,0.174011]},{"name":"72s","eq":[0.382035,0.244815,0.184933,0.149884,0.127943]},{"name":"73s","eq":[0.400473,0.264915,0.200241,0.164547,0.139697]},{"name":"74s","eq":[0.417906,0.282608,0.216681,0.179316,0.153037]},{"name":"75s","eq":[0.436864,0.301005,0.235044,0.192931,0.167563]},{"name":"76s","eq":[0.454031,0.319861,0.250618,0.207914,0.179042]},{"name":"77","eq":[0.662596,0.464798,0.343231,0.268238,0.219311]},{"name":"87o","eq":[0.450044,0.30412,0.231774,0.183067,0.152024]},{"name":"97o","eq":[0.463769,0.307345,0.230323,0.182204,0.151941]},{"name":"T7o","eq":[0.478668,0.312342,0.23183,0.183228,0.150194]},{"name":"J7o","eq":[0.496146,0.318406,0.233292,0.183467,0.148927]},{"name":"Q7o","eq":[0.516813,0.331567,0.240027,0.187189,0.149835]},{"name":"K7o","eq":[0.550919,0.35962,0.262183,0.204683,0.166587]},{"name":"A7o","eq":[0.588213,0.393367,0.287172,0.225702,0.183041]},{"name":"82s","eq":[0.403867,0.257749,0.193859,0.157242,0.133252]},{"name":"83s","eq":[0.409709,0.26382,0.197897,0.161691,0.136549]},{"name":"84s","eq":[0.426629,0.282577,0.215,0.174905,0.149166]},{"name":"85s","eq":[0.444815,0.300523,0.232592,0.189869,0.16306]},{"name":"86s","eq":[0.462726,0.320791,0.248234,0.205502,0.176029]},{"name":"87s","eq":[0.478361,0.338104,0.265348,0.220066,0.189809]},{"name":"88","eq":[0.692057,0.499904,0.375557,0.294793,0.240006]},{"name":"98o","eq":[0.481832,0.326649,0.251876,0.200958,0.167681]},{"name":"T8o","eq":[0.496634,0.334361,0.254866,0.204024,0.168419]},{"name":"J8o","eq":[0.515655,0.34024,0.255875,0.2031,0.167384]},{"name":"Q8o","eq":[0.53613,0.35237,0.261809,0.206017,0.169218]},{"name":"K8o","eq":[0.560509,0.36895,0.271802,0.213871,0.173366]},{"name":"A8o","eq":[0.598795,0.404861,0.298449,0.234011,0.191894]},{"name":"92s","eq":[0.425362,0.271203,0.203758,0.164581,0.138931]},{"name":"93s","eq":[0.432712,0.27839,0.208561,0.16932,0.142536]},{"name":"94s","eq":[0.438501,0.284233,0.21261,0.172886,0.14609]},{"name":"95s","eq":[0.457952,0.302481,0.229406,0.188071,0.159196]},{"name":"96s","eq":[0.475064,0.3221,0.247143,0.203691,0.17416]},{"name":"97s","eq":[0.491996,0.339754,0.266689,0.220306,0.188827]},{"name":"98s","eq":[0.508622,0.359127,0.285456,0.236674,0.202609]},{"name":"99","eq":[0.721944,0.536692,0.410702,0.326102,0.265933]},{"name":"T9o","eq":[0.515226,0.356133,0.27624,0.224946,0.188951]},{"name":"J9o","eq":[0.533149,0.365537,0.278634,0.225031,0.187744]},{"name":"Q9o","eq":[0.554385,0.3758,0.28379,0.228686,0.18999]},{"name":"K9o","eq":[0.577507,0.391086,0.295723,0.235871,0.193833]},{"name":"A9o","eq":[0.607472,0.415768,0.310507,0.245535,0.202426]},{"name":"T2s","eq":[0.447729,0.285952,0.215244,0.174825,0.148195]},{"name":"T3s","eq":[0.456674,0.293707,0.22138,0.179826,0.152368]},{"name":"T4s","eq":[0.465334,0.302649,0.228496,0.18471,0.157244]},{"name":"T5s","eq":[0.470427,0.307717,0.230928,0.188953,0.158951]},{"name":"T6s","eq":[0.489801,0.327548,0.250275,0.205079,0.173339]},{"name":"T7s","eq":[0.507281,0.347991,0.267601,0.221124,0.188358]},{"name":"T8s","eq":[0.521813,0.366684,0.288229,0.239957,0.204935]},{"name":"T9s","eq":[0.5398,0.387516,0.309331,0.259345,0.223514]},{"name":"TT","eq":[0.750212,0.577073,0.451471,0.363376,0.298222]},{"name":"JTo","eq":[0.551806,0.389932,0.30754,0.252339,0.214621]},{"name":"QTo","eq":[0.572661,0.402872,0.313742,0.256444,0.217836]},{"name":"KTo","eq":[0.596934,0.419742,0.323442,0.264659,0.222524]},{"name":"ATo","eq":[0.626165,0.443332,0.339056,0.276134,0.230295]},{"name":"J2s","eq":[0.473971,0.303449,0.227691,0.183715,0.155818]},{"name":"J3s","eq":[0.482561,0.311939,0.232753,0.189587,0.160214]},{"name":"J4s","eq":[0.489563,0.320283,0.239445,0.193895,0.165335]},{"name":"J5s","eq":[0.499575,0.327985,0.246005,0.201069,0.168066]},{"name":"J6s","eq":[0.50672,0.332446,0.251692,0.205501,0.172413]},{"name":"J7s","eq":[0.522721,0.352841,0.271641,0.221776,0.18921]},{"name":"J8s","eq":[0.541077,0.373935,0.292208,0.239719,0.203555]},{"name":"J9s","eq":[0.555793,0.394604,0.312089,0.260573,0.223334]},{"name":"JTs","eq":[0.57442,0.419957,0.337539,0.286617,0.249402]},{"name":"JJ","eq":[0.775145,0.612212,0.490373,0.402584,0.33583]},{"name":"QJo","eq":[0.582346,0.41343,0.325881,0.268595,0.228853]},{"name":"KJo","eq":[0.605808,0.432246,0.33707,0.277163,0.2355]},{"name":"AJo","eq":[0.634249,0.454557,0.352576,0.289437,0.243642]},{"name":"Q2s","eq":[0.502602,0.322536,0.243187,0.196947,0.168551]},{"name":"Q3s","eq":[0.510785,0.332686,0.247608,0.201902,0.16968]},{"name":"Q4s","eq":[0.519729,0.339208,0.255658,0.206939,0.176454]},{"name":"Q5s","eq":[0.527911,0.348564,0.26257,0.213909,0.180535]},{"name":"Q6s","eq":[0.536569,0.357406,0.269376,0.220272,0.185614]},{"name":"Q7s","eq":[0.543623,0.363909,0.278058,0.225005,0.190416]},{"name":"Q8s","eq":[0.560469,0.385493,0.297141,0.243955,0.207846]},{"name":"Q9s","eq":[0.576265,0.407025,0.318199,0.264409,0.226941]},{"name":"QTs","eq":[0.595668,0.431244,0.344241,0.290878,0.251315]},{"name":"QJs","eq":[0.60178,0.442574,0.355352,0.302313,0.262694]},{"name":"QQ","eq":[0.799765,0.64961,0.536633,0.447149,0.377832]},{"name":"KQo","eq":[0.613117,0.444457,0.352156,0.293195,0.249722]},{"name":"AQo","eq":[0.643325,0.467145,0.36867,0.305134,0.257506]},{"name":"K2s","eq":[0.531783,0.34956,0.261456,0.213218,0.183388]},{"name":"K3s","eq":[0.541266,0.356551,0.269504,0.218065,0.185487]},{"name":"K4s","eq":[0.54874,0.364243,0.275065,0.223641,0.189211]},{"name":"K5s","eq":[0.558471,0.373022,0.28275,0.228867,0.194694]},{"name":"K6s","eq":[0.56556,0.38326,0.289313,0.235353,0.20067]},{"name":"K7s","eq":[0.574691,0.393899,0.299997,0.243578,0.207294]},{"name":"K8s","eq":[0.581089,0.401304,0.305939,0.252003,0.214107]},{"name":"K9s","eq":[0.598829,0.423611,0.329116,0.272761,0.232587]},{"name":"KTs","eq":[0.617936,0.448178,0.35639,0.298733,0.258923]},{"name":"KJs","eq":[0.624646,0.459177,0.3684,0.309352,0.268701]},{"name":"KQs","eq":[0.63482,0.470882,0.381597,0.325176,0.284853]},{"name":"KK","eq":[0.824544,0.688856,0.583702,0.497729,0.429694]},{"name":"AKo","eq":[0.652608,0.482146,0.385586,0.322249,0.278563]},{"name":"A2s","eq":[0.574191,0.387258,0.294618,0.239299,0.205109]},{"name":"A3s","eq":[0.583144,0.396766,0.302395,0.246582,0.21175]},{"name":"A4s","eq":[0.589706,0.405545,0.310371,0.254223,0.216828]},{"name":"A5s","eq":[0.598649,0.414542,0.316428,0.259852,0.221931]},{"name":"A6s","eq":[0.599199,0.410506,0.313126,0.254748,0.215412]},{"name":"A7s","eq":[0.609155,0.423072,0.324232,0.264979,0.223765]},{"name":"A8s","eq":[0.617935,0.436466,0.33421,0.273557,0.231799]},{"name":"A9s","eq":[0.628666,0.44509,0.344869,0.283681,0.240301]},{"name":"ATs","eq":[0.645511,0.470134,0.372814,0.309788,0.267517]},{"name":"AJs","eq":[0.653509,0.483921,0.384951,0.321967,0.27885]},{"name":"AQs","eq":[0.661541,0.494672,0.39845,0.336454,0.293057]},{"name":"AKs","eq":[0.670963,0.506725,0.414109,0.353641,0.310675]},{"name":"AA","eq":[0.851611,0.733549,0.638199,0.558219,0.490635]}];
+  var EQ = TABLE.map(function (r) { return r.eq; });
+  var NAME = TABLE.map(function (r) { return r.name; });
+  var CLASSES = 169;
+  var COMBOS = NAME.map(function (n) { return n.length === 2 ? 6 : (n[2] === "s" ? 4 : 12); });
+  var TOTAL_COMBOS = COMBOS.reduce(function (a, b) { return a + b; }, 0);
+
+  var BB = 20;
+  var SB = 10;
+  var STACK = 2000;
+  var SEATS = 6;
+  var BOUT = 50;                 // learn::arena::BOUT
+  var MARGIN = 20000;            // learn::margin::MARGIN, mbb/100 (20 bb/100)
+  var MIN_BOUTS = 30;            // learn::margin::MIN_BOUTS
+  var ALPHA = 0.05;              // Sequence radius level
+  var ACTION_CLOCK_MS = 45000;   // venue docs, public play
+
+  var ORDER = [0, 1, 2, 3, 4, 5];             // UTG, HJ, CO, BTN, SB, BB
+  var POSTFLOP = [4, 5, 0, 1, 2, 3];          // SB, BB, UTG, HJ, CO, BTN
+  var BUCKETS = 8;
+
+  function clamp(x, lo, hi) { return x < lo ? lo : x > hi ? hi : x; }
+
+  // ---- deterministic rng ----
+  function hash(a, b) {
+    var h = 2166136261 >>> 0;
+    h = Math.imul(h ^ (a >>> 0), 16777619);
+    h = Math.imul(h ^ (b >>> 0), 16777619);
+    h ^= h >>> 13;
+    return h >>> 0;
+  }
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---- rank of every class against 1..5 random hands (preflop::ranks) ----
+  var RANK = (function () {
+    var out = [];
+    for (var k = 0; k < 5; k++) {
+      var order = [];
+      for (var c = 0; c < CLASSES; c++) order.push(c);
+      order.sort(function (a, b) {
+        return EQ[b][k] - EQ[a][k] || a - b;
+      });
+      var rank = new Array(CLASSES);
+      var above = 0;
+      for (var i = 0; i < order.length; i++) {
+        var cl = order[i];
+        rank[cl] = (above + COMBOS[cl] / 2) / TOTAL_COMBOS;
+        above += COMBOS[cl];
+      }
+      out.push(rank);
+    }
+    return out;
+  })();
+
+  // ---- preflop::Position::share ----
+  function share(behind, inPosition) {
+    if ((behind === 0 || behind === 1) && inPosition) return 0.80;
+    if (behind === 0 || behind === 1) return 0.42;
+    if (behind === 2) return 0.45;
+    if (behind === 3) return 0.27;
+    if (behind === 4) return 0.19;
+    return 0.15;
+  }
+
+  // ---- preflop::opens_at: rank against the players behind is within the share ----
+  function opens(cls, behind, inPosition, scale) {
+    var k = clamp(behind, 1, 5) - 1;
+    var width = Math.min(1, share(behind, inPosition) * scale);
+    return RANK[k][cls] < width;
+  }
+
+  // ---- preflop raise sizes (pricer::ev::sizes, board empty) ----
+  function raiseSize(currentBet) {
+    var to = currentBet <= 4 * BB ? currentBet * 3 : Math.floor(currentBet * 23 / 10);
+    return Math.min(STACK, Math.max(currentBet + 1, to));
+  }
+
+  // ---- seven-card evaluator (own code, enough for a prototype) ----
+  var rankCount = new Int8Array(13);
+  var suitCount = new Int8Array(4);
+  var POW = [1, 15, 225, 3375, 50625, 759375];
+  function score(cat, a, b, c, d, e) {
+    return cat * POW[5] + a * POW[4] + b * POW[3] + c * POW[2] + d * POW[1] + e;
+  }
+  function straightHigh(mask) {
+    for (var hi = 12; hi >= 4; hi--) {
+      var need = (1 << hi) | (1 << (hi - 1)) | (1 << (hi - 2)) | (1 << (hi - 3)) | (1 << (hi - 4));
+      if ((mask & need) === need) return hi;
+    }
+    var wheel = (1 << 12) | 1 | 2 | 4 | 8;
+    if ((mask & wheel) === wheel) return 3;
+    return -1;
+  }
+  function eval7(cards) {
+    rankCount.fill(0); suitCount.fill(0);
+    var mask = 0;
+    for (var i = 0; i < 7; i++) {
+      var card = cards[i];
+      var r = card % 13, s = (card / 13) | 0;
+      rankCount[r]++; suitCount[s]++; mask |= 1 << r;
+    }
+    var flushSuit = -1;
+    for (var s2 = 0; s2 < 4; s2++) if (suitCount[s2] >= 5) flushSuit = s2;
+    if (flushSuit >= 0) {
+      var fm = 0, fr = [];
+      for (var j = 0; j < 7; j++) {
+        var cd = cards[j];
+        if (((cd / 13) | 0) === flushSuit) {
+          var rr = cd % 13;
+          fm |= 1 << rr;
+          fr.push(rr);
+        }
+      }
+      var sf = straightHigh(fm);
+      if (sf >= 0) return score(8, sf, 0, 0, 0, 0);
+      fr.sort(function (a, b) { return b - a; });
+      return score(5, fr[0], fr[1], fr[2], fr[3], fr[4]);
+    }
+    var st = straightHigh(mask);
+    if (st >= 0) return score(4, st, 0, 0, 0, 0);
+    var quad = -1, trips = [], pairs = [];
+    for (var r2 = 12; r2 >= 0; r2--) {
+      if (rankCount[r2] === 4) quad = r2;
+      else if (rankCount[r2] === 3) trips.push(r2);
+      else if (rankCount[r2] === 2) pairs.push(r2);
+    }
+    var kick = [];
+    for (var r3 = 12; r3 >= 0; r3--) {
+      if (r3 !== quad && trips.indexOf(r3) < 0 && pairs.indexOf(r3) < 0) {
+        for (var n = 0; n < rankCount[r3]; n++) kick.push(r3);
+      }
+    }
+    if (quad >= 0) return score(7, quad, kick[0], 0, 0, 0);
+    if (trips.length >= 2) return score(6, trips[0], trips[1], 0, 0, 0);
+    if (trips.length === 1 && pairs.length >= 1) return score(6, trips[0], pairs[0], 0, 0, 0);
+    if (trips.length === 1) return score(3, trips[0], kick[0], kick[1], 0, 0);
+    if (pairs.length >= 2) return score(2, pairs[0], pairs[1], kick[0], 0, 0);
+    if (pairs.length === 1) return score(1, pairs[0], kick[0], kick[1], kick[2], 0);
+    return score(0, kick[0], kick[1], kick[2], kick[3], kick[4]);
+  }
+
+  // ---- per-bot abstraction: 8 equal-mass strength buckets on its own jittered view ----
+  function buildAbstraction(bot) {
+    var view = new Array(CLASSES);
+    var rng = mulberry32(hash(0xB0B0, bot));
+    for (var c = 0; c < CLASSES; c++) {
+      // A bot's own table is measured, not copied: +-1.2% equity of sampling noise.
+      view[c] = EQ[c][4] + (rng() * 2 - 1) * 0.012;
+    }
+    var order = [];
+    for (var i = 0; i < CLASSES; i++) order.push(i);
+    order.sort(function (a, b) { return view[b] - view[a] || a - b; });
+    var abstraction = new Int8Array(CLASSES);
+    var bucketMass = TOTAL_COMBOS / BUCKETS;
+    var cum = 0;
+    for (var j = 0; j < order.length; j++) {
+      var cl = order[j];
+      abstraction[cl] = Math.min(BUCKETS - 1, Math.floor(cum / bucketMass));
+      cum += COMBOS[cl];
+    }
+    var members = [];
+    for (var b = 0; b < BUCKETS; b++) members.push([]);
+    for (var c2 = 0; c2 < CLASSES; c2++) members[abstraction[c2]].push(c2);
+    var bucketEquity = [];
+    for (var b2 = 0; b2 < BUCKETS; b2++) {
+      var row = [];
+      for (var k = 0; k < 5; k++) {
+        var sum = 0, mass = 0;
+        for (var m = 0; m < members[b2].length; m++) {
+          var cc = members[b2][m];
+          sum += EQ[cc][k] * COMBOS[cc];
+          mass += COMBOS[cc];
+        }
+        row.push(sum / mass);
+      }
+      bucketEquity.push(row);
+    }
+    return { abstraction: abstraction, members: members, bucketEquity: bucketEquity };
+  }
+
+  function makeBot(index) {
+    var a = buildAbstraction(index);
+    var bot = {
+      index: index,
+      abstraction: a.abstraction,
+      members: a.members,
+      bucketEquity: a.bucketEquity,
+      // The blueprinted thresholds start at the reference's own numbers: fair share
+      // + 10% to raise, pot odds to call.  The abstraction changes the opening
+      // range and the per-bot table, not the sound default.
+      params: { openWidth: 1.0, callAdj: 0.0, raiseAdj: 0.10 },
+      openChance: null,
+      visits: null
+    };
+    rebuildOpenChance(bot);
+    return bot;
+  }
+
+  // The share is spread over the boundary bucket, so an 19% range is not rounded
+  // up to a whole 12.5% bucket.  E1 calls the same idea "blending the boundary".
+  function rebuildOpenChance(bot) {
+    var table = [];
+    for (var behind = 0; behind <= 5; behind++) {
+      for (var ip = 0; ip < 2; ip++) {
+        var s = Math.min(1, share(behind, ip === 1) * bot.params.openWidth);
+        var row = new Array(BUCKETS);
+        for (var b = 0; b < BUCKETS; b++) {
+          var lo = b / BUCKETS, hi = (b + 1) / BUCKETS;
+          row[b] = clamp((s - lo) / (hi - lo), 0, 1);
+        }
+        table.push(row);
+      }
+    }
+    bot.openChance = table;
+  }
+  function openChance(bot, behind, inPosition, bucket) {
+    var at = clamp(behind, 0, 5) * 2 + (inPosition ? 1 : 0);
+    return bot.openChance[at][bucket];
+  }
+
+  // ---- policies ----
+  var FOLD = { kind: "fold" };
+  var CHECK = { kind: "check" };
+  var CALL = { kind: "call" };
+  function raise(to) { return { kind: "raise", to: to }; }
+
+  function referenceAction(ctx) {
+    var cls = ctx.cls, call = ctx.call, pot = ctx.pot;
+    if (ctx.unopened) {
+      if (ctx.seat === 5 && call === 0) return CHECK;
+      if (opens(cls, ctx.behind, ctx.inPosition, 1.0)) return raise(2.5 * BB);
+      return call === 0 ? CHECK : FOLD;
+    }
+    if (call === 0) return CHECK;
+    var eq = EQ[cls][clamp(ctx.liveOpponents, 1, 5) - 1];
+    var price = call / (pot + call);
+    if (eq * (pot + call) - call < 0) return FOLD;
+    var fair = 1 / (ctx.liveOpponents + 1);
+    if (ctx.raises < 4 && eq > fair + 0.10 && eq > price + 0.08) return raise(raiseSize(ctx.currentBet));
+    return CALL;
+  }
+
+  function blueprintAction(bot) {
+    return function (ctx) {
+      var bucket = bot.abstraction[ctx.cls];
+      var call = ctx.call, pot = ctx.pot;
+      if (bot.visits) {
+        var pos = clamp(ctx.behind, 0, 5) * 2 + (ctx.inPosition ? 1 : 0);
+        bot.visits[(pos * BUCKETS + bucket) * 2 + (ctx.unopened ? 0 : 1)]++;
+      }
+      if (ctx.unopened) {
+        if (ctx.seat === 5 && call === 0) return CHECK;
+        var chance = openChance(bot, ctx.behind, ctx.inPosition, bucket);
+        if (ctx.rng() < chance) return raise(2.5 * BB);
+        return call === 0 ? CHECK : FOLD;
+      }
+      if (call === 0) return CHECK;
+      var k = clamp(ctx.liveOpponents, 1, 5) - 1;
+      var eq = EQ[ctx.cls][k]; // the hand knows its own cards; the bucket sets the action
+      var price = call / (pot + call);
+      if (eq * (pot + call) - call < 0) return FOLD;
+      var fair = 1 / (ctx.liveOpponents + 1);
+      if (ctx.raises < 4 && eq > fair + bot.params.raiseAdj && eq > price + bot.params.callAdj + 0.03) {
+        return raise(raiseSize(ctx.currentBet));
+      }
+      if (eq > price + bot.params.callAdj) return CALL;
+      return FOLD;
+    };
+  }
+
+  function stationAction(ctx) {
+    return ctx.call > 0 ? CALL : CHECK;
+  }
+  function nitAction(ctx) {
+    var call = ctx.call, pot = ctx.pot;
+    if (ctx.unopened) {
+      if (ctx.seat === 5 && call === 0) return CHECK;
+      if (RANK[clamp(ctx.behind, 1, 5) - 1][ctx.cls] < 0.10) return raise(2.5 * BB);
+      return call === 0 ? CHECK : FOLD;
+    }
+    if (call === 0) return CHECK;
+    var eq = EQ[ctx.cls][clamp(ctx.liveOpponents, 1, 5) - 1];
+    var price = call / (pot + call);
+    if (eq * (pot + call) - call < 0) return FOLD;
+    if (ctx.raises < 4 && eq > 0.70) return raise(raiseSize(ctx.currentBet));
+    if (eq > price + 0.05) return CALL;
+    return FOLD;
+  }
+  function maniacAction(ctx) {
+    var call = ctx.call, pot = ctx.pot;
+    if (ctx.rng() < 0.55) {
+      if (ctx.unopened) {
+        if (ctx.seat === 5 && call === 0) return raise(2.5 * BB);
+        return raise(2.5 * BB);
+      }
+      if (ctx.raises < 4) return raise(raiseSize(ctx.currentBet));
+    }
+    if (call === 0) return CHECK;
+    var eq = EQ[ctx.cls][clamp(ctx.liveOpponents, 1, 5) - 1];
+    var price = call / (pot + call);
+    return eq * (pot + call) - call >= 0 ? CALL : FOLD;
+  }
+  function styleAction(name, ctx) {
+    if (name === "station") return stationAction(ctx);
+    if (name === "nit") return nitAction(ctx);
+    if (name === "maniac") return maniacAction(ctx);
+    return referenceAction(ctx);
+  }
+
+  // ---- one hand: preflop decisions, then a five-card run-out (no postflop betting) ----
+  function playHand(holes, board, policies, challengerSeat, dealInBout) {
+    var committed = [0, 0, 0, 0, 0, 0];
+    committed[4] = SB; committed[5] = BB;
+    var folded = [false, false, false, false, false, false];
+    var acted = [false, false, false, false, false, false];
+    var currentBet = BB;
+    var raises = 0;
+    var idx = 0;
+    var guard = 0;
+
+    while (guard++ < 200) {
+      var live = 0, need = false;
+      for (var s = 0; s < SEATS; s++) if (!folded[s]) live++;
+      if (live <= 1) break;
+      for (var s2 = 0; s2 < SEATS; s2++) {
+        if (!folded[s2] && (!acted[s2] || committed[s2] < currentBet)) { need = true; break; }
+      }
+      if (!need) break;
+      var seat = ORDER[idx++ % SEATS];
+      if (folded[seat] || (acted[seat] && committed[seat] >= currentBet)) continue;
+      var call = currentBet - committed[seat];
+      if (call === 0 && acted[seat]) continue;
+
+      var liveOpponents = live - 1;
+      var lastLive = -1;
+      for (var q = 0; q < POSTFLOP.length; q++) if (!folded[POSTFLOP[q]]) lastLive = POSTFLOP[q];
+      var pot = 0;
+      for (var p = 0; p < SEATS; p++) pot += committed[p];
+      var ctx = {
+        seat: seat,
+        cls: ctxClass(holes[seat]),
+        call: call,
+        pot: pot,
+        currentBet: currentBet,
+        raises: raises,
+        unopened: raises === 0,
+        liveOpponents: liveOpponents,
+        behind: liveOpponents,
+        inPosition: seat === lastLive,
+        dealInBout: dealInBout,
+        rng: policies[seat].rng
+      };
+      var action = policies[seat].fn(ctx);
+      if (action.kind === "fold") { folded[seat] = true; acted[seat] = true; }
+      else if (action.kind === "check") { acted[seat] = true; }
+      else if (action.kind === "call") {
+        committed[seat] += call;
+        acted[seat] = true;
+      } else {
+        var to = clamp(action.to | 0, currentBet + 1, STACK);
+        committed[seat] = to;
+        currentBet = to;
+        raises++;
+        acted = [false, false, false, false, false, false];
+        acted[seat] = true;
+      }
+    }
+
+    var pot2 = 0;
+    for (var z = 0; z < SEATS; z++) pot2 += committed[z];
+    var winners = [];
+    for (var w = 0; w < SEATS; w++) if (!folded[w]) winners.push(w);
+    var best = -1;
+    for (var i2 = 0; i2 < winners.length; i2++) {
+      var seat2 = winners[i2];
+      var cards = [holes[seat2][0], holes[seat2][1], board[0], board[1], board[2], board[3], board[4]];
+      var sc = eval7(cards);
+      if (sc > best) best = sc;
+    }
+    var shareOfPot = 0;
+    for (var i3 = 0; i3 < winners.length; i3++) {
+      var seat3 = winners[i3];
+      var cards3 = [holes[seat3][0], holes[seat3][1], board[0], board[1], board[2], board[3], board[4]];
+      if (eval7(cards3) === best) shareOfPot++;
+    }
+    var payout = pot2 / shareOfPot;
+    var net = 0;
+    for (var i4 = 0; i4 < winners.length; i4++) {
+      var seat4 = winners[i4];
+      var cards4 = [holes[seat4][0], holes[seat4][1], board[0], board[1], board[2], board[3], board[4]];
+      if (eval7(cards4) === best && seat4 === challengerSeat) net += payout;
+    }
+    return net - committed[challengerSeat];
+  }
+
+  function ctxClass(hole) {
+    var a = hole[0] % 13, b = hole[1] % 13;
+    var high = Math.max(a, b), low = Math.min(a, b);
+    var suited = ((hole[0] / 13) | 0) === ((hole[1] / 13) | 0);
+    return suited ? high * 13 + low : low * 13 + high;
+  }
+  function classOfHole(a, b) { return ctxClass([a, b]); }
+
+  function deal(seed, number) {
+    var rng = mulberry32(hash(seed, number));
+    var deck = new Array(52);
+    for (var i = 0; i < 52; i++) deck[i] = i;
+    for (var j = 51; j > 0; j--) {
+      var k = (rng() * (j + 1)) | 0;
+      var t = deck[j]; deck[j] = deck[k]; deck[k] = t;
+    }
+    var holes = [];
+    for (var s = 0; s < SEATS; s++) holes.push([deck[2 * s], deck[2 * s + 1]]);
+    return { holes: holes, board: deck.slice(12, 17) };
+  }
+
+  // ---- a 6-max ring: one deal played once from every seat (learn::ring) ----
+  function ringValue(cards, row, challengerSeat, policyFn, seed, number) {
+    var policies = [];
+    for (var s = 0; s < SEATS; s++) {
+      var rng = mulberry32(hash(seed ^ 0x5EED0606, number * SEATS + s));
+      var fn = s === challengerSeat ? policyFn :
+        function (ctx) { return styleAction(row, ctx); };
+      policies.push({ fn: fn, rng: rng });
+    }
+    return playHand(cards.holes, cards.board, policies, challengerSeat, number % 20);
+  }
+
+  function dealDelta(cards, row, bot, seed, number) {
+    var bp = blueprintAction(bot);
+    var sum = 0;
+    for (var s = 0; s < SEATS; s++) {
+      sum += ringValue(cards, row, s, bp, seed, number);
+      sum -= ringValue(cards, row, s, referenceAction, seed, number);
+    }
+    return sum / (SEATS * BB); // bb/hand, averaged over the deal's rotations
+  }
+
+  // ---- the blueprint is frozen; its build cost is measured, not searched ----
+
+  // ---- Sequence (learn::probe::Sequence) and margin::read ----
+  function Sequence(tunedFor) {
+    var log = -2 * Math.log(ALPHA);
+    this.count = 0; this.sum = 0; this.squares = 0;
+    this.mixing = (log + Math.log(log + 1)) / Math.max(1, tunedFor);
+  }
+  Sequence.prototype.observe = function (v) { this.count++; this.sum += v; this.squares += v * v; };
+  Sequence.prototype.mean = function () { return this.sum / Math.max(1, this.count); };
+  Sequence.prototype.radius = function (alpha) {
+    var n = this.count;
+    if (n < 2) return Infinity;
+    var spread = Math.sqrt(Math.max(0, (this.squares - this.sum * this.sum / n) / (n - 1)));
+    var scaled = n * this.mixing + 1;
+    return spread * Math.sqrt(2 * scaled / (n * n * this.mixing) * Math.log(Math.sqrt(scaled) / alpha));
+  };
+  function readMargin(differences, margin) {
+    var seq = new Sequence(200.0);
+    for (var i = 0; i < differences.length; i++) seq.observe(differences[i]);
+    var bouts = differences.length;
+    var mean = seq.mean(), radius = seq.radius(ALPHA);
+    var admission = "Unresolved";
+    if (bouts < MIN_BOUTS) admission = "Unresolved";
+    else if (mean + radius < -margin) admission = "Refused";
+    else if (radius > margin) admission = "Unresolved";
+    else admission = "Admitted";
+    return { admission: admission, mean: mean, radius: radius, bouts: bouts };
+  }
+
+  // ---- the study: rows x bouts x 50 deals, paired reference/blueprint ----
+  var ROWS = ["pricer", "station", "nit", "maniac"];
+  async function runStudy(bot, bouts, seed, maybeYield) {
+    var rowBouts = {};
+    for (var r = 0; r < ROWS.length; r++) rowBouts[ROWS[r]] = [];
+    bot.visits = new Uint32Array(12 * BUCKETS * 2);
+    for (var b = 0; b < bouts; b++) {
+      for (var r2 = 0; r2 < ROWS.length; r2++) {
+        var sum = 0;
+        for (var d = 0; d < BOUT; d++) {
+          var number = b * BOUT + d;
+          var cards = deal(seed, number);
+          sum += dealDelta(cards, ROWS[r2], bot, seed, number);
+        }
+        rowBouts[ROWS[r2]].push(sum);
+      }
+      if (maybeYield) await maybeYield(b + 1, bouts);
+    }
+    var pooled = [];
+    for (var b2 = 0; b2 < bouts; b2++) {
+      var s = 0;
+      for (var r3 = 0; r3 < ROWS.length; r3++) s += rowBouts[ROWS[r3]][b2];
+      pooled.push(s / ROWS.length * (100000 / BOUT)); // mbb/100 for the bout
+    }
+    var read = readMargin(pooled, MARGIN);
+    var rows = ROWS.map(function (name) {
+      var arr = rowBouts[name];
+      var mean = arr.reduce(function (a, b) { return a + b; }, 0) / arr.length;
+      var sd = Math.sqrt(arr.map(function (x) { return (x - mean) * (x - mean); }).reduce(function (a, b) { return a + b; }, 0) / Math.max(1, arr.length - 1));
+      return {
+        name: name,
+        mbb: mean * (100000 / BOUT),
+        ci95: 1.96 * sd / Math.sqrt(arr.length) * (100000 / BOUT),
+        bouts: arr.length
+      };
+    });
+    var posKeys = [5 * 2 + 0, 4 * 2 + 0, 3 * 2 + 0, 2 * 2 + 1, 1 * 2 + 0, 0 * 2 + 0];
+    var cells = 6 * BUCKETS * 2, visited = 0, decisions = 0, grid = [];
+    for (var pi = 0; pi < posKeys.length; pi++) {
+      for (var bi = 0; bi < BUCKETS; bi++) {
+        for (var ni = 0; ni < 2; ni++) {
+          var n = bot.visits[(posKeys[pi] * BUCKETS + bi) * 2 + ni];
+          if (n > 0) { visited++; grid.push(1); } else grid.push(0);
+          decisions += n;
+        }
+      }
+    }
+    var coverage = { cells: cells, visited: visited, decisions: decisions, grid: grid };
+    bot.visits = null;
+    return { rows: rows, pooled: pooled, read: read, seed: seed, bouts: bouts, rowBouts: rowBouts, coverage: coverage };
+  }
+
+  function benchLookup(bot, n) {
+    var t0 = performance.now();
+    var acc = 0;
+    for (var i = 0; i < n; i++) {
+      var cls = (i * 37 + 11) % CLASSES;
+      var behind = i % 6;
+      var bucket = bot.abstraction[cls];
+      acc += openChance(bot, behind, (i & 1) === 1, bucket);
+      acc += bot.bucketEquity[bucket][i % 5];
+    }
+    var t1 = performance.now();
+    return { nsPerDecision: (t1 - t0) * 1e6 / n, acc: acc };
+  }
+
+  function benchDecision(bot, n) {
+    var fn = blueprintAction(bot);
+    var ctx = {
+      seat: 3, cls: 0, call: 50, pot: 80, currentBet: 50, raises: 1,
+      unopened: false, liveOpponents: 2, behind: 2, inPosition: true,
+      dealInBout: 0, rng: function () { return 0.5; }
+    };
+    var t0 = performance.now();
+    var acc = 0;
+    for (var i = 0; i < n; i++) {
+      ctx.cls = (i * 37 + 11) % CLASSES;
+      var a = fn(ctx);
+      acc += a.kind === "raise" ? a.to : a.kind === "call" ? 1 : 0;
+    }
+    var t1 = performance.now();
+    return { nsPerDecision: (t1 - t0) * 1e6 / n, acc: acc };
+  }
+
+  function benchBuild(n) {
+    var times = [];
+    for (var i = 0; i < n; i++) {
+      var t0 = performance.now();
+      makeBot(i % 5);
+      times.push(performance.now() - t0);
+    }
+    times.sort(function (a, b) { return a - b; });
+    return { medianMs: times[(times.length / 2) | 0], times: times };
+  }
+
+  var API = {
+    TABLE: TABLE, NAME: NAME, EQ: EQ, COMBOS: COMBOS, BUCKETS: BUCKETS,
+    BB: BB, SB: SB, STACK: STACK, SEATS: SEATS, BOUT: BOUT, MARGIN: MARGIN,
+    MIN_BOUTS: MIN_BOUTS, ALPHA: ALPHA, ACTION_CLOCK_MS: ACTION_CLOCK_MS,
+    RANK: RANK, share: share, opens: opens, raiseSize: raiseSize,
+    buildAbstraction: buildAbstraction, makeBot: makeBot, rebuildOpenChance: rebuildOpenChance,
+    openChance: openChance, referenceAction: referenceAction, blueprintAction: blueprintAction,
+    styleAction: styleAction, playHand: playHand, deal: deal, eval7: eval7,
+    runStudy: runStudy, readMargin: readMargin, Sequence: Sequence,
+    benchLookup: benchLookup, benchDecision: benchDecision, benchBuild: benchBuild,
+    ROWS: ROWS, classOfHole: classOfHole, mulberry32: mulberry32
+  };
+  root.BlueprintProto = API;
+  if (typeof module !== "undefined" && module.exports) module.exports = API;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>
+var RECORDED = {
+  "generated": "2026-11-26T10:24:35.276Z",
+  "buildTimesMs": [
+    2.1395849999999967,
+    1.0520970000000034,
+    0.7113730000000089,
+    2.1308329999999955,
+    0.7506869999999992
+  ],
+  "buildMedianMs": 0.08202499999998736,
+  "lookupNs": [
+    32.80532799999999,
+    15.150182999999998,
+    15.092988999999989,
+    15.119349,
+    15.231286000000011
+  ],
+  "lookupMedianNs": 15.150182999999998,
+  "decisionNs": [
+    29.197288,
+    34.243176000000005,
+    29.220179,
+    29.053863999999976,
+    29.03481899999997
+  ],
+  "decisionMedianNs": 29.197288,
+  "packedBytes": 725,
+  "fullBytes": 1728,
+  "fleet": [
+    {
+      "bot": 0,
+      "wallMs": 528.070835,
+      "read": {
+        "admission": "Admitted",
+        "mean": -1389.0277777777776,
+        "radius": 5845.076582213396,
+        "bouts": 30
+      },
+      "rows": [
+        {
+          "name": "pricer",
+          "mbb": -2583.3333333333326,
+          "ci95": 3188.7169018194313,
+          "bouts": 30
+        },
+        {
+          "name": "station",
+          "mbb": -1744.4444444444448,
+          "ci95": 3225.811905614527,
+          "bouts": 30
+        },
+        {
+          "name": "nit",
+          "mbb": -1192.2222222222226,
+          "ci95": 1678.9396516106622,
+          "bouts": 30
+        },
+        {
+          "name": "maniac",
+          "mbb": -36.11111111111077,
+          "ci95": 10509.79758246327,
+          "bouts": 30
+        }
+      ],
+      "coverage": {
+        "cells": 96,
+        "visited": 76,
+        "decisions": 28423,
+        "grid": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "pooled": [
+        -1187.4999999999998,
+        -16579.166666666664,
+        -3525,
+        -11137.5,
+        1562.4999999999998,
+        -14287.500000000002,
+        12.499999999999844,
+        9254.166666666666,
+        -249.99999999999977,
+        279.16666666666544,
+        3395.833333333333,
+        -6162.5,
+        83.33333333333348,
+        8958.333333333334,
+        -3808.333333333335,
+        1429.1666666666663,
+        -747.9166666666663,
+        -5462.5,
+        12195.833333333332,
+        -8854.166666666668,
+        1595.8333333333337,
+        14864.583333333336,
+        12275.000000000002,
+        4625,
+        -3416.666666666667,
+        2812.4999999999995,
+        -25150,
+        4020.833333333333,
+        -16258.333333333332,
+        -2208.3333333333335
+      ]
+    },
+    {
+      "bot": 1,
+      "wallMs": 418.28159500000004,
+      "read": {
+        "admission": "Admitted",
+        "mean": -1625.138888888889,
+        "radius": 5645.809304533967,
+        "bouts": 30
+      },
+      "rows": [
+        {
+          "name": "pricer",
+          "mbb": -473.88888888888846,
+          "ci95": 3626.6209021627014,
+          "bouts": 30
+        },
+        {
+          "name": "station",
+          "mbb": -1511.1111111111109,
+          "ci95": 2381.4128678873167,
+          "bouts": 30
+        },
+        {
+          "name": "nit",
+          "mbb": -873.8888888888889,
+          "ci95": 1977.320461919941,
+          "bouts": 30
+        },
+        {
+          "name": "maniac",
+          "mbb": -3641.666666666666,
+          "ci95": 10022.08604343771,
+          "bouts": 30
+        }
+      ],
+      "coverage": {
+        "cells": 96,
+        "visited": 76,
+        "decisions": 28418,
+        "grid": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "pooled": [
+        6629.166666666665,
+        -13412.499999999998,
+        -11591.666666666668,
+        -854.166666666667,
+        854.1666666666667,
+        -7379.166666666667,
+        375,
+        5012.500000000002,
+        -1666.6666666666665,
+        -762.5000000000002,
+        645.8333333333333,
+        -9100.000000000002,
+        -2720.833333333333,
+        -1441.6666666666656,
+        -8091.666666666667,
+        470.83333333333366,
+        -1802.0833333333337,
+        -14725.000000000002,
+        12404.166666666668,
+        783.333333333333,
+        9995.833333333334,
+        10677.083333333334,
+        4250.000000000001,
+        3500,
+        5816.666666666667,
+        770.8333333333321,
+        -27858.333333333336,
+        7012.5,
+        -14870.833333333334,
+        -1675.0000000000007
+      ]
+    },
+    {
+      "bot": 2,
+      "wallMs": 422.53344500000003,
+      "read": {
+        "admission": "Admitted",
+        "mean": -1673.333333333333,
+        "radius": 5383.116605158586,
+        "bouts": 30
+      },
+      "rows": [
+        {
+          "name": "pricer",
+          "mbb": -738.8888888888886,
+          "ci95": 3638.470615275121,
+          "bouts": 30
+        },
+        {
+          "name": "station",
+          "mbb": -1072.2222222222224,
+          "ci95": 2375.6759432451536,
+          "bouts": 30
+        },
+        {
+          "name": "nit",
+          "mbb": -1571.111111111111,
+          "ci95": 1722.841514540172,
+          "bouts": 30
+        },
+        {
+          "name": "maniac",
+          "mbb": -3311.111111111111,
+          "ci95": 9437.93931910696,
+          "bouts": 30
+        }
+      ],
+      "coverage": {
+        "cells": 96,
+        "visited": 76,
+        "decisions": 28405,
+        "grid": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "pooled": [
+        6983.333333333333,
+        -14454.166666666666,
+        -12383.333333333336,
+        -4125,
+        541.666666666667,
+        -3858.3333333333326,
+        5379.166666666665,
+        3720.833333333335,
+        -2750,
+        -1220.8333333333342,
+        437.5,
+        -9600.000000000002,
+        -4470.833333333333,
+        183.33333333333402,
+        -8175.000000000001,
+        -3125,
+        -1093.75,
+        -12495.833333333334,
+        15729.16666666667,
+        1045.8333333333344,
+        2554.166666666666,
+        12989.583333333334,
+        1500.0000000000002,
+        2416.6666666666665,
+        2637.4999999999995,
+        1062.5,
+        -23658.333333333332,
+        8033.333333333333,
+        -14162.5,
+        158.3333333333332
+      ]
+    },
+    {
+      "bot": 3,
+      "wallMs": 425.82962899999984,
+      "read": {
+        "admission": "Admitted",
+        "mean": -2780.0000000000005,
+        "radius": 5593.730073407911,
+        "bouts": 30
+      },
+      "rows": [
+        {
+          "name": "pricer",
+          "mbb": -2591.666666666667,
+          "ci95": 2686.0980529741596,
+          "bouts": 30
+        },
+        {
+          "name": "station",
+          "mbb": -1661.1111111111109,
+          "ci95": 2597.396505390621,
+          "bouts": 30
+        },
+        {
+          "name": "nit",
+          "mbb": -1331.1111111111109,
+          "ci95": 1538.6840087913358,
+          "bouts": 30
+        },
+        {
+          "name": "maniac",
+          "mbb": -5536.111111111111,
+          "ci95": 10392.886256132491,
+          "bouts": 30
+        }
+      ],
+      "coverage": {
+        "cells": 96,
+        "visited": 76,
+        "decisions": 28419,
+        "grid": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "pooled": [
+        -1916.6666666666665,
+        -15620.833333333334,
+        -5400,
+        -6179.166666666667,
+        1562.5000000000005,
+        -10016.666666666668,
+        6274.999999999999,
+        -7608.333333333332,
+        -833.3333333333335,
+        779.1666666666672,
+        -250.00000000000045,
+        -10391.666666666666,
+        -4262.5,
+        1516.6666666666665,
+        -3558.333333333333,
+        1429.1666666666667,
+        -3364.5833333333326,
+        -24137.500000000004,
+        11862.500000000002,
+        -4145.833333333333,
+        1762.5000000000007,
+        9927.083333333334,
+        6166.666666666668,
+        7041.666666666666,
+        -1029.1666666666663,
+        4033.333333333333,
+        -24191.666666666668,
+        4895.833333333333,
+        -12787.5,
+        -4958.333333333333
+      ]
+    },
+    {
+      "bot": 4,
+      "wallMs": 414.6713139999997,
+      "read": {
+        "admission": "Admitted",
+        "mean": -2085,
+        "radius": 6098.013597463742,
+        "bouts": 30
+      },
+      "rows": [
+        {
+          "name": "pricer",
+          "mbb": -2036.1111111111106,
+          "ci95": 3633.312126632664,
+          "bouts": 30
+        },
+        {
+          "name": "station",
+          "mbb": -1761.1111111111118,
+          "ci95": 2779.3129002562596,
+          "bouts": 30
+        },
+        {
+          "name": "nit",
+          "mbb": -1320,
+          "ci95": 1621.507543007633,
+          "bouts": 30
+        },
+        {
+          "name": "maniac",
+          "mbb": -3222.777777777777,
+          "ci95": 9951.53177929214,
+          "bouts": 30
+        }
+      ],
+      "coverage": {
+        "cells": 96,
+        "visited": 76,
+        "decisions": 28413,
+        "grid": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "pooled": [
+        -2166.666666666667,
+        -13079.166666666666,
+        -5649.999999999999,
+        -8970.833333333334,
+        812.5000000000003,
+        -8016.666666666666,
+        5983.333333333334,
+        5937.5,
+        83.33333333333337,
+        279.16666666666725,
+        1624.9999999999995,
+        -8641.666666666666,
+        -6179.166666666666,
+        -66.66666666666599,
+        -7404.166666666668,
+        1054.1666666666667,
+        3889.583333333332,
+        -16791.666666666668,
+        11445.833333333334,
+        -5270.833333333334,
+        -487.4999999999996,
+        26493.75,
+        4041.666666666667,
+        4833.333333333334,
+        -11274.999999999998,
+        -270.8333333333321,
+        -22304.166666666668,
+        8062.5,
+        -14245.833333333334,
+        -6270.833333333333
+      ]
+    }
+  ],
+  "seeds": [
+    {
+      "seed": 45326,
+      "read": {
+        "admission": "Admitted",
+        "mean": -1389.0277777777776,
+        "radius": 5845.076582213396,
+        "bouts": 30
+      }
+    },
+    {
+      "seed": 45327,
+      "read": {
+        "admission": "Admitted",
+        "mean": 1062.0138888888891,
+        "radius": 4925.708508420606,
+        "bouts": 30
+      }
+    },
+    {
+      "seed": 45328,
+      "read": {
+        "admission": "Admitted",
+        "mean": 37.91666666666677,
+        "radius": 5530.661488563223,
+        "bouts": 30
+      }
+    },
+    {
+      "seed": 45329,
+      "read": {
+        "admission": "Admitted",
+        "mean": 1153.9583333333335,
+        "radius": 3507.388681663526,
+        "bouts": 30
+      }
+    },
+    {
+      "seed": 45330,
+      "read": {
+        "admission": "Admitted",
+        "mean": -2279.398148148148,
+        "radius": 3603.8115693164623,
+        "bouts": 30
+      }
+    }
+  ],
+  "long": {
+    "read": {
+      "admission": "Admitted",
+      "mean": -621.6249999999999,
+      "radius": 4375.255294703247,
+      "bouts": 50
+    },
+    "rows": [
+      {
+        "name": "pricer",
+        "mbb": -1777.6666666666665,
+        "ci95": 3230.9168616560423,
+        "bouts": 50
+      },
+      {
+        "name": "station",
+        "mbb": -943.3333333333335,
+        "ci95": 2127.0502851497313,
+        "bouts": 50
+      },
+      {
+        "name": "nit",
+        "mbb": -742.6666666666671,
+        "ci95": 1381.2501380351864,
+        "bouts": 50
+      },
+      {
+        "name": "maniac",
+        "mbb": 977.1666666666669,
+        "ci95": 8039.647719670308,
+        "bouts": 50
+      }
+    ],
+    "coverage": {
+      "cells": 96,
+      "visited": 76,
+      "decisions": 47309,
+      "grid": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "pooled": [
+      -1187.4999999999998,
+      -16579.166666666664,
+      -3525,
+      -11137.5,
+      1562.4999999999998,
+      -14287.500000000002,
+      12.499999999999844,
+      9254.166666666666,
+      -249.99999999999977,
+      279.16666666666544,
+      3395.833333333333,
+      -6162.5,
+      83.33333333333348,
+      8958.333333333334,
+      -3808.333333333335,
+      1429.1666666666663,
+      -747.9166666666663,
+      -5462.5,
+      12195.833333333332,
+      -8854.166666666668,
+      1595.8333333333337,
+      14864.583333333336,
+      12275.000000000002,
+      4625,
+      -3416.666666666667,
+      2812.4999999999995,
+      -25150,
+      4020.833333333333,
+      -16258.333333333332,
+      -2208.3333333333335,
+      -7762.5,
+      5295.833333333333,
+      -3137.4999999999995,
+      -2104.1666666666665,
+      -6604.166666666668,
+      4241.666666666667,
+      -2570.8333333333335,
+      1145.833333333333,
+      -6097.916666666666,
+      7587.500000000001,
+      -1281.25,
+      1999.9999999999982,
+      -9450,
+      11570.833333333334,
+      -2020.833333333333,
+      -26200.000000000004,
+      6541.666666666667,
+      1008.3333333333337,
+      16931.25,
+      21495.833333333332
+    ]
+  },
+  "rows": [
+    "pricer",
+    "station",
+    "nit",
+    "maniac"
+  ],
+  "constants": {
+    "BOUT": 50,
+    "MARGIN": 20000,
+    "MIN_BOUTS": 30,
+    "ALPHA": 0.05,
+    "ACTION_CLOCK_MS": 45000,
+    "STACK": 2000,
+    "BB": 20,
+    "SB": 10
+  }
+};
+</script>
+<script>
+(function () {
+  "use strict";
+  var P = window.BlueprintProto;
+  var R = window.RECORDED;
+  var bots = [0, 1, 2, 3, 4].map(function (i) { return P.makeBot(i); });
+
+  var POSITIONS = [
+    { key: "UTG", seat: 0, behind: 5, inPos: false },
+    { key: "HJ", seat: 1, behind: 4, inPos: false },
+    { key: "CO", seat: 2, behind: 3, inPos: false },
+    { key: "BTN", seat: 3, behind: 2, inPos: true },
+    { key: "SB", seat: 4, behind: 1, inPos: false },
+    { key: "BB", seat: 5, behind: 0, inPos: false }
+  ];
+  var FACINGS = [
+    { key: "unopened", label: "Unopened pot", unopened: true },
+    { key: "open", label: "Facing a 2.5 bb open", unopened: false, pot: 80, call: 50, currentBet: 50, raises: 1, live: 2 },
+    { key: "3bet", label: "Facing a 7.5 bb 3-bet", unopened: false, pot: 230, call: 150, currentBet: 150, raises: 2, live: 1 },
+    { key: "4bet", label: "Facing a 17 bb 4-bet", unopened: false, pot: 520, call: 340, currentBet: 340, raises: 3, live: 1 },
+    { key: "allin", label: "Facing a 100 bb all-in", unopened: false, pot: 2030, call: 2000, currentBet: 2000, raises: 3, live: 1 }
+  ];
+  var COLORS = ["#0b4f6c", "#176b82", "#2b879c", "#4aa2b4", "#72bbcb", "#9bd0da", "#c1e1e7", "#e7f2f4"];
+  var LABELS = {};
+  POSITIONS.forEach(function (p) { LABELS[p.key] = p; });
+  var state = {
+    tab: "explore",
+    explore: { bot: 0, pos: 3, cls: P.NAME.indexOf("AKs"), facing: "unopened" },
+    blueprint: { bot: 0 },
+    study: { bot: 0, bouts: 30, seed: 0xB10E, result: R.fleet[0], meta: { label: "recorded", bot: 0, bouts: 30, seed: 0xB10E, wallMs: R.fleet[0].wallMs } },
+    walk: { scenario: 0, step: 0, log: [] },
+    liveFleet: null,
+    running: false
+  };
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function clamp(x, lo, hi) { return x < lo ? lo : x > hi ? hi : x; }
+  function fmtInt(x) { return isFinite(x) ? Math.round(x).toLocaleString("en-US") : "∞"; }
+  function fmtSigned(x) { return isFinite(x) ? (x >= 0 ? "+" : "") + fmtInt(x) : (x < 0 ? "-∞" : "+∞"); }
+  function fmtPct(x) { return (x * 100).toFixed(1) + "%"; }
+  function fmtSeed(x) { return "0x" + (x >>> 0).toString(16).toUpperCase(); }
+  function actionText(a) {
+    if (!a) return "—";
+    if (a.kind === "raise") return "raise to " + fmtInt(a.to);
+    if (a.kind === "call") return "call";
+    if (a.kind === "fold") return "fold";
+    if (a.kind === "check") return "check";
+    return a.kind;
+  }
+  function actionClass(a) {
+    if (!a) return "";
+    if (a.kind === "raise") return "good";
+    if (a.kind === "fold") return "bad";
+    return "";
+  }
+
+  function option(value, label, selected) {
+    return '<option value="' + value + '"' + (selected ? " selected" : "") + ">" + label + "</option>";
+  }
+
+  // ---- controls built once ----
+  var botOptions = [0, 1, 2, 3, 4].map(function (i) {
+    return option(i, "bot " + i + " · " + (i === 0 ? "canary-style" : "stablemate " + i), i === 0);
+  }).join("");
+  $("#explore-bot").innerHTML = botOptions;
+  $("#blueprint-bot").innerHTML = botOptions;
+  $("#study-bot").innerHTML = botOptions;
+  $("#explore-pos").innerHTML = POSITIONS.map(function (p, i) {
+    return option(i, p.key + " · " + p.behind + " behind" + (p.inPos ? " · in position" : ""), i === 3);
+  }).join("");
+  $("#explore-facing").innerHTML = FACINGS.map(function (f, i) {
+    return option(f.key, f.label, i === 0);
+  }).join("");
+
+  function renderLegend(el, bot) {
+    el.innerHTML = [0, 1, 2, 3, 4, 5, 6, 7].map(function (b) {
+      return '<span><i class="swatch" style="background:' + COLORS[b] + '"></i>bucket ' + b + "</span>";
+    }).join("");
+  }
+
+  function renderGrid(el, botIndex, selected, onPick) {
+    var bot = bots[botIndex];
+    var html = "";
+    for (var r = 12; r >= 0; r--) {
+      for (var c = 12; c >= 0; c--) {
+        var cls = r * 13 + c;
+        var bucket = bot.abstraction[cls];
+        var dark = bucket <= 3;
+        html += '<button class="' + (cls === selected ? "sel" : "") + '" data-cls="' + cls +
+          '" style="background:' + COLORS[bucket] + ';color:' + (dark ? "#fff" : "#17242c") +
+          '" title="' + P.NAME[cls] + " · bucket " + bucket + '">' + P.NAME[cls] + "</button>";
+      }
+    }
+    el.innerHTML = html;
+    $all("button", el).forEach(function (b) {
+      b.addEventListener("click", function () { onPick(parseInt(b.getAttribute("data-cls"), 10)); });
+    });
+  }
+
+  // ---- explore ----
+  function exploreCtx() {
+    var pos = POSITIONS[state.explore.pos];
+    var f = FACINGS.filter(function (x) { return x.key === state.explore.facing; })[0];
+    var call = f.unopened ? (pos.seat === 5 ? 0 : pos.seat === 4 ? 10 : 20) : f.call;
+    var pot = f.unopened ? 30 : f.pot;
+    var currentBet = f.unopened ? 20 : f.currentBet;
+    var live = f.unopened ? pos.behind : f.live;
+    return {
+      seat: pos.seat, cls: state.explore.cls, call: call, pot: pot,
+      currentBet: currentBet, raises: f.unopened ? 0 : f.raises,
+      unopened: f.unopened, liveOpponents: live, behind: live,
+      inPosition: pos.inPos, dealInBout: 0, rng: P.mulberry32(0xE4)
+    };
+  }
+
+  function reasonFor(ctx, bot, bucket, eq, price) {
+    if (ctx.unopened) {
+      var ch = P.openChance(bot, ctx.behind, ctx.inPosition, bucket);
+      if (ch <= 0) return "bucket " + bucket + " is outside this position's opening share; the blueprint folds (or checks in the big blind).";
+      if (ch >= 1) return "bucket " + bucket + " is wholly inside this position's opening share; the blueprint raises to 2.5 bb.";
+      return "bucket " + bucket + " is the boundary bucket; the blueprint raises " + fmtPct(ch) + " of the time and folds otherwise.";
+    }
+    if (ctx.call === 0) return "there is nothing to call, so the blueprint checks.";
+    var fair = 1 / (ctx.liveOpponents + 1);
+    if (eq * (ctx.pot + ctx.call) - ctx.call < 0) return "the hand's equity is below the pot price, so the blueprint folds.";
+    if (eq > fair + bot.params.raiseAdj && eq > price + bot.params.callAdj + 0.03) return "the hand's equity is above the fair share and the price, so the blueprint raises.";
+    if (eq > price + bot.params.callAdj) return "the hand's equity covers the price, so the blueprint calls.";
+    return "the hand's equity is below the price, so the blueprint folds.";
+  }
+
+  function renderExplore() {
+    var bot = bots[state.explore.bot];
+    var pos = POSITIONS[state.explore.pos];
+    var f = FACINGS.filter(function (x) { return x.key === state.explore.facing; })[0];
+    var ctx = exploreCtx();
+    var ref = P.referenceAction(ctx);
+    var bpFn = P.blueprintAction(bot);
+    var bp = bpFn(ctx);
+    var bucket = bot.abstraction[ctx.cls];
+    var live = Math.max(1, Math.min(5, ctx.liveOpponents));
+    var eq = P.EQ[ctx.cls][live - 1];
+    var price = ctx.call > 0 ? ctx.call / (ctx.pot + ctx.call) : null;
+    var chance = ctx.unopened ? P.openChance(bot, ctx.behind, ctx.inPosition, bucket) : null;
+    var fair = 1 / (ctx.liveOpponents + 1);
+
+    $("#explore-spot").textContent = pos.key + " · " + f.label + " · " + ctx.liveOpponents +
+      " live opponent" + (ctx.liveOpponents === 1 ? "" : "s") + " · pot " + fmtInt(ctx.pot) +
+      " · call " + fmtInt(ctx.call);
+    $("#explore-out").innerHTML =
+      '<table><tbody>' +
+      '<tr><td>Hand</td><td class="num mono">' + P.NAME[ctx.cls] + " · bucket " + bucket + "</td></tr>" +
+      '<tr><td>Equity vs ' + live + " random hand" + (live === 1 ? "" : "s") + "</td><td class=\"num\">" + eq.toFixed(3) + "</td></tr>" +
+      '<tr><td>Fair share</td><td class="num">' + fair.toFixed(3) + "</td></tr>" +
+      '<tr><td>Price</td><td class="num">' + (price === null ? "—" : price.toFixed(3)) + "</td></tr>" +
+      '<tr><td>Bucket opening chance</td><td class="num">' + (chance === null ? "—" : fmtPct(chance)) + "</td></tr>" +
+      '<tr><td><strong>Reference</strong></td><td class="num ' + actionClass(ref) + '"><strong>' + actionText(ref) + "</strong></td></tr>" +
+      '<tr><td><strong>Blueprint</strong> (sampled)</td><td class="num ' + actionClass(bp) + '"><strong>' + actionText(bp) + "</strong></td></tr>" +
+      '<tr><td>Where the blueprint read</td><td class="num mono small">' + pos.key + " / bucket " + bucket + " / " + (ctx.unopened ? "open" : "facing") + "</td></tr>" +
+      "</tbody></table>" +
+      '<div class="callout">' + reasonFor(ctx, bot, bucket, eq, price) + "</div>";
+    $("#explore-grid-sub").textContent = "Bot " + state.explore.bot + "'s abstraction. Selected: " +
+      P.NAME[ctx.cls] + " (bucket " + bucket + ").";
+    renderGrid($("#explore-grid"), state.explore.bot, state.explore.cls, function (cls) {
+      state.explore.cls = cls;
+      renderExplore();
+    });
+    renderLegend($("#explore-legend"), bot);
+    $("#explore-lookup").textContent = R.lookupMedianNs.toFixed(0) + " ns";
+    $("#explore-decision").textContent = R.decisionMedianNs.toFixed(0) + " ns";
+  }
+
+  // ---- blueprint ----
+  function openingCell(p) {
+    if (p <= 0) return '<span class="open-cell" style="background:#f1f4f5;color:#8a969c">—</span>';
+    var bg = "rgba(11,110,127," + (0.10 + 0.28 * p) + ")";
+    return '<span class="open-cell" style="background:' + bg + ';color:' + (p > 0.55 ? "#fff" : "#17242c") + '">' + (p >= 1 ? "open" : Math.round(p * 100) + "%") + "</span>";
+  }
+
+  function defenceCounts(bot, base) {
+    var fn = P.blueprintAction(bot);
+    var counts = { fold: 0, call: 0, raise: 0, check: 0 };
+    for (var b = 0; b < 8; b++) {
+      var c = { fold: 0, call: 0, raise: 0, check: 0 };
+      for (var i = 0; i < bot.members[b].length; i++) {
+        var ctx = Object.assign({}, base, { cls: bot.members[b][i], rng: function () { return 0.5; } });
+        var a = fn(ctx);
+        c[a.kind]++;
+      }
+      counts[b] = c;
+    }
+    return counts;
+  }
+  function defenceRow(counts, total) {
+    var parts = [];
+    if (counts.raise) parts.push('<span class="good">raise ' + Math.round(100 * counts.raise / total) + "%</span>");
+    if (counts.call) parts.push("call " + Math.round(100 * counts.call / total) + "%");
+    if (counts.check) parts.push("check " + Math.round(100 * counts.check / total) + "%");
+    if (counts.fold) parts.push('<span class="bad">fold ' + Math.round(100 * counts.fold / total) + "%</span>");
+    return parts.join(" · ") || "—";
+  }
+
+  function renderBlueprint() {
+    var bot = bots[state.blueprint.bot];
+    renderGrid($("#blueprint-grid"), state.blueprint.bot, state.explore.cls, function (cls) {
+      state.explore.cls = cls;
+      renderExplore();
+      renderBlueprint();
+    });
+    renderLegend($("#blueprint-legend"), bot);
+
+    var rows = "";
+    for (var b = 0; b < 8; b++) {
+      var members = bot.members[b];
+      var mass = members.reduce(function (a, c) { return a + P.COMBOS[c]; }, 0);
+      var examples = members.slice(0, 7).map(function (c) { return P.NAME[c]; }).join(" ");
+      rows += "<tr><td><i class='swatch' style='background:" + COLORS[b] + "'></i> " + b + "</td>" +
+        '<td class="num">' + mass + "</td><td class='num'>" + members.length + "</td>" +
+        '<td class="num">' + bot.bucketEquity[b][0].toFixed(3) + "</td>" +
+        '<td class="num">' + bot.bucketEquity[b][4].toFixed(3) + "</td>" +
+        '<td class="small">' + examples + "</td></tr>";
+    }
+    $("#blueprint-buckets").innerHTML =
+      "<table><thead><tr><th>Bucket</th><th>Combos</th><th>Classes</th><th>Eq vs 1</th><th>Eq vs 5</th><th>Examples</th></tr></thead><tbody>" +
+      rows + "</tbody></table>";
+
+    var head = "<table><thead><tr><th>Position</th>";
+    for (var h = 0; h < 8; h++) head += "<th>b" + h + "</th>";
+    head += "</tr></thead><tbody>";
+    POSITIONS.forEach(function (p) {
+      var tr = "<tr" + (p.key === "BB" ? " class='muted-row'" : "") + "><td>" + p.key + "</td>";
+      for (var b2 = 0; b2 < 8; b2++) {
+        tr += "<td class='cell'>" + openingCell(P.openChance(bot, p.behind, p.inPos, b2)) + "</td>";
+      }
+      head += tr + "</tr>";
+    });
+    $("#blueprint-open").innerHTML = head + "</tbody></table>" +
+      '<p class="hint">The BB row is the repo\'s 42% share for a seat with zero players behind; an unopened big blind checks, so its opening row is informational.</p>';
+
+    var openBase = { seat: 3, call: 50, pot: 80, currentBet: 50, raises: 1, unopened: false, liveOpponents: 2, behind: 2, inPosition: true, dealInBout: 0 };
+    var threeBase = { seat: 3, call: 150, pot: 230, currentBet: 150, raises: 2, unopened: false, liveOpponents: 1, behind: 1, inPosition: true, dealInBout: 0 };
+    var openCounts = defenceCounts(bot, openBase);
+    var threeCounts = defenceCounts(bot, threeBase);
+    var def = "<table><thead><tr><th>Bucket</th><th>Facing 2.5 bb open</th><th>Facing 7.5 bb 3-bet</th></tr></thead><tbody>";
+    for (var b3 = 0; b3 < 8; b3++) {
+      def += "<tr><td><i class='swatch' style='background:" + COLORS[b3] + "'></i> " + b3 + "</td><td>" +
+        defenceRow(openCounts[b3], bot.members[b3].length) + "</td><td>" +
+        defenceRow(threeCounts[b3], bot.members[b3].length) + "</td></tr>";
+    }
+    $("#blueprint-defence").innerHTML = def + "</tbody></table>";
+
+    $("#bp-width-val").textContent = bot.params.openWidth.toFixed(2);
+    $("#bp-p-open").textContent = bot.params.openWidth.toFixed(2);
+    $("#bp-p-call").textContent = bot.params.callAdj.toFixed(2);
+    $("#bp-p-raise").textContent = bot.params.raiseAdj.toFixed(2);
+    $("#bp-bytes").textContent = R.packedBytes + " B";
+    $("#bp-fullbytes").textContent = R.fullBytes.toLocaleString("en-US") + " B";
+    $("#bp-build").textContent = R.buildMedianMs.toFixed(3) + " ms";
+    $("#bp-lookup").textContent = R.lookupMedianNs.toFixed(0) + " ns";
+    $("#bp-decision").textContent = R.decisionMedianNs.toFixed(0) + " ns";
+  }
+
+  // ---- study ----
+  function parseSeed(text) {
+    var t = (text || "").trim();
+    var v = t.indexOf("0x") === 0 || t.indexOf("0X") === 0 ? parseInt(t, 16) : parseInt(t, 10);
+    return isNaN(v) ? 0xB10E : v >>> 0;
+  }
+  function readWord(read) {
+    if (read.admission === "Admitted") return "ADMITTED · GO";
+    if (read.admission === "Refused") return "REFUSED · NO-GO";
+    return "UNRESOLVED · NOT YET";
+  }
+  function readClass(read) { return read.admission.toLowerCase(); }
+
+  function renderVerdict(result, meta) {
+    var read = result.read;
+    var lower = read.mean - read.radius;
+    var upper = read.mean + read.radius;
+    var why;
+    if (read.admission === "Admitted") {
+      why = "The interval [" + fmtSigned(lower) + ", " + fmtSigned(upper) + "] is narrower than the 20,000 mbb/100 margin and is not wholly below minus the margin.";
+    } else if (read.admission === "Refused") {
+      why = "The whole interval is below minus the margin.";
+    } else if (read.bouts < 30) {
+      why = "Fewer than 30 bouts, so the rule refuses to read it. Run at least 30.";
+    } else {
+      why = "The interval is wider than the 20,000 mbb/100 margin, so it cannot tell a pass from a loss.";
+    }
+    $("#study-verdict").innerHTML =
+      '<div class="verdict ' + readClass(read) + '">' +
+      '<div class="tiny muted">' + meta.label + " · bot " + meta.bot + " · " + read.bouts + " bouts · seed " + fmtSeed(meta.seed) + "</div>" +
+      '<div class="word">' + readWord(read) + "</div>" +
+      '<div class="numbers">pooled mean <strong>' + fmtSigned(read.mean) + "</strong> mbb/100 · 95% radius <strong>" + fmtInt(read.radius) + "</strong> mbb/100 · margin <strong>20,000</strong> mbb/100</div>" +
+      '<div class="numbers tiny" style="margin-top:6px">' + why + "</div>" +
+      '<div class="statgrid">' +
+      '<div class="stat"><div class="k">mean</div><div class="v">' + fmtSigned(read.mean) + "</div></div>" +
+      '<div class="stat"><div class="k">95% radius</div><div class="v">' + fmtInt(read.radius) + "</div></div>" +
+      '<div class="stat"><div class="k">mean + radius</div><div class="v">' + fmtSigned(read.mean + read.radius) + "</div></div>" +
+      '<div class="stat"><div class="k">bouts</div><div class="v">' + read.bouts + "</div></div>" +
+      "</div></div>";
+  }
+
+  function renderRows(result) {
+    var rows = result.rows || [];
+    var html = "<table><thead><tr><th>Row</th><th>mbb/100</th><th>95% CI</th><th>Deals</th><th>Hands</th></tr></thead><tbody>";
+    rows.forEach(function (r) {
+      html += "<tr><td><strong>" + r.name + "</strong></td><td class='num " + (r.mbb < 0 ? "bad" : "good") + "'>" + fmtSigned(r.mbb) +
+        "</td><td class='num'>±" + fmtInt(r.ci95) + "</td><td class='num'>" + (r.bouts * 50).toLocaleString("en-US") +
+        "</td><td class='num'>" + (r.bouts * 50 * 6).toLocaleString("en-US") + "</td></tr>";
+    });
+    $("#study-rows").innerHTML = html + "</tbody></table>" +
+      '<p class="hint">Rows are the prototype\'s four independent opponents. The production margin check pools every Arena row in the 6-max league; this prototype does not have v10.0.2 or the learning/switching archetypes.</p>';
+  }
+
+  function renderChart(result) {
+    var pooled = result.pooled || [];
+    if (!pooled.length) { $("#study-chart").innerHTML = '<p class="muted small">No per-bout series in this recorded slice.</p>'; return; }
+    var read = result.read;
+    var W = 900, H = 300, L = 76, R = 24, T = 20, B = 34;
+    var yMin = -25000, yMax = 25000;
+    var n = pooled.length;
+    var x = function (i) { return L + (n === 1 ? 0.5 : i / (n - 1)) * (W - L - R); };
+    var y = function (v) { return T + (yMax - v) / (yMax - yMin) * (H - T - B); };
+    var parts = [];
+    parts.push('<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Per-bout pooled difference">');
+    [-20000, -10000, 0, 10000, 20000].forEach(function (v) {
+      parts.push('<line x1="' + L + '" y1="' + y(v) + '" x2="' + (W - R) + '" y2="' + y(v) + '" stroke="' + (v === 0 ? "#b8c4c9" : "#e5ebed") + '" stroke-width="1"/>');
+      parts.push('<text x="' + (L - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="11" fill="#6b7b84">' + fmtSigned(v) + "</text>");
+    });
+    parts.push('<line x1="' + L + '" y1="' + y(-20000) + '" x2="' + (W - R) + '" y2="' + y(-20000) + '" stroke="#b23a48" stroke-dasharray="5 4" stroke-width="1.2"/>');
+    parts.push('<line x1="' + L + '" y1="' + y(20000) + '" x2="' + (W - R) + '" y2="' + y(20000) + '" stroke="#b23a48" stroke-dasharray="5 4" stroke-width="1.2"/>');
+    parts.push('<text x="' + (W - R) + '" y="' + (y(-20000) - 5) + '" text-anchor="end" font-size="10" fill="#b23a48">−20 bb/100</text>');
+    parts.push('<text x="' + (W - R) + '" y="' + (y(20000) - 5) + '" text-anchor="end" font-size="10" fill="#b23a48">+20 bb/100</text>');
+    var upper = read.mean + read.radius, lower = read.mean - read.radius;
+    if (isFinite(upper) && isFinite(lower)) {
+      parts.push('<rect x="' + L + '" y="' + y(upper) + '" width="' + (W - L - R) + '" height="' + Math.max(1, y(lower) - y(upper)) + '" fill="rgba(11,110,127,0.10)"/>');
+      parts.push('<line x1="' + L + '" y1="' + y(read.mean) + '" x2="' + (W - R) + '" y2="' + y(read.mean) + '" stroke="#0b6e7f" stroke-width="1.4"/>');
+      parts.push('<text x="' + (L + 8) + '" y="' + (y(read.mean) - 6) + '" font-size="10" fill="#0b6e7f">mean ' + fmtSigned(read.mean) + "</text>");
+    }
+    pooled.forEach(function (v, i) {
+      parts.push('<circle cx="' + x(i) + '" cy="' + y(v) + '" r="2.6" fill="#0b4f6c"/>');
+    });
+    parts.push('<text x="' + (W / 2) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="#6b7b84">bout</text>');
+    parts.push('<text x="12" y="' + (T + 4) + '" font-size="11" fill="#6b7b84">mbb/100</text>');
+    parts.push("</svg>");
+    $("#study-chart").innerHTML = parts.join("");
+    $("#study-chart-sub").textContent = "The pooled blueprint-minus-reference difference for each bout, in mbb/100. The dashed lines are the 20 bb/100 margin; the band is the 95% confidence sequence around the mean.";
+  }
+
+  function renderCoverage(result) {
+    var cov = result.coverage;
+    if (!cov) { $("#study-coverage").innerHTML = ""; return; }
+    var html = '<p class="small"><strong>' + cov.visited + " of " + cov.cells + "</strong> blueprint cells visited · <strong>" + fmtInt(cov.decisions) + "</strong> blueprint decisions counted.</p>";
+    html += '<div class="coverage-grid"><div class="pos"></div>';
+    for (var b = 0; b < 8; b++) html += '<div style="text-align:center;color:#6b7b84">b' + b + "</div>";
+    POSITIONS.forEach(function (p, pi) {
+      html += '<div class="pos">' + p.key + "</div>";
+      for (var b2 = 0; b2 < 8; b2++) {
+        var open = cov.grid[(pi * 8 + b2) * 2];
+        var facing = cov.grid[(pi * 8 + b2) * 2 + 1];
+        html += '<div class="cov-cell" title="' + p.key + " bucket " + b2 + ": " + (open ? "open visited" : "open unvisited") + ", " + (facing ? "facing visited" : "facing unvisited") + '">' +
+          '<i class="cov-dot ' + (open ? "on" : "") + '"></i><i class="cov-dot ' + (facing ? "on" : "") + '"></i></div>';
+      }
+    });
+    html += "</div><p class='hint small'>Left square: open node. Right square: facing node. Unvisited cells are cells the 30-bout sample never reached, not errors.</p>";
+    $("#study-coverage").innerHTML = html;
+  }
+
+  function fleetRow(f) {
+    return "<tr><td>bot " + f.bot + "</td><td class='num " + (f.read.mean < 0 ? "bad" : "good") + "'>" + fmtSigned(f.read.mean) +
+      "</td><td class='num'>±" + fmtInt(f.read.radius) + "</td><td><strong class='" + (f.read.admission === "Admitted" ? "good" : "") + "'>" + f.read.admission + "</strong></td>" +
+      "<td class='num'>" + f.coverage.visited + "/" + f.coverage.cells + "</td><td class='num'>" + fmtInt(f.wallMs) + " ms</td></tr>";
+  }
+  function renderFleet() {
+    var html = "<table><thead><tr><th>Bot</th><th>mbb/100</th><th>95% radius</th><th>Margin</th><th>Coverage</th><th>Wall</th></tr></thead><tbody>";
+    R.fleet.forEach(function (f) { html += fleetRow(f); });
+    $("#study-fleet").innerHTML = html + "</tbody></table>";
+    if (state.liveFleet) {
+      var live = "<h3 style='margin-top:18px'>Live fleet run</h3><table><thead><tr><th>Bot</th><th>mbb/100</th><th>95% radius</th><th>Margin</th><th>Coverage</th><th>Wall</th></tr></thead><tbody>";
+      state.liveFleet.forEach(function (f) { live += fleetRow(f); });
+      $("#study-live-fleet").innerHTML = live + "</tbody></table>";
+    } else {
+      $("#study-live-fleet").innerHTML = "";
+    }
+  }
+  function renderSeeds() {
+    var html = "<table><thead><tr><th>Seed</th><th>mbb/100</th><th>95% radius</th><th>Margin</th></tr></thead><tbody>";
+    R.seeds.forEach(function (s) {
+      html += "<tr><td class='mono'>" + fmtSeed(s.seed) + "</td><td class='num " + (s.read.mean < 0 ? "bad" : "good") + "'>" + fmtSigned(s.read.mean) +
+        "</td><td class='num'>±" + fmtInt(s.read.radius) + "</td><td><strong class='" + (s.read.admission === "Admitted" ? "good" : "") + "'>" + s.read.admission + "</strong></td></tr>";
+    });
+    $("#study-seeds").innerHTML = html + "</tbody></table>";
+    var l = R.long;
+    $("#study-long").innerHTML = "<h3 style='margin-top:18px'>Longer run</h3><table><tbody>" +
+      "<tr><td>Bot 0, 50 bouts, seed 0xB10E</td><td class='num'>" + fmtSigned(l.read.mean) + "</td><td class='num'>±" + fmtInt(l.read.radius) + "</td><td><strong class='good'>" + l.read.admission + "</strong></td></tr>" +
+      "</tbody></table><p class='hint small'>The same read with 50 bouts, for the interval's direction of travel.</p>";
+  }
+
+  function shareOfClock(ms) {
+    var p = ms / R.constants.ACTION_CLOCK_MS * 100;
+    return p < 0.001 ? p.toExponential(2) + "%" : p.toFixed(4) + "%";
+  }
+  function renderBudget() {
+    var lock = R.constants.ACTION_CLOCK_MS;
+    var lookMs = R.lookupMedianNs / 1e6;
+    var decMs = R.decisionMedianNs / 1e6;
+    var buildMs = R.buildMedianMs;
+    var coldMs = R.buildTimesMs[0];
+    var studyMs = R.fleet[0].wallMs;
+    $("#budget-lookup").textContent = R.lookupMedianNs.toFixed(0) + " ns";
+    $("#budget-lookup-1000").textContent = (R.lookupMedianNs * 1000 / 1000).toFixed(1) + " µs";
+    $("#budget-lookup-share").textContent = shareOfClock(lookMs);
+    $("#budget-decision").textContent = R.decisionMedianNs.toFixed(0) + " ns";
+    $("#budget-decision-1000").textContent = (R.decisionMedianNs * 1000 / 1000).toFixed(1) + " µs";
+    $("#budget-decision-share").textContent = shareOfClock(decMs);
+    $("#budget-build").textContent = buildMs.toFixed(3) + " ms";
+    $("#budget-build-1000").textContent = (buildMs * 1000).toFixed(0) + " ms";
+    $("#budget-build-share").textContent = shareOfClock(buildMs);
+    $("#budget-cold").textContent = coldMs.toFixed(2) + " ms";
+    $("#budget-cold-1000").textContent = coldMs.toFixed(2) + " s";
+    $("#budget-cold-share").textContent = shareOfClock(coldMs);
+    $("#budget-study").textContent = (studyMs / 1000).toFixed(2) + " s";
+    $("#budget-study-share").textContent = shareOfClock(studyMs);
+  }
+
+  function renderHeadline() {
+    var f = R.fleet[0];
+    var all = R.fleet.every(function (x) { return x.read.admission === "Admitted"; });
+    var cls = f.read.admission === "Admitted" ? "good" : f.read.admission === "Refused" ? "bad" : "";
+    $("#headline-verdict").innerHTML =
+      '<span class="hv-kicker">Recorded 30-bout verdict</span>' +
+      '<strong class="' + cls + '">' + readWord(f.read) + "</strong>" +
+      "<span>bot 0 pooled mean " + fmtSigned(f.read.mean) + " mbb/100 · 95% radius " + fmtInt(f.read.radius) +
+      " mbb/100 · margin 20,000 · " + (all ? "all five bots Admitted" : "see the study") + "</span>" +
+      '<button class="pill" id="headline-go">Open the study</button>';
+    $("#headline-go").addEventListener("click", function () { switchTab("study"); });
+  }
+
+  function renderStudy() {
+    var result = state.study.result;
+    var meta = state.study.meta;
+    renderVerdict(result, meta);
+    renderRows(result);
+    renderChart(result);
+    renderCoverage(result);
+    renderBudget();
+    renderFleet();
+    renderSeeds();
+    $("#study-bar").style.width = state.running ? $("#study-bar").style.width : "0%";
+  }
+
+  async function studyNow(botIndex, bouts, seed) {
+    var t0 = performance.now();
+    var result = await P.runStudy(bots[botIndex], bouts, seed, async function (done, total) {
+      var pct = Math.round(done / total * 100);
+      $("#study-bar").style.width = pct + "%";
+      $("#study-status").textContent = "bout " + done + " / " + total;
+      await new Promise(function (r) { setTimeout(r, 0); });
+    });
+    var wall = performance.now() - t0;
+    return { result: result, wall: wall };
+  }
+
+  async function runLive() {
+    if (state.running) return;
+    state.running = true;
+    $("#study-run").disabled = true;
+    $("#study-all").disabled = true;
+    $("#study-bar").style.width = "0%";
+    $("#study-status").textContent = "starting…";
+    try {
+      var botIndex = parseInt($("#study-bot").value, 10);
+      var bouts = parseInt($("#study-bouts").value, 10);
+      var seed = parseSeed($("#study-seed").value);
+      var got = await studyNow(botIndex, bouts, seed);
+      state.study.result = got.result;
+      state.study.meta = { label: "live", bot: botIndex, bouts: bouts, seed: seed, wallMs: got.wall };
+      $("#study-status").textContent = "live run finished in " + fmtInt(got.wall) + " ms (" + bouts + " bouts × 4 rows × 50 deals × 6 seats × 2 policies).";
+    } catch (e) {
+      $("#study-status").textContent = "run failed: " + e;
+    } finally {
+      state.running = false;
+      $("#study-run").disabled = false;
+      $("#study-all").disabled = false;
+      renderStudy();
+    }
+  }
+
+  async function runAll() {
+    if (state.running) return;
+    state.running = true;
+    $("#study-run").disabled = true;
+    $("#study-all").disabled = true;
+    var out = [];
+    try {
+      for (var i = 0; i < 5; i++) {
+        $("#study-bar").style.width = Math.round(100 * i / 5) + "%";
+        $("#study-status").textContent = "bot " + i + " · 30 bouts";
+        var got = await studyNow(i, 30, 0xB10E);
+        out.push({ bot: i, read: got.result.read, rows: got.result.rows, coverage: got.result.coverage, pooled: got.result.pooled, wallMs: got.wall });
+      }
+      state.liveFleet = out;
+      $("#study-status").textContent = "five-bot live run finished. Select a bot and press Run study to inspect one.";
+      $("#study-bar").style.width = "100%";
+    } finally {
+      state.running = false;
+      $("#study-run").disabled = false;
+      $("#study-all").disabled = false;
+      renderStudy();
+    }
+  }
+
+  // ---- walkthroughs ----
+  var SCENARIOS = [
+    {
+      title: "The button versus an UTG open",
+      intro: "A normal open is 2.5 bb. The button's blueprint reads its own bucket and its own hand's equity. Watch the answer change when the cards change, not the price.",
+      steps: [
+        {
+          text: "Put the button on AKs facing a 2.5 bb open.",
+          run: function () { setExplore(3, "open", P.NAME.indexOf("AKs")); return "AKs on the button: the blueprint should continue."; }
+        },
+        {
+          text: "Now put the button on 72o in the same spot.",
+          run: function () { setExplore(3, "open", P.NAME.indexOf("72o")); return "72o: the class equity is below the price, so the blueprint folds."; }
+        },
+        {
+          text: "Run one bout (50 deals) and read the per-bout difference.",
+          run: async function () {
+            switchTab("study");
+            $("#study-bot").value = "0";
+            $("#study-bouts").value = "1";
+            $("#study-seed").value = "0xB10E";
+            await runLive();
+            return "One bout is below the 30-bout minimum, so the rule says UNRESOLVED. That is the rule working, not a failed run.";
+          }
+        }
+      ]
+    },
+    {
+      title: "A price is a price",
+      intro: "The same hand faces three prices. The blueprint's only inputs are the hand's equity, the price, and the frozen threshold; this walkthrough makes that visible.",
+      steps: [
+        {
+          text: "Button, AKs, facing a 2.5 bb open.",
+          run: function () { setExplore(3, "open", P.NAME.indexOf("AKs")); return "AKs continues against an open."; }
+        },
+        {
+          text: "Same hand, now facing a 7.5 bb 3-bet.",
+          run: function () { setExplore(3, "3bet", P.NAME.indexOf("AKs")); return "The price rises; the blueprint re-reads the same hand against it."; }
+        },
+        {
+          text: "Same 3-bet, now 72o.",
+          run: function () { setExplore(3, "3bet", P.NAME.indexOf("72o")); return "72o folds: its equity does not cover the 3-bet price."; }
+        }
+      ]
+    },
+    {
+      title: "Read the margin, not the story",
+      intro: "The margin rule is the decision procedure. Thirty bouts is the minimum; the sequence radius has to be narrower than 20 bb/100 before the rule says anything.",
+      steps: [
+        {
+          text: "Run 30 bouts for bot 0 at seed 0xB10E.",
+          run: async function () {
+            switchTab("study");
+            $("#study-bot").value = "0";
+            $("#study-bouts").value = "30";
+            $("#study-seed").value = "0xB10E";
+            await runLive();
+            return "Look at the verdict card: mean, radius, and the interval against the margin.";
+          }
+        },
+        {
+          text: "Run the same bot at a different seed.",
+          run: async function () {
+            switchTab("study");
+            $("#study-bot").value = "0";
+            $("#study-bouts").value = "30";
+            $("#study-seed").value = "0xB10F";
+            await runLive();
+            return "A verdict that flips with the seed would not be a verdict. The seed sweep below is the cheap check.";
+          }
+        }
+      ]
+    }
+  ];
+
+  function setExplore(posIndex, facing, cls) {
+    state.explore.pos = posIndex;
+    state.explore.facing = facing;
+    state.explore.cls = cls;
+    $("#explore-pos").value = String(posIndex);
+    $("#explore-facing").value = facing;
+    switchTab("explore");
+    renderExplore();
+  }
+
+  function renderWalkTabs() {
+    $("#walk-tabs").innerHTML = SCENARIOS.map(function (s, i) {
+      return '<button class="' + (i === state.walk.scenario ? "active" : "") + '" data-walk="' + i + '">' + s.title + "</button>";
+    }).join("");
+    $all("#walk-tabs button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        state.walk.scenario = parseInt(b.getAttribute("data-walk"), 10);
+        state.walk.step = 0;
+        state.walk.log = [];
+        renderWalk();
+      });
+    });
+  }
+
+  function renderWalk() {
+    renderWalkTabs();
+    var s = SCENARIOS[state.walk.scenario];
+    $("#walk-intro").innerHTML = '<p class="sub">' + s.intro + "</p>";
+    $("#walk-steps").innerHTML = s.steps.map(function (step, i) {
+      var done = i < state.walk.step;
+      var next = i === state.walk.step;
+      return '<div class="step ' + (done ? "done" : next ? "next" : "") + '">' +
+        '<div class="step-title">Step ' + (i + 1) + (done ? " · done" : "") + "</div>" +
+        '<div class="step-body">' + step.text + "</div>" +
+        '<button class="pill" data-step="' + i + '">' + (done ? "Run again" : "Do this step") + "</button>" +
+        "</div>";
+    }).join("");
+    $all("#walk-steps button").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        var i = parseInt(b.getAttribute("data-step"), 10);
+        b.disabled = true;
+        try {
+          var note = await s.steps[i].run();
+          state.walk.step = Math.max(state.walk.step, i + 1);
+          state.walk.log.push("Step " + (i + 1) + ": " + note);
+        } catch (e) {
+          state.walk.log.push("Step " + (i + 1) + " failed: " + e);
+        }
+        b.disabled = false;
+        renderWalk();
+      });
+    });
+    var log = $("#walk-log");
+    if (!state.walk.log.length) {
+      log.innerHTML = '<p class="muted">No steps run yet.</p>';
+    } else {
+      log.innerHTML = state.walk.log.map(function (p) { return "<p>" + p + "</p>"; }).join("");
+      log.scrollTop = log.scrollHeight;
+    }
+  }
+
+  // ---- tabs ----
+  function switchTab(name) {
+    state.tab = name;
+    $all("nav.tabs button").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-tab") === name);
+    });
+    $all("section.tab").forEach(function (s) {
+      s.classList.toggle("active", s.id === "tab-" + name);
+    });
+    if (name === "explore") renderExplore();
+    if (name === "blueprint") renderBlueprint();
+    if (name === "study") renderStudy();
+    if (name === "walkthroughs") renderWalk();
+    if (name === "constants") renderConstants();
+  }
+  $all("nav.tabs button").forEach(function (b) {
+    b.addEventListener("click", function () { switchTab(b.getAttribute("data-tab")); });
+  });
+
+  // ---- events ----
+  $("#explore-bot").addEventListener("change", function () { state.explore.bot = parseInt(this.value, 10); renderExplore(); });
+  $("#explore-pos").addEventListener("change", function () { state.explore.pos = parseInt(this.value, 10); renderExplore(); });
+  $("#explore-facing").addEventListener("change", function () { state.explore.facing = this.value; renderExplore(); });
+  $("#explore-random").addEventListener("click", function () {
+    var rng = P.mulberry32((Date.now() & 0x7fffffff) >>> 0);
+    state.explore.cls = Math.floor(rng() * 169);
+    renderExplore();
+  });
+  $("#explore-reset").addEventListener("click", function () {
+    state.explore = { bot: 0, pos: 3, cls: P.NAME.indexOf("AKs"), facing: "unopened" };
+    $("#explore-bot").value = "0";
+    $("#explore-pos").value = "3";
+    $("#explore-facing").value = "unopened";
+    renderExplore();
+  });
+
+  $("#blueprint-bot").addEventListener("change", function () {
+    state.blueprint.bot = parseInt(this.value, 10);
+    $("#bp-width").value = bots[state.blueprint.bot].params.openWidth;
+    renderBlueprint();
+  });
+  $("#bp-width").addEventListener("input", function () {
+    bots[state.blueprint.bot].params.openWidth = parseFloat(this.value);
+    P.rebuildOpenChance(bots[state.blueprint.bot]);
+    renderBlueprint();
+  });
+  $("#bp-reset").addEventListener("click", function () {
+    bots[state.blueprint.bot].params = { openWidth: 1.0, callAdj: 0.0, raiseAdj: 0.10 };
+    P.rebuildOpenChance(bots[state.blueprint.bot]);
+    $("#bp-width").value = "1";
+    renderBlueprint();
+  });
+  $("#bp-measure").addEventListener("click", function () {
+    var bot = bots[state.blueprint.bot];
+    var build = P.benchBuild(20);
+    var lookup = P.benchLookup(bot, 1000000);
+    var decision = P.benchDecision(bot, 1000000);
+    $("#bp-measure-out").textContent = "This browser: build " + build.medianMs.toFixed(3) +
+      " ms/bot · lookup " + lookup.nsPerDecision.toFixed(1) + " ns · decision " +
+      decision.nsPerDecision.toFixed(1) + " ns. The recorded run was build " +
+      R.buildMedianMs.toFixed(3) + " ms, lookup " + R.lookupMedianNs.toFixed(1) + " ns, decision " +
+      R.decisionMedianNs.toFixed(1) + " ns.";
+  });
+
+  $("#study-run").addEventListener("click", runLive);
+  $("#study-all").addEventListener("click", runAll);
+  $("#study-bot").addEventListener("change", function () { state.study.bot = parseInt(this.value, 10); });
+  $("#study-bouts").addEventListener("change", function () { state.study.bouts = parseInt(this.value, 10); });
+  $("#study-seed").addEventListener("change", function () { state.study.seed = parseSeed(this.value); });
+  $("#walk-reset").addEventListener("click", function () {
+    state.walk.step = 0; state.walk.log = []; renderWalk();
+  });
+
+  function renderConstants() {
+    $("#constants-recorded").innerHTML = "Recorded " + R.generated.slice(0, 10) + ": five bots, 30 bouts each, seed 0xB10E. All five " +
+      "<strong class='good'>Admitted</strong>. Fleet mean " + fmtSigned(R.fleet.reduce(function (a, f) { return a + f.read.mean; }, 0) / R.fleet.length) +
+      " mbb/100; worst radius " + fmtInt(Math.max.apply(null, R.fleet.map(function (f) { return f.read.radius; }))) +
+      " mbb/100. Bot 0's 50-bout read: " + fmtSigned(R.long.read.mean) + " ± " + fmtInt(R.long.read.radius) + " (" + R.long.read.admission + ").";
+  }
+
+  // ---- boot ----
+  renderHeadline();
+  renderExplore();
+  renderBlueprint();
+  renderStudy();
+  renderWalk();
+  renderConstants();
+})();
+</script>
+</body>
+</html>
