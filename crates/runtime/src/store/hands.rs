@@ -1,5 +1,20 @@
+use rusqlite::params;
+
 use super::{Store, StoreError};
 use crate::record::Hand;
+
+pub(super) const SEASON_DOWNLOAD_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS verified_season_exports (
+    season_id   TEXT NOT NULL,
+    hands       INTEGER NOT NULL CHECK (hands >= 0),
+    recorded_ms INTEGER NOT NULL,
+    PRIMARY KEY (season_id, hands)
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS verified_season_exports_no_update BEFORE UPDATE ON verified_season_exports
+    BEGIN SELECT RAISE(ABORT, 'verified season exports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS verified_season_exports_no_delete BEFORE DELETE ON verified_season_exports
+    BEGIN SELECT RAISE(ABORT, 'verified season exports are append-only'); END;
+";
 
 /// A hand and its distinct export, kept apart until the fit validates either copy.
 pub struct FitHand {
@@ -13,6 +28,30 @@ impl Store {
     /// A download's writer may wait for live hands to finish committing.
     pub(crate) fn wait_for_download_writer(&self) -> Result<(), StoreError> {
         self.db.busy_timeout(std::time::Duration::from_secs(30))?;
+        Ok(())
+    }
+
+    pub(crate) fn verified_season(&self, season_id: &str) -> Result<u64, StoreError> {
+        let hands: i64 = self.db.query_row(
+            "SELECT COALESCE(MAX(hands), 0) FROM verified_season_exports WHERE season_id = ?1",
+            [season_id],
+            |row| row.get(0),
+        )?;
+        Ok(u64::try_from(hands).unwrap_or(0))
+    }
+
+    pub(crate) fn record_verified_season(
+        &self,
+        season_id: &str,
+        hands: u64,
+        recorded_ms: i64,
+    ) -> Result<(), StoreError> {
+        let hands = i64::try_from(hands).map_err(|e| StoreError(e.to_string()))?;
+        self.db.execute(
+            "INSERT INTO verified_season_exports (season_id, hands, recorded_ms)
+             VALUES (?1, ?2, ?3) ON CONFLICT (season_id, hands) DO NOTHING",
+            params![season_id, hands, recorded_ms],
+        )?;
         Ok(())
     }
 

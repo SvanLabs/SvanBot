@@ -433,6 +433,15 @@ for name in <name> <name> ...; do
 done
 ```
 
+Add `--all-seasons` to include every closed season the venue lists in that bot's own statistics.
+The command checks each closed export against its season dates and reported hand counts. A
+verified closed season is recorded in that bot's store and skipped on retry. The command prints a
+failure for each unavailable or incomplete export and continues through the other seasons.
+
+Fit each bot's history on a private snapshot of its own store. A passing fit writes the model
+beside the supplied store, so use the snapshot path in `SVANBOT_STORE` while training. Keep the
+model there until it clears the paired Arena and the rollout guard.
+
 v11 starts from a fresh store. The v10 stores are archived in `~/archive/svanbot-v10/` and are
 never migrated.
 

@@ -184,6 +184,7 @@ impl Store {
         // WAL with NORMAL sync keeps every committed write but the last few across a power cut.
         db.execute_batch("PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
         db.execute_batch(SCHEMA)?;
+        db.execute_batch(hands::SEASON_DOWNLOAD_SCHEMA)?;
         db.execute(
             "INSERT INTO meta (key, value) VALUES ('bot', ?1) ON CONFLICT (key) DO NOTHING",
             [bot],

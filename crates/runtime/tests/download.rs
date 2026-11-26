@@ -247,3 +247,89 @@ fn an_unusable_export_keeps_a_partial_live_hands_usable_actions() {
     assert_eq!(sides.len(), 1);
     assert_eq!(export, Some(false));
 }
+
+#[test]
+fn all_seasons_verifies_closed_exports_and_skips_them_on_retry() {
+    use svanbot_runtime::download::download_all;
+
+    let (store, _) = store("all-seasons");
+    let catalog = json!([
+        {"season_number": 4, "season_id": "active", "status": "active"},
+        {"season_number": 3, "season_id": "ended", "status": "ended",
+         "start_date": "2026-09-01T00:00:00Z", "end_date": "2026-09-15T00:00:00Z"}
+    ]);
+    let stats = json!({"seasons": [{"season_number": 3, "hands_played": 1}]});
+    let old = json!([{
+        "hand_id": "old", "started_at": "2026-09-02T01:00:00+01:00"
+    }]);
+    let (base, served) = venue_with_totals(vec![
+        (json!({"agent_id": "bot"}), None),
+        (stats.clone(), None),
+        (catalog.clone(), None),
+        (json!([{"hand_id": "active"}]), Some(1)),
+        (old, Some(1)),
+    ]);
+    download_all(&mut rest(&base), &store, || 5, |_, _| {}).unwrap();
+    let paths = served.join().unwrap();
+    assert!(!paths[3].contains("season_id="));
+    assert!(paths[4].contains("season_id=ended"));
+    assert_eq!(store.hands().unwrap().len(), 2);
+
+    let (base, served) = venue(vec![
+        json!({"agent_id": "bot"}),
+        stats,
+        catalog,
+        json!([{"hand_id": "active"}]),
+    ]);
+    let mut skipped = false;
+    download_all(
+        &mut rest(&base),
+        &store,
+        || 6,
+        |season, result| {
+            if season == Some(3) {
+                skipped = matches!(result, Ok(None));
+            }
+        },
+    )
+    .unwrap();
+    assert!(skipped);
+    assert_eq!(served.join().unwrap().len(), 4);
+    assert_eq!(store.hands().unwrap().len(), 2);
+}
+
+#[test]
+fn a_wrong_season_is_never_imported_or_marked_complete() {
+    use svanbot_runtime::download::download_all;
+
+    let (store, _) = store("wrong-season");
+    let stats = json!({"seasons": [{"season_number": 3, "hands_played": 1}]});
+    let catalog = json!([{
+        "season_number": 3, "season_id": "ended", "status": "ended",
+        "start_date": "2026-09-01T00:00:00Z", "end_date": "2026-09-15T00:00:00Z"
+    }]);
+    for _ in 0..2 {
+        let (base, served) = venue(vec![
+            json!({"agent_id": "bot"}),
+            stats.clone(),
+            catalog.clone(),
+            json!([{"hand_id": "active"}]),
+            json!([{"hand_id": "wrong", "started_at": "2026-09-16T00:00:00Z"}]),
+        ]);
+        let mut rejected = false;
+        let result = download_all(
+            &mut rest(&base),
+            &store,
+            || 5,
+            |season, result| {
+                if season == Some(3) {
+                    rejected = result.is_err();
+                }
+            },
+        );
+        assert!(result.is_err());
+        assert!(rejected);
+        assert_eq!(served.join().unwrap().len(), 5);
+        assert_eq!(store.hands().unwrap().len(), 1);
+    }
+}

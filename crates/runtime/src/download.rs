@@ -26,6 +26,10 @@ use crate::record::Hand;
 use crate::rest::{Rest, RestError};
 use crate::store::{Source, Store, StoreError};
 
+mod seasons;
+pub use seasons::download_all;
+use seasons::{ClosedSeason, history};
+
 /// The profile, which names the bot's `agent_id`.
 pub const ME: &str = "/me";
 
@@ -72,6 +76,7 @@ pub enum DownloadError {
     Store(StoreError),
     /// The profile named no `agent_id`, so there is no export to read.
     NoAgentId,
+    History(String),
     /// The export declared more hands than it actually supplied.
     Incomplete {
         expected: u64,
@@ -84,6 +89,7 @@ impl std::fmt::Display for DownloadError {
         match self {
             Self::Rest(error) => write!(f, "{error}"),
             Self::Store(error) => write!(f, "{error}"),
+            Self::History(error) => write!(f, "{error}"),
             Self::NoAgentId => write!(f, "the profile at {ME} names no agent_id"),
             Self::Incomplete { expected, received } => {
                 write!(
@@ -117,12 +123,31 @@ pub fn download(
     mut now_ms: impl FnMut() -> i64,
 ) -> Result<Summary, DownloadError> {
     store.wait_for_download_writer()?;
+    let agent = agent_id(rest)?;
+    fetch_export(rest, store, &export_path(&agent), None, &mut now_ms)
+}
+
+fn agent_id(rest: &mut Rest) -> Result<String, DownloadError> {
     let profile = rest.get(ME)?;
-    let agent_id = text(&profile, &["agent_id"]).ok_or(DownloadError::NoAgentId)?;
+    text(&profile, &["agent_id"]).ok_or(DownloadError::NoAgentId)
+}
+
+fn fetch_export(
+    rest: &mut Rest,
+    store: &Store,
+    path: &str,
+    season: Option<&ClosedSeason<'_>>,
+    now_ms: &mut impl FnMut() -> i64,
+) -> Result<Summary, DownloadError> {
     let mut summary = Summary::default();
     let mut seen = HashSet::new();
-    let mut pager = rest.pages(&export_path(&agent_id), PAGE, items);
+    let mut pager = rest.pages(path, PAGE, items);
     while let Some(page) = pager.next_page()? {
+        if season.is_some_and(|season| !page.iter().all(|hand| season.includes(hand))) {
+            return Err(history(
+                "an export contains a hand outside its requested season",
+            ));
+        }
         summary.pages += 1;
         for item in &page {
             let Some(hand_id) = text(item, &["hand_id", "id"]) else {
@@ -144,13 +169,20 @@ pub fn download(
             }
         }
         summary.offset = pager.offset();
-        store.record_download(summary.offset, now_ms())?;
+        if season.is_none() {
+            store.record_download(summary.offset, now_ms())?;
+        }
     }
     let received = seen.len() as u64;
-    if let Some(expected) = pager.reported_total()
-        && received < expected
-    {
+    let expected = pager
+        .reported_total()
+        .unwrap_or(0)
+        .max(season.map_or(0, |s| s.hands));
+    if received < expected {
         return Err(DownloadError::Incomplete { expected, received });
+    }
+    if season.is_some() && received != summary.offset {
+        return Err(history("an export contains duplicate or missing hand IDs"));
     }
     Ok(summary)
 }
