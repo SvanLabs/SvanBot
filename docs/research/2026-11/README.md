@@ -17,3 +17,4 @@ they led to live on the V11 tickets, not here. The notes describe v10 as it was.
 | [08 reading the Arena's number](08-headline-measurement.md) | V11-20, V11-22, V11-23 |
 | [09 what a gate can trust](09-what-a-gate-can-trust.md) | V11-21, V11-22 |
 | [10 the luck of decisions](10-the-luck-of-decisions.md) | V11-71, V11-72 |
+| [11 poker AI research for Five Brains](11-2026-poker-research.md) | V11-88, V11-90 |
