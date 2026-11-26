@@ -275,6 +275,27 @@ _Avoid_: lineage, per-bot params, brain (a brain is a policy)
 A parameter set put forward to replace the champion.
 _Avoid_: candidate, mutant, variant
 
+**Archive**:
+A bot's last five champions, newest first, each named by its digest with the paired bouts that
+promoted it. A promotion must clear every one of them (the regression rule).
+_Avoid_: history, vault
+
+**Regression rule**:
+The check that refuses a promotion which loses to a champion in the bot's archive at the 95% bound,
+and, once exploiters exist, one that raises exploitability past its bound (+5 bb/100).
+_Avoid_: backtest, safety net
+
+**Exploiter**:
+A policy searched to beat one brain's champion in the paired sim. The best one's win rate is that
+brain's exploitability.
+_Avoid_: adversary, attacker
+
+**Exploitability**:
+How much the best exploiter wins against a policy in the paired sim, in mbb/100. The best
+exploiter's win rate against a brain's champion is that brain's exploitability, reported beside its
+win rate.
+_Avoid_: vulnerability, leak
+
 **Learner**:
 The part of SvanBot that turns stored hands into new action models and reads, and proposes
 challengers.
