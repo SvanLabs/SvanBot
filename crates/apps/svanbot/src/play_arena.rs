@@ -21,11 +21,13 @@ use crate::arena::{self, Opponent};
 use crate::{arena_ship, deciders};
 
 mod model;
+mod promote;
 
 const USAGE: &str = "usage: svanbot play arena <solving|pricing|balanced> <standard|tight|loose|anchor> [league] <bouts> [seed] [iterations] [out.json]
        svanbot play pin <fixed|zero|cap> [league] <bouts> [seed] [iterations] [out.json]
        svanbot play compare-model <candidate> <baseline|incumbent> <bouts> [seed] [iterations] [--confirm <fresh-seed>]
        svanbot play check <kind> <style> <bouts|--until-decided> [seed] [iterations]
+       svanbot play promote <bot> [bouts] [seed] [iterations]
        svanbot play assign <bot> <kind> <style>
        svanbot play seed <bot>
        svanbot play revert <bot>
@@ -89,6 +91,7 @@ fn command(args: &[String]) -> CommandResult {
                 svanbot::now_ms(),
             ))
         }
+        [name, bot, tail @ ..] if name == "promote" => promote::promote(&fleet, bot, tail),
         [name, bot] if name == "seed" => say(play::seed(&fleet, data_dir, bot)),
         [name, bot] if name == "revert" => say(play::revert(&fleet, bot)),
         [name] if name == "freeze" => say(play::freeze(&fleet, svanbot::now_ms())),
