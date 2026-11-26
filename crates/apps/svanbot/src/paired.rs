@@ -11,6 +11,7 @@ use std::process::ExitCode;
 use svanbot_core::rules::Action;
 use svanbot_core::spot::Spot;
 use svanbot_learn::paired::{Match, Verdict, duel, verdict};
+use svanbot_learn::ring::{SIX_MAX, ring};
 use svanbot_strategy::params::Params;
 
 use crate::deciders;
@@ -82,4 +83,63 @@ pub(crate) fn sim(
         results[deal as usize] = result;
     }
     verdict(&results)
+}
+
+/// Plays `deals` deals of 6-max ring of the challenger against five seats of the champion, and
+/// returns the challenger's verdict. Each deal is played from every seat, so the luck of the
+/// cards cancels the way the heads-up mirror does. This is the fresh-deal confirmation.
+pub(crate) fn ring_sim(
+    game: &Match,
+    deals: u64,
+    challenger: &(impl Fn(&Spot, u64) -> Action + Sync),
+    champion: &(impl Fn(&Spot, u64) -> Action + Sync),
+) -> Verdict {
+    let mut results = vec![0.0; deals as usize];
+    let played: Vec<Vec<(u64, f64)>> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..THREADS)
+            .map(|k| {
+                scope.spawn(move || {
+                    (k..deals)
+                        .step_by(THREADS as usize)
+                        .map(|deal| {
+                            let won = ring(game, SIX_MAX, deal, challenger, &|_, spot, seed| {
+                                champion(spot, seed)
+                            });
+                            (deal, won)
+                        })
+                        .collect()
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .map(|worker| worker.join().expect("a paired ring worker panicked"))
+            .collect()
+    });
+    for (deal, result) in played.into_iter().flatten() {
+        results[deal as usize] = result;
+    }
+    verdict(&results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use svanbot_core::rules::Blinds;
+
+    fn folds(_: &Spot, _: u64) -> Action {
+        Action::Fold
+    }
+
+    #[test]
+    fn a_six_max_ring_of_a_policy_against_itself_breaks_even() {
+        let game = Match {
+            blinds: Blinds { small: 10, big: 20 },
+            stack: 2_000,
+            seed: 7,
+        };
+        let found = ring_sim(&game, 2, &folds, &folds);
+        assert_eq!(found.deals, 2);
+        assert_eq!(found.mbb_per_100, 0.0);
+    }
 }
