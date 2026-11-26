@@ -20,6 +20,99 @@ fn cards(text: &str) -> CardSet {
     text.parse().unwrap()
 }
 
+#[test]
+fn a_season_export_teaches_the_action_model_without_inventing_an_opponent_name() {
+    let hand = Hand {
+        hand_id: "h-export".into(),
+        table_id: "t-export".into(),
+        traced: Vec::new(),
+        frames: vec![json!({
+            "hand_id": "h-export", "seat": 0, "dealer_seat": 0,
+            "small_blind": 10, "big_blind": 20, "num_players": 2,
+            "hole_cards": ["3c", "3d"], "board": ["Ks", "9d", "4c"],
+            "shown_cards": {}, "pot_total": 120,
+            "all_actions": [
+                {"seat": 1, "sequence_in_hand": 4, "street": "showdown", "action": "fold", "amount": 0},
+                {"seat": 0, "sequence_in_hand": 1, "street": "preflop", "action": "raise", "amount": 60},
+                {"seat": 1, "sequence_in_hand": 2, "street": "flop", "action": "call", "amount": 0},
+                {"seat": 0, "sequence_in_hand": 3, "street": "flop", "action": "raise", "amount": 60}
+            ]
+        }).to_string()],
+    };
+    let sides = observed(&hand, 9);
+    assert_eq!(sides.len(), 1);
+    assert_eq!(sides[0].hand, 9);
+    assert_eq!(sides[0].seen.len(), 2);
+    assert_eq!(sides[0].seen[0].mv, Move::Call);
+    assert_eq!(sides[0].seen[0].situation.street, Street::Preflop);
+    assert_eq!(sides[0].seen[1].mv, Move::Fold);
+    assert_eq!(sides[0].seen[1].situation.street, Street::Flop);
+    assert_eq!(sides[0].seen[1].board, cards("Ks9d4c"));
+    assert!(witnesses(&hand, "SurSvan").is_empty());
+}
+
+#[test]
+fn shown_cards_without_a_full_board_do_not_require_a_showdown_strength() {
+    let hand = Hand {
+        hand_id: "h-incomplete".into(),
+        table_id: "t-export".into(),
+        traced: Vec::new(),
+        frames: vec![json!({
+            "hand_id": "h-incomplete", "seat": 0, "dealer_seat": 0,
+            "small_blind": 10, "big_blind": 20, "num_players": 2,
+            "hole_cards": ["3c", "3d"], "board": [],
+            "shown_cards": {"1": ["Kh", "Kd"]}, "pot_total": 40,
+            "all_actions": [
+                {"seat": 0, "sequence_in_hand": 1, "street": "preflop", "action": "call", "amount": 0},
+                {"seat": 1, "sequence_in_hand": 2, "street": "preflop", "action": "check", "amount": 0}
+            ]
+        }).to_string()],
+    };
+    let sides = observed(&hand, 0);
+    assert_eq!(sides.len(), 1);
+    assert_eq!(sides[0].outcome, Outcome::Shown(cards("KhKd")));
+}
+
+#[test]
+fn a_replayed_action_on_an_incomplete_board_is_omitted_from_the_fit() {
+    let hand = Hand {
+        hand_id: "h-replay".into(),
+        table_id: "t-1".into(),
+        traced: Vec::new(),
+        frames: [
+            json!({"type": "hand_start", "hand_id": "h-replay", "seat": 0, "dealer_seat": 0,
+                   "blinds": {"small_blind": 10, "big_blind": 20}}),
+            json!({"type": "community_cards", "cards": ["7h"], "street": "turn"}),
+            json!({"type": "player_action", "seat": 1, "action": "check", "amount": null, "stack": 1000}),
+        ].map(|frame| frame.to_string()).to_vec(),
+    };
+    assert!(observed(&hand, 0).is_empty());
+}
+
+#[test]
+fn a_matching_pot_cannot_make_an_unexplained_street_advance_eligible() {
+    let hand = Hand {
+        hand_id: "h-short-call".into(),
+        table_id: "t-export".into(),
+        traced: Vec::new(),
+        frames: vec![json!({
+            "hand_id": "h-short-call", "seat": 0, "dealer_seat": 0,
+            "small_blind": 10, "big_blind": 20, "num_players": 3,
+            "hole_cards": ["3c", "3d"], "board": ["Ks", "9d", "4c", "7h", "2s"],
+            "shown_cards": {}, "pot_total": 300,
+            "all_actions": [
+                {"seat": 0, "sequence_in_hand": 1, "street": "preflop", "action": "raise", "amount": 100},
+                {"seat": 1, "sequence_in_hand": 2, "street": "preflop", "action": "call", "amount": 0},
+                {"seat": 2, "sequence_in_hand": 3, "street": "flop", "action": "call", "amount": 0},
+                {"seat": 1, "sequence_in_hand": 4, "street": "flop", "action": "check", "amount": 0},
+                {"seat": 0, "sequence_in_hand": 5, "street": "flop", "action": "check", "amount": 0},
+                {"seat": 1, "sequence_in_hand": 6, "street": "turn", "action": "check", "amount": 0}
+            ]
+        }).to_string()],
+    };
+    assert!(observed(&hand, 0).is_empty());
+}
+
 /// Seat 2 is us. Seat 0 raises, calls the flop, bets the river and shows; seat 4 calls to the
 /// showdown and mucks; seat 5 folds preflop.
 fn frames() -> Vec<String> {

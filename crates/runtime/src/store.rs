@@ -39,6 +39,14 @@ CREATE TRIGGER IF NOT EXISTS hands_no_update BEFORE UPDATE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS hands_no_delete BEFORE DELETE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
+CREATE TABLE IF NOT EXISTS hand_exports (
+    hand_id TEXT PRIMARY KEY REFERENCES hands(hand_id),
+    frame TEXT NOT NULL CHECK (json_valid(frame))
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS hand_exports_no_update BEFORE UPDATE ON hand_exports
+    BEGIN SELECT RAISE(ABORT, 'hand exports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS hand_exports_no_delete BEFORE DELETE ON hand_exports
+    BEGIN SELECT RAISE(ABORT, 'hand exports are append-only'); END;
 CREATE TABLE IF NOT EXISTS downloads (
     id          INTEGER PRIMARY KEY,
     recorded_ms INTEGER NOT NULL,
@@ -262,6 +270,15 @@ impl Store {
         )?;
         if added == 1 {
             trace::keep(&tx, hand)?;
+        } else if source == Source::History {
+            tx.execute(
+                "INSERT INTO hand_exports (hand_id, frame)
+                 SELECT hand_id, json_extract(?2, '$[0]') FROM hands
+                 WHERE hand_id = ?1 AND frames <> ?2
+                   AND json_array_length(?2) = 1 AND json_type(?2, '$[0]') = 'object'
+                 ON CONFLICT (hand_id) DO NOTHING",
+                params![hand.hand_id, frames],
+            )?;
         }
         tx.commit()?;
         Ok(added == 1)
@@ -285,32 +302,6 @@ impl Store {
             params![recorded_ms, offset],
         )?;
         Ok(())
-    }
-
-    /// Every kept hand, in the order it was kept. Each frame comes back as compact JSON.
-    pub fn hands(&self) -> Result<Vec<Hand>, StoreError> {
-        let mut query = self
-            .db
-            .prepare("SELECT hand_id, table_id, frames FROM hands ORDER BY rowid")?;
-        let rows = query.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?;
-        rows.map(|row| {
-            let (hand_id, table_id, frames) = row?;
-            let frames: Vec<serde_json::Value> =
-                serde_json::from_str(&frames).map_err(|e| StoreError(e.to_string()))?;
-            Ok(Hand {
-                hand_id,
-                table_id,
-                frames: frames.iter().map(ToString::to_string).collect(),
-                traced: Vec::new(),
-            })
-        })
-        .collect()
     }
 
     /// Keeps an incident. Every one is kept, repeats included.
@@ -475,9 +466,11 @@ impl Store {
     }
 }
 
+mod hands;
 mod trace;
 mod window;
 
+pub use hands::FitHand;
 pub use trace::{TRACED_HANDS, TracedHand};
 pub use window::ExportLine;
 

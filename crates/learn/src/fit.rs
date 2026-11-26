@@ -177,6 +177,30 @@ pub struct Verdict {
     pub passed: bool,
 }
 
+/// Score both models with the same small chance of a uniformly drawn legal move. A surprising
+/// legal move stays finite even when a model gave it zero probability. Accumulate in log space
+/// so long action sequences do not underflow.
+fn comparison_score(model: &ActionModel, prepared: &Prepared) -> f64 {
+    const NOISE: f64 = 1e-6;
+    let mut weights = vec![0.0_f64; prepared.candidates];
+    for (situation, mv, at) in &prepared.steps {
+        let uniform = NOISE / situation.moves().len() as f64;
+        let logs: [f64; BUCKETS] = std::array::from_fn(|bucket| {
+            ((1.0 - NOISE) * model.prob(*situation, bucket, *mv) + uniform).ln()
+        });
+        for (weight, &bucket) in weights.iter_mut().zip(at) {
+            *weight += logs[usize::from(bucket)];
+        }
+    }
+    let peak = weights.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    peak + weights
+        .iter()
+        .map(|weight| (weight - peak).exp())
+        .sum::<f64>()
+        .ln()
+        - (prepared.live as f64).ln()
+}
+
 /// Whether `challenger` beats `incumbent` on `held_out`: the paired gain in log-likelihood,
 /// summed per hand so the opponents in one hand count as one sample, with a 95% lower bound that
 /// must clear `margin`.
@@ -187,8 +211,8 @@ pub fn gate(
     margin: f64,
 ) -> Verdict {
     let mut per_hand: Vec<(u64, f64)> = Vec::new();
-    for prepared in held_out {
-        let gain = log_likelihood(challenger, prepared) - log_likelihood(incumbent, prepared);
+    for prepared in held_out.iter().filter(|item| item.candidates > 0) {
+        let gain = comparison_score(challenger, prepared) - comparison_score(incumbent, prepared);
         match per_hand.last_mut() {
             Some((hand, sum)) if *hand == prepared.hand => *sum += gain,
             _ => per_hand.push((prepared.hand, gain)),

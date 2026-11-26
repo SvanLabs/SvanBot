@@ -140,6 +140,10 @@ impl Rest {
 
     /// `GET` of `path` (for example `/me/active-game`), retried as [`retry_wait`] says.
     pub fn get(&mut self, path: &str) -> Result<Value, RestError> {
+        self.get_with_total(path).map(|(body, _)| body)
+    }
+
+    fn get_with_total(&mut self, path: &str) -> Result<(Value, Option<u64>), RestError> {
         let url = format!("{}{path}", self.base);
         let mut attempt = 0;
         loop {
@@ -155,13 +159,20 @@ impl Rest {
                 .map_err(|e| RestError::Transport(e.to_string()))?;
             let status = reply.status().as_u16();
             if (200..300).contains(&status) {
+                let total = reply
+                    .headers()
+                    .get("x-total-hands")
+                    .and_then(|header| header.to_str().ok())
+                    .and_then(|text| text.parse().ok());
                 let text = reply
                     .body_mut()
                     .with_config()
                     .limit(self.max_body)
                     .read_to_string()
                     .map_err(|e| RestError::Body(e.to_string()))?;
-                return serde_json::from_str(&text).map_err(|e| RestError::Body(e.to_string()));
+                let body =
+                    serde_json::from_str(&text).map_err(|e| RestError::Body(e.to_string()))?;
+                return Ok((body, total));
             }
             if status == 401 {
                 return Err(RestError::AuthFailed);
@@ -188,6 +199,7 @@ impl Rest {
             path: path.to_owned(),
             limit,
             offset: 0,
+            reported_total: None,
             items,
             done: false,
         }
@@ -200,6 +212,7 @@ pub struct Pager<'a, F> {
     path: String,
     limit: u32,
     offset: u64,
+    reported_total: Option<u64>,
     items: F,
     done: bool,
 }
@@ -220,6 +233,11 @@ where
         self.offset
     }
 
+    /// Total hands reported on the first export page that included a count.
+    pub fn reported_total(&self) -> Option<u64> {
+        self.reported_total
+    }
+
     /// The next page, or `None` at the end. A page shorter than the limit is the last one. An
     /// empty page is tried again, backing off, up to [`EMPTY_PAGE_TRIES`] times in all, and then
     /// taken as the end.
@@ -236,7 +254,8 @@ where
             if attempt > 0 {
                 (self.rest.sleep)(backoff(attempt));
             }
-            let page = self.rest.get(&path)?;
+            let (page, total) = self.rest.get_with_total(&path)?;
+            self.reported_total = self.reported_total.or(total);
             let items = (self.items)(&page)
                 .ok_or_else(|| RestError::Body(format!("no list in the page at {path}")))?;
             if !items.is_empty() {

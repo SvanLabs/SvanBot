@@ -10,18 +10,25 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use svanbot_runtime::download::{MAX_BODY, PAGE, TIMEOUT, download};
+use svanbot_runtime::download::{DownloadError, MAX_BODY, PAGE, TIMEOUT, download};
+use svanbot_runtime::history::observed_for_fit;
 use svanbot_runtime::limit::Limiter;
 use svanbot_runtime::record::Hand;
 use svanbot_runtime::rest::Rest;
 use svanbot_runtime::store::{Source, Store};
 
 fn venue(pages: Vec<Value>) -> (String, thread::JoinHandle<Vec<String>>) {
+    venue_with_totals(pages.into_iter().map(|page| (page, None)).collect())
+}
+
+fn venue_with_totals(
+    pages: Vec<(Value, Option<u64>)>,
+) -> (String, thread::JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}/api", listener.local_addr().unwrap());
     let served = thread::spawn(move || {
         let mut paths = Vec::new();
-        for page in pages {
+        for (page, total) in pages {
             let (mut stream, _) = listener.accept().unwrap();
             let mut head = Vec::new();
             let mut byte = [0u8; 1];
@@ -32,8 +39,10 @@ fn venue(pages: Vec<Value>) -> (String, thread::JoinHandle<Vec<String>>) {
             let head = String::from_utf8(head).unwrap();
             paths.push(head.split(' ').nth(1).unwrap().to_owned());
             let body = page.to_string();
+            let total =
+                total.map_or_else(String::new, |total| format!("x-total-hands: {total}\r\n"));
             let reply = format!(
-                "HTTP/1.1 200 OK\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+                "HTTP/1.1 200 OK\r\nconnection: close\r\ncontent-type: application/json\r\n{total}content-length: {}\r\n\r\n{body}",
                 body.len()
             );
             stream.write_all(reply.as_bytes()).unwrap();
@@ -41,6 +50,24 @@ fn venue(pages: Vec<Value>) -> (String, thread::JoinHandle<Vec<String>>) {
         paths
     });
     (base, served)
+}
+
+#[test]
+fn a_short_export_that_declares_more_hands_keeps_progress_and_fails() {
+    let (store, _) = store("incomplete");
+    let (base, served) = venue_with_totals(vec![
+        (json!({"agent_id": "a-1"}), None),
+        (json!([{"hand_id": "h-1"}, {"hand_id": "h-1"}]), Some(2)),
+    ]);
+    assert!(matches!(
+        download(&mut rest(&base), &store, || 5),
+        Err(DownloadError::Incomplete {
+            expected: 2,
+            received: 1
+        })
+    ));
+    served.join().unwrap();
+    assert_eq!(store.hands().unwrap().len(), 1);
 }
 
 fn store(name: &str) -> (Store, PathBuf) {
@@ -132,4 +159,91 @@ fn a_profile_without_an_id_stops_the_download() {
     assert!(download(&mut rest(&base), &store, || 5).is_err());
     served.join().unwrap();
     assert!(store.hands().unwrap().is_empty());
+}
+
+#[test]
+fn a_newest_first_export_is_read_chronologically_for_the_fit() {
+    let (store, _) = store("training");
+    let live = Hand {
+        hand_id: "live".into(),
+        table_id: "t-1".into(),
+        frames: vec![],
+        traced: vec![],
+    };
+    store.append_hand(&live, Source::Live, 2_000).unwrap();
+    let (base, served) = venue(vec![
+        json!({"agent_id": "a-1"}),
+        json!([
+            {"hand_id": "new", "ended_at": "1970-01-01T00:00:03+00:00"},
+            {"hand_id": "old", "ended_at": "1970-01-01T00:00:01+00:00"}
+        ]),
+    ]);
+    download(&mut rest(&base), &store, || 10_000).unwrap();
+    served.join().unwrap();
+    let order: Vec<_> = store
+        .hands_for_fit()
+        .unwrap()
+        .into_iter()
+        .map(|hand| hand.kept.hand_id)
+        .collect();
+    assert_eq!(order, ["old", "live", "new"]);
+}
+
+#[test]
+fn an_export_fills_a_partial_live_hand_for_the_fit_without_replacing_it() {
+    let (store, _) = store("partial-live");
+    let live = Hand {
+        hand_id: "known".into(),
+        table_id: "t-1".into(),
+        frames: vec![json!({"type": "hand_start"}).to_string()],
+        traced: vec![],
+    };
+    store.append_hand(&live, Source::Live, 2_000).unwrap();
+    let (base, served) = venue(vec![
+        json!({"agent_id": "a-1"}),
+        json!([{
+            "hand_id": "known", "table_id": "t-1", "seat": 0, "dealer_seat": 0,
+            "small_blind": 10, "big_blind": 20, "num_players": 2,
+            "hole_cards": ["3c", "3d"], "board": [], "shown_cards": {}, "pot_total": 40,
+            "all_actions": [
+                {"seat": 0, "sequence_in_hand": 1, "street": "preflop", "action": "call", "amount": 0},
+                {"seat": 1, "sequence_in_hand": 2, "street": "preflop", "action": "check", "amount": 0}
+            ]
+        }]),
+    ]);
+    let summary = download(&mut rest(&base), &store, || 5).unwrap();
+    served.join().unwrap();
+    assert_eq!((summary.added, summary.known), (0, 1));
+    assert_eq!(store.hands().unwrap()[0].frames, live.frames);
+    let hands = store.hands_for_fit().unwrap();
+    assert_eq!(hands.len(), 1);
+    let (sides, export) = observed_for_fit(&hands[0], 0);
+    assert_eq!(sides.len(), 1);
+    assert_eq!(export, Some(true));
+}
+
+#[test]
+fn an_unusable_export_keeps_a_partial_live_hands_usable_actions() {
+    let (store, _) = store("export-fallback");
+    let live = Hand {
+        hand_id: "known".into(),
+        table_id: "t-1".into(),
+        frames: [
+            json!({"type": "hand_start", "hand_id": "known", "seat": 0, "dealer_seat": 0,
+                   "blinds": {"small_blind": 10, "big_blind": 20}}),
+            json!({"type": "player_action", "seat": 1, "action": "fold", "amount": null, "stack": 1000}),
+        ].map(|frame| frame.to_string()).to_vec(),
+        traced: vec![],
+    };
+    store.append_hand(&live, Source::Live, 2_000).unwrap();
+    let (base, served) = venue(vec![
+        json!({"agent_id": "a-1"}),
+        json!([{"hand_id": "known"}]),
+    ]);
+    download(&mut rest(&base), &store, || 5).unwrap();
+    served.join().unwrap();
+    let hands = store.hands_for_fit().unwrap();
+    let (sides, export) = observed_for_fit(&hands[0], 0);
+    assert_eq!(sides.len(), 1);
+    assert_eq!(export, Some(false));
 }
