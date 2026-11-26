@@ -90,6 +90,7 @@ fn a_style_with_no_rules_collects_none() {
     static BARE: Style = Style {
         name: "bare",
         open_scale: 1.0,
+        mechanics: svanbot_strategy::style::NEUTRAL,
         profile: Profile::new(&[]),
         bounds: &[],
     };
@@ -149,6 +150,7 @@ fn the_playbook_collects_stats_even_with_no_profile_rules() {
     static BARE: Style = Style {
         name: "bare",
         open_scale: 1.0,
+        mechanics: svanbot_strategy::style::NEUTRAL,
         profile: Profile::new(&[]),
         bounds: &[],
     };

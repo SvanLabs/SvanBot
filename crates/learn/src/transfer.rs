@@ -29,12 +29,13 @@ pub fn allowed(candidate: &Params, incumbent: &Params, style: &Style) -> bool {
             .all(|(name, value)| style.allows(name, *value))
 }
 
-/// The offer `candidate` makes to `incumbent`'s bot under `style`, or `None` when the style
-/// rejects the move or it is no move at all.
+/// The offer `candidate` makes to `incumbent`'s bot under `style`, or `None` when the move is no
+/// move at all. The candidate is brought inside the style first (its numbers outside the style's
+/// bounds clamped into them), so a Grinder's move can be tried by a Gambler at the Gambler's end
+/// of the same numbers.
 pub fn offer(candidate: Params, incumbent: &Params, style: &Style) -> Option<Offer> {
-    allowed(&candidate, incumbent, style).then_some(Offer {
-        challenger: candidate,
-    })
+    let challenger = style.seed(candidate);
+    allowed(&challenger, incumbent, style).then_some(Offer { challenger })
 }
 
 /// Adds `offer` to `offers` unless its receiver candidate is already there. Returns whether it

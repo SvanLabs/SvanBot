@@ -204,6 +204,12 @@ pub fn open_chance(class: usize, position: Position, scale: f64) -> f64 {
     (edge / OPEN_BLEND + 0.5).clamp(0.0, 1.0)
 }
 
+/// A class's rank by position: the share of all hands worth less than it, 0 the best. The
+/// mechanics read it, as the opening cut does.
+pub fn rank_at(class: usize, position: Position) -> f64 {
+    rank(class, position)
+}
+
 fn rank(class: usize, position: Position) -> f64 {
     ranks()[position.behind.clamp(1, MOST) - 1][class.min(CLASSES - 1)]
 }

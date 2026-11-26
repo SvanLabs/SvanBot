@@ -12,6 +12,7 @@ use svanbot_core::spot::Spot;
 use svanbot_sim::equity::Showdown;
 
 use crate::action::ActionModel;
+use crate::style::Sizes;
 
 use super::{Decision, ev, preflop, ranked};
 
@@ -60,8 +61,9 @@ pub(super) fn choose(
     dealt: &[Showdown],
     models: &[&ActionModel],
     equity: f64,
+    menu: Sizes,
 ) -> Action {
-    let mut values = values(spot, dealt, models, equity).into_iter();
+    let mut values = values(spot, dealt, models, equity, menu).into_iter();
     let Some((mut best, mut worth)) = values.next() else {
         return Action::Check;
     };
@@ -79,14 +81,22 @@ pub(super) fn values(
     dealt: &[Showdown],
     models: &[&ActionModel],
     equity: f64,
+    menu: Sizes,
 ) -> Vec<(Action, f64)> {
     let (passive, worth) = passive(spot, equity);
     let mut values = vec![(passive, worth)];
     let sizes = ev::sizes(spot);
     if !sizes.is_empty() {
+        // The menu narrows the pricer's own ascending sizes without a second allocation: the
+        // small end is the first, the big end the last.
+        let (first, end) = match menu {
+            Sizes::All => (0, sizes.len()),
+            Sizes::Small => (0, 1),
+            Sizes::Big => (sizes.len() - 1, sizes.len()),
+        };
         let references = ev::references(spot, dealt, models, &ranked(spot.board));
         let call = spot.legal.call.unwrap_or(0);
-        for to in sizes {
+        for to in sizes[first..end].iter().copied() {
             let raised = ev::raise(
                 dealt,
                 &references,

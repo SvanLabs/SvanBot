@@ -310,7 +310,7 @@ impl Policy {
                         )
                     }
                     _ => (
-                        pricer::price_lines_at(spot, &models, budget, self.style.open_scale),
+                        pricer::price_lines_styled(spot, &models, budget, self.style, &self.params),
                         None,
                     ),
                 };

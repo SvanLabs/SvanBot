@@ -179,22 +179,43 @@ fn promising_candidates_get_the_long_confirmation_and_become_a_candidate() {
             ci95: 100.0,
         }
     };
-    // Six short screens of the six one-step challengers.
-    for at in 0..6 {
-        bot_step(&fleet, 200, 1_600, at, &sim).unwrap();
+    // The first round screens every one-step challenger the style may move (the mechanics add
+    // numbers the search may move too), then confirms the promising one.
+    let mut steps = 0u32;
+    let mut confirmed = false;
+    while steps < 200 {
+        let note = bot_step(&fleet, 200, 1_600, i64::from(steps), &sim).unwrap();
+        steps += 1;
+        if note.contains("confirmed") {
+            confirmed = true;
+            break;
+        }
     }
-    let note = bot_step(&fleet, 200, 1_600, 6, &sim).unwrap();
-    assert!(note.contains("confirmed"), "{note}");
-    let note = bot_step(&fleet, 200, 1_600, 7, &sim).unwrap();
-    assert!(note.contains("candidate"), "{note}");
-    {
+    assert!(confirmed, "the promising challenger is confirmed");
+    let screens = {
         let calls = calls.borrow();
-        assert_eq!(calls.len(), 7, "the candidate run sims nothing");
-        assert!(calls[..6].iter().all(|call| call.0 == Stage::First));
-        assert!(calls[..6].iter().all(|call| call.2 == 200));
-        assert_eq!(calls[6].0, Stage::Confirmation);
-        assert_eq!(calls[6].2, 1_600, "the confirmation gets more CPU");
-    }
+        assert!(calls.len() > 1, "a round screens more than one challenger");
+        assert!(
+            calls[..calls.len() - 1]
+                .iter()
+                .all(|call| call.0 == Stage::First)
+        );
+        assert!(calls[..calls.len() - 1].iter().all(|call| call.2 == 200));
+        assert_eq!(calls[calls.len() - 1].0, Stage::Confirmation);
+        assert_eq!(
+            calls[calls.len() - 1].2,
+            1_600,
+            "the confirmation gets more CPU"
+        );
+        calls.len()
+    };
+    let note = bot_step(&fleet, 200, 1_600, i64::from(steps), &sim).unwrap();
+    assert!(note.contains("candidate"), "{note}");
+    assert_eq!(
+        calls.borrow().len(),
+        screens,
+        "the candidate run sims nothing"
+    );
     let search = fleet.bot_search("A", &champion).unwrap();
     assert_eq!(
         search.candidate,
@@ -382,7 +403,9 @@ fn a_candidate_is_offered_to_another_bot_which_screens_it_against_its_own_champi
         calls
             .borrow_mut()
             .push((challenger.params, champion.params, step.stage));
-        if champion.params == a {
+        // The exploit move is the one every style may carry: the mechanics numbers do not all
+        // overlap between Grinder and Gambler, and this candidate must transfer.
+        if champion.params == a && step.challenger.exploit != a.exploit {
             Verdict {
                 deals: deals as usize,
                 mbb_per_100: 100.0,
@@ -393,7 +416,7 @@ fn a_candidate_is_offered_to_another_bot_which_screens_it_against_its_own_champi
         }
     };
     let mut candidate = None;
-    for at in 0..30 {
+    for at in 0..200 {
         bot_step(&fleet, 200, 1_600, at, &sim).unwrap();
         if let Some(found) = fleet.bot_search("A", &a).unwrap().candidate {
             candidate = Some(found);

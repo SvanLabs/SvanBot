@@ -12,6 +12,7 @@
 pub mod action;
 pub mod first_profile;
 pub mod kind;
+pub mod mechanics;
 pub mod params;
 pub mod playbook;
 pub mod policy;

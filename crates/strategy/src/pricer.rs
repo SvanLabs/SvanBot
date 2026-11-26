@@ -11,12 +11,15 @@
 //! best instead of taking it ([`mix`]).
 
 use svanbot_core::card::{Card, CardSet, Rank, Suit};
-use svanbot_core::rules::{Action, Street};
+use svanbot_core::rules::{Action, Chips, Street};
 use svanbot_core::spot::Spot;
 use svanbot_sim::equity::{Showdown, equity_over, showdowns};
 
 use crate::action::{ActionModel, Seen, range, ranked};
+use crate::mechanics;
+use crate::params::Params;
 use crate::preflop;
+use crate::style::{Mechanics, STANDARD, Style};
 
 mod ev;
 mod mix;
@@ -63,13 +66,68 @@ pub fn price_lines_at(
     budget: Budget,
     open_scale: f64,
 ) -> Decision {
+    price_lines_with(
+        spot,
+        models,
+        budget,
+        open_scale,
+        &STANDARD.mechanics,
+        &Params::DEFAULT,
+    )
+}
+
+/// [`price_lines_at`] with a style's mechanics (M3–M5): the three-bet range, the size menu and
+/// the texture c-bet of Grinder and Gambler. A neutral style reaches the same prices as before.
+pub fn price_lines_styled(
+    spot: &Spot,
+    models: &[&ActionModel],
+    budget: Budget,
+    style: &Style,
+    params: &Params,
+) -> Decision {
+    price_lines_with(
+        spot,
+        models,
+        budget,
+        style.open_scale,
+        &style.mechanics,
+        params,
+    )
+}
+
+/// The raise-to totals the pricer prices at `spot`, ascending, for the styles' size menus.
+pub(crate) fn raise_sizes(spot: &Spot) -> Vec<Chips> {
+    ev::sizes(spot)
+}
+
+fn price_lines_with(
+    spot: &Spot,
+    models: &[&ActionModel],
+    budget: Budget,
+    open_scale: f64,
+    mechanics_rule: &Mechanics,
+    params: &Params,
+) -> Decision {
     if let Some(decision) = opening(spot, open_scale) {
         return decision;
     }
     let baseline = ActionModel::baseline();
     let sampled = sampled(spot, models, &baseline, budget);
+    // Grinder's and Gambler's rules answer their own spots; every other style's spots reach the
+    // same price-the-best choice as before.
+    let action = mechanics::three_bet(spot, mechanics_rule, params)
+        .or_else(|| mechanics::cbet(spot, mechanics_rule, params, budget.seed))
+        .unwrap_or_else(|| {
+            mix::choose(
+                spot,
+                &sampled.dealt,
+                &sampled.folding,
+                sampled.equity,
+                mechanics_rule.sizes,
+            )
+        });
     Decision {
-        action: mix::choose(spot, &sampled.dealt, &sampled.folding, sampled.equity),
+        action,
         equity: sampled.equity,
         price: price_of(spot),
     }
@@ -89,7 +147,13 @@ pub fn price_lines_balanced(
     }
     let baseline = ActionModel::baseline();
     let sampled = sampled(spot, models, &baseline, budget);
-    let values = mix::values(spot, &sampled.dealt, &sampled.folding, sampled.equity);
+    let values = mix::values(
+        spot,
+        &sampled.dealt,
+        &sampled.folding,
+        sampled.equity,
+        crate::style::Sizes::All,
+    );
     let drawn = mix::draw(&values, spot.pot, spread, budget.seed);
     Balanced {
         action: drawn.action,
