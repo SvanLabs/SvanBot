@@ -42,7 +42,7 @@ fn hunters_cuts_are_numbers_of_the_set_that_do_not_move_an_old_digest() {
     assert_eq!(Params::DEFAULT.nit_vpip, 0.2);
     assert_eq!(Params::DEFAULT.nit_fold, 0.7);
     // Each is a number of the set: named, settable, and inside its range only between 0 and 1.
-    assert_eq!(Params::DEFAULT.named().len(), 8);
+    assert_eq!(Params::DEFAULT.named().len(), 14);
     let wider = Params::DEFAULT.with("station_vpip", 0.9).unwrap();
     assert_eq!(wider.station_vpip, 0.9);
     assert_ne!(wider.digest(), Params::DEFAULT.digest());

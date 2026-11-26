@@ -168,6 +168,7 @@ fn a_style_keeps_the_search_inside_its_bounds() {
     static BOUNDED: Style = Style {
         name: "bounded",
         open_scale: 0.8,
+        mechanics: style::NEUTRAL,
         profile: ACTIVE,
         bounds: &[
             ("exploit", 0.0, 0.45),
@@ -177,6 +178,12 @@ fn a_style_keeps_the_search_inside_its_bounds() {
             ("maniac_pfr", 0.5, 0.5),
             ("nit_vpip", 0.2, 0.2),
             ("nit_fold", 0.7, 0.7),
+            ("three_bet_value", 0.04, 0.04),
+            ("three_bet_bluff", 0.0, 0.0),
+            ("cbet_dry", 0.6, 0.6),
+            ("cbet_wet", 0.3, 0.3),
+            ("size_small", 0.33, 0.33),
+            ("size_big", 1.0, 1.0),
         ],
     };
     let mut log = Vec::new();
@@ -190,6 +197,7 @@ fn a_style_keeps_the_search_inside_its_bounds() {
     static PINNED: Style = Style {
         name: "pinned",
         open_scale: 0.8,
+        mechanics: style::NEUTRAL,
         profile: ACTIVE,
         bounds: &[
             ("exploit", 0.5, 0.5),
@@ -199,6 +207,12 @@ fn a_style_keeps_the_search_inside_its_bounds() {
             ("maniac_pfr", 0.5, 0.5),
             ("nit_vpip", 0.2, 0.2),
             ("nit_fold", 0.7, 0.7),
+            ("three_bet_value", 0.04, 0.04),
+            ("three_bet_bluff", 0.0, 0.0),
+            ("cbet_dry", 0.6, 0.6),
+            ("cbet_wet", 0.3, 0.3),
+            ("size_small", 0.33, 0.33),
+            ("size_big", 1.0, 1.0),
         ],
     };
     assert_eq!(next_bot(&CHAMPION, &PINNED, &[]), BotNext::Held);

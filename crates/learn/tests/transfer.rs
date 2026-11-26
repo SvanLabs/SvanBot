@@ -15,9 +15,16 @@ use svanbot_strategy::style::{STANDARD, Style};
 const BOUNDED: Style = Style {
     name: "bounded",
     open_scale: 0.8,
+    mechanics: svanbot_strategy::style::NEUTRAL,
     profile: ACTIVE,
     bounds: &[
         ("exploit", 0.0, 0.45),
+        ("three_bet_value", 0.04, 0.04),
+        ("three_bet_bluff", 0.0, 0.0),
+        ("cbet_dry", 0.6, 0.6),
+        ("cbet_wet", 0.3, 0.3),
+        ("size_small", 0.33, 0.33),
+        ("size_big", 1.0, 1.0),
         ("station_vpip", 0.85, 0.85),
         ("station_pfr", 0.15, 0.15),
         ("maniac_vpip", 0.8, 0.8),
@@ -30,9 +37,16 @@ const BOUNDED: Style = Style {
 const PINNED: Style = Style {
     name: "pinned",
     open_scale: 0.8,
+    mechanics: svanbot_strategy::style::NEUTRAL,
     profile: ACTIVE,
     bounds: &[
         ("exploit", 0.5, 0.5),
+        ("three_bet_value", 0.04, 0.04),
+        ("three_bet_bluff", 0.0, 0.0),
+        ("cbet_dry", 0.6, 0.6),
+        ("cbet_wet", 0.3, 0.3),
+        ("size_small", 0.33, 0.33),
+        ("size_big", 1.0, 1.0),
         ("station_vpip", 0.85, 0.85),
         ("station_pfr", 0.15, 0.15),
         ("maniac_vpip", 0.8, 0.8),
@@ -89,9 +103,16 @@ fn a_donor_candidate_is_offered_only_inside_the_receiver_s_style() {
     let held = offer(donor, &receiver, &STANDARD).expect("standard allows the move");
     assert_eq!(held.challenger, donor);
 
-    // A pin at 0.5 refuses a candidate at 0.4, and a bound of 0.45 refuses 0.6.
-    assert_eq!(offer(donor, &receiver, &PINNED), None);
-    assert_eq!(offer(at(0.6), &receiver, &BOUNDED), None);
+    // A pin at 0.5 brings the candidate to the pinned value (a move from the receiver's 0.7),
+    // and a bound of 0.45 brings a candidate at 0.6 inside it rather than refusing it.
+    assert_eq!(
+        offer(donor, &receiver, &PINNED).map(|offer| offer.challenger.exploit),
+        Some(0.5)
+    );
+    assert_eq!(
+        offer(at(0.6), &receiver, &BOUNDED).map(|offer| offer.challenger.exploit),
+        Some(0.45)
+    );
     assert_eq!(
         offer(donor, &receiver, &BOUNDED).map(|offer| offer.challenger),
         Some(donor)

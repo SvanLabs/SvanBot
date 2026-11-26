@@ -53,10 +53,19 @@ fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
     assert_eq!(fleet.champion_slot("A"), Ok(None));
     assert_eq!(fleet.champion_for("A"), Ok(reference));
     assert!(!dir.join("champions.json").exists());
-    // Seeded under two different styles, a slot starts at the reference's numbers: the style's
-    // pins are the style's own, so they move no parameter-set digest.
+    // Seeded under two different styles, a slot starts at the reference's numbers brought inside
+    // its style: Grinder's bounds include them as they are; Gambler's start at its own end of the
+    // learned shares (a bluff share, a lower dry c-bet, a higher wet one).
     assert_eq!(fleet.seed_champion("A"), Ok(reference));
-    assert_eq!(fleet.seed_champion("B"), Ok(reference));
+    assert_eq!(
+        fleet.seed_champion("B"),
+        Ok(Params {
+            three_bet_bluff: 0.04,
+            cbet_dry: 0.5,
+            cbet_wet: 0.4,
+            ..reference
+        })
+    );
     // Distinct slots stay distinct, and the fleet champion does not move.
     let slot_a = Params {
         exploit: 0.2,

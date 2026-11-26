@@ -49,7 +49,16 @@ fn a_style_seeds_a_slot_with_its_pins_applied() {
     // The width is pinned in the style, not in a parameter set, so seeding moves no number and
     // no digest: the policy reads the width from the style it plays.
     assert_eq!(TIGHT.seed(Params::DEFAULT), Params::DEFAULT);
-    assert_eq!(LOOSE.seed(Params::DEFAULT), Params::DEFAULT);
+    // Gambler's slot starts at its bounds: a bluff share, a lower dry c-bet, a higher wet one.
+    assert_eq!(
+        LOOSE.seed(Params::DEFAULT),
+        Params {
+            three_bet_bluff: 0.04,
+            cbet_dry: 0.5,
+            cbet_wet: 0.4,
+            ..Params::DEFAULT
+        }
+    );
     assert_eq!(
         TIGHT
             .seed(Params {
@@ -68,12 +77,14 @@ fn a_style_bounds_the_numbers_its_search_may_move_and_pins_the_zero_width_ones()
         name: "bounded",
         open_scale: 0.8,
         profile: ACTIVE,
+        mechanics: style::NEUTRAL,
         bounds: &[("exploit", 0.3, 0.6)],
     };
     static PINNED: Style = Style {
         name: "pinned",
         open_scale: 0.8,
         profile: ACTIVE,
+        mechanics: style::NEUTRAL,
         bounds: &[("exploit", 0.4, 0.4)],
     };
     assert!(BOUNDED.allows("exploit", 0.3));

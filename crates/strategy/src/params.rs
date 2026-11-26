@@ -34,6 +34,19 @@ pub struct Params {
     pub nit_vpip: f64,
     /// The playbook's nit cut on folds: a nit folds at least this share of the bets it faces.
     pub nit_fold: f64,
+    /// Three-betting's value share: the best this share of opening classes are three-bet for
+    /// value, by the class's rank against the players behind.
+    pub three_bet_value: f64,
+    /// Three-betting's bluff share: a polarised style also three-bets the worst this share.
+    pub three_bet_bluff: f64,
+    /// The chance to bet a dry board when checked to.
+    pub cbet_dry: f64,
+    /// The chance to bet a wet board when checked to.
+    pub cbet_wet: f64,
+    /// The small bet size, as a share of the pot after the call.
+    pub size_small: f64,
+    /// The big bet size, as a share of the pot after the call.
+    pub size_big: f64,
 }
 
 impl Params {
@@ -47,10 +60,16 @@ impl Params {
         maniac_pfr: 0.5,
         nit_vpip: 0.2,
         nit_fold: 0.7,
+        three_bet_value: 0.04,
+        three_bet_bluff: 0.0,
+        cbet_dry: 0.6,
+        cbet_wet: 0.3,
+        size_small: 0.33,
+        size_big: 1.0,
     };
 
     /// Each number with its name.
-    pub fn named(&self) -> [(&'static str, f64); 8] {
+    pub fn named(&self) -> [(&'static str, f64); 14] {
         [
             ("exploit", self.exploit),
             ("spread", self.spread),
@@ -60,6 +79,12 @@ impl Params {
             ("maniac_pfr", self.maniac_pfr),
             ("nit_vpip", self.nit_vpip),
             ("nit_fold", self.nit_fold),
+            ("three_bet_value", self.three_bet_value),
+            ("three_bet_bluff", self.three_bet_bluff),
+            ("cbet_dry", self.cbet_dry),
+            ("cbet_wet", self.cbet_wet),
+            ("size_small", self.size_small),
+            ("size_big", self.size_big),
         ]
     }
 
@@ -76,6 +101,12 @@ impl Params {
             "maniac_pfr" => self.maniac_pfr = value,
             "nit_vpip" => self.nit_vpip = value,
             "nit_fold" => self.nit_fold = value,
+            "three_bet_value" => self.three_bet_value = value,
+            "three_bet_bluff" => self.three_bet_bluff = value,
+            "cbet_dry" => self.cbet_dry = value,
+            "cbet_wet" => self.cbet_wet = value,
+            "size_small" => self.size_small = value,
+            "size_big" => self.size_big = value,
             _ => return None,
         }
         Some(self)
