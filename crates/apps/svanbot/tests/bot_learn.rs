@@ -241,6 +241,26 @@ fn no_slot_means_no_search() {
 }
 
 #[test]
+fn the_cli_with_no_slots_still_searches_the_fleet_champion() {
+    let dir = scratch("cli-fleet");
+    let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
+        .env_clear()
+        .env("SVANBOT_FLEET", &dir)
+        .args(["learn", "--deals", "2"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("simmed"), "{stdout}");
+    assert!(dir.join("search.json").exists());
+    assert!(!dir.join("searches.json").exists());
+}
+
+#[test]
 fn the_cli_searches_the_slotted_bot() {
     let dir = scratch("cli");
     let fleet = Fleet::in_dir(&dir);

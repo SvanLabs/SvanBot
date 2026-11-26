@@ -173,13 +173,13 @@ pub fn bot_step(
             waiting.join(", ")
         ));
     };
-    let (kind, style) = match fleet.assignment(&bot)? {
+    let (kind, assigned_style) = match fleet.assignment(&bot)? {
         Some(assignment) => (assignment.kind, assignment.style),
         None => (PolicyKind::Solving, &style::STANDARD),
     };
-    let policy = |params| Policy::new(kind, style, params);
+    let policy = |params| Policy::new(kind, assigned_style, params);
     let champion_policy = policy(champion);
-    let (entries, note, candidate) = match next_bot(&champion, style, &progress.entries) {
+    let (entries, note, candidate) = match next_bot(&champion, assigned_style, &progress.entries) {
         BotNext::Screen { challenger, seed } => {
             let step = Step {
                 champion: champion.digest(),
@@ -232,7 +232,7 @@ pub fn bot_step(
             let candidate = Candidate {
                 challenger,
                 kind,
-                style: style.name,
+                style: assigned_style.name,
                 verdict: confirmation,
             };
             (
