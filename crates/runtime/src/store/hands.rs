@@ -25,6 +25,14 @@ pub struct FitHand {
 }
 
 impl Store {
+    pub(crate) fn owner(&self) -> Result<String, StoreError> {
+        Ok(self
+            .db
+            .query_row("SELECT value FROM meta WHERE key = 'bot'", [], |row| {
+                row.get(0)
+            })?)
+    }
+
     /// A download's writer may wait for live hands to finish committing.
     pub(crate) fn wait_for_download_writer(&self) -> Result<(), StoreError> {
         self.db.busy_timeout(std::time::Duration::from_secs(30))?;

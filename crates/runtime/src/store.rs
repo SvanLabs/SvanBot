@@ -189,16 +189,14 @@ impl Store {
             "INSERT INTO meta (key, value) VALUES ('bot', ?1) ON CONFLICT (key) DO NOTHING",
             [bot],
         )?;
-        let owner: String =
-            db.query_row("SELECT value FROM meta WHERE key = 'bot'", [], |row| {
-                row.get(0)
-            })?;
+        let store = Self { db };
+        let owner = store.owner()?;
         if owner != bot {
             return Err(StoreError(format!(
                 "this store is {owner}'s; {bot} may not open it"
             )));
         }
-        Ok(Self { db })
+        Ok(store)
     }
 
     /// Opens `path` to read only, with no bot named and none checked.

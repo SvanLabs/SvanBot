@@ -76,6 +76,8 @@ pub enum DownloadError {
     Store(StoreError),
     /// The profile named no `agent_id`, so there is no export to read.
     NoAgentId,
+    /// The profile does not prove the key belongs to the store's owner.
+    AccountMismatch,
     History(String),
     /// The export declared more hands than it actually supplied.
     Incomplete {
@@ -89,6 +91,9 @@ impl std::fmt::Display for DownloadError {
         match self {
             Self::Rest(error) => write!(f, "{error}"),
             Self::Store(error) => write!(f, "{error}"),
+            Self::AccountMismatch => {
+                write!(f, "the authenticated bot does not match the store owner")
+            }
             Self::History(error) => write!(f, "{error}"),
             Self::NoAgentId => write!(f, "the profile at {ME} names no agent_id"),
             Self::Incomplete { expected, received } => {
@@ -123,27 +128,55 @@ pub fn download(
     mut now_ms: impl FnMut() -> i64,
 ) -> Result<Summary, DownloadError> {
     store.wait_for_download_writer()?;
-    let agent = agent_id(rest)?;
-    fetch_export(rest, store, &export_path(&agent), None, &mut now_ms)
+    let agent = agent_id(rest, store)?;
+    fetch_export(
+        rest,
+        store,
+        &export_path(&agent),
+        Scope::Current,
+        &mut now_ms,
+    )
 }
 
-fn agent_id(rest: &mut Rest) -> Result<String, DownloadError> {
+fn agent_id(rest: &mut Rest, store: &Store) -> Result<String, DownloadError> {
     let profile = rest.get(ME)?;
-    text(&profile, &["agent_id"]).ok_or(DownloadError::NoAgentId)
+    let agent_id = text(&profile, &["agent_id"])
+        .filter(|id| is_identifier(id))
+        .ok_or(DownloadError::NoAgentId)?;
+    if profile["name"].as_str() != Some(store.owner()?.as_str()) {
+        return Err(DownloadError::AccountMismatch);
+    }
+    Ok(agent_id)
+}
+
+fn is_identifier(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+#[derive(Clone, Copy)]
+enum Scope<'a> {
+    Current,
+    VerifyCurrent,
+    Closed(&'a ClosedSeason<'a>),
 }
 
 fn fetch_export(
     rest: &mut Rest,
     store: &Store,
     path: &str,
-    season: Option<&ClosedSeason<'_>>,
+    scope: Scope<'_>,
     now_ms: &mut impl FnMut() -> i64,
 ) -> Result<Summary, DownloadError> {
     let mut summary = Summary::default();
     let mut seen = HashSet::new();
     let mut pager = rest.pages(path, PAGE, items);
     while let Some(page) = pager.next_page()? {
-        if season.is_some_and(|season| !page.iter().all(|hand| season.includes(hand))) {
+        if let Scope::Closed(season) = scope
+            && !page.iter().all(|hand| season.includes(hand))
+        {
             return Err(history(
                 "an export contains a hand outside its requested season",
             ));
@@ -169,19 +202,23 @@ fn fetch_export(
             }
         }
         summary.offset = pager.offset();
-        if season.is_none() {
+        if !matches!(scope, Scope::Closed(_)) {
             store.record_download(summary.offset, now_ms())?;
         }
     }
     let received = seen.len() as u64;
-    let expected = pager
-        .reported_total()
-        .unwrap_or(0)
-        .max(season.map_or(0, |s| s.hands));
+    let reported = pager.reported_total();
+    let expected = match scope {
+        Scope::Current => reported.unwrap_or(0),
+        Scope::VerifyCurrent => {
+            reported.ok_or_else(|| history("the current export has no total hand count"))?
+        }
+        Scope::Closed(season) => reported.unwrap_or(0).max(season.hands),
+    };
     if received < expected {
         return Err(DownloadError::Incomplete { expected, received });
     }
-    if season.is_some() && received != summary.offset {
+    if !matches!(scope, Scope::Current) && received != summary.offset {
         return Err(history("an export contains duplicate or missing hand IDs"));
     }
     Ok(summary)

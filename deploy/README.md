@@ -439,7 +439,7 @@ verified closed season is recorded in that bot's store and skipped on retry. The
 failure for each unavailable or incomplete export and continues through the other seasons.
 
 Fit each bot's history on a private snapshot of its own store. A passing fit writes the model
-beside the supplied store, so use the snapshot path in `SVANBOT_STORE` while training. Keep the
+beside the supplied store, so use the snapshot path in `SVANBOT_STORE` for the fit. Keep the
 model there until it clears the paired Arena and the rollout guard.
 
 v11 starts from a fresh store. The v10 stores are archived in `~/archive/svanbot-v10/` and are

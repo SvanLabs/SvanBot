@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use super::{DownloadError, Summary, agent_id, export_path, fetch_export};
+use super::{DownloadError, Scope, Summary, agent_id, export_path, fetch_export, is_identifier};
 use crate::rest::Rest;
 use crate::ship::window::started_ms;
 use crate::store::Store;
@@ -21,23 +21,30 @@ pub fn download_all(
     mut report: impl FnMut(Option<u64>, Result<Option<Summary>, DownloadError>),
 ) -> Result<(), DownloadError> {
     store.wait_for_download_writer()?;
-    let agent = agent_id(rest)?;
+    let agent = agent_id(rest, store)?;
     let base = export_path(&agent);
+    let current = fetch_export(rest, store, &base, Scope::VerifyCurrent, &mut now_ms).map(Some);
+    let mut failures = usize::from(current.is_err());
+    report(None, current);
     let stats = played(&rest.get(STATS)?)?;
     let catalog = rest.get(CATALOG)?;
     let listed = catalog
         .as_array()
         .ok_or_else(|| history("the venue season list is not an array"))?;
-    let current = fetch_export(rest, store, &base, None, &mut now_ms).map(Some);
-    let mut failures = usize::from(current.is_err());
-    report(None, current);
+    let active = listed
+        .iter()
+        .find(|season| season["status"] == "active")
+        .and_then(|season| season["season_number"].as_u64());
     for (number, hands) in stats.into_iter().rev() {
+        if active == Some(number) {
+            continue;
+        }
         let result = season(listed, number, hands).and_then(|season| {
             if store.verified_season(season.id)? >= season.hands {
                 return Ok(None);
             }
             let path = format!("{base}&season_id={}", season.id);
-            let summary = fetch_export(rest, store, &path, Some(&season), &mut now_ms)?;
+            let summary = fetch_export(rest, store, &path, Scope::Closed(&season), &mut now_ms)?;
             store.record_verified_season(season.id, summary.offset, now_ms())?;
             Ok(Some(summary))
         });
@@ -94,14 +101,10 @@ fn season(listed: &[Value], number: u64, hands: u64) -> Result<ClosedSeason<'_>,
         .iter()
         .find(|row| row["season_number"].as_u64() == Some(number))
         .ok_or_else(error)?;
-    let Some(id) = row["season_id"].as_str().filter(|id| {
-        !id.is_empty()
-            && id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-    }) else {
-        return Err(error());
-    };
+    let id = row["season_id"]
+        .as_str()
+        .filter(|id| is_identifier(id))
+        .ok_or_else(error)?;
     let start = row["start_date"]
         .as_str()
         .and_then(started_ms)
