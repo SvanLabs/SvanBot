@@ -35,6 +35,36 @@ fn an_unknown_kind_or_style_is_refused_before_anything_plays() {
     }
 }
 
+#[test]
+fn compare_model_refuses_a_missing_candidate_or_incumbent_before_play() {
+    let (dir, _) = fixture("compare-model", false);
+    let candidate = dir.join("candidate.model");
+    let incumbent = dir.join("incumbent.model");
+    let run = |incumbent: &str| {
+        play(&[
+            "compare-model",
+            candidate.to_str().unwrap(),
+            incumbent,
+            "1",
+            "17",
+            "1",
+        ])
+    };
+    let missing_candidate = run("baseline");
+    assert_eq!(missing_candidate.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&missing_candidate.stderr).contains("candidate model"));
+    std::fs::write(
+        &candidate,
+        svanbot_strategy::action::ActionModel::baseline().to_text(),
+    )
+    .unwrap();
+    let missing_incumbent = run(incumbent.to_str().unwrap());
+    assert_eq!(missing_incumbent.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&missing_incumbent.stderr).contains("incumbent model"));
+    assert!(missing_incumbent.stdout.is_empty());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 use std::path::{Path, PathBuf};
 use svanbot::play::{assign, judge};
 use svanbot_learn::margin::{Admission, MARGIN};

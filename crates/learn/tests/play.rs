@@ -1,6 +1,6 @@
 use svanbot_core::rules::Blinds;
 use svanbot_learn::paired::Match;
-use svanbot_learn::play::{player, profile_stats, rival_duel, rival_ring_at};
+use svanbot_learn::play::{player, profile_stats, reading_model, rival_duel, rival_ring_at};
 use svanbot_learn::reads::Reads;
 use svanbot_strategy::{
     kind::PolicyKind, params::Params, policy::Policy, profile::Profile, style::Style,
@@ -29,6 +29,23 @@ fn a_heads_up_stablemate_deal_plays_the_same_twice() {
         first.to_bits(),
         rival_duel(&GAME, 0, &play, &play).to_bits()
     );
+}
+
+#[test]
+fn the_paired_decider_supplies_the_fitted_model_as_the_population_prior() {
+    use svanbot_learn::arena::BoutReader;
+    use svanbot_strategy::{action::ActionModel, policy::Personal};
+
+    fn take(_: &Reads, _: &[(usize, &str)], population: &ActionModel, _: f64) -> Vec<Personal> {
+        assert_eq!(*population, ActionModel::uniform());
+        Vec::new()
+    }
+
+    let policy = Policy::reference(Params::DEFAULT);
+    let fitted = reading_model(policy, Some(2), 6, take, Some(ActionModel::uniform()));
+    let reader = BoutReader::new(fitted);
+    let reference = player(policy, Some(2));
+    assert!(rival_ring_at(&GAME, 6, 1, &reader, &reference).is_finite());
 }
 
 #[test]

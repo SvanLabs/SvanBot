@@ -18,7 +18,10 @@ use svanbot_strategy::style::{self, Style};
 use crate::arena::{self, Opponent};
 use crate::{arena_ship, deciders};
 
+mod model;
+
 const USAGE: &str = "usage: svanbot play arena <solving|pricing> <standard|tight|loose> [league] <bouts> [seed] [iterations] [out.json]
+       svanbot play compare-model <candidate> <baseline|incumbent> <bouts> [seed] [iterations]
        svanbot play check <kind> <style> <bouts|--until-decided> [seed] [iterations]
        svanbot play assign <bot> <kind> <style>
        svanbot play revert <bot>
@@ -45,6 +48,7 @@ fn command(args: &[String]) -> CommandResult {
         .filter(|path| !path.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     match args {
+        [name, args @ ..] if name == "compare-model" => model::compare(&fleet, args),
         [name, kind, style, tail @ ..] if name == "arena" => {
             let (kind, style) = policy_names(kind, style)?;
             play_arena(&fleet, kind, style, tail)
