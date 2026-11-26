@@ -23,23 +23,29 @@ pub fn download_all(
     store.wait_for_download_writer()?;
     let agent = agent_id(rest, store)?;
     let base = export_path(&agent);
-    let current = fetch_export(rest, store, &base, Scope::VerifyCurrent, &mut now_ms).map(Some);
+    let discovery = Discovery::read(rest);
+    let expected = discovery.as_ref().ok().and_then(Discovery::current_hands);
+    let current = fetch_export(
+        rest,
+        store,
+        &base,
+        Scope::VerifyCurrent(expected),
+        &mut now_ms,
+    )
+    .map(Some);
     let mut failures = usize::from(current.is_err());
     report(None, current);
-    let stats = played(&rest.get(STATS)?)?;
-    let catalog = rest.get(CATALOG)?;
-    let listed = catalog
-        .as_array()
-        .ok_or_else(|| history("the venue season list is not an array"))?;
-    let active = listed
-        .iter()
-        .find(|season| season["status"] == "active")
-        .and_then(|season| season["season_number"].as_u64());
-    for (number, hands) in stats.into_iter().rev() {
-        if active == Some(number) {
+
+    let Discovery {
+        played,
+        listed,
+        active,
+    } = discovery?;
+    for (number, hands) in played.into_iter().rev() {
+        if active == Some(number) || hands == 0 {
             continue;
         }
-        let result = season(listed, number, hands).and_then(|season| {
+        let result = season(&listed, number, hands).and_then(|season| {
             if store.verified_season(season.id)? >= season.hands {
                 return Ok(None);
             }
@@ -57,6 +63,34 @@ pub fn download_all(
         Err(history(format!(
             "{failures} season export(s) could not be verified"
         )))
+    }
+}
+
+struct Discovery {
+    played: BTreeMap<u64, u64>,
+    listed: Vec<Value>,
+    active: Option<u64>,
+}
+
+impl Discovery {
+    fn read(rest: &mut Rest) -> Result<Self, DownloadError> {
+        let played = played(&rest.get(STATS)?)?;
+        let Value::Array(listed) = rest.get(CATALOG)? else {
+            return Err(history("the venue season list is not an array"));
+        };
+        let active = listed
+            .iter()
+            .find(|season| season["status"] == "active")
+            .and_then(|season| season["season_number"].as_u64());
+        Ok(Self {
+            played,
+            listed,
+            active,
+        })
+    }
+
+    fn current_hands(&self) -> Option<u64> {
+        self.played.get(&self.active?).copied()
     }
 }
 
@@ -88,7 +122,7 @@ fn played(stats: &Value) -> Result<BTreeMap<u64, u64>, DownloadError> {
         let hands = row["hands_played"]
             .as_u64()
             .ok_or_else(|| history(format!("season {number} is missing its hand count")))?;
-        if hands > 0 && played.insert(number, hands).is_some() {
+        if played.insert(number, hands).is_some() {
             return Err(history(format!("season {number} is listed more than once")));
         }
     }

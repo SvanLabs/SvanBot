@@ -16,7 +16,6 @@ use rusqlite::{Connection, OptionalExtension, params};
 use svanbot_learn::probe::Arm;
 
 use crate::ledger::Played;
-use crate::record::Hand;
 use crate::session::Incident;
 
 const SCHEMA: &str = "
@@ -241,46 +240,6 @@ impl Store {
             incidents: u64::try_from(incidents).map_err(|error| StoreError(error.to_string()))?,
             last_hand_ms,
         })
-    }
-
-    /// Keeps a hand. Returns false if it is kept already: the first copy stands.
-    pub fn append_hand(
-        &self,
-        hand: &Hand,
-        source: Source,
-        recorded_ms: i64,
-    ) -> Result<bool, StoreError> {
-        // Each frame is a JSON object as the venue sent it, so the list is a JSON array.
-        let frames = format!("[{}]", hand.frames.join(","));
-        // The hand and its traces are one write: a trace has no meaning without its hand, and the
-        // recorder drops an open hand when the connection breaks, so a decision written at
-        // decision time can outlive a hand the store never kept.
-        let tx = self.db.unchecked_transaction()?;
-        let added = tx.execute(
-            "INSERT INTO hands (hand_id, table_id, source, recorded_ms, frames)
-             VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (hand_id) DO NOTHING",
-            params![
-                hand.hand_id,
-                hand.table_id,
-                source.name(),
-                recorded_ms,
-                frames
-            ],
-        )?;
-        if added == 1 {
-            trace::keep(&tx, hand)?;
-        } else if source == Source::History {
-            tx.execute(
-                "INSERT INTO hand_exports (hand_id, frame)
-                 SELECT hand_id, json_extract(?2, '$[0]') FROM hands
-                 WHERE hand_id = ?1 AND frames <> ?2
-                   AND json_array_length(?2) = 1 AND json_type(?2, '$[0]') = 'object'
-                 ON CONFLICT (hand_id) DO NOTHING",
-                params![hand.hand_id, frames],
-            )?;
-        }
-        tx.commit()?;
-        Ok(added == 1)
     }
 
     /// The hand history offset the last download reached, 0 before the first.

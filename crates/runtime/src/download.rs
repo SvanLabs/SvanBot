@@ -24,7 +24,7 @@ use serde_json::Value;
 use crate::limit::Limiter;
 use crate::record::Hand;
 use crate::rest::{Rest, RestError};
-use crate::store::{Source, Store, StoreError};
+use crate::store::{Store, StoreError};
 
 mod seasons;
 pub use seasons::download_all;
@@ -49,6 +49,9 @@ pub const TIMEOUT: Duration = Duration::from_secs(600);
 
 /// The largest export read: a season of 14 000 hands is 30 MB, so this holds about 100 000.
 pub const MAX_BODY: u64 = 256 * 1024 * 1024;
+
+/// Limit the number of hands each export transaction holds in the SQLite writer.
+const WRITE_BATCH: usize = 32;
 
 /// The endpoint's limit per key: 30 requests a minute, with a second's margin on the window.
 pub fn limiter() -> Limiter {
@@ -159,7 +162,7 @@ fn is_identifier(id: &str) -> bool {
 #[derive(Clone, Copy)]
 enum Scope<'a> {
     Current,
-    VerifyCurrent,
+    VerifyCurrent(Option<u64>),
     Closed(&'a ClosedSeason<'a>),
 }
 
@@ -182,24 +185,26 @@ fn fetch_export(
             ));
         }
         summary.pages += 1;
-        for item in &page {
-            let Some(hand_id) = text(item, &["hand_id", "id"]) else {
-                summary.skipped += 1;
-                continue;
-            };
-            seen.insert(hand_id.clone());
-            let hand = Hand {
-                hand_id,
-                table_id: text(item, &["table_id"]).unwrap_or_default(),
-                frames: vec![item.to_string()],
-                // A downloaded hand was played elsewhere, on a build that kept no trace.
-                traced: Vec::new(),
-            };
-            if store.append_hand(&hand, Source::History, now_ms())? {
-                summary.added += 1;
-            } else {
-                summary.known += 1;
+        for chunk in page.chunks(WRITE_BATCH) {
+            let mut hands = Vec::with_capacity(chunk.len());
+            for item in chunk {
+                let Some(hand_id) = text(item, &["hand_id", "id"]) else {
+                    summary.skipped += 1;
+                    continue;
+                };
+                seen.insert(hand_id.clone());
+                let hand = Hand {
+                    hand_id,
+                    table_id: text(item, &["table_id"]).unwrap_or_default(),
+                    frames: vec![item.to_string()],
+                    // A downloaded hand was played elsewhere, on a build that kept no trace.
+                    traced: Vec::new(),
+                };
+                hands.push((hand, now_ms()));
             }
+            let added = store.append_history(&hands)?;
+            summary.added += added;
+            summary.known += hands.len() as u32 - added;
         }
         summary.offset = pager.offset();
         if !matches!(scope, Scope::Closed(_)) {
@@ -210,8 +215,10 @@ fn fetch_export(
     let reported = pager.reported_total();
     let expected = match scope {
         Scope::Current => reported.unwrap_or(0),
-        Scope::VerifyCurrent => {
-            reported.ok_or_else(|| history("the current export has no total hand count"))?
+        Scope::VerifyCurrent(stats) => {
+            reported.into_iter().chain(stats).max().ok_or_else(|| {
+                history("the current export and season statistics have no total hand count")
+            })?
         }
         Scope::Closed(season) => reported.unwrap_or(0).max(season.hands),
     };

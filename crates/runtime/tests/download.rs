@@ -273,22 +273,22 @@ fn all_seasons_verifies_closed_exports_and_skips_them_on_retry() {
     }]);
     let (base, served) = venue_with_totals(vec![
         (json!({"agent_id": "bot", "name": "SurSvan"}), None),
-        (json!([{"hand_id": "active"}]), Some(1)),
         (stats.clone(), None),
         (catalog.clone(), None),
+        (json!([{"hand_id": "active"}]), Some(1)),
         (old, Some(1)),
     ]);
     download_all(&mut rest(&base), &store, || 5, |_, _| {}).unwrap();
     let paths = served.join().unwrap();
-    assert!(!paths[1].contains("season_id="));
+    assert!(!paths[3].contains("season_id="));
     assert!(paths[4].contains("season_id=ended"));
     assert_eq!(store.hands().unwrap().len(), 2);
 
     let (base, served) = venue_with_totals(vec![
         (json!({"agent_id": "bot", "name": "SurSvan"}), None),
-        (json!([{"hand_id": "active"}]), Some(1)),
         (stats, None),
         (catalog, None),
+        (json!([{"hand_id": "active"}]), Some(1)),
     ]);
     let mut skipped = false;
     download_all(
@@ -320,9 +320,9 @@ fn a_wrong_season_is_never_imported_or_marked_complete() {
     for _ in 0..2 {
         let (base, served) = venue(vec![
             json!({"agent_id": "bot", "name": "SurSvan"}),
-            json!([{"hand_id": "active"}]),
             stats.clone(),
             catalog.clone(),
+            json!([{"hand_id": "active"}]),
             json!([{"hand_id": "wrong", "started_at": "2026-09-16T00:00:00Z"}]),
         ]);
         let mut rejected = false;
@@ -350,14 +350,14 @@ fn an_unavailable_history_catalog_leaves_the_current_export_intact() {
     let (store, _) = store("discovery-failed");
     let (base, served) = venue(vec![
         json!({"agent_id": "bot", "name": "SurSvan"}),
-        json!([{"hand_id": "active"}]),
         json!({"seasons": []}),
         json!({"status": "unavailable"}),
+        json!([{"hand_id": "active"}]),
     ]);
     let outcome = download_all(&mut rest(&base), &store, || 5, |_, _| {});
     assert!(outcome.is_err());
     assert_eq!(store.hands().unwrap().len(), 1);
-    assert_eq!(served.join().unwrap()[2], "/api/season/stats");
+    assert_eq!(served.join().unwrap()[1], "/api/season/stats");
 }
 
 #[test]
@@ -388,7 +388,6 @@ fn an_incomplete_season_does_not_block_the_next_season() {
     let (store, _) = store("continue");
     let (base, served) = venue_with_totals(vec![
         (json!({"agent_id": "bot", "name": "SurSvan"}), None),
-        (json!([]), Some(0)),
         (
             json!({"seasons": [
                 {"season_number": 3, "hands_played": 2},
@@ -405,6 +404,7 @@ fn an_incomplete_season_does_not_block_the_next_season() {
             ]),
             None,
         ),
+        (json!([]), Some(0)),
         (
             json!([{"hand_id": "three", "started_at": "2026-09-02T00:00:00Z"}]),
             Some(1),
@@ -427,4 +427,38 @@ fn an_incomplete_season_does_not_block_the_next_season() {
     assert_eq!(outcomes, [(None, true), (Some(3), false), (Some(2), true)]);
     assert_eq!(served.join().unwrap().len(), 6);
     assert_eq!(store.hands().unwrap().len(), 2);
+}
+
+#[test]
+fn current_export_cannot_undercount_the_bots_active_season_stats() {
+    use svanbot_runtime::download::download_all;
+
+    let (store, _) = store("active-undercount");
+    let stats = json!({"seasons": [{"season_number": 4, "hands_played": 2}]});
+    let catalog = json!([{"season_number": 4, "season_id": "active", "status": "active"}]);
+    let (base, served) = venue_with_totals(vec![
+        (json!({"agent_id": "bot", "name": "SurSvan"}), None),
+        (stats, None),
+        (catalog, None),
+        (json!([{"hand_id": "active"}]), Some(1)),
+    ]);
+    let mut reported = None;
+    let outcome = download_all(
+        &mut rest(&base),
+        &store,
+        || 5,
+        |_, result| {
+            reported = Some(result);
+        },
+    );
+    assert!(outcome.is_err());
+    assert!(matches!(
+        reported,
+        Some(Err(DownloadError::Incomplete {
+            expected: 2,
+            received: 1
+        }))
+    ));
+    assert_eq!(served.join().unwrap().len(), 4);
+    assert_eq!(store.hands().unwrap().len(), 1);
 }
