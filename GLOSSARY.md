@@ -140,6 +140,12 @@ What SvanBot believes about an opponent it has not yet seen enough of, taken fro
 population.
 _Avoid_: default, baseline profile
 
+**Field**:
+The players a bot meets, cloned as one identity-free action model fitted from that bot's own
+store. It plays as one Arena row for that bot, recorded apart from the release rows, and never
+crosses to a stablemate.
+_Avoid_: population, pool, opponent set
+
 **Read**:
 An opponent's own departure from the prior, learned from their hands alone. One bot's reads are its
 own, never pooled across stablemates.
@@ -272,21 +278,38 @@ _Avoid_: incumbent, best, main
 One bot's own **champion**: the parameter set in `champions.json` under the bot's name, seeded
 from the fleet champion with its style's pins and moved only by that bot's search and promotion. A
 bot with no slot plays the fleet champion.
-_Avoid_: lineage, per-bot params, brain (a brain is a policy)
+_Avoid_: per-bot params, brain (a brain is a policy); a lineage is its whole line, not the slot
 
 **Challenger**:
 A parameter set put forward to replace the champion.
 _Avoid_: candidate, mutant, variant
 
 **Archive**:
-A bot's last five champions, newest first, each named by its digest with the paired bouts that
-promoted it. A promotion must clear every one of them (the regression rule).
+A bot's last five champions, newest first, each kept with its parameter set, the style it was
+promoted under and the paired bouts that promoted it. A promotion must clear every one of them
+(the regression rule), and a refresh selects from them.
 _Avoid_: history, vault
 
 **Regression rule**:
 The check that refuses a promotion which loses to a champion in the bot's archive at the 95% bound,
 and, once exploiters exist, one that raises exploitability past its bound (+5 bb/100).
 _Avoid_: backtest, safety net
+
+**Lineage**:
+One bot's own line of champions: its slot, its search and its archive, all under the bot's style.
+_Avoid_: branch, family
+
+**Round-robin**:
+The standing test in which each brain's policy meets its gauntlet. A lineage is **dominated** when
+another row beats it at the 95% bound, and a dominated lineage refreshes.
+_Avoid_: tournament, ladder (a ladder is the venue's leaderboard)
+
+**Refresh**:
+Resetting a dominated lineage to the best eligible champion of its own style from its archive: the
+same-style champion whose promotion evidence has the strongest lower 95% bound. v10 copied the
+round-robin's winner, which here would erase the style. A refresh runs through the live guard
+before the champion reaches the slot.
+_Avoid_: reset, rollback (a rollback returns to the previous build or champion on purpose)
 
 **Exploiter**:
 A policy searched to beat one brain's champion in the paired sim. The best one's win rate is that
@@ -324,6 +347,13 @@ _Avoid_: experiment pair, trial, A/B test
 **Arm**:
 One of the two parameter sets in a probe.
 _Avoid_: variant, side
+
+**Standing reference arm**:
+A bot's own live control: one orbit in ten plays the frozen reference policy, drawn from the bot's
+name and the orbit's number, so a restart draws the same arm again and the bot has a control from
+the same tables in the same hours. The hand records the reference digest and the chance its arm
+was drawn, and the probe's propensity-weighted estimate reads that chance.
+_Avoid_: baseline arm, control arm
 
 **Orbit**:
 Six counted hands at one table, once round the seats. A probe plays one arm for a whole orbit, and

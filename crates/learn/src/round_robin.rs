@@ -109,7 +109,7 @@ pub fn plan(
         rows.push(Row::shared(name.clone(), Table::SixMax));
     }
     for held in archive.champions() {
-        rows.push(Row::archived(held.digest));
+        rows.push(Row::archived(held.digest()));
     }
     Plan {
         bot: bot.into(),

@@ -89,6 +89,24 @@ fn a_stablemate_row_does_not_enter_the_pool() {
 }
 
 #[test]
+fn a_bots_own_field_row_does_not_enter_the_pool() {
+    let field = svanbot_learn::field::row_name("SurSvan");
+    let with_field = |value: f64| {
+        let mut run = run([value; 3]);
+        run.rows.push(ArenaRow {
+            opponent: field.clone(),
+            deals: 3_000,
+            mbb_per_100: -1e9,
+            ci95: 0.0,
+            bouts: vec![value; 60],
+        });
+        run
+    };
+    let (reading, _) = judge(&with_field(1.0), &with_field(0.0), MARGIN).unwrap();
+    assert_eq!(reading.admission, Admission::Admitted);
+}
+
+#[test]
 fn runs_that_are_not_the_same_bouts_are_refused() {
     let base = run([0.; 3]);
     for (candidate, why) in [
@@ -334,4 +352,58 @@ fn the_policy_arena_plays_the_shared_archetypes_and_records_them_apart() {
     }
     // The release Arena, which the ship bar reads, stays untouched.
     assert!(!dir.join("fleet/arena.json").exists());
+}
+
+#[test]
+fn a_refresh_changes_the_slot_only_after_the_live_guard_clears() {
+    use svanbot::play::apply_refresh;
+    use svanbot_learn::archive::{Archive, Archived};
+    use svanbot_learn::paired::Verdict as Pairing;
+    use svanbot_learn::probe::Verdict as Guard;
+    use svanbot_learn::refresh::{Matchup, Outcome, Row, refresh};
+
+    let (_, fleet) = fixture("refresh-guard", false);
+    let incumbent = Params { exploit: 0.5 };
+    let selected = Archived {
+        params: Params { exploit: 0.4 },
+        style: "tight",
+        promotion: vec![3_000.0; 40],
+    };
+    let mut archive = Archive::new();
+    archive.record(selected.clone());
+    let standing = Row {
+        bot: "Svanar".into(),
+        style: "tight",
+        champion: incumbent,
+        matchups: vec![Matchup {
+            name: "Svanby".into(),
+            verdict: Pairing {
+                deals: 100,
+                mbb_per_100: 2_000.0,
+                ci95: 100.0,
+            },
+        }],
+    };
+    let plan = refresh(&standing, &archive);
+    assert!(matches!(plan.outcome, Outcome::Selected(_)));
+    fleet.set_champion("Svanar", &incumbent).unwrap();
+
+    for guard in [
+        Guard::Running,
+        Guard::Supported,
+        Guard::Harmful,
+        Guard::SimGap,
+        Guard::Inconclusive,
+    ] {
+        assert_eq!(apply_refresh(&fleet, &plan, guard).unwrap(), None);
+        assert_eq!(fleet.champion_slot("Svanar").unwrap(), Some(incumbent));
+    }
+    assert_eq!(
+        apply_refresh(&fleet, &plan, Guard::Cleared).unwrap(),
+        Some(selected.params)
+    );
+    assert_eq!(
+        fleet.champion_slot("Svanar").unwrap(),
+        Some(selected.params)
+    );
 }

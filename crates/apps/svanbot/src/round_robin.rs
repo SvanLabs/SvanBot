@@ -229,7 +229,9 @@ fn rules(archive: &[ArchivedChampion], current: svanbot_strategy::params::Digest
     let mut rules = Archive::new();
     for held in archive.iter().filter(|held| held.digest() != current).rev() {
         rules.record(Archived {
-            digest: held.digest(),
+            params: held.params,
+            // The regression rule does not read the style; the archive's own writer supplies it.
+            style: "standard",
             promotion: Vec::new(),
         });
     }

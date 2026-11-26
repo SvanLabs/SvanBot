@@ -25,10 +25,11 @@
 //! (`svanbot_runtime::probing`).
 //!
 //! `svanbot download` instead downloads the bot's season hand history into its store, and exits
-//! ([`download`]). `svanbot fit` fits the action model on the store's hands ([`fit`]). `svanbot
-//! arena` plays the policy against every sparring archetype ([`arena`]). `svanbot round-robin`
-//! plays each bot's gauntlet once, bounded and in order, into the fleet's own record
-//! ([`round_robin`]). `svanbot paired` runs a
+//! ([`download`]). `svanbot fit` fits the action model on the store's hands ([`fit`]), and
+//! `svanbot field` fits the bot's own field from its store and plays it as one Arena row, apart
+//! from the release rows ([`field`]). `svanbot arena` plays the policy against every sparring
+//! archetype ([`arena`]). `svanbot round-robin` plays each bot's gauntlet once, bounded and in
+//! order, into the fleet's own record ([`round_robin`]). `svanbot paired` runs a
 //! paired sim of the policy against the pricer ([`paired`]). `svanbot propose` puts a challenger
 //! forward for the canary ([`propose`]), and `svanbot learn` runs one step of the unattended
 //! search for one ([`svanbot::learn`]). `svanbot dashboard` serves the fleet's dashboard on
@@ -54,6 +55,7 @@ mod arena_ship;
 mod calibration;
 mod deciders;
 mod download;
+mod field;
 mod fit;
 mod paired;
 mod paired_compare;
@@ -86,6 +88,7 @@ use svanbot_runtime::probing::Probing;
 use svanbot_runtime::status::{Play, Status, status_path};
 use svanbot_runtime::store::Store;
 use svanbot_strategy::action::ActionModel;
+use svanbot_strategy::policy::Policy;
 use svanbot_strategy::pricer::Budget;
 use svanbot_strategy::resolve::iterations_for;
 
@@ -124,6 +127,12 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("round-robin") {
         let args: Vec<String> = std::env::args().skip(2).collect();
         return round_robin::run(&args);
+    }
+    // Nor is fitting a bot's own field: the learner never opens a store, and a per-bot fit is no
+    // bot's start.
+    if std::env::args().nth(1).as_deref() == Some("field") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return field::run(&args);
     }
     if std::env::args().nth(1).as_deref() == Some("calibration") {
         return calibration::run();
@@ -237,8 +246,12 @@ fn main() -> ExitCode {
                 };
                 // The compute budget: a bigger pot buys the re-solve more iterations.
                 let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
-                // The parameter set of the hand in play: the champion's, or a probe's arm.
-                let params = probing.borrow().params();
+                // The parameter set of the hand in play, and whether it is the standing
+                // reference arm's reference side: a probe's arm, a champion's, or the reference.
+                let (params, on_reference) = {
+                    let probing = probing.borrow();
+                    (probing.params(), probing.on_reference())
+                };
                 // Each eligible opponent has their own read, built from this bot's hands.
                 // Everyone else uses the fitted population model or the baseline.
                 let named: Vec<(usize, &str)> = players
@@ -249,7 +262,11 @@ fn main() -> ExitCode {
                 let population = model.as_ref().unwrap_or(&baseline);
                 let reads = reads.borrow();
                 let personal = reads.deciding(&named, population, params.exploit);
-                let policy = policies.policy(params);
+                let policy = if on_reference {
+                    Policy::reference(params)
+                } else {
+                    policies.policy(params)
+                };
                 let stats = profile_stats(&policy, &reads, &named);
                 let decision =
                     policy.decide(spot, model.as_ref(), &personal, budget, iterations, &stats);

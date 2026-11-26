@@ -6,17 +6,28 @@ use std::cell::RefCell;
 
 use svanbot_learn::archive::{Archive, Archived, Regression};
 use svanbot_learn::round_robin::{Budget, MAX_ROWS, Table, plan, read, regression, run};
-use svanbot_strategy::params::Digest;
+use svanbot_strategy::params::{Digest, Params};
 
 fn digest(value: u64) -> Digest {
     format!("{value:016x}").parse().unwrap()
 }
 
+fn params(value: u64) -> Params {
+    Params {
+        exploit: value as f64 / 10.0,
+    }
+}
+
 fn archived(value: u64) -> Archived {
     Archived {
-        digest: digest(value),
+        params: params(value),
+        style: "standard",
         promotion: Vec::new(),
     }
+}
+
+fn archived_digest(value: u64) -> Digest {
+    params(value).digest()
 }
 
 /// The ten shared rows the Arena has today: the pricer, v10.0.2 and the eight archetypes.
@@ -61,9 +72,12 @@ fn a_plan_is_ten_shared_pairs_heads_up_then_the_same_ring_then_the_archive() {
     );
     assert_eq!(plan.rows[10].name, "pricer");
     // The archive is newest first, and its rows are played at the 6-max ring.
-    assert_eq!(plan.rows[20].name, format!("archive {}", digest(2)));
-    assert_eq!(plan.rows[20].archive, Some(digest(2)));
-    assert_eq!(plan.rows[21].archive, Some(digest(1)));
+    assert_eq!(
+        plan.rows[20].name,
+        format!("archive {}", archived_digest(2))
+    );
+    assert_eq!(plan.rows[20].archive, Some(archived_digest(2)));
+    assert_eq!(plan.rows[21].archive, Some(archived_digest(1)));
     assert_eq!(plan.rows[20].table, Table::SixMax);
 }
 
@@ -114,7 +128,7 @@ fn the_archive_rows_are_the_evidence_the_regression_rule_reads() {
     assert_eq!(
         regression(&archive, &lost.rows),
         Regression::Refused {
-            champion: digest(1)
+            champion: archived_digest(1)
         }
     );
 
