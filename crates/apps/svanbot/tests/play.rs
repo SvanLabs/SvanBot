@@ -209,7 +209,9 @@ fn runs_that_are_not_the_same_bouts_are_refused() {
 }
 
 fn fixture(name: &str, store: bool) -> (PathBuf, Fleet) {
-    let dir = std::env::temp_dir().join(format!("svanbot-play-{}-{name}", std::process::id()));
+    // The test's own directory under the build tree: not `temp_dir()`, whose path the
+    // environment can move.
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     if store {
