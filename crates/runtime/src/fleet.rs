@@ -4,6 +4,8 @@
 //! - `champion.json`: the parameter set every bot plays by. The canary writes it when a
 //!   promotion's harm guard clears, and each bot reads it between hands. With no file, the
 //!   champion is [`Params::DEFAULT`].
+//! - `champions.json`: each bot's own champion slot, seeded from `champion.json` and moved only
+//!   by that bot's search and promotion (Phase 2). A bot with no entry plays the fleet champion.
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running.
 //! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
@@ -27,6 +29,7 @@ use svanbot_strategy::params::{Digest, Params};
 use crate::health::write_atomically;
 
 mod calibration;
+mod champions;
 mod checks;
 pub use checks::Check;
 mod policies;
@@ -441,6 +444,22 @@ impl Fleet {
         });
         let runs: Vec<String> = runs.iter().map(ArenaRun::as_text).collect();
         self.write(file, &format!("{{\"runs\":[{}]}}", runs.join(",")))
+    }
+
+    /// The `bots` map of a fleet file (the assignments, the champion slots): one entry per bot,
+    /// and an empty map before the file exists.
+    pub(super) fn bots_in(&self, file: &str) -> Result<Map<String, Value>, String> {
+        let text = match fs::read_to_string(self.dir.join(file)) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
+            Err(error) => return Err(format!("{file}: {error}")),
+        };
+        let mut value: Value =
+            serde_json::from_str(&text).map_err(|error| format!("{file}: {error}"))?;
+        match value.as_object_mut().and_then(|root| root.remove("bots")) {
+            Some(Value::Object(bots)) => Ok(bots),
+            _ => Err(format!("{file}: expected a bots object")),
+        }
     }
 
     fn write(&self, name: &str, text: &str) -> Result<(), String> {

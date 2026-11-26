@@ -127,17 +127,7 @@ impl Fleet {
     }
 
     fn plays(&self) -> Result<Map<String, Value>, String> {
-        let text = match fs::read_to_string(self.dir.join(PLAYS)) {
-            Ok(text) => text,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Map::new()),
-            Err(error) => return Err(format!("{PLAYS}: {error}")),
-        };
-        let mut value: Value =
-            serde_json::from_str(&text).map_err(|error| format!("{PLAYS}: {error}"))?;
-        match value.as_object_mut().and_then(|root| root.remove("bots")) {
-            Some(Value::Object(bots)) => Ok(bots),
-            _ => Err(format!("{PLAYS}: expected a bots object")),
-        }
+        self.bots_in(PLAYS)
     }
 
     // Writers share a separate lock so replacing or removing plays.json cannot move the lock.

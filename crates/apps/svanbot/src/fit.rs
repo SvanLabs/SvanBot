@@ -36,7 +36,7 @@ pub(crate) fn load_model(me: &str) -> Option<ActionModel> {
     read_model(&model_path(me).ok()?)
 }
 
-fn read_model(path: &Path) -> Option<ActionModel> {
+pub(crate) fn read_model(path: &Path) -> Option<ActionModel> {
     ActionModel::from_text(&std::fs::read_to_string(path).ok()?)
 }
 

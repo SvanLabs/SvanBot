@@ -52,6 +52,22 @@ pub fn revert(fleet: &Fleet, bot: &str) -> Result<String, String> {
     Ok(format!("{bot} will play the reference policy"))
 }
 
+/// Seeds `bot`'s champion slot from the fleet champion, under the style it is assigned. It is
+/// the first slice of Phase 2: the numbers are the reference's, so a bot that is seeded plays
+/// exactly as it did, and its own search and promotion move the slot from there.
+pub fn seed(fleet: &Fleet, data_dir: &Path, bot: &str) -> Result<String, String> {
+    if Path::new(bot).file_name().and_then(|name| name.to_str()) != Some(bot)
+        || !data_dir.join(format!("{bot}.db")).is_file()
+    {
+        return Err(format!("{bot} has no bot store"));
+    }
+    let champion = fleet.seed_champion(bot)?;
+    Ok(format!(
+        "{bot}'s champion slot seeded from the reference at {}",
+        champion.digest()
+    ))
+}
+
 pub fn status(fleet: &Fleet) -> Result<String, String> {
     let champion = fleet.champion()?.digest();
     let mut text = format!("Reference: solving/standard@{champion}\nAssignments:\n");

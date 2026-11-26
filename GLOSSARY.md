@@ -203,6 +203,9 @@ _Avoid_: baseline (that trusts no read), control
 The policy a bot falls back on when it trusts no read: hard to exploit, not tuned to anyone.
 _Avoid_: GTO, default strategy
 
+**Baseline action model**:
+The built-in population prior used when a bot has no fitted action model.
+
 **Exploit budget**:
 How far the policy may move from the baseline toward what the reads suggest.
 _Avoid_: aggression, exploit level
@@ -260,6 +263,12 @@ _Avoid_: version, id
 The parameter set the fleet plays by default.
 _Avoid_: incumbent, best, main
 
+**Champion slot**:
+One bot's own **champion**: the parameter set in `champions.json` under the bot's name, seeded
+from the fleet champion with its style's pins and moved only by that bot's search and promotion. A
+bot with no slot plays the fleet champion.
+_Avoid_: lineage, per-bot params, brain (a brain is a policy)
+
 **Challenger**:
 A parameter set put forward to replace the champion.
 _Avoid_: candidate, mutant, variant
@@ -270,8 +279,8 @@ challengers.
 _Avoid_: trainer, optimizer
 
 **Paired sim**:
-A sim in which two parameter sets play the same deals from mirrored seats, so the luck of the cards
-cancels out.
+A sim in which two parameter sets or two action models play the same deals from each seat, so the
+luck of the cards cancels out.
 _Avoid_: A/B sim, duplicate sim
 
 **Luck correction**:
@@ -306,9 +315,8 @@ It waits while a proposal waits or a probe runs.
 _Avoid_: optimizer, tuning loop, sweep
 
 **Confirmation**:
-A second paired sim of a challenger on fresh deals, after a first put it above the champion. The
-search proposes only a challenger both put above, so one lucky sim among many cannot become a
-promotion.
+A second paired sim on fresh deals after the first cleared the same margins. Both sims compare
+the same parameter sets or action models. A single sim cannot qualify a challenger for promotion.
 _Avoid_: re-test, replication, validation run
 
 **Ledger**:

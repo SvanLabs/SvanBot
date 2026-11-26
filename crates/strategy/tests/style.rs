@@ -42,3 +42,60 @@ fn every_style_pins_a_width_a_player_could_play() {
         );
     }
 }
+
+#[test]
+fn a_style_seeds_a_slot_with_its_pins_applied() {
+    use svanbot_strategy::params::Params;
+    // The width is pinned in the style, not in a parameter set, so seeding moves no number and
+    // no digest: the policy reads the width from the style it plays.
+    assert_eq!(TIGHT.seed(Params::DEFAULT), Params::DEFAULT);
+    assert_eq!(LOOSE.seed(Params::DEFAULT), Params::DEFAULT);
+    assert_eq!(TIGHT.seed(Params { exploit: 0.25 }).exploit, 0.25);
+}
+
+#[test]
+fn a_seeded_style_decides_exactly_as_the_same_style_without_seeding() {
+    use svanbot_core::rules::{Legal, RaiseRange};
+    use svanbot_core::spot::Spot;
+    use svanbot_strategy::kind::PolicyKind;
+    use svanbot_strategy::params::Params;
+    use svanbot_strategy::policy::Policy;
+    use svanbot_strategy::pricer::Budget;
+
+    let spot = Spot {
+        hole: "AhKh".parse().unwrap(),
+        board: "QhJhTh2c3d".parse().unwrap(),
+        pot: 400,
+        legal: Legal {
+            call: Some(200),
+            raise: Some(RaiseRange {
+                min: 400,
+                max: 2_000,
+            }),
+        },
+        opponents: 1,
+        stack: 2_000,
+        callable_pot: None,
+        committed: 0,
+        big_blind: 20,
+        in_position: false,
+        players_behind: None,
+        lines: vec![],
+        seats: vec![],
+    };
+    let budget = Budget {
+        samples: 3_200,
+        seed: 5,
+    };
+    let params = Params { exploit: 0.35 };
+    for style in style::ALL {
+        let seeded = Policy::new(PolicyKind::Solving, style, style.seed(params));
+        let raw = Policy::new(PolicyKind::Solving, style, params);
+        assert_eq!(
+            seeded.decide(&spot, None, &[], budget, 60, &[]),
+            raw.decide(&spot, None, &[], budget, 60, &[]),
+            "{}",
+            style.name
+        );
+    }
+}

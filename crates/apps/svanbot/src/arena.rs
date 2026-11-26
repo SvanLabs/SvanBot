@@ -24,7 +24,7 @@ use std::sync::{Mutex, mpsc};
 use svanbot_learn::arena::{
     BOUT, BoutReader, Row, bout, ring_bout_at, scoreboard, v10_duel, v10_ring_at,
 };
-use svanbot_learn::paired::{Match, duel_seen, verdict};
+use svanbot_learn::paired::{Challenger, Match, duel_seen, verdict};
 use svanbot_learn::play::{self, STABLEMATE};
 use svanbot_learn::reads::Reads;
 use svanbot_learn::ring::ring_seen;
@@ -100,6 +100,19 @@ pub(crate) fn play_bout(
     let seats = league.seats();
     let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, Reads::deciding, None))
         .with_profile_stats(!policy.style.profile.is_empty());
+    play_bout_for(game, league, opponent, number, policy, fixed, challenger)
+}
+
+pub(crate) fn play_bout_for(
+    game: &Match,
+    league: League,
+    opponent: Opponent,
+    number: u64,
+    policy: &Policy,
+    fixed: Option<u64>,
+    challenger: &impl Challenger,
+) -> Vec<f64> {
+    let seats = league.seats();
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;
     // Heads up is the mirrored duel; every bigger table is the ring at its own size.
