@@ -24,6 +24,7 @@ fn params(exploit: f64) -> Params {
     Params {
         exploit,
         spread: 0.0,
+        ..Params::DEFAULT
     }
 }
 

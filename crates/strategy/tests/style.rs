@@ -54,7 +54,8 @@ fn a_style_seeds_a_slot_with_its_pins_applied() {
         TIGHT
             .seed(Params {
                 exploit: 0.25,
-                spread: 0.0
+                spread: 0.0,
+                ..Params::DEFAULT
             })
             .exploit,
         0.25
@@ -84,18 +85,21 @@ fn a_style_bounds_the_numbers_its_search_may_move_and_pins_the_zero_width_ones()
     assert_eq!(
         BOUNDED.seed(Params {
             exploit: 0.5,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }),
         Params {
             exploit: 0.5,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }
     );
     assert_eq!(
         PINNED
             .seed(Params {
                 exploit: 0.5,
-                spread: 0.0
+                spread: 0.0,
+                ..Params::DEFAULT
             })
             .exploit,
         0.4
@@ -153,6 +157,7 @@ fn a_seeded_style_decides_exactly_as_the_same_style_without_seeding() {
     let params = Params {
         exploit: 0.25,
         spread: 0.1,
+        ..Params::DEFAULT
     };
     for style in style::ALL {
         let seeded = Policy::new(PolicyKind::Solving, style, style.seed(params));
@@ -164,4 +169,41 @@ fn a_seeded_style_decides_exactly_as_the_same_style_without_seeding() {
             style.name
         );
     }
+}
+
+#[test]
+fn hunter_bounds_the_playbooks_cuts_and_the_other_styles_pin_them() {
+    // Hunter, the Exploiting brain, learns the cuts its playbook classifies opponents with,
+    // inside its own bounds, and plays no style profile: the playbook is the kind's logic.
+    let hunter = style::named("hunter").expect("hunter is a style");
+    assert!(hunter.profile.is_empty());
+    assert!(hunter.allows("station_vpip", 0.9));
+    assert!(!hunter.allows("station_vpip", 0.2));
+    assert!(hunter.allows("nit_fold", 0.8));
+    assert!(!hunter.allows("nit_fold", 0.2));
+    assert!(hunter.allows("exploit", 0.25));
+    // Every other style pins the cuts at the first profile's numbers, so seeding one of their
+    // slots with a champion that carries Hunter's cuts moves none of their numbers.
+    for style in style::ALL.iter().filter(|style| style.name != "hunter") {
+        let seeded = style.seed(Params {
+            station_vpip: 0.95,
+            nit_fold: 0.5,
+            ..Params::DEFAULT
+        });
+        assert_eq!(
+            seeded.station_vpip,
+            Params::DEFAULT.station_vpip,
+            "{}",
+            style.name
+        );
+        assert_eq!(seeded.nit_fold, Params::DEFAULT.nit_fold, "{}", style.name);
+    }
+    // Hunter keeps the cuts a champion brings inside its bounds.
+    let seeded = hunter.seed(Params {
+        station_vpip: 0.95,
+        nit_fold: 0.5,
+        ..Params::DEFAULT
+    });
+    assert_eq!(seeded.station_vpip, 0.95);
+    assert_eq!(seeded.nit_fold, 0.5);
 }

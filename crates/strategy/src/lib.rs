@@ -13,6 +13,7 @@ pub mod action;
 pub mod first_profile;
 pub mod kind;
 pub mod params;
+pub mod playbook;
 pub mod policy;
 pub mod preflop;
 pub mod pricer;

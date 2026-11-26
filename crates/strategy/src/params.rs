@@ -3,7 +3,7 @@
 //! The digest is FNV-1a over each number's name and bits, written here: a pure layer takes no
 //! crate for it. Two equal parameter sets have one digest, on any machine. Only the numbers that
 //! differ from their defaults are hashed, except `exploit`, which is always hashed: that keeps
-//! the digest of every champion written before the mixing spread existed.
+//! the digest of every champion written before a number existed.
 //!
 //! The pricer once read two numbers of its own, a value margin and a raise share. Since V11-39 it
 //! values every action in chips instead, so neither is a number it plays by, and both are gone.
@@ -20,6 +20,20 @@ pub struct Params {
     /// The `Balanced` kind's mixing spread, in chips of the pot: actions worth no less than the
     /// best minus this share of the pot are eligible for its draw. Zero is no mixing.
     pub spread: f64,
+    /// The playbook's station cut: a read that enters at least this share of its hands, raises
+    /// at most `station_pfr` of them and does not fold to bets is a station.
+    pub station_vpip: f64,
+    /// The playbook's station cut on preflop raises: at most this share.
+    pub station_pfr: f64,
+    /// The playbook's maniac cut: a read that enters at least this share of its hands and raises
+    /// at least `maniac_pfr` of them is a maniac.
+    pub maniac_vpip: f64,
+    /// The playbook's maniac cut on preflop raises: at least this share.
+    pub maniac_pfr: f64,
+    /// The playbook's nit cut: a read that enters at most this share of its hands is a nit.
+    pub nit_vpip: f64,
+    /// The playbook's nit cut on folds: a nit folds at least this share of the bets it faces.
+    pub nit_fold: f64,
 }
 
 impl Params {
@@ -27,11 +41,26 @@ impl Params {
     pub const DEFAULT: Self = Self {
         exploit: 0.5,
         spread: 0.0,
+        station_vpip: 0.85,
+        station_pfr: 0.15,
+        maniac_vpip: 0.8,
+        maniac_pfr: 0.5,
+        nit_vpip: 0.2,
+        nit_fold: 0.7,
     };
 
     /// Each number with its name.
-    pub fn named(&self) -> [(&'static str, f64); 2] {
-        [("exploit", self.exploit), ("spread", self.spread)]
+    pub fn named(&self) -> [(&'static str, f64); 8] {
+        [
+            ("exploit", self.exploit),
+            ("spread", self.spread),
+            ("station_vpip", self.station_vpip),
+            ("station_pfr", self.station_pfr),
+            ("maniac_vpip", self.maniac_vpip),
+            ("maniac_pfr", self.maniac_pfr),
+            ("nit_vpip", self.nit_vpip),
+            ("nit_fold", self.nit_fold),
+        ]
     }
 
     /// This parameter set with the number called `name` set to `value`, or `None` for a name no
@@ -41,15 +70,22 @@ impl Params {
         match name {
             "exploit" => self.exploit = value,
             "spread" => self.spread = value,
+            "station_vpip" => self.station_vpip = value,
+            "station_pfr" => self.station_pfr = value,
+            "maniac_vpip" => self.maniac_vpip = value,
+            "maniac_pfr" => self.maniac_pfr = value,
+            "nit_vpip" => self.nit_vpip = value,
+            "nit_fold" => self.nit_fold = value,
             _ => return None,
         }
         Some(self)
     }
 
-    /// Whether every number is inside the range it is defined on: the exploit budget and the
-    /// mixing spread, each 0 to 1.
+    /// Whether every number is inside the range it is defined on: every number is a share, 0 to 1.
     pub fn in_range(&self) -> bool {
-        (0.0..=1.0).contains(&self.exploit) && (0.0..=1.0).contains(&self.spread)
+        self.named()
+            .into_iter()
+            .all(|(_, value)| (0.0..=1.0).contains(&value))
     }
 
     /// The digest that names this parameter set.

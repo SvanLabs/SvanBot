@@ -15,6 +15,7 @@ use svanbot_strategy::params::Params;
 const CHALLENGER: Params = Params {
     exploit: 0.9,
     spread: 0.0,
+    ..Params::DEFAULT
 };
 
 fn scratch(name: &str) -> PathBuf {
@@ -137,6 +138,7 @@ fn a_proposal_measured_against_another_champion_is_dropped_unplayed() {
     let promoted = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.promote(&promoted).unwrap();
     let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
@@ -295,10 +297,12 @@ fn a_bot_plays_its_own_slot_and_a_slot_update_waits_for_the_next_hand() {
     let slot_a = Params {
         exploit: 0.2,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let slot_b = Params {
         exploit: 0.7,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &slot_a).unwrap();
     fleet.set_champion("B", &slot_b).unwrap();
@@ -315,6 +319,7 @@ fn a_bot_plays_its_own_slot_and_a_slot_update_waits_for_the_next_hand() {
     let updated = Params {
         exploit: 0.3,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &updated).unwrap();
     // Between hands only: the hand in play keeps the champion it began with.
@@ -354,6 +359,7 @@ fn a_slot_that_cannot_be_read_leaves_the_bot_on_the_fleet_champion() {
             &Params {
                 exploit: 0.3,
                 spread: 0.0,
+                ..Params::DEFAULT
             },
         )
         .unwrap();

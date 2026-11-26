@@ -63,19 +63,43 @@ pub const STANDARD: Style = Style {
     name: "standard",
     open_scale: 1.0,
     profile: ACTIVE,
-    bounds: &[("spread", 0.0, 0.0)],
+    bounds: &[
+        ("spread", 0.0, 0.0),
+        ("station_vpip", 0.85, 0.85),
+        ("station_pfr", 0.15, 0.15),
+        ("maniac_vpip", 0.8, 0.8),
+        ("maniac_pfr", 0.5, 0.5),
+        ("nit_vpip", 0.2, 0.2),
+        ("nit_fold", 0.7, 0.7),
+    ],
 };
 pub const TIGHT: Style = Style {
     name: "tight",
     open_scale: 0.75,
     profile: ACTIVE,
-    bounds: &[("spread", 0.0, 0.0)],
+    bounds: &[
+        ("spread", 0.0, 0.0),
+        ("station_vpip", 0.85, 0.85),
+        ("station_pfr", 0.15, 0.15),
+        ("maniac_vpip", 0.8, 0.8),
+        ("maniac_pfr", 0.5, 0.5),
+        ("nit_vpip", 0.2, 0.2),
+        ("nit_fold", 0.7, 0.7),
+    ],
 };
 pub const LOOSE: Style = Style {
     name: "loose",
     open_scale: 1.25,
     profile: ACTIVE,
-    bounds: &[("spread", 0.0, 0.0)],
+    bounds: &[
+        ("spread", 0.0, 0.0),
+        ("station_vpip", 0.85, 0.85),
+        ("station_pfr", 0.15, 0.15),
+        ("maniac_vpip", 0.8, 0.8),
+        ("maniac_pfr", 0.5, 0.5),
+        ("nit_vpip", 0.2, 0.2),
+        ("nit_fold", 0.7, 0.7),
+    ],
 };
 /// Anchor, the `Balanced` brain: the baseline made a brain. It mixes near-best actions and
 /// blends the opening boundary, holds reads, and caps exploit low. Its slot learns the spread
@@ -84,10 +108,39 @@ pub const ANCHOR: Style = Style {
     name: "anchor",
     open_scale: 1.0,
     profile: EMPTY,
-    bounds: &[("exploit", 0.0, BALANCED_EXPLOIT_CAP), ("spread", 0.1, 0.5)],
+    bounds: &[
+        ("exploit", 0.0, BALANCED_EXPLOIT_CAP),
+        ("spread", 0.1, 0.5),
+        ("station_vpip", 0.85, 0.85),
+        ("station_pfr", 0.15, 0.15),
+        ("maniac_vpip", 0.8, 0.8),
+        ("maniac_pfr", 0.5, 0.5),
+        ("nit_vpip", 0.2, 0.2),
+        ("nit_fold", 0.7, 0.7),
+    ],
 };
 
-pub const ALL: [&Style; 4] = [&STANDARD, &TIGHT, &LOOSE, &ANCHOR];
+/// Hunter, the `Exploiting` brain: a playbook per opponent type read from stats and per
+/// adaptivity class, and the re-solve pinned to the read. It plays no style profile: the
+/// playbook is the kind's logic. Its slot learns the playbook's cuts and the exploit stance
+/// between the bounds.
+pub const HUNTER: Style = Style {
+    name: "hunter",
+    open_scale: 1.0,
+    profile: EMPTY,
+    bounds: &[
+        ("exploit", 0.0, 1.0),
+        ("spread", 0.0, 0.0),
+        ("station_vpip", 0.6, 1.0),
+        ("station_pfr", 0.0, 0.4),
+        ("maniac_vpip", 0.5, 1.0),
+        ("maniac_pfr", 0.2, 1.0),
+        ("nit_vpip", 0.0, 0.4),
+        ("nit_fold", 0.4, 1.0),
+    ],
+};
+
+pub const ALL: [&Style; 5] = [&STANDARD, &TIGHT, &LOOSE, &ANCHOR, &HUNTER];
 
 pub fn named(name: &str) -> Option<&'static Style> {
     ALL.into_iter().find(|style| style.name == name)

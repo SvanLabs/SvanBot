@@ -141,6 +141,7 @@ fn a_second_pass_appends_to_the_standing_matrix_until_a_champion_changes() {
             &Params {
                 exploit: 0.9,
                 spread: 0.0,
+                ..Params::DEFAULT
             },
         )
         .unwrap();
@@ -162,10 +163,12 @@ fn a_champion_change_archives_the_old_one_and_the_pass_measures_the_new_one_agai
     let old = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let new = Params {
         exploit: 0.7,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("Alpha", &new).unwrap();
     let previous = Record {
@@ -240,6 +243,7 @@ fn an_archived_champion_plays_a_real_six_max_bout() {
         Params {
             exploit: 0.4,
             spread: 0.0,
+            ..Params::DEFAULT
         },
         0,
         Some(1),

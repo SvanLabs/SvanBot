@@ -66,6 +66,7 @@ fn freeze_records_the_reference_and_rebase_moves_it_on_purpose() {
         .promote(&Params {
             exploit: 0.3,
             spread: 0.0,
+            ..Params::DEFAULT
         })
         .unwrap();
     let output = in_fleet(&dir, &["freeze"]);
@@ -79,7 +80,8 @@ fn freeze_records_the_reference_and_rebase_moves_it_on_purpose() {
         frozen.params,
         Params {
             exploit: 0.3,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("frozen"));
@@ -94,7 +96,8 @@ fn freeze_records_the_reference_and_rebase_moves_it_on_purpose() {
         fleet.reference().unwrap().unwrap().params,
         Params {
             exploit: 0.6,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }
     );
     assert_eq!(fleet.rebases().unwrap(), vec![frozen]);
@@ -128,6 +131,7 @@ fn status_lists_assignments_and_checks_and_marks_a_stale_check() {
         .promote(&Params {
             exploit: 0.3,
             spread: 0.0,
+            ..Params::DEFAULT
         })
         .unwrap();
     let output = in_fleet(&dir, &["status"]);

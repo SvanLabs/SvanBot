@@ -61,7 +61,8 @@ fn each_run_sims_one_step_logs_it_and_the_next_run_sims_the_next() {
         first.challenger,
         Params {
             exploit: 0.4,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }
     );
     assert!(note.contains("simmed"), "{note}");
@@ -100,7 +101,8 @@ fn a_challenger_two_sims_put_above_is_proposed_for_the_harm_guard_against_its_ch
         proposal.challenger,
         Params {
             exploit: 0.4,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }
     );
     assert_eq!(proposal.kind, Kind::Guard { hands: GUARD_HANDS });
@@ -119,6 +121,7 @@ fn while_a_proposal_waits_or_a_probe_runs_a_run_sims_nothing_and_says_it_waits()
         challenger: Params {
             exploit: 0.7,
             spread: 0.0,
+            ..Params::DEFAULT
         },
         kind: Kind::Probe,
         harm_margin: 5.0,
@@ -169,6 +172,7 @@ fn a_spent_search_sims_nothing_until_the_champion_changes() {
         .promote(&Params {
             exploit: 0.4,
             spread: 0.0,
+            ..Params::DEFAULT
         })
         .unwrap();
     step(&fleet, 2_000, 20, &level.sim()).unwrap();

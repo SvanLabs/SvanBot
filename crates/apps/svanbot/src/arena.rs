@@ -120,7 +120,7 @@ pub(crate) fn play_bout_with_reads(
 ) -> Vec<f64> {
     let seats = league.seats();
     let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, take, None))
-        .with_profile_stats(!policy.style.profile.is_empty());
+        .with_profile_stats(policy.uses_stats());
     play_bout_for(game, league, opponent, number, policy, fixed, challenger)
 }
 
@@ -201,7 +201,7 @@ pub(crate) fn play_field_bout(
 ) -> Vec<f64> {
     let seats = league.seats();
     let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, Reads::deciding, None))
-        .with_profile_stats(!policy.style.profile.is_empty());
+        .with_profile_stats(policy.uses_stats());
     let deals = number * BOUT..(number + 1) * BOUT;
     match league {
         League::HeadsUp => deals

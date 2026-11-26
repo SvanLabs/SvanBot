@@ -143,3 +143,16 @@ fn a_resolved_decision_notes_its_draw_and_a_priced_one_notes_none() {
     reader.decide(&spot, 7);
     assert!(reader.take_decided().is_empty());
 }
+
+#[test]
+fn the_playbook_collects_stats_even_with_no_profile_rules() {
+    static BARE: Style = Style {
+        name: "bare",
+        open_scale: 1.0,
+        profile: Profile::new(&[]),
+        bounds: &[],
+    };
+    let policy = Policy::new(PolicyKind::Exploiting, &BARE, Params::DEFAULT);
+    let stats = profile_stats(&policy, &Reads::default(), &[(1, "x")]);
+    assert_eq!(stats.len(), 1);
+}

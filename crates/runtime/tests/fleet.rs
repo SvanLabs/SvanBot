@@ -19,6 +19,7 @@ fn scratch(name: &str) -> PathBuf {
 const CHALLENGER: Params = Params {
     exploit: 0.1 + 0.2,
     spread: 0.0,
+    ..Params::DEFAULT
 };
 
 fn proposal() -> Proposal {
@@ -39,6 +40,7 @@ fn a_search_proposal_waits_its_turn_and_never_replaces_one_waiting_or_a_probe_ru
         challenger: Params {
             exploit: 0.4,
             spread: 0.0,
+            ..Params::DEFAULT
         },
         ..proposal()
     };

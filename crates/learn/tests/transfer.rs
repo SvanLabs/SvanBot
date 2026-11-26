@@ -16,20 +16,37 @@ const BOUNDED: Style = Style {
     name: "bounded",
     open_scale: 0.8,
     profile: ACTIVE,
-    bounds: &[("exploit", 0.0, 0.45)],
+    bounds: &[
+        ("exploit", 0.0, 0.45),
+        ("station_vpip", 0.85, 0.85),
+        ("station_pfr", 0.15, 0.15),
+        ("maniac_vpip", 0.8, 0.8),
+        ("maniac_pfr", 0.5, 0.5),
+        ("nit_vpip", 0.2, 0.2),
+        ("nit_fold", 0.7, 0.7),
+    ],
 };
 
 const PINNED: Style = Style {
     name: "pinned",
     open_scale: 0.8,
     profile: ACTIVE,
-    bounds: &[("exploit", 0.5, 0.5)],
+    bounds: &[
+        ("exploit", 0.5, 0.5),
+        ("station_vpip", 0.85, 0.85),
+        ("station_pfr", 0.15, 0.15),
+        ("maniac_vpip", 0.8, 0.8),
+        ("maniac_pfr", 0.5, 0.5),
+        ("nit_vpip", 0.2, 0.2),
+        ("nit_fold", 0.7, 0.7),
+    ],
 };
 
 fn at(exploit: f64) -> Params {
     Params {
         exploit,
         spread: 0.0,
+        ..Params::DEFAULT
     }
 }
 

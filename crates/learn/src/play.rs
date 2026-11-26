@@ -127,10 +127,10 @@ fn iterations(spot: &Spot, fixed: Option<u64>) -> u32 {
 }
 
 pub fn profile_stats(policy: &Policy, reads: &Reads, named: &[(usize, &str)]) -> Vec<SeatedStats> {
-    if policy.style.profile.is_empty() {
-        Vec::new()
-    } else {
+    if policy.uses_stats() {
         reads.profile_stats(named)
+    } else {
+        Vec::new()
     }
 }
 

@@ -10,6 +10,7 @@ fn digest(exploit: f64) -> Digest {
     Params {
         exploit,
         spread: 0.0,
+        ..Params::DEFAULT
     }
     .digest()
 }
@@ -19,6 +20,7 @@ fn archived(exploit: f64) -> Archived {
         params: Params {
             exploit,
             spread: 0.0,
+            ..Params::DEFAULT
         },
         style: "tight",
         promotion: Vec::new(),

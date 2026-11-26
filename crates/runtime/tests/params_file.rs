@@ -28,6 +28,7 @@ fn an_old_champion_file_without_the_spread_reads_with_the_default() {
         Ok(Params {
             exploit: 0.3,
             spread: Params::DEFAULT.spread,
+            ..Params::DEFAULT
         })
     );
 }
@@ -39,9 +40,26 @@ fn a_new_champion_file_writes_the_spread_and_reads_back() {
     let params = Params {
         exploit: 0.25,
         spread: 0.1,
+        ..Params::DEFAULT
     };
     fleet.promote(&params).unwrap();
     assert_eq!(fleet.champion(), Ok(params));
     let text = std::fs::read_to_string(dir.join("champion.json")).unwrap();
     assert!(text.contains("spread"), "{text}");
+}
+
+#[test]
+fn a_champion_carrying_hunters_cuts_reads_back() {
+    let dir = scratch("cuts");
+    let fleet = Fleet::in_dir(&dir);
+    let params = Params {
+        station_vpip: 0.9,
+        nit_fold: 0.6,
+        ..Params::DEFAULT
+    };
+    fleet.promote(&params).unwrap();
+    assert_eq!(fleet.champion(), Ok(params));
+    let text = std::fs::read_to_string(dir.join("champion.json")).unwrap();
+    assert!(text.contains("station_vpip"), "{text}");
+    assert!(text.contains("nit_fold"), "{text}");
 }

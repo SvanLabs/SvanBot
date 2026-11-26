@@ -42,6 +42,7 @@ fn guard(hands: u64) -> Proposal {
         challenger: Params {
             exploit: 0.9,
             spread: 0.0,
+            ..Params::DEFAULT
         },
         kind: Kind::Guard { hands },
         harm_margin: 5.0,
@@ -104,10 +105,12 @@ fn every_hand_records_its_reference_digest_and_arm_chance() {
     let reference = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let policy = Params {
         exploit: 0.6,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.promote(&reference).unwrap();
     let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
@@ -158,6 +161,7 @@ fn the_standing_arm_reads_the_frozen_reference_after_cutover() {
         .promote(&Params {
             exploit: 0.4,
             spread: 0.0,
+            ..Params::DEFAULT
         })
         .unwrap();
     fleet.freeze(500).unwrap();
@@ -165,6 +169,7 @@ fn the_standing_arm_reads_the_frozen_reference_after_cutover() {
     let frozen = Params {
         exploit: 0.6,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.rebase(&frozen, 600).unwrap();
     // The bot's own slot moves too, and the standing arm still measures the frozen reference.
@@ -174,6 +179,7 @@ fn the_standing_arm_reads_the_frozen_reference_after_cutover() {
             &Params {
                 exploit: 0.8,
                 spread: 0.0,
+                ..Params::DEFAULT
             },
         )
         .unwrap();
@@ -369,6 +375,7 @@ fn a_standing_hand_survives_a_reopen_with_its_reference_digest() {
         reference: Params {
             exploit: 0.4,
             spread: 0.0,
+            ..Params::DEFAULT
         }
         .digest(),
     };
@@ -383,6 +390,7 @@ fn a_standing_hand_survives_a_reopen_with_its_reference_digest() {
     let digest: Digest = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     }
     .digest();
     let orbits = store.reference_orbits(&digest, 0).unwrap();

@@ -34,6 +34,7 @@ fn loose() -> Assignment {
 const CHALLENGER: Params = Params {
     exploit: 0.1 + 0.2,
     spread: 0.0,
+    ..Params::DEFAULT
 };
 
 #[test]
@@ -45,6 +46,7 @@ fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
     let reference = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.promote(&reference).unwrap();
     // Before any slot, both bots read the fleet champion, and no file was made.
@@ -59,10 +61,12 @@ fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
     let slot_a = Params {
         exploit: 0.2,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let slot_b = Params {
         exploit: 0.9,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &slot_a).unwrap();
     fleet.set_champion("B", &slot_b).unwrap();
@@ -85,10 +89,12 @@ fn the_slots_are_listed_by_bot_name_for_the_learner_to_rotate_through() {
     let a = Params {
         exploit: 0.2,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let b = Params {
         exploit: 0.7,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("B", &b).unwrap();
     fleet.set_champion("A", &a).unwrap();
@@ -118,6 +124,7 @@ fn a_slot_is_seeded_once_and_its_numbers_must_hash_to_their_digest() {
     let reference = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.promote(&reference).unwrap();
     fleet.seed_champion("A").unwrap();
@@ -127,6 +134,7 @@ fn a_slot_is_seeded_once_and_its_numbers_must_hash_to_their_digest() {
             &Params {
                 exploit: 0.2,
                 spread: 0.0,
+                ..Params::DEFAULT
             },
         )
         .unwrap();
@@ -136,7 +144,8 @@ fn a_slot_is_seeded_once_and_its_numbers_must_hash_to_their_digest() {
         fleet.champion_slot("A"),
         Ok(Some(Params {
             exploit: 0.2,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }))
     );
     // A hand-written number that does not hash to its digest is refused, as champion.json is.

@@ -75,6 +75,7 @@ fn the_champions_numbers_ride_along() {
     let params = Params {
         exploit: 0.3,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     assert_eq!(live.policy(params).params, params);
 }
@@ -86,6 +87,7 @@ fn a_seeded_slot_plays_the_bots_style_and_its_own_numbers() {
     let reference = Params {
         exploit: 0.4,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.assign("A", TIGHT_PLAY, 1).unwrap();
     fleet.promote(&reference).unwrap();
@@ -93,6 +95,7 @@ fn a_seeded_slot_plays_the_bots_style_and_its_own_numbers() {
     let slot = Params {
         exploit: 0.2,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.set_champion("A", &slot).unwrap();
     let store = Store::open(&dir.join("A.db"), "A").unwrap();
@@ -112,6 +115,7 @@ fn a_bot_without_a_slot_plays_the_fleet_champion_exactly() {
     let champion = Params {
         exploit: 0.3,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.promote(&champion).unwrap();
     let store = Store::open(&dir.join("A.db"), "A").unwrap();

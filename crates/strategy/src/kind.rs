@@ -9,16 +9,25 @@ pub enum PolicyKind {
     Solving,
     /// The pricer with a mixing draw and a blended opening boundary, reads held and no profile.
     Balanced,
+    /// The playbook per opponent type, gated by the opponent's adaptivity class, and the
+    /// re-solve pinned to the read.
+    Exploiting,
     Pricing,
 }
 
 impl PolicyKind {
-    pub const ALL: [Self; 3] = [Self::Solving, Self::Balanced, Self::Pricing];
+    pub const ALL: [Self; 4] = [
+        Self::Solving,
+        Self::Balanced,
+        Self::Exploiting,
+        Self::Pricing,
+    ];
 
     pub const fn name(self) -> &'static str {
         match self {
             Self::Solving => "solving",
             Self::Balanced => "balanced",
+            Self::Exploiting => "exploiting",
             Self::Pricing => "pricing",
         }
     }

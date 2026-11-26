@@ -18,10 +18,12 @@ fn scratch(name: &str) -> PathBuf {
 const FIRST: Params = Params {
     exploit: 0.3,
     spread: 0.0,
+    ..Params::DEFAULT
 };
 const SECOND: Params = Params {
     exploit: 0.7,
     spread: 0.0,
+    ..Params::DEFAULT
 };
 
 #[test]
@@ -101,6 +103,7 @@ fn a_deliberate_rebase_moves_the_reference_and_keeps_the_old_one() {
     let third = Params {
         exploit: 0.9,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     fleet.rebase(&third, 3_000).unwrap();
     assert_eq!(

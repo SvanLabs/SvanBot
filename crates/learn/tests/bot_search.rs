@@ -10,12 +10,14 @@ use svanbot_strategy::style::{self, Style};
 const CHAMPION: Params = Params {
     exploit: 0.5,
     spread: 0.0,
+    ..Params::DEFAULT
 };
 
 fn at(exploit: f64) -> Params {
     Params {
         exploit,
         spread: 0.0,
+        ..Params::DEFAULT
     }
 }
 
@@ -167,7 +169,15 @@ fn a_style_keeps_the_search_inside_its_bounds() {
         name: "bounded",
         open_scale: 0.8,
         profile: ACTIVE,
-        bounds: &[("exploit", 0.0, 0.45)],
+        bounds: &[
+            ("exploit", 0.0, 0.45),
+            ("station_vpip", 0.85, 0.85),
+            ("station_pfr", 0.15, 0.15),
+            ("maniac_vpip", 0.8, 0.8),
+            ("maniac_pfr", 0.5, 0.5),
+            ("nit_vpip", 0.2, 0.2),
+            ("nit_fold", 0.7, 0.7),
+        ],
     };
     let mut log = Vec::new();
     let mut seen = Vec::new();
@@ -181,7 +191,15 @@ fn a_style_keeps_the_search_inside_its_bounds() {
         name: "pinned",
         open_scale: 0.8,
         profile: ACTIVE,
-        bounds: &[("exploit", 0.5, 0.5)],
+        bounds: &[
+            ("exploit", 0.5, 0.5),
+            ("station_vpip", 0.85, 0.85),
+            ("station_pfr", 0.15, 0.15),
+            ("maniac_vpip", 0.8, 0.8),
+            ("maniac_pfr", 0.5, 0.5),
+            ("nit_vpip", 0.2, 0.2),
+            ("nit_fold", 0.7, 0.7),
+        ],
     };
     assert_eq!(next_bot(&CHAMPION, &PINNED, &[]), BotNext::Held);
 }

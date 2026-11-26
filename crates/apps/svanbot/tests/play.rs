@@ -183,6 +183,7 @@ fn a_bot_is_assigned_only_with_a_current_admitted_check() {
         reference: Params {
             exploit: 0.3,
             spread: 0.0,
+            ..Params::DEFAULT
         }
         .digest(),
         ..check(true)
@@ -212,6 +213,7 @@ fn seed_creates_a_slot_from_the_reference_for_a_bot_with_a_store() {
         .promote(&Params {
             exploit: 0.4,
             spread: 0.0,
+            ..Params::DEFAULT
         })
         .unwrap();
     let output = in_fleet(&dir, &["seed", "Svanar"]);
@@ -224,7 +226,8 @@ fn seed_creates_a_slot_from_the_reference_for_a_bot_with_a_store() {
         fleet.champion_slot("Svanar"),
         Ok(Some(Params {
             exploit: 0.4,
-            spread: 0.0
+            spread: 0.0,
+            ..Params::DEFAULT
         }))
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("champion"));
@@ -252,6 +255,7 @@ fn a_promotion_after_assignment_does_not_unassign() {
         .promote(&Params {
             exploit: 0.3,
             spread: 0.0,
+            ..Params::DEFAULT
         })
         .unwrap();
     assert!(fleet.assignment("Svanar").unwrap().is_some());
@@ -355,11 +359,13 @@ fn a_refresh_changes_the_slot_only_after_the_live_guard_clears() {
     let incumbent = Params {
         exploit: 0.5,
         spread: 0.0,
+        ..Params::DEFAULT
     };
     let selected = Archived {
         params: Params {
             exploit: 0.4,
             spread: 0.0,
+            ..Params::DEFAULT
         },
         style: "tight",
         promotion: vec![3_000.0; 40],
