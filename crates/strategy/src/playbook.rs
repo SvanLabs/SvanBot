@@ -2,10 +2,10 @@
 //! of the one opponent left in the hand and gated by that opponent's adaptivity class.
 //!
 //! A type is read only once its stats clear the evidence floor: [`Rate::value`] answers `None`
-//! under [`crate::profile::MIN_EVIDENCE_HANDS`] hands, so an unread opponent falls through to the re-solve or
-//! the pricer as if no playbook existed. The cuts are parameter-set numbers, so the learner moves
-//! them inside the style's bounds; the rules themselves take no type condition, because the rule
-//! set chosen is the type.
+//! under [`crate::profile::MIN_EVIDENCE_HANDS`] hands, so an unread opponent falls through to
+//! the re-solve or the pricer as if no playbook existed. The cuts are parameter-set numbers, so
+//! the learner moves them inside the style's bounds; the rules themselves take no type
+//! condition, because the rule set chosen is the type.
 
 use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Street};
@@ -14,7 +14,7 @@ use svanbot_core::spot::Spot;
 use crate::first_profile::{MANIAC_RULES, STATION_RULES, pot_bet};
 use crate::params::Params;
 use crate::policy::Personal;
-use crate::profile::{OpponentStats, Profile, Rate, Rule, SeatedStats};
+use crate::profile::{OpponentStats, Profile, Rate, Rule, SeatedStats, sole_stats};
 use crate::read::Class;
 
 /// A player who does not fold to a bet: the most they fold, as a share of the bets they face.
@@ -63,9 +63,11 @@ impl Cuts {
 }
 
 /// The type `stats` read as, or `None` for a regular or an opponent short of
-/// [`crate::profile::MIN_EVIDENCE_HANDS`] hands at a stat. The maniac is read first, so a raiser whose stats sit
-/// between loosened cuts is still a maniac; the nit needs evidence of folding to a bet, not only
-/// of entering few pots.
+/// [`crate::profile::MIN_EVIDENCE_HANDS`] hands at a stat. Every condition needs its evidence:
+/// an opponent whose fold rate is unread is nobody's type yet, where the first profile's rules
+/// let an unread fold rate pass. The maniac is read first, so a raiser whose stats sit between
+/// loosened cuts is still a maniac; the nit needs evidence of folding to a bet, not only of
+/// entering few pots.
 pub fn type_of(stats: OpponentStats, cuts: Cuts) -> Option<Type> {
     let at_least = |rate: Rate, cut: f64| rate.value().is_some_and(|value| value >= cut);
     let at_most = |rate: Rate, cut: f64| rate.value().is_some_and(|value| value <= cut);
@@ -100,9 +102,9 @@ pub fn action(kind: Type, spot: &Spot, seed: u64, seated: &[SeatedStats]) -> Opt
         .action(spot, seed)
 }
 
-/// The seed stream the stance's draw comes from: far from every stream the rules and the pricer
-/// name.
-pub const STREAM: u64 = u64::MAX - 2;
+/// The seed stream the stance's draw comes from: the profiles' equity sampler and the pricer's
+/// mixing and opening draws take the three streams above it.
+pub const STREAM: u64 = u64::MAX - 3;
 
 /// The playbook's action when the opponent's class and the exploit stance let it decide. The
 /// action is taken with the class's share of the stance, drawn from the decision's seed; a share
@@ -126,34 +128,25 @@ pub fn deciding(
 }
 
 /// The playbook's action for one decision by an exploiting policy: the one opponent left read as
-/// a type from their stats, their adaptivity class's share of the stance, and a seeded draw.
+/// a type from their stats, their adaptivity class's share of the parameter set's exploit
+/// stance, and a seeded draw.
 pub fn decide(
     params: &Params,
-    stance: f64,
     spot: &Spot,
     seed: u64,
     personal: &[Personal],
     seated: &[SeatedStats],
 ) -> Option<Action> {
-    let stats = sole_stats(spot, seated)?;
+    let stats = sole_stats(seated, spot)?;
     let kind = type_of(stats, Cuts::of(params))?;
-    deciding(kind, spot, seed, stance, sole_class(spot, personal), seated)
-}
-
-/// The one opponent left in the hand's stats, when exactly one is: by seat when the spot names
-/// seats, else the only read the caller gave, the same reading [`crate::profile::Facts`] makes.
-fn sole_stats(spot: &Spot, seated: &[SeatedStats]) -> Option<OpponentStats> {
-    if spot.opponents != 1 {
-        return None;
-    }
-    match (spot.seats.as_slice(), seated) {
-        ([seat], _) => seated
-            .iter()
-            .find(|read| read.seat == *seat)
-            .map(|read| read.stats),
-        ([], [only]) => Some(only.stats),
-        _ => None,
-    }
+    deciding(
+        kind,
+        spot,
+        seed,
+        params.exploit,
+        sole_class(spot, personal),
+        seated,
+    )
 }
 
 /// The adaptivity class of the one opponent left, from the decision's reads; unknown when the

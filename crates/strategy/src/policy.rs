@@ -166,14 +166,7 @@ impl Policy {
             _ => profile,
         };
         let read_action = if self.kind == PolicyKind::Exploiting {
-            playbook::decide(
-                &self.params,
-                self.exploit(),
-                spot,
-                budget.seed,
-                personal,
-                seated,
-            )
+            playbook::decide(&self.params, spot, budget.seed, personal, seated)
         } else {
             profile.action(spot, budget.seed)
         };

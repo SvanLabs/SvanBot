@@ -212,19 +212,29 @@ impl Facts<'_> {
     /// that names its seats finds the read by seat; one that names none, a sim's own table, has
     /// only the one read it was given.
     pub fn sole_opponent(&self) -> Option<OpponentStats> {
-        if self.spot.opponents != 1 {
-            return None;
-        }
-        match (self.spot.seats.as_slice(), self.opponents) {
-            ([seat], _) => self.opponent(*seat),
-            ([], [only]) => Some(only.stats),
-            _ => None,
-        }
+        sole_stats(self.opponents, self.spot)
     }
 
     fn in_big_blinds(&self, chips: Chips) -> Option<f64> {
         let blind = self.spot.big_blind;
         (blind > 0).then(|| chips as f64 / blind as f64)
+    }
+}
+
+/// The stats of the one opponent left in the hand, when exactly one is: by seat when the spot
+/// names seats, else the only read the caller gave. A sim's spot that names no seats still has
+/// the one read it was given.
+pub fn sole_stats(stats: &[SeatedStats], spot: &Spot) -> Option<OpponentStats> {
+    if spot.opponents != 1 {
+        return None;
+    }
+    match (spot.seats.as_slice(), stats) {
+        ([seat], _) => stats
+            .iter()
+            .find(|read| read.seat == *seat)
+            .map(|read| read.stats),
+        ([], [only]) => Some(only.stats),
+        _ => None,
     }
 }
 
