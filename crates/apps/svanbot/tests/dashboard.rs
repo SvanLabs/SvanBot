@@ -309,6 +309,7 @@ fn the_page_its_script_and_its_styles_are_served_and_every_view_is_the_page() {
         "/",
         "/release",
         "/scoreboard",
+        "/round-robin",
         "/bot/SurSvan",
         "/bot/SurSvan/dossier",
         "/dossier",
@@ -332,6 +333,9 @@ fn the_page_its_script_and_its_styles_are_served_and_every_view_is_the_page() {
     let (status, body) = get(addr, "/dossier.js");
     assert_eq!(status, 200);
     assert!(body.contains("export function dossierPage"), "{body}");
+    let (status, body) = get(addr, "/round_robin.js");
+    assert_eq!(status, 200);
+    assert!(body.contains("export function roundRobinPage"), "{body}");
     let (status, _) = get(addr, "/bot/..%2F/dossier");
     assert_eq!(status, 404);
     let (status, _) = get(addr, "/bot/SurSvan/dossier/extra");

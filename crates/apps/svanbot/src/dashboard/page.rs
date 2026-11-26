@@ -7,7 +7,7 @@ pub(super) fn file(path: &str) -> Option<(&'static str, &'static [u8])> {
     let html = "text/html; charset=utf-8";
     let script = "text/javascript; charset=utf-8";
     Some(match path {
-        "/" | "/release" | "/scoreboard" | "/dossier" => {
+        "/" | "/release" | "/scoreboard" | "/dossier" | "/round-robin" => {
             (html, include_bytes!("../../web/index.html").as_slice())
         }
         _ if path.strip_prefix("/bot/").is_some_and(is_hand_path) => {
@@ -21,6 +21,10 @@ pub(super) fn file(path: &str) -> Option<(&'static str, &'static [u8])> {
         "/fleet.js" => (script, include_bytes!("../../web/fleet.js").as_slice()),
         "/dom.js" => (script, include_bytes!("../../web/dom.js").as_slice()),
         "/replay.js" => (script, include_bytes!("../../web/replay.js").as_slice()),
+        "/round_robin.js" => (
+            script,
+            include_bytes!("../../web/round_robin.js").as_slice(),
+        ),
         "/dossier.js" => (script, include_bytes!("../../web/dossier.js").as_slice()),
         "/felt.js" => (script, include_bytes!("../../web/felt.js").as_slice()),
         "/room.js" => (script, include_bytes!("../../web/room.js").as_slice()),
