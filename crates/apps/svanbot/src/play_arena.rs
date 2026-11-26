@@ -199,7 +199,11 @@ fn play_arena(
     };
     let game = deciders::game(settings.seed);
     let mut opponents = Opponent::shared();
-    opponents.extend(style::ALL.map(Opponent::Stablemate));
+    // The stablemate duels belong to the policy Arena; the pin experiment's design names the
+    // shared archetypes and the reference policy, and a policy-vs-policy ring costs every bout.
+    if pin.is_none() {
+        opponents.extend(style::ALL.map(Opponent::Stablemate));
+    }
     let rows = arena::play_rows(
         &opponents,
         Opponent::name,
