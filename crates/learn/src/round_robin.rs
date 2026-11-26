@@ -24,8 +24,8 @@ pub const MBB_PER_100: f64 = 100_000.0;
 const TUNED_BOUTS: f64 = 200.0;
 
 /// The most rows one pass plays without a smaller budget from its caller. Five bots of ten
-/// shared pairs in two leagues and five archived champions each is 125 rows, so this bounds a
-/// whole fleet's gauntlet with room to spare.
+/// shared pairs in two leagues, five archived champions and an exploiter each is 130 rows, so
+/// this bounds a whole fleet's gauntlet with room to spare.
 pub const MAX_ROWS: usize = 250;
 
 /// The most bouts a row's standing evidence keeps: the newest this many, so the record stays
