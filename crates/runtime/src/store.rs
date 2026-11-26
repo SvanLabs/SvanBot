@@ -5,17 +5,14 @@
 //! It runs in WAL mode, so a reader never blocks the bot's writes. Its tables are `STRICT` and
 //! append-only: triggers refuse every `UPDATE` and `DELETE`, so a stored hand or incident stays as
 //! it was written. The one exception is `decisions`, the hand trace: it is capped, so it takes no
-//! `DELETE` trigger (`store/trace.rs`). The schema is v11's own and takes no v10 migration
-//! (`user_version` 1).
+//! `DELETE` trigger (`store/trace.rs`). The schema is v11's own and takes no v10 migration; a
+//! newer schema adds its columns in place (`user_version` 2, the standing reference arm).
 
 use std::fmt;
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use svanbot_learn::probe::Arm;
-
-use crate::ledger::Played;
 use crate::session::Incident;
 
 const SCHEMA: &str = "
@@ -81,7 +78,13 @@ CREATE TABLE IF NOT EXISTS played (
     -- The probe the hand counted in, as 16 hex digits, its orbit there and the arm played.
     probe       TEXT,
     orbit       INTEGER,
-    arm         TEXT CHECK (arm IN ('champion', 'challenger'))
+    arm         TEXT CHECK (arm IN ('champion', 'challenger')),
+    -- The standing reference arm the hand counted in: the reference digest, its orbit, the side
+    -- played and the chance that side had of being drawn. A probe hand has none of these.
+    reference        TEXT,
+    reference_orbit  INTEGER,
+    reference_side   TEXT CHECK (reference_side IN ('policy', 'reference')),
+    reference_chance REAL
 ) STRICT;
 CREATE TRIGGER IF NOT EXISTS played_no_update BEFORE UPDATE ON played
     BEGIN SELECT RAISE(ABORT, 'played hands are append-only'); END;
@@ -116,7 +119,7 @@ CREATE TRIGGER IF NOT EXISTS decisions_no_update BEFORE UPDATE ON decisions
 -- TRACED_HANDS hands the oldest fall off, and a table that cannot delete cannot cap. The cap and
 -- only the cap: it lives in `store::trace::trim`, which the write runs after the newest hand, and
 -- nothing else may delete a decision. Nothing may rewrite one.
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 ";
 
 /// Where a stored hand came from.
@@ -184,6 +187,7 @@ impl Store {
         db.execute_batch("PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
         db.execute_batch(SCHEMA)?;
         db.execute_batch(hands::SEASON_DOWNLOAD_SCHEMA)?;
+        played::migrate(&db)?;
         db.execute(
             "INSERT INTO meta (key, value) VALUES ('bot', ?1) ON CONFLICT (key) DO NOTHING",
             [bot],
@@ -214,8 +218,8 @@ impl Store {
     }
 
     /// The bot this store belongs to: the name it was opened under. A store is one bot's
-    /// (`docs/adr/0004-reads-are-per-bot.md`), and this is what makes its own champion slot its
-    /// own.
+    /// (`docs/adr/0004-reads-are-per-bot.md`), and this is what makes its champion slot and its
+    /// standing reference arm its own.
     pub fn bot(&self) -> Result<String, StoreError> {
         Ok(self
             .db
@@ -315,89 +319,6 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    /// Keeps what a hand won. Returns false if it is kept already: the first copy stands.
-    pub fn append_played(&self, played: &Played, recorded_ms: i64) -> Result<bool, StoreError> {
-        let (probe, orbit, arm) = match played.orbit {
-            Some((probe, orbit, arm)) => (
-                Some(format!("{probe:016x}")),
-                Some(i64::try_from(orbit).map_err(|e| StoreError(e.to_string()))?),
-                Some(arm_name(arm)),
-            ),
-            None => (None, None, None),
-        };
-        let added = self.db.execute(
-            "INSERT INTO played
-                (hand_id, table_id, recorded_ms, digest, net, luck, big_blind, probe, orbit, arm)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) ON CONFLICT (hand_id) DO NOTHING",
-            params![
-                played.hand_id,
-                played.table_id,
-                recorded_ms,
-                played.digest.to_string(),
-                played.net,
-                played.luck,
-                // SQLite keeps integers as i64; a big blind always fits.
-                i64::try_from(played.big_blind).unwrap_or(i64::MAX),
-                probe,
-                orbit,
-                arm
-            ],
-        )?;
-        Ok(added == 1)
-    }
-
-    /// Every hand's winnings, in the order they were kept.
-    pub fn played(&self) -> Result<Vec<Played>, StoreError> {
-        let mut query = self.db.prepare(
-            "SELECT hand_id, table_id, digest, net, luck, big_blind, probe, orbit, arm
-             FROM played ORDER BY rowid",
-        )?;
-        let rows = query.query_map([], |row| {
-            let digest: String = row.get(2)?;
-            let probe: Option<String> = row.get(6)?;
-            let orbit: Option<i64> = row.get(7)?;
-            let arm: Option<String> = row.get(8)?;
-            Ok(Played {
-                hand_id: row.get(0)?,
-                table_id: row.get(1)?,
-                digest: digest.parse().map_err(|_| rusqlite::Error::InvalidQuery)?,
-                net: row.get(3)?,
-                luck: row.get(4)?,
-                big_blind: u64::try_from(row.get::<_, i64>(5)?)
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
-                orbit: match (probe, orbit, arm) {
-                    (Some(probe), Some(orbit), Some(arm)) => Some((
-                        u64::from_str_radix(&probe, 16).unwrap_or(0),
-                        u64::try_from(orbit).unwrap_or(0),
-                        arm_named(&arm),
-                    )),
-                    _ => None,
-                },
-            })
-        })?;
-        Ok(rows.collect::<Result<_, _>>()?)
-    }
-
-    /// The orbits of `probe`, oldest first: each one's number, its arm, the big blinds it won
-    /// with the luck taken out, and its hands.
-    pub fn orbits(&self, probe: u64) -> Result<Vec<(u64, Arm, f64, u32)>, StoreError> {
-        let mut query = self.db.prepare(
-            "SELECT orbit, arm, SUM((net - luck) / big_blind), COUNT(*)
-             FROM played WHERE probe = ?1 GROUP BY orbit ORDER BY orbit",
-        )?;
-        let rows = query.query_map([format!("{probe:016x}")], |row| {
-            let orbit: i64 = row.get(0)?;
-            let arm: String = row.get(1)?;
-            Ok((
-                u64::try_from(orbit).unwrap_or(0),
-                arm_named(&arm),
-                row.get(2)?,
-                row.get(3)?,
-            ))
-        })?;
-        Ok(rows.collect::<Result<_, _>>()?)
-    }
-
     /// Records that `probe` started, or the verdict it ended on, with `detail` as JSON.
     pub fn append_probe(
         &self,
@@ -436,23 +357,11 @@ impl Store {
 }
 
 mod hands;
+mod played;
 mod trace;
 mod window;
 
 pub use hands::FitHand;
+pub use played::ReferenceOrbit;
 pub use trace::{TRACED_HANDS, TracedHand};
 pub use window::ExportLine;
-
-fn arm_name(arm: Arm) -> &'static str {
-    match arm {
-        Arm::Champion => "champion",
-        Arm::Challenger => "challenger",
-    }
-}
-
-fn arm_named(name: &str) -> Arm {
-    match name {
-        "challenger" => Arm::Challenger,
-        _ => Arm::Champion,
-    }
-}

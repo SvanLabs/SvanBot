@@ -331,6 +331,13 @@ _Avoid_: experiment pair, trial, A/B test
 One of the two parameter sets in a probe.
 _Avoid_: variant, side
 
+**Standing reference arm**:
+A bot's own live control: one orbit in ten plays the frozen reference policy, drawn from the bot's
+name and the orbit's number, so a restart draws the same arm again and the bot has a control from
+the same tables in the same hours. The hand records the reference digest and the chance its arm
+was drawn, and the probe's propensity-weighted estimate reads that chance.
+_Avoid_: baseline arm, control arm
+
 **Orbit**:
 Six counted hands at one table, once round the seats. A probe plays one arm for a whole orbit, and
 the orbit is the unit its verdict counts.

@@ -56,11 +56,14 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    /// The luck-corrected result of each hand kept at or after `since_ms`, in big blinds.
+    /// The luck-corrected result of each policy hand kept at or after `since_ms`, in big blinds.
+    /// A hand on the standing reference arm is the control, not the policy, so it is left out:
+    /// the Phase 1 guard on a bot's own store must not count it as the bot's result.
     pub fn corrected_since(&self, since_ms: i64) -> Result<Vec<f64>, StoreError> {
         let mut query = self.db.prepare(
             "SELECT (net - luck) / big_blind FROM played
-             WHERE recorded_ms >= ?1 ORDER BY rowid",
+             WHERE recorded_ms >= ?1 AND COALESCE(reference_side, 'policy') <> 'reference'
+             ORDER BY rowid",
         )?;
         let rows = query.query_map([since_ms], |row| row.get(0))?;
         Ok(rows.collect::<Result<_, _>>()?)

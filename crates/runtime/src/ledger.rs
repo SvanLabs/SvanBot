@@ -9,12 +9,16 @@
 //! - A **probe** plays one arm for an orbit of [`ORBIT`] counted hands, then draws the next
 //!   orbit's arm by a coin fixed by the probe and the orbit's number. A change of table ends the
 //!   orbit early. The ledger says which parameter set the hand in play is played by.
+//! - The **standing reference arm** plays the frozen reference on one orbit in ten, drawn from
+//!   the bot's seed and the orbit's number. A probe owns its hands while it runs, so the standing
+//!   arm waits and no hand is counted on both.
 //!
 //! The ledger does no I/O. Its caller stores each [`Played`] hand, starts a probe from a
 //! proposal, and acts on the verdict.
 
 use svanbot_core::rules::Chips;
 use svanbot_learn::probe::{self, Arm, Decided, Hypothesis, Probe, Verdict};
+use svanbot_learn::reference::{self, Side, Standing};
 use svanbot_strategy::params::{Digest, Params};
 
 use crate::record::Hand;
@@ -37,6 +41,8 @@ pub struct Played {
     pub big_blind: Chips,
     /// The probe the hand counted in, the orbit's number in it, and the arm it played.
     pub orbit: Option<(u64, u64, Arm)>,
+    /// The standing reference arm the hand counted in, when no probe owned it.
+    pub reference: Option<Standing>,
 }
 
 /// A bot's ledger.
@@ -44,6 +50,7 @@ pub struct Played {
 pub struct Ledger {
     champion: Params,
     running: Option<Running>,
+    standing: Option<StandingArm>,
     table: String,
     /// Our stack after the last hand at this table, when that hand's result came.
     stack: Option<Chips>,
@@ -79,21 +86,100 @@ impl Running {
     }
 }
 
+/// The standing reference arm in progress: the reference it measures against, the bot's seed,
+/// and the orbit it is counting.
+#[derive(Clone, Debug)]
+struct StandingArm {
+    reference: Params,
+    seed: u64,
+    orbit: u64,
+    side: Side,
+    chance: f64,
+    /// The big blinds won in the orbit so far, with the luck taken out, and its hands.
+    won: f64,
+    hands: u32,
+}
+
+impl StandingArm {
+    /// Draws the arm of the orbit in play from the bot's seed.
+    fn draw(&mut self) {
+        (self.side, self.chance) = reference::assign(self.seed, self.orbit);
+    }
+
+    /// Ends the orbit in play. One cut before its first counted hand keeps its number and its
+    /// coin, as a probe orbit does.
+    fn close(&mut self) {
+        if self.hands > 0 {
+            self.orbit += 1;
+            self.draw();
+        }
+        (self.won, self.hands) = (0.0, 0);
+    }
+
+    /// The standing arm this hand counted in, before the orbit closes.
+    fn record(&self) -> Standing {
+        Standing {
+            orbit: self.orbit,
+            side: self.side,
+            chance: self.chance,
+            reference: self.reference.digest(),
+        }
+    }
+}
+
 impl Ledger {
     /// A ledger for a bot that plays by `champion`, with no probe running.
     pub fn new(champion: Params) -> Self {
         Self {
             champion,
             running: None,
+            standing: None,
             table: String::new(),
             stack: None,
             decided: Vec::new(),
         }
     }
 
+    /// Starts the standing reference arm at `orbit`, measuring the bot against `reference` with
+    /// the arms drawn from `seed`. A bot with no standing arm records no reference hands.
+    pub fn stand(&mut self, reference: Params, seed: u64, orbit: u64) {
+        let mut standing = StandingArm {
+            reference,
+            seed,
+            orbit,
+            side: Side::Policy,
+            chance: 1.0 - reference::SHARE,
+            won: 0.0,
+            hands: 0,
+        };
+        standing.draw();
+        self.standing = Some(standing);
+    }
+
+    /// The standing orbit in play: its number, the side it plays and the chance it was drawn.
+    pub fn standing(&self) -> Option<(u64, Side, f64)> {
+        self.standing
+            .as_ref()
+            .map(|standing| (standing.orbit, standing.side, standing.chance))
+    }
+
+    /// Whether the hand in play is the standing reference arm's reference side. A running probe
+    /// owns its hands, so the standing arm is not in play then.
+    pub fn on_reference(&self) -> bool {
+        self.running.is_none()
+            && self
+                .standing
+                .as_ref()
+                .is_some_and(|standing| standing.side == Side::Reference)
+    }
+
     /// Starts a probe of `challenger`, whose next orbit is number `orbit`: 0 for a new probe,
-    /// and the count of stored orbits for one taken up after a restart ([`Ledger::replay`]).
+    /// and the count of stored orbits for one taken up after a restart ([`Ledger::replay`]). The
+    /// standing arm waits: a probe hand is never counted on both arms.
     pub fn start(&mut self, hypothesis: Hypothesis, challenger: Params, orbit: u64) {
+        if let Some(standing) = &mut self.standing {
+            standing.close();
+        }
         let id = hypothesis.id();
         self.running = Some(Running {
             id,
@@ -119,11 +205,17 @@ impl Ledger {
         &self.champion
     }
 
-    /// The parameter set the hand in play is played by: the champion's, or the challenger's in
-    /// an orbit that drew it.
+    /// The parameter set the hand in play is played by: the champion's, the challenger's in a
+    /// probe orbit that drew it, or the reference's on the standing arm's reference side.
     pub fn params(&self) -> &Params {
-        match &self.running {
-            Some(running) if running.arm == Arm::Challenger => &running.challenger,
+        if let Some(running) = &self.running {
+            return match running.arm {
+                Arm::Challenger => &running.challenger,
+                Arm::Champion => &self.champion,
+            };
+        }
+        match &self.standing {
+            Some(standing) if standing.side == Side::Reference => &standing.reference,
             _ => &self.champion,
         }
     }
@@ -148,21 +240,34 @@ impl Ledger {
             // The stack is not known across this hand, so the orbit cannot go on through it.
             if let Some(running) = &mut self.running {
                 running.close();
+            } else if let Some(standing) = &mut self.standing {
+                standing.close();
             }
             return None;
         };
         let net = after as i64 - before as i64;
         let luck = net as f64 - probe::corrected(net as f64, &decided);
         let digest = self.params().digest();
-        let orbit = self.running.as_mut().map(|running| {
+        let corrected = (net as f64 - luck) / big_blind.max(1) as f64;
+        let (orbit, reference) = if let Some(running) = &mut self.running {
             let at = (running.id, running.orbit, running.arm);
-            running.won += (net as f64 - luck) / big_blind.max(1) as f64;
+            running.won += corrected;
             running.hands += 1;
             if running.hands == ORBIT {
                 running.close();
             }
-            at
-        });
+            (Some(at), None)
+        } else if let Some(standing) = &mut self.standing {
+            let at = standing.record();
+            standing.won += corrected;
+            standing.hands += 1;
+            if standing.hands == ORBIT {
+                standing.close();
+            }
+            (None, Some(at))
+        } else {
+            (None, None)
+        };
         Some(Played {
             hand_id: hand.hand_id.clone(),
             table_id: hand.table_id.clone(),
@@ -171,6 +276,7 @@ impl Ledger {
             luck,
             big_blind,
             orbit,
+            reference,
         })
     }
 

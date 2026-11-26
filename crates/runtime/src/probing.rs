@@ -1,7 +1,10 @@
 //! A bot's ledger kept in its store, and, on the canary, the probe from proposal to promotion
 //! (`GLOSSARY.md`):
 //!
-//! - Every bot keeps what each counted hand won ([`Store::append_played`]).
+//! - Every bot keeps what each counted hand won ([`Store::append_played`]), and plays the
+//!   **standing reference arm** on one orbit in ten: its own live control, measured against the
+//!   reference digest frozen when it opened. A running probe owns its hands, so the standing arm
+//!   waits.
 //! - The **canary**, with no probe running, takes up the fleet's waiting proposal between hands.
 //!   It stores the start, plays the arms ([`Ledger`]), and acts on the verdict. A harm guard
 //!   that clears promotes its challenger: the canary writes the fleet's champion. Any other
@@ -17,6 +20,7 @@
 use serde_json::{Value, json};
 use svanbot_learn::calibration::Point;
 use svanbot_learn::probe::{Decided, Verdict};
+use svanbot_learn::reference::{self, Estimate, Side, Standing};
 use svanbot_strategy::params::Params;
 
 use crate::fleet::{Fleet, Proposal, params_from, params_json};
@@ -39,6 +43,8 @@ pub struct Probing<'a> {
     store: &'a Store,
     fleet: Fleet,
     bot: String,
+    /// The reference policy every standing orbit is measured against.
+    reference: Params,
     canary: bool,
     /// The running probe's id and proposal.
     running: Option<(u64, Proposal)>,
@@ -56,33 +62,47 @@ impl<'a> Probing<'a> {
             ));
             String::new()
         });
-        let champion = match fleet.champion_slot(&bot) {
-            Ok(Some(slot)) => slot,
-            Ok(None) => fleet.champion().unwrap_or_else(|why| {
+        // The reference is the fleet's champion, not this bot's slot: a slot moves with its own
+        // search, while every bot's control is held to the same reference.
+        let fleet_champion = fleet.champion();
+        let reference = match &fleet_champion {
+            Ok(champion) => *champion,
+            Err(why) => {
                 notes.push(format!(
                     "the champion file is refused ({why}): playing the default"
                 ));
                 Params::DEFAULT
-            }),
+            }
+        };
+        let champion = match fleet.champion_slot(&bot) {
+            Ok(Some(slot)) => slot,
+            Ok(None) => reference,
             Err(why) => {
                 // A slot that cannot be read is not one to play by. The fleet champion still is,
                 // and the default is the last resort, as it is for a refused champion.json.
                 notes.push(format!(
                     "the champion slot is refused ({why}): playing the fleet champion"
                 ));
-                fleet.champion().unwrap_or_else(|why| {
-                    notes.push(format!(
-                        "the champion file is refused ({why}): playing the default"
-                    ));
-                    Params::DEFAULT
-                })
+                reference
             }
         };
+        let next = match store.last_reference_orbit() {
+            Ok(last) => last.map_or(0, |orbit| orbit + 1),
+            Err(why) => {
+                notes.push(format!(
+                    "the standing arm's last orbit is not read ({why}): starting at 0"
+                ));
+                0
+            }
+        };
+        let mut ledger = Ledger::new(champion);
+        ledger.stand(reference, reference::bot_seed(&bot), next);
         let mut probing = Self {
-            ledger: Ledger::new(champion),
+            ledger,
             store,
             fleet,
             bot,
+            reference,
             canary,
             running: None,
         };
@@ -104,6 +124,48 @@ impl<'a> Probing<'a> {
     /// The champion's parameter set.
     pub fn champion(&self) -> Params {
         *self.ledger.champion()
+    }
+
+    /// Whether the hand in play is the standing reference arm's reference side.
+    pub fn on_reference(&self) -> bool {
+        self.ledger.on_reference()
+    }
+
+    /// The standing orbit in play: its number, the side it plays and the chance it was drawn.
+    pub fn standing(&self) -> Option<(u64, Side, f64)> {
+        self.ledger.standing()
+    }
+
+    /// The harm guard read from this bot's own standing orbits kept at or after `since_ms`: the
+    /// policy's edge over the reference, weighted by the chance each arm was drawn, with the
+    /// verdict as of the last finished orbit.
+    pub fn standing_guard(
+        &self,
+        since_ms: i64,
+        hands: u64,
+        harm_margin: f64,
+    ) -> Result<(Verdict, f64, f64), String> {
+        let reference = self.reference.digest();
+        let policy = self.ledger.champion().digest();
+        let orbits = self
+            .store
+            .reference_orbits(&reference, since_ms)
+            .map_err(|error| error.to_string())?;
+        let mut estimate = Estimate::guard(reference, policy, hands, harm_margin);
+        for orbit in orbits {
+            estimate.observe(
+                &Standing {
+                    orbit: orbit.orbit,
+                    side: orbit.side,
+                    chance: orbit.chance,
+                    reference,
+                },
+                orbit.won,
+                orbit.hands,
+            );
+        }
+        let (edge, radius) = estimate.estimate();
+        Ok((estimate.verdict(), edge, radius))
     }
 
     /// Notes one draw of the re-solve in the hand in play.
