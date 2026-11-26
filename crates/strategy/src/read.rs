@@ -94,6 +94,13 @@ impl Read {
         let n: u32 = row.iter().sum();
         (f64::from(row[move_index(mv)]) + prior * population) / (f64::from(n) + prior)
     }
+
+    /// The share of `budget` this read has earned at `situation`: the same evidence weight
+    /// [`personal`] mixes in, without the move frequencies.
+    pub fn trust(&self, situation: Situation, budget: f64) -> f64 {
+        let n = f64::from(self.n(situation));
+        budget.clamp(0.0, 1.0) * n / (n + Trust::DEFAULT.half)
+    }
 }
 
 /// Mix the observed frequencies into every strength bucket within the evidence and budget.

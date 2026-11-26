@@ -179,6 +179,8 @@ fn each_seated_opponent_goes_to_the_decision_with_their_class_and_trust() {
     assert_eq!(personal.len(), 2);
     let (beta, gamma) = (&personal[0], &personal[1]);
     assert_eq!((beta.seat, beta.class), (1, Class::Fixed));
+    assert!(beta.read.is_some());
+    assert!(gamma.read.is_none());
     assert!(
         (beta.trust.unwrap() - 2.0 / 3.0).abs() < 1e-9,
         "{:?}",

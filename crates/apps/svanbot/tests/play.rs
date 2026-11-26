@@ -19,6 +19,14 @@ fn play_with_no_subcommand_says_its_usage_and_exits_2() {
 }
 
 #[test]
+fn an_unknown_continuation_pin_is_refused_before_anything_plays() {
+    let result = play(&["pin", "unknown", "1"]);
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("unknown continuation pin"));
+}
+
+#[test]
 fn an_unknown_kind_or_style_is_refused_before_anything_plays() {
     for args in [
         ["arena", "unknown", "standard", "2"],
