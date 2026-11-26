@@ -173,7 +173,7 @@ fn promising_candidates_get_the_long_confirmation_and_become_a_candidate() {
 }
 
 #[test]
-fn an_inconclusive_confirmation_holds_the_incumbent() {
+fn a_confirmation_budget_that_expires_without_a_verdict_holds_the_incumbent() {
     let fleet = Fleet::in_dir(scratch("held"));
     let champion = Params { exploit: 0.4 };
     let promising = Params { exploit: 0.4 * 0.8 };
