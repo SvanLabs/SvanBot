@@ -298,7 +298,7 @@ fn play_archived(
 ) -> Vec<f64> {
     let seats = league.seats();
     let challenger = BoutReader::new(play::reading(*policy, fixed, seats, Reads::deciding, None))
-        .with_profile_stats(!policy.style.profile.is_empty());
+        .with_profile_stats(policy.uses_stats());
     let rival = play::player(Policy::new(policy.kind, policy.style, rival), fixed);
     let deals = number * BOUT..(number + 1) * BOUT;
     deals

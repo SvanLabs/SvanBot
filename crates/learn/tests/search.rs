@@ -133,3 +133,19 @@ fn a_new_champion_is_searched_afresh_and_a_step_out_of_range_is_skipped() {
     let log = [ran(down, LEVEL)];
     assert_eq!(sim(next(&near_top, &log)).challenger, at(0.9 * 0.9));
 }
+
+#[test]
+fn the_fleet_search_never_moves_a_number_the_reference_style_pins() {
+    // The fleet champion plays the reference policy, which reads none of the playbook's cuts
+    // and no spread: the search must not spend sims on them.
+    let step = sim(next(&CHAMPION, &[]));
+    let moved: Vec<&str> = step
+        .challenger
+        .named()
+        .into_iter()
+        .zip(CHAMPION.named())
+        .filter(|((_, challenger), (_, champion))| challenger.to_bits() != champion.to_bits())
+        .map(|((name, _), _)| name)
+        .collect();
+    assert_eq!(moved, ["exploit"]);
+}

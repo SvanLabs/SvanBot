@@ -4,19 +4,22 @@
 //! The compute budget comes in from the caller, as the pricer's samples and the re-solve's
 //! iterations ([`crate::resolve::iterations_for`]), so the policy never reads a clock.
 
-use svanbot_core::card::CardSet;
 use svanbot_core::rules::{Action, Street};
 use svanbot_core::spot::Spot;
 
 use crate::action::{ActionModel, BUCKETS, Seen, Situation, masses, range, ranked};
 use crate::kind::{BALANCED_EXPLOIT_CAP, PolicyKind};
 use crate::params::Params;
+use crate::playbook;
 use crate::pricer::{self, Budget};
 use crate::profile::{ACTIVE, EMPTY, Profile, SeatedStats};
-use crate::read::{Class, Read};
+use crate::read::Class;
 pub use crate::resolve::Abstract;
 use crate::resolve::resolve;
 use crate::style::{STANDARD, Style};
+
+mod trace;
+pub use trace::{Branch, Decision, Drawn, Personal, PricedTrace, Ranged, ResolvedTrace, Trace};
 
 /// The action to play at `spot`: the re-solve's after `iterations` when it covers the spot, and
 /// the pricer's otherwise. Both read the opponents' ranges from their lines, by `model` or, with
@@ -29,144 +32,6 @@ pub fn decide(
     iterations: u32,
 ) -> Action {
     decide_drawn(spot, model, params, budget, iterations).action
-}
-
-/// A decision, and what it was drawn from when it was drawn.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Decision {
-    pub action: Action,
-    /// The re-solve's draw. The pricer draws nothing: it takes its best action every time.
-    pub drawn: Option<Drawn>,
-    /// What made it: the record the hand's replayer reads. `None` for a decision the caller made
-    /// without the policy — a test's fixed action, say — since a trace nobody took is worse than
-    /// no trace, and the replayer says which it is holding.
-    pub trace: Option<Trace>,
-}
-
-impl From<Action> for Decision {
-    /// A decision with no trace behind it: the action, and nothing about why.
-    fn from(action: Action) -> Self {
-        Self {
-            action,
-            drawn: None,
-            trace: None,
-        }
-    }
-}
-
-/// Which of the policy's two ways decided.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Branch {
-    /// The rest of the street was re-solved, and an action drawn from its average strategy. The
-    /// glossary calls the work the re-solve, so the record says `resolved`, never `solved`.
-    Resolved,
-    /// The pricer priced the spot by our equity: before the flop, or in a pot of three or more.
-    Priced,
-}
-
-impl Branch {
-    /// The branch's name, as the store keeps it and the page shows it.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Resolved => "resolved",
-            Self::Priced => "priced",
-        }
-    }
-
-    /// The branch called `name`, or `None` when no branch is.
-    pub fn named(name: &str) -> Option<Self> {
-        [Self::Resolved, Self::Priced]
-            .into_iter()
-            .find(|branch| branch.name() == name)
-    }
-}
-
-/// What a decision was made from, kept with its hand so "why did it do that?" is answered from the
-/// record rather than by playing the hand again.
-///
-/// Each range carries the class and share of the budget its opponent's read earned.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Trace {
-    pub branch: Branch,
-    /// The street the decision was made on: the board's length says it.
-    pub street: Street,
-    /// Our two hole cards, and the board as it stood: a replayer cannot say what the bot held
-    /// otherwise, and the ranges below are read on this board.
-    pub hole: CardSet,
-    pub board: CardSet,
-    /// The re-solve's record, when it decided.
-    pub resolved: Option<ResolvedTrace>,
-    /// The pricer's record, when it decided.
-    pub priced: Option<PricedTrace>,
-}
-
-/// What the re-solve decided from: what the last iteration valued each action at for our cards,
-/// the mix it drew from, and the range it read the villain at. `actions` names each entry of
-/// `values` and `strategy`, in order, so "action 2" reads as the call or bet it was.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ResolvedTrace {
-    pub values: Vec<f64>,
-    pub strategy: Vec<f64>,
-    pub taken: usize,
-    pub actions: Vec<Abstract>,
-    pub ranges: Vec<Ranged>,
-}
-
-/// One opponent's range, summarised.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Ranged {
-    /// The opponent's seat at the table, as the spot carried it, so a reader can match the range
-    /// to a seat in the table view. `None` when the spot named no seats: a sim's own table, or a
-    /// caller that did not follow the hand. The ordinal (the line's index in `Spot::lines`) is
-    /// never written here in its place — a seat guessed from a position is a wrong label that
-    /// reads as a right one.
-    pub seat: Option<usize>,
-    /// The mass in each strength bucket on the board, weakest first.
-    pub masses: Vec<f64>,
-    /// The opponent's adaptivity class, when their own read decided the range; `None` when the
-    /// population's model read them.
-    pub class: Option<Class>,
-    /// The share of the exploit budget their read had earned, with the class.
-    pub trust: Option<f64>,
-}
-
-/// One opponent's own read, as the decision takes it: the model their line is read by, and the
-/// class and trust it carries for the trace.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Personal {
-    /// The seat, as [`Spot::seats`] names it.
-    pub seat: usize,
-    /// The population's model tilted toward their read ([`crate::read::personal`]).
-    pub model: ActionModel,
-    pub class: Class,
-    /// The share of the exploit budget the read earned, or `None` when it is held and decides
-    /// nothing: the line is then read by the population's model.
-    pub trust: Option<f64>,
-    /// The evidence behind the read, when the caller kept it, so a decision can cap a pin by
-    /// what the read knows at the situation that follows. A held read keeps its evidence here
-    /// but decides nothing: `trust` is `None` or zero.
-    pub read: Option<Read>,
-}
-
-/// What the pricer decided from: our equity against the opponents' ranges, the price of the call
-/// it was measured against, and the configured exploit budget when playing by reads.
-#[derive(Clone, Debug, PartialEq)]
-pub struct PricedTrace {
-    pub equity: f64,
-    /// `None` when the check was free, since a free check has no price.
-    pub price: Option<f64>,
-    /// The configured budget when a fitted model or a trusted opponent read was in use.
-    pub exploit: Option<f64>,
-    pub ranges: Vec<Ranged>,
-}
-
-/// A draw among actions: the chance each had, what each was valued at in chips, and the one
-/// taken. The luck correction of a hand reads it (`learn::probe::corrected`).
-#[derive(Clone, Debug, PartialEq)]
-pub struct Drawn {
-    pub strategy: Vec<f64>,
-    pub values: Vec<f64>,
-    pub taken: usize,
 }
 
 /// [`decide`], with the draw behind the action.
@@ -230,7 +95,12 @@ impl Policy {
             kind,
             style,
             params,
-            continuation_pin: ContinuationPin::Fixed,
+            // The exploiting kind pins the re-solve to the read: its default treatment is the
+            // evidence cap, which an experiment may still override.
+            continuation_pin: match kind {
+                PolicyKind::Exploiting => ContinuationPin::EvidenceCap,
+                _ => ContinuationPin::Fixed,
+            },
         }
     }
 
@@ -240,6 +110,12 @@ impl Policy {
 
     pub fn name(&self) -> String {
         format!("{}/{}", self.kind.name(), self.style.name)
+    }
+
+    /// Whether a decision by this policy reads the opponents' stats: its style's profile has
+    /// rules to apply, or its kind's playbook reads them.
+    pub fn uses_stats(&self) -> bool {
+        !self.style.profile.is_empty() || self.kind == PolicyKind::Exploiting
     }
 
     /// The exploit budget this policy may spend. `Balanced` caps it low even when its slot was
@@ -282,13 +158,26 @@ impl Policy {
         iterations: u32,
         profile: Profile<'_>,
     ) -> Decision {
-        // A caller may pass any profile; the Balanced kind still decides without one.
-        let profile = if self.kind == PolicyKind::Balanced {
-            EMPTY
-        } else {
-            profile
+        // A caller may pass any profile; Balanced decides without one, and the exploiting kind's
+        // playbook replaces the style's profile with the rule set its read type chooses.
+        let seated = profile.opponents();
+        let profile = match self.kind {
+            PolicyKind::Balanced | PolicyKind::Exploiting => EMPTY,
+            _ => profile,
         };
-        if let Some(action) = profile.action(spot, budget.seed) {
+        let read_action = if self.kind == PolicyKind::Exploiting {
+            playbook::decide(
+                &self.params,
+                self.exploit(),
+                spot,
+                budget.seed,
+                personal,
+                seated,
+            )
+        } else {
+            profile.action(spot, budget.seed)
+        };
+        if let Some(action) = read_action {
             return action.into();
         }
 

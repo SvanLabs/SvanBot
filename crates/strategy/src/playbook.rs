@@ -7,12 +7,15 @@
 //! them inside the style's bounds; the rules themselves take no type condition, because the rule
 //! set chosen is the type.
 
+use svanbot_core::rng::Rng;
 use svanbot_core::rules::{Action, Street};
 use svanbot_core::spot::Spot;
 
 use crate::first_profile::{MANIAC_RULES, STATION_RULES, pot_bet};
 use crate::params::Params;
+use crate::policy::Personal;
 use crate::profile::{OpponentStats, Profile, Rate, Rule, SeatedStats};
+use crate::read::Class;
 
 /// A player who does not fold to a bet: the most they fold, as a share of the bets they face.
 const STATION_FOLD: f64 = 0.2;
@@ -95,6 +98,75 @@ pub fn action(kind: Type, spot: &Spot, seed: u64, seated: &[SeatedStats]) -> Opt
     Profile::new(rules(kind))
         .with_opponents(seated)
         .action(spot, seed)
+}
+
+/// The seed stream the stance's draw comes from: far from every stream the rules and the pricer
+/// name.
+pub const STREAM: u64 = u64::MAX - 2;
+
+/// The playbook's action when the opponent's class and the exploit stance let it decide. The
+/// action is taken with the class's share of the stance, drawn from the decision's seed; a share
+/// of zero decides nothing, so an unknown class or a zero stance never acts.
+pub fn deciding(
+    kind: Type,
+    spot: &Spot,
+    seed: u64,
+    stance: f64,
+    class: Class,
+    seated: &[SeatedStats],
+) -> Option<Action> {
+    let share = stance.clamp(0.0, 1.0) * class.budget();
+    if share <= 0.0 {
+        return None;
+    }
+    let action = action(kind, spot, seed, seated)?;
+    let bits = Rng::stream(seed, STREAM).next_u64() >> 11;
+    let draw = bits as f64 / (1u64 << 53) as f64;
+    (draw < share).then_some(action)
+}
+
+/// The playbook's action for one decision by an exploiting policy: the one opponent left read as
+/// a type from their stats, their adaptivity class's share of the stance, and a seeded draw.
+pub fn decide(
+    params: &Params,
+    stance: f64,
+    spot: &Spot,
+    seed: u64,
+    personal: &[Personal],
+    seated: &[SeatedStats],
+) -> Option<Action> {
+    let stats = sole_stats(spot, seated)?;
+    let kind = type_of(stats, Cuts::of(params))?;
+    deciding(kind, spot, seed, stance, sole_class(spot, personal), seated)
+}
+
+/// The one opponent left in the hand's stats, when exactly one is: by seat when the spot names
+/// seats, else the only read the caller gave, the same reading [`crate::profile::Facts`] makes.
+fn sole_stats(spot: &Spot, seated: &[SeatedStats]) -> Option<OpponentStats> {
+    if spot.opponents != 1 {
+        return None;
+    }
+    match (spot.seats.as_slice(), seated) {
+        ([seat], _) => seated
+            .iter()
+            .find(|read| read.seat == *seat)
+            .map(|read| read.stats),
+        ([], [only]) => Some(only.stats),
+        _ => None,
+    }
+}
+
+/// The adaptivity class of the one opponent left, from the decision's reads; unknown when the
+/// caller gave none.
+fn sole_class(spot: &Spot, personal: &[Personal]) -> Class {
+    match (spot.seats.as_slice(), personal) {
+        ([seat], _) => personal
+            .iter()
+            .find(|read| read.seat == *seat)
+            .map_or(Class::Unknown, |read| read.class),
+        ([], [only]) => only.class,
+        _ => Class::Unknown,
+    }
 }
 
 /// The nit's rules, in order: it folds all but strong hands to a bet, and raises those.

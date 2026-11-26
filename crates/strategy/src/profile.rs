@@ -251,6 +251,11 @@ impl<'a> Profile<'a> {
         Self { opponents, ..self }
     }
 
+    /// The opponents' stats the profile sees, as the policy passed them.
+    pub fn opponents(&self) -> &'a [SeatedStats] {
+        self.opponents
+    }
+
     /// The first rule's action fitted to the legal choices, if a rule matches.
     pub fn action(self, spot: &Spot, seed: u64) -> Option<Action> {
         let facts = Facts {

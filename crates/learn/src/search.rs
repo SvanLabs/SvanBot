@@ -74,8 +74,16 @@ pub enum Next {
     Exhausted,
 }
 
-/// What the search does next round `champion`, given everything the log holds.
+/// What the search does next round `champion`, given everything the log holds, inside the
+/// reference style's bounds: the fleet champion plays the reference policy, so a number the
+/// standard style pins is one the reference never reads and the search never moves.
 pub fn next(champion: &Params, log: &[Entry]) -> Next {
+    next_with_style(champion, &svanbot_strategy::style::STANDARD, log)
+}
+
+/// [`next`] inside `style`'s bounds: never moves a number the style pins, as the per-bot search
+/// never does.
+pub fn next_with_style(champion: &Params, style: &Style, log: &[Entry]) -> Next {
     let digest = champion.digest();
     for ring in RINGS {
         for (name, value) in champion.named() {
@@ -83,7 +91,10 @@ pub fn next(champion: &Params, log: &[Entry]) -> Next {
                 let Some(challenger) = champion.with(name, value * step) else {
                     continue;
                 };
-                if challenger == *champion || !challenger.in_range() {
+                if challenger == *champion
+                    || !challenger.in_range()
+                    || !style.allows(name, value * step)
+                {
                     continue;
                 }
                 if let Some(found) = judge(digest, challenger, log) {

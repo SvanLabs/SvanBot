@@ -131,7 +131,7 @@ fn reader<'a, F>(decide: &'a F, policy: &Policy) -> BoutReader<&'a F>
 where
     F: Fn(&Spot, u64, &Reads) -> Action,
 {
-    BoutReader::new(decide).with_profile_stats(!policy.style.profile.is_empty())
+    BoutReader::new(decide).with_profile_stats(policy.uses_stats())
 }
 
 fn load(path: &str, role: &str) -> Result<ActionModel, (u8, String)> {
