@@ -268,13 +268,21 @@ impl Reads {
                         read: Some(opponent.read().clone()),
                     }
                 }
-                opponent => Personal {
-                    seat,
-                    model: population.clone(),
-                    class: opponent.map_or(Class::Unknown, Opponent::class),
-                    trust: Some(0.0),
-                    read: None,
-                },
+                opponent => {
+                    let class = opponent.map_or(Class::Unknown, Opponent::class);
+                    Personal {
+                        seat,
+                        model: population.clone(),
+                        class,
+                        trust: Some(0.0),
+                        // A held read still carries its evidence: a later slice (the continuation
+                        // pin) caps what it may do by what it knows, even while the read itself
+                        // decides nothing.
+                        read: opponent
+                            .filter(|opponent| opponent.class() != Class::Unknown)
+                            .map(|opponent| opponent.read().clone()),
+                    }
+                }
             })
             .collect()
     }

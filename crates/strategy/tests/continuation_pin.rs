@@ -22,17 +22,19 @@ fn a_continuation_pin_experiment_keeps_the_range_model_fixed() {
         (ContinuationPin::Zero, Class::Fixed, Some(0.5), 0.0),
         (ContinuationPin::EvidenceCap, Class::Fixed, Some(0.5), 0.4),
         (ContinuationPin::EvidenceCap, Class::Fixed, None, 0.0),
+        // A switching read restarted at its change, so the evidence it has since is trusted.
         (
             ContinuationPin::EvidenceCap,
             Class::Switching,
             Some(0.5),
-            0.0,
+            0.4,
         ),
+        // A learner is damped to half the evidence the cap would otherwise spend.
         (
             ContinuationPin::EvidenceCap,
             Class::Learning,
             Some(0.5),
-            0.0,
+            0.2,
         ),
     ] {
         let personal = Personal {

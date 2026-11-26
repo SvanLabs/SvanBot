@@ -143,7 +143,8 @@ pub struct Personal {
     /// nothing: the line is then read by the population's model.
     pub trust: Option<f64>,
     /// The evidence behind the read, when the caller kept it, so a decision can cap a pin by
-    /// what the read knows at the situation that follows. `None` for a held read.
+    /// what the read knows at the situation that follows. A held read keeps its evidence here
+    /// but decides nothing: `trust` is `None` or zero.
     pub read: Option<Read>,
 }
 
@@ -301,9 +302,14 @@ impl Policy {
                     .first()
                     .copied()
                     .flatten()
-                    .filter(|read| read.class == Class::Fixed)
                     .and_then(|read| {
                         let next = next_street(street)?;
+                        let damp = match read.class {
+                            Class::Fixed | Class::Switching => 1.0,
+                            // A learner moves with us: half the evidence it would otherwise earn.
+                            Class::Learning => 0.5,
+                            Class::Unknown => 0.0,
+                        };
                         read.read
                             .as_ref()
                             .map(|evidence| {
@@ -324,9 +330,9 @@ impl Policy {
                                 );
                                 // The lower supported share: a pin needs evidence for both
                                 // answers the opponent can give on the next street.
-                                facing.min(open)
+                                facing.min(open) * damp
                             })
-                            .or(read.trust)
+                            .or_else(|| read.trust.map(|trust| trust * damp))
                     })
                     .filter(|trust| trust.is_finite())
                     .unwrap_or(0.0);
