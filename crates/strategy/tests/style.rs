@@ -42,3 +42,13 @@ fn every_style_pins_a_width_a_player_could_play() {
         );
     }
 }
+
+#[test]
+fn a_style_seeds_a_slot_with_its_pins_applied() {
+    use svanbot_strategy::params::Params;
+    // The width is pinned in the style, not in a parameter set, so seeding moves no number and
+    // no digest: the policy reads the width from the style it plays.
+    assert_eq!(TIGHT.seed(Params::DEFAULT), Params::DEFAULT);
+    assert_eq!(LOOSE.seed(Params::DEFAULT), Params::DEFAULT);
+    assert_eq!(TIGHT.seed(Params { exploit: 0.25 }).exploit, 0.25);
+}

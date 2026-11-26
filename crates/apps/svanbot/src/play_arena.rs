@@ -21,6 +21,7 @@ use crate::{arena_ship, deciders};
 const USAGE: &str = "usage: svanbot play arena <solving|pricing> <standard|tight|loose> [league] <bouts> [seed] [iterations] [out.json]
        svanbot play check <kind> <style> <bouts|--until-decided> [seed] [iterations]
        svanbot play assign <bot> <kind> <style>
+       svanbot play seed <bot>
        svanbot play revert <bot>
        svanbot play status
        svanbot play guard";
@@ -64,6 +65,7 @@ fn command(args: &[String]) -> CommandResult {
                 svanbot::now_ms(),
             ))
         }
+        [name, bot] if name == "seed" => say(play::seed(&fleet, data_dir, bot)),
         [name, bot] if name == "revert" => say(play::revert(&fleet, bot)),
         [name] if name == "status" => {
             print!("{}", play::status(&fleet).map_err(|error| (2, error))?);

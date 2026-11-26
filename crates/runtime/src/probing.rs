@@ -6,8 +6,8 @@
 //!   It stores the start, plays the arms ([`Ledger`]), and acts on the verdict. A harm guard
 //!   that clears promotes its challenger: the canary writes the fleet's champion. Any other
 //!   ending leaves the champion as it was, which is the rollback.
-//! - Every other bot adopts the fleet's champion between hands, and so does the canary while
-//!   no probe runs.
+//! - Every other bot adopts its own champion slot between hands, or the fleet's champion while
+//!   it has no slot; so does the canary while no probe runs.
 //!
 //! A restarted canary takes its probe up from the store: the start's detail and the orbits its
 //! played hands add up to.
@@ -38,26 +38,45 @@ pub struct Probing<'a> {
     ledger: Ledger,
     store: &'a Store,
     fleet: Fleet,
+    bot: String,
     canary: bool,
     /// The running probe's id and proposal.
     running: Option<(u64, Proposal)>,
 }
 
 impl<'a> Probing<'a> {
-    /// Opens the bot's ledger on the fleet's champion at `now_ms`, with notes for the operator.
-    /// The canary also takes up the probe its store left open.
+    /// Opens the bot's ledger on the champion its slot names, or the fleet champion while it has
+    /// no slot, at `now_ms`, with notes for the operator. The canary also takes up the probe its
+    /// store left open.
     pub fn open(store: &'a Store, fleet: Fleet, canary: bool, now_ms: i64) -> (Self, Vec<String>) {
         let mut notes = Vec::new();
-        let champion = fleet.champion().unwrap_or_else(|why| {
+        let bot = store.bot().unwrap_or_else(|why| {
             notes.push(format!(
-                "the champion file is refused ({why}): playing the default"
+                "the store does not name its bot ({why}): playing the fleet champion"
             ));
-            Params::DEFAULT
+            String::new()
         });
+        let champion = match fleet.champion_for(&bot) {
+            Ok(champion) => champion,
+            Err(why) => {
+                // A slot that cannot be read is not one to play by. The fleet champion still is,
+                // and the default is the last resort, as it is for a refused champion.json.
+                notes.push(format!(
+                    "the champion slot is refused ({why}): playing the fleet champion"
+                ));
+                fleet.champion().unwrap_or_else(|why| {
+                    notes.push(format!(
+                        "the champion file is refused ({why}): playing the default"
+                    ));
+                    Params::DEFAULT
+                })
+            }
+        };
         let mut probing = Self {
             ledger: Ledger::new(champion),
             store,
             fleet,
+            bot,
             canary,
             running: None,
         };
@@ -118,9 +137,10 @@ impl<'a> Probing<'a> {
         Kept { played, notes }
     }
 
-    /// Adopts the fleet's champion, when it is not the one this bot plays by already.
+    /// Adopts this bot's champion, when it is not the one this bot plays by already: its own
+    /// slot's, or the fleet's while it has no slot.
     fn adopt(&mut self) -> Result<Option<String>, String> {
-        let champion = self.fleet.champion()?;
+        let champion = self.fleet.champion_for(&self.bot)?;
         if champion == *self.ledger.champion() {
             return Ok(None);
         }

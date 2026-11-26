@@ -257,6 +257,12 @@ _Avoid_: version, id
 The parameter set the fleet plays by default.
 _Avoid_: incumbent, best, main
 
+**Champion slot**:
+One bot's own **champion**: the parameter set in `champions.json` under the bot's name, seeded
+from the fleet champion with its style's pins and moved only by that bot's search and promotion. A
+bot with no slot plays the fleet champion.
+_Avoid_: lineage, per-bot params, brain (a brain is a policy)
+
 **Challenger**:
 A parameter set put forward to replace the champion.
 _Avoid_: candidate, mutant, variant

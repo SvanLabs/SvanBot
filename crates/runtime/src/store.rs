@@ -213,6 +213,13 @@ impl Store {
         Ok(Self { db })
     }
 
+    /// The bot this store belongs to: the name it was opened under. A store is one bot's
+    /// (`docs/adr/0004-reads-are-per-bot.md`), and this is what makes its own champion slot its
+    /// own.
+    pub fn bot(&self) -> Result<String, StoreError> {
+        self.owner()
+    }
+
     /// The journal mode SQLite reports: `wal` once open.
     pub fn journal_mode(&self) -> Result<String, StoreError> {
         Ok(self

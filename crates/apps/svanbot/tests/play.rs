@@ -174,6 +174,36 @@ fn a_bot_with_no_store_is_refused_and_nothing_is_written() {
 }
 
 #[test]
+fn seed_creates_a_slot_from_the_reference_for_a_bot_with_a_store() {
+    let (dir, fleet) = fixture("seed-cli", true);
+    fleet.promote(&Params { exploit: 0.4 }).unwrap();
+    let output = in_fleet(&dir, &["seed", "Svanar"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fleet.champion_slot("Svanar"),
+        Ok(Some(Params { exploit: 0.4 }))
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("champion"));
+    // A second seed is refused: a learned champion is not a seed's to overwrite.
+    let again = in_fleet(&dir, &["seed", "Svanar"]);
+    assert_eq!(again.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&again.stderr).contains("already"));
+}
+
+#[test]
+fn seed_refuses_a_bot_with_no_store_and_writes_nothing() {
+    let (dir, _) = fixture("seed-no-store", false);
+    let output = in_fleet(&dir, &["seed", "Svanar"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("store"));
+    assert!(!dir.join("fleet/champions.json").exists());
+}
+
+#[test]
 fn a_promotion_after_assignment_does_not_unassign() {
     let (dir, fleet) = fixture("promotion", true);
     fleet.record_check(&check(true)).unwrap();

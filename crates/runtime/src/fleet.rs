@@ -4,6 +4,8 @@
 //! - `champion.json`: the parameter set every bot plays by. The canary writes it when a
 //!   promotion's harm guard clears, and each bot reads it between hands. With no file, the
 //!   champion is [`Params::DEFAULT`].
+//! - `champions.json`: each bot's own champion slot, seeded from `champion.json` and moved only
+//!   by that bot's search and promotion (Phase 2). A bot with no entry plays the fleet champion.
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running.
 //! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
@@ -27,6 +29,7 @@ use svanbot_strategy::params::{Digest, Params};
 use crate::health::write_atomically;
 
 mod calibration;
+mod champions;
 mod checks;
 pub use checks::Check;
 mod policies;
