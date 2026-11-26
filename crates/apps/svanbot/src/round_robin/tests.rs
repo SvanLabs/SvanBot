@@ -49,6 +49,15 @@ fn settings() -> Settings {
     }
 }
 
+/// An exploiter sim nobody wins: the search screens one challenger a pass and finds nothing.
+fn losing(_: &Gauntlet, _: &Step, _: u64) -> Verdict {
+    Verdict {
+        deals: 100,
+        mbb_per_100: -200.0,
+        ci95: 50.0,
+    }
+}
+
 #[test]
 fn a_pass_plays_every_bot_heads_up_then_the_ring_and_records_the_matrix() {
     let fleet = fleet("matrix", &["Beta", "Alpha"]);
@@ -62,7 +71,7 @@ fn a_pass_plays_every_bot_heads_up_then_the_ring_and_records_the_matrix() {
         ));
         Ok(vec![1.0])
     };
-    let record = pass(&fleet, settings(), 250, None, &mut play).unwrap();
+    let record = pass(&fleet, settings(), 250, None, &mut play, &mut losing).unwrap();
 
     // Bots are read by name, so the matrix is the same pass to pass.
     assert_eq!(
@@ -101,7 +110,7 @@ fn a_pass_plays_every_bot_heads_up_then_the_ring_and_records_the_matrix() {
 fn the_budget_stops_the_pass_and_the_rest_of_the_plan_is_recorded_as_skipped() {
     let fleet = fleet("budget", &["Alpha", "Beta"]);
     let mut play = |_: &Gauntlet, _: &Row| Ok(vec![1.0]);
-    let record = pass(&fleet, settings(), 5, None, &mut play).unwrap();
+    let record = pass(&fleet, settings(), 5, None, &mut play, &mut losing).unwrap();
     assert_eq!(record.played, 5);
     assert_eq!(record.skipped, 35);
     // The matrix keeps every planned row; the five the budget reached hold this pass's bout.
@@ -123,11 +132,24 @@ fn the_budget_stops_the_pass_and_the_rest_of_the_plan_is_recorded_as_skipped() {
 #[test]
 fn a_second_pass_appends_to_the_standing_matrix_until_a_champion_changes() {
     let fleet = fleet("standing", &["Alpha"]);
-    let first = pass(&fleet, settings(), 20, None, &mut |_, _| Ok(vec![1.0])).unwrap();
+    let first = pass(
+        &fleet,
+        settings(),
+        20,
+        None,
+        &mut |_, _| Ok(vec![1.0]),
+        &mut losing,
+    )
+    .unwrap();
     assert_eq!(first.bots[0].rows[0].bouts, [1.0]);
-    let second = pass(&fleet, settings(), 20, Some(&first), &mut |_, _| {
-        Ok(vec![2.0])
-    })
+    let second = pass(
+        &fleet,
+        settings(),
+        20,
+        Some(&first),
+        &mut |_, _| Ok(vec![2.0]),
+        &mut losing,
+    )
     .unwrap();
     let row = &second.bots[0].rows[0];
     assert_eq!(row.bouts, [1.0, 2.0]);
@@ -145,9 +167,14 @@ fn a_second_pass_appends_to_the_standing_matrix_until_a_champion_changes() {
             },
         )
         .unwrap();
-    let third = pass(&fleet, settings(), 20, Some(&second), &mut |_, _| {
-        Ok(vec![3.0])
-    })
+    let third = pass(
+        &fleet,
+        settings(),
+        20,
+        Some(&second),
+        &mut |_, _| Ok(vec![3.0]),
+        &mut losing,
+    )
     .unwrap();
     assert_eq!(third.bots[0].rows[0].bouts, [3.0]);
     assert_eq!(
@@ -184,6 +211,8 @@ fn a_champion_change_archives_the_old_one_and_the_pass_measures_the_new_one_agai
             policy: "solving/standard".into(),
             champion: old,
             archive: Vec::new(),
+            exploiter_log: Vec::new(),
+            exploiter: None,
             rows: Vec::new(),
             regression: Regression::Admitted,
         }],
@@ -195,7 +224,15 @@ fn a_champion_change_archives_the_old_one_and_the_pass_measures_the_new_one_agai
             Ok(vec![1.0])
         }
     };
-    let record = pass(&fleet, settings(), 250, Some(&previous), &mut play).unwrap();
+    let record = pass(
+        &fleet,
+        settings(),
+        250,
+        Some(&previous),
+        &mut play,
+        &mut losing,
+    )
+    .unwrap();
     let alpha = &record.bots[0];
     assert_eq!(alpha.champion, new);
     assert_eq!(alpha.archive.len(), 1);
@@ -227,7 +264,7 @@ fn the_pass_writes_no_file_at_all_so_it_cannot_touch_the_release_arena() {
     let sentinel = b"{\"runs\":[]}";
     std::fs::write(dir.join("arena.json"), sentinel).unwrap();
     let mut play = |_: &Gauntlet, _: &Row| Ok(vec![0.0]);
-    pass(&fleet, settings(), 250, None, &mut play).unwrap();
+    pass(&fleet, settings(), 250, None, &mut play, &mut losing).unwrap();
     assert_eq!(std::fs::read(dir.join("arena.json")).unwrap(), sentinel);
     assert!(!dir.join("policy-runs.json").exists());
 }
@@ -251,3 +288,5 @@ fn an_archived_champion_plays_a_real_six_max_bout() {
     assert_eq!(results.len(), BOUT as usize);
     assert!(results.iter().all(|result| result.is_finite()));
 }
+
+mod exploiter;

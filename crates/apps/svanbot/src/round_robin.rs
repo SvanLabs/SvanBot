@@ -3,9 +3,14 @@
 //!
 //! A pass plays every assigned bot's gauntlet in order: the ten shared opponents heads up, the
 //! same ten at the 6-max ring, then a 6-max row against each champion in that bot's archive
-//! (`learn::round_robin`). The rows play one after another, never in parallel, and the pass stops
-//! at its row budget. Each row's paired bouts are read through `learn::probe::Sequence`, and the
-//! archive rows are the evidence `learn::archive::regression` reads for a promotion.
+//! (`learn::round_robin`). Each pass also takes one bounded step of the exploiter search against
+//! each bot's champion (`learn::exploiter`), so the brain's exploitability is measured from the
+//! best exploiter found; once measured, the bot meets that exploiter as the gauntlet's last row.
+//! The rows play one after another, never in parallel, and the pass stops at its row budget.
+//! Each row's paired bouts are read through `learn::probe::Sequence`, and the
+//! archive rows are the evidence `learn::archive::regression` reads for a promotion. Exploiter
+//! rows carry no archive and are never evidence for the regression rule: they report, they do not
+//! gate.
 //!
 //! The pass is recorded in the fleet's own `round-robin.json`, with every bot's matrix, the
 //! archive it played, and the regression verdict. The matrix is standing: each pass appends a
@@ -20,18 +25,27 @@
 use std::process::ExitCode;
 
 use svanbot_learn::archive::{Archive, Archived};
-use svanbot_learn::arena::{BOUT, BoutReader};
-use svanbot_learn::paired::Match;
-use svanbot_learn::play;
-use svanbot_learn::reads::Reads;
+use svanbot_learn::arena::BOUT;
+use svanbot_learn::exploiter;
+use svanbot_learn::paired::{Match, Verdict};
 use svanbot_learn::round_robin::{self, Budget, MBB_PER_100, Row, Table};
+use svanbot_learn::search::{Entry, Step};
 use svanbot_runtime::fleet::{Fleet, League};
-use svanbot_runtime::round_robin::{ArchivedChampion, BotRecord, KEEP, Record, RowRecord};
+use svanbot_runtime::round_robin::{
+    ArchivedChampion, BotRecord, ExploiterRecord, KEEP, Record, RowRecord,
+};
+use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
 use svanbot_strategy::policy::Policy;
 
 use crate::arena::{self, Opponent};
 use crate::deciders;
+
+mod step;
+#[cfg(test)]
+mod tests;
+
+use step::{exploiter_sim, play_rival, step_exploiter};
 
 /// The bouts one row plays unless the caller names another count.
 const DEFAULT_BOUTS: u64 = 1;
@@ -39,6 +53,13 @@ const DEFAULT_BOUTS: u64 = 1;
 /// The re-solve iterations one row runs unless the caller names another count: the pass is a
 /// standing test, bounded enough to run beside the live fleet.
 const DEFAULT_ITERATIONS: u64 = 2;
+
+/// The deals one exploiter screening sim plays: a fifth of a confirmation, as the learner's.
+const EXPLOITER_SCREEN_DEALS: u64 = 100;
+
+/// The deals one exploiter confirmation plays: enough to measure a win rate, bounded for a
+/// standing pass. One step runs a pass, so a search costs at most one of these a bot.
+const EXPLOITER_CONFIRM_DEALS: u64 = 500;
 
 /// One pass's settings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,21 +79,43 @@ struct Gauntlet {
     /// The archive the plan was made from: the same champions, minus the current one.
     rules: Archive,
     plan: round_robin::Plan,
+    /// The exploiter search's log against `champion`, carried while the champion holds.
+    exploiter_log: Vec<Entry>,
+    /// The best exploiter a confirmation has put above `champion`, when one has.
+    exploiter: Option<ExploiterRecord>,
 }
 
 /// How a pass plays one row: the row's paired bouts in mbb/100, or why it could not be played.
 type Play<'a> = dyn FnMut(&Gauntlet, &Row) -> Result<Vec<f64>, String> + 'a;
 
-/// Plays one pass and records it. `play` supplies a row's paired bouts in mbb/100; the app's sim
-/// does the playing, and a test can stand in for it.
+/// How a pass plays one exploiter sim: the challenger's verdict against the bot's champion.
+type Search<'a> = dyn FnMut(&Gauntlet, &Step, u64) -> Verdict + 'a;
+
+/// Plays one pass and records it. `play` supplies a row's paired bouts in mbb/100 and `search`
+/// one exploiter sim's verdict; the app's sim does the playing, and a test can stand in for it.
 fn pass(
     fleet: &Fleet,
     settings: Settings,
     budget: usize,
     previous: Option<&Record>,
     play: &mut Play<'_>,
+    search: &mut Search<'_>,
 ) -> Result<Record, String> {
-    let gauntlets = gauntlets(fleet, previous)?;
+    let mut gauntlets = gauntlets(fleet, previous)?;
+    for gauntlet in &mut gauntlets {
+        // One bounded step a pass: the search is the learner's, spread over the standing test.
+        if gauntlet.exploiter.is_none() {
+            step_exploiter(gauntlet, search);
+        }
+        // An exploiter that has been measured joins the gauntlet as its last row; the row is
+        // heads up and carries no archive, so the regression rule never reads it.
+        if let Some(found) = &gauntlet.exploiter {
+            let row = Row::exploited(found.params.digest());
+            if !gauntlet.plan.rows.contains(&row) {
+                gauntlet.plan.rows.push(row);
+            }
+        }
+    }
     let planned: usize = gauntlets
         .iter()
         .map(|gauntlet| gauntlet.plan.rows.len())
@@ -104,6 +147,7 @@ fn pass(
                 row: scored.row.name.clone(),
                 table: scored.row.table,
                 archive: scored.row.archive,
+                exploiter: scored.row.exploiter,
                 bouts: scored.bouts.clone(),
                 mean: scored.reading.mean,
                 radius: scored
@@ -118,6 +162,8 @@ fn pass(
             policy: gauntlet.policy.name(),
             champion: gauntlet.champion,
             archive: gauntlet.archive.clone(),
+            exploiter_log: gauntlet.exploiter_log.clone(),
+            exploiter: gauntlet.exploiter.clone(),
             rows,
             regression: round_robin::regression(&gauntlet.rules, &standing),
         });
@@ -154,7 +200,24 @@ fn gauntlets(fleet: &Fleet, previous: Option<&Record>) -> Result<Vec<Gauntlet>, 
         }
         // The current champion is not an opponent to itself.
         let rules = rules(&archive, champion.digest());
-        let plan = round_robin::plan(&bot, champion.digest(), &shared, &rules);
+        // A champion or policy change starts the exploiter search afresh: evidence about another
+        // policy is not evidence about this one.
+        let holding = previous
+            .and_then(|record| record.bot(&bot))
+            .filter(|held| held.champion == champion && held.policy == policy.name());
+        let exploiter_log = holding
+            .map(|held| held.exploiter_log.clone())
+            .unwrap_or_default();
+        let exploiter = holding
+            .and_then(|held| held.exploiter.clone())
+            .filter(|found| found.champion == champion.digest());
+        let plan = round_robin::plan_with_exploiter(
+            &bot,
+            champion.digest(),
+            &shared,
+            &rules,
+            exploiter.as_ref().map(|found| found.params.digest()),
+        );
         gauntlets.push(Gauntlet {
             bot,
             policy,
@@ -162,6 +225,8 @@ fn gauntlets(fleet: &Fleet, previous: Option<&Record>) -> Result<Vec<Gauntlet>, 
             archive,
             rules,
             plan,
+            exploiter_log,
+            exploiter,
         });
     }
     Ok(gauntlets)
@@ -210,9 +275,12 @@ fn standing(
         .collect()
 }
 
-/// Whether a record row is `row`'s line: same name, table and archived champion.
+/// Whether a record row is `row`'s line: same name, table, archived champion and exploiter.
 fn same(held: &RowRecord, row: &Row) -> bool {
-    held.row == row.name && held.table == row.table && held.archive == row.archive
+    held.row == row.name
+        && held.table == row.table
+        && held.archive == row.archive
+        && held.exploiter == row.exploiter
 }
 
 /// `archive` with `params` as its newest champion, five kept, one entry a digest.
@@ -267,6 +335,24 @@ fn play_row(
                         settings.iterations,
                     )
                 }
+                None if row.exploiter.is_some() => {
+                    let digest = row.exploiter.expect("an exploiter row names its exploiter");
+                    let found = gauntlet
+                        .exploiter
+                        .as_ref()
+                        .filter(|found| found.params.digest() == digest)
+                        .ok_or_else(|| {
+                            format!("exploiter row {digest} has no measured exploiter")
+                        })?;
+                    play_rival(
+                        game,
+                        league,
+                        &gauntlet.policy,
+                        Policy::new(PolicyKind::Exploiting, exploiter::style(), found.params),
+                        number,
+                        settings.iterations,
+                    )
+                }
                 None => {
                     let opponent = Opponent::named(&row.name)
                         .ok_or_else(|| format!("no shared opponent is called {}", row.name))?;
@@ -296,17 +382,14 @@ fn play_archived(
     number: u64,
     fixed: Option<u64>,
 ) -> Vec<f64> {
-    let seats = league.seats();
-    let challenger = BoutReader::new(play::reading(*policy, fixed, seats, Reads::deciding, None))
-        .with_profile_stats(policy.uses_stats());
-    let rival = play::player(Policy::new(policy.kind, policy.style, rival), fixed);
-    let deals = number * BOUT..(number + 1) * BOUT;
-    deals
-        .map(|deal| match league {
-            League::HeadsUp => play::rival_duel(game, deal, &challenger, &rival),
-            _ => play::rival_ring_at(game, seats, deal, &challenger, &rival),
-        })
-        .collect()
+    play_rival(
+        game,
+        league,
+        policy,
+        Policy::new(policy.kind, policy.style, rival),
+        number,
+        fixed,
+    )
 }
 
 fn league(table: Table) -> League {
@@ -378,7 +461,17 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     };
     let game = deciders::game(settings.seed);
     let mut play = |gauntlet: &Gauntlet, row: &Row| play_row(gauntlet, row, &game, settings);
-    let record = match pass(&fleet, settings, budget, previous.as_ref(), &mut play) {
+    let mut search = |gauntlet: &Gauntlet, step: &Step, deals: u64| {
+        exploiter_sim(gauntlet, step, deals, &game, settings.iterations)
+    };
+    let record = match pass(
+        &fleet,
+        settings,
+        budget,
+        previous.as_ref(),
+        &mut play,
+        &mut search,
+    ) {
         Ok(record) => record,
         Err(why) => {
             eprintln!("svanbot round-robin: {why}");
@@ -402,6 +495,3 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     );
     ExitCode::SUCCESS
 }
-
-#[cfg(test)]
-mod tests;

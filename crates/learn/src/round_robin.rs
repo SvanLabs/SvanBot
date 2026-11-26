@@ -1,8 +1,9 @@
 //! The round-robin (V11-93, spec Phase 3): the standing test of one bot's gauntlet, and the
 //! bounded, sequential runner that plays it.
 //!
-//! One bot's gauntlet is ten shared opponents heads up, the same ten at the 6-max ring, and then
-//! one 6-max row against each champion in its archive. The plan fixes the rows and their order;
+//! One bot's gauntlet is ten shared opponents heads up, the same ten at the 6-max ring, then one
+//! 6-max row against each champion in its archive, and last the exploiter searched against it
+//! when one has been measured. The plan fixes the rows and their order;
 //! the runner plays them in that order and stops at its budget. The rows are read through
 //! [`Sequence`] (`learn::probe`), and the archive rows are the paired evidence
 //! [`crate::archive::regression`] reads for a promotion.
@@ -23,8 +24,8 @@ pub const MBB_PER_100: f64 = 100_000.0;
 const TUNED_BOUTS: f64 = 200.0;
 
 /// The most rows one pass plays without a smaller budget from its caller. Five bots of ten
-/// shared pairs in two leagues and five archived champions each is 125 rows, so this bounds a
-/// whole fleet's gauntlet with room to spare.
+/// shared pairs in two leagues, five archived champions and an exploiter each is 130 rows, so
+/// this bounds a whole fleet's gauntlet with room to spare.
 pub const MAX_ROWS: usize = 250;
 
 /// The most bouts a row's standing evidence keeps: the newest this many, so the record stays
@@ -59,11 +60,15 @@ impl Table {
 /// One row of a gauntlet: who the bot meets, and at which table.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
-    /// The opponent's name, or `archive <digest>` for an archived champion.
+    /// The opponent's name, or `archive <digest>` for an archived champion, or
+    /// `exploiter <digest>` for the exploiter searched against the bot.
     pub name: String,
     pub table: Table,
     /// For an archive row, the champion this row measures the bot against. A shared row has none.
     pub archive: Option<Digest>,
+    /// For an exploiter row, the exploiter this row measures the bot against. Other rows have
+    /// none.
+    pub exploiter: Option<Digest>,
 }
 
 impl Row {
@@ -72,6 +77,7 @@ impl Row {
             name,
             table,
             archive: None,
+            exploiter: None,
         }
     }
 
@@ -80,12 +86,25 @@ impl Row {
             name: format!("archive {champion}"),
             table: Table::SixMax,
             archive: Some(champion),
+            exploiter: None,
+        }
+    }
+
+    /// The row in which the bot meets the exploiter searched against it: heads up, no archive
+    /// evidence.
+    pub fn exploited(exploiter: Digest) -> Self {
+        Self {
+            name: format!("exploiter {exploiter}"),
+            table: Table::HeadsUp,
+            archive: None,
+            exploiter: Some(exploiter),
         }
     }
 }
 
 /// One bot's gauntlet, in play order: ten shared pairs heads up, the same ring at 6-max, then a
-/// 6-max row against each archived champion, newest first.
+/// 6-max row against each archived champion, newest first, and last the bot's exploiter when one
+/// has been measured.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Plan {
     pub bot: String,
@@ -101,7 +120,19 @@ pub fn plan(
     shared: &[String],
     archive: &Archive,
 ) -> Plan {
-    let mut rows = Vec::with_capacity(shared.len() * 2 + archive.len());
+    plan_with_exploiter(bot, champion, shared, archive, None)
+}
+
+/// [`plan`], with the bot's `exploiter` as the last row when one has been measured. An exploiter
+/// row is heads up and carries no archive evidence, so the regression rule never reads it.
+pub fn plan_with_exploiter(
+    bot: impl Into<String>,
+    champion: Digest,
+    shared: &[String],
+    archive: &Archive,
+    exploiter: Option<Digest>,
+) -> Plan {
+    let mut rows = Vec::with_capacity(shared.len() * 2 + archive.len() + 1);
     for name in shared {
         rows.push(Row::shared(name.clone(), Table::HeadsUp));
     }
@@ -110,6 +141,9 @@ pub fn plan(
     }
     for held in archive.champions() {
         rows.push(Row::archived(held.digest()));
+    }
+    if let Some(exploiter) = exploiter {
+        rows.push(Row::exploited(exploiter));
     }
     Plan {
         bot: bot.into(),

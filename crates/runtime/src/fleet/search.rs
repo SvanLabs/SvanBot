@@ -131,7 +131,7 @@ fn stage_name(stage: Stage) -> &'static str {
 
 /// An entry as the log writes it. Each number is the text that reads back to the same bits, and
 /// a seed is text, since a reader in a browser holds a number only to 53 bits.
-pub(super) fn entry_json(entry: &Entry) -> Value {
+pub(crate) fn entry_json(entry: &Entry) -> Value {
     match *entry {
         Entry::Simmed { step, verdict } => json!({
             "champion": step.champion.to_string(),
@@ -153,7 +153,7 @@ pub(super) fn entry_json(entry: &Entry) -> Value {
     }
 }
 
-pub(super) fn entry_from(value: &Value) -> Result<Entry, String> {
+pub(crate) fn entry_from(value: &Value) -> Result<Entry, String> {
     let champion = value["champion"]
         .as_str()
         .and_then(|text| text.parse::<Digest>().ok())

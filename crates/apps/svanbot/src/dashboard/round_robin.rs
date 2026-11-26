@@ -14,6 +14,7 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
+use svanbot_learn::archive::Exploitability;
 use svanbot_learn::round_robin::Table;
 use svanbot_runtime::fleet::{Assignment, Check, Fleet};
 use svanbot_runtime::round_robin::{BotRecord, Record, regression_name};
@@ -107,6 +108,17 @@ fn column(
         "regression": regression_name(record.regression),
         "measured": measured,
         "brain": brain,
+        // The best exploiter's win rate against this champion, when one has been confirmed: the
+        // brain's exploitability, beside the matrix's win rates. A change of champion restarts
+        // the search, so a measurement about another champion reads as stale, not as this one's.
+        "exploitability": record.exploiter.as_ref().map(|found| json!({
+            "mbb_per_100": found.win_rate,
+            "radius": found.radius,
+            "deals": found.deals,
+            "champion": found.champion.to_string(),
+            "fresh": found.champion == record.champion.digest(),
+            "within_bound": Exploitability::Measured(found.win_rate).within_bound(),
+        })),
         "check": check.map(|check| json!({
             "admitted": check.admitted,
             "stale": champion.map(|champion| check.reference != champion),
@@ -124,25 +136,27 @@ fn column(
 
 /// The matrix: each row the first time a bot records it, with one cell per bot in record order.
 fn matrix(record: &Record) -> Vec<Value> {
-    let mut keys: Vec<(&str, Table, Option<Digest>)> = Vec::new();
+    let mut keys: Vec<(&str, Table, Option<Digest>, Option<Digest>)> = Vec::new();
     for bot in &record.bots {
         for row in &bot.rows {
-            let key = (row.row.as_str(), row.table, row.archive);
+            let key = (row.row.as_str(), row.table, row.archive, row.exploiter);
             if !keys.contains(&key) {
                 keys.push(key);
             }
         }
     }
     keys.into_iter()
-        .map(|(name, table, archive)| {
+        .map(|(name, table, archive, exploiter)| {
             json!({
                 "row": name,
                 "table": table.name(),
                 "archive": archive.map(|champion| champion.to_string()),
+                "exploiter": exploiter.map(|exploiter| exploiter.to_string()),
                 "cells": record.bots.iter().map(|bot| {
                     bot.rows
                         .iter()
-                        .find(|row| row.row == name && row.table == table && row.archive == archive)
+                        .find(|row| row.row == name && row.table == table
+                            && row.archive == archive && row.exploiter == exploiter)
                         .map(|row| json!({
                             "mean": row.mean,
                             "radius": row.radius,
@@ -173,7 +187,9 @@ mod tests {
     use serde_json::Value;
     use svanbot_learn::archive::Regression;
     use svanbot_runtime::fleet::{Assignment, Check, Fleet};
-    use svanbot_runtime::round_robin::{ArchivedChampion, BotRecord, Record, RowRecord};
+    use svanbot_runtime::round_robin::{
+        ArchivedChampion, BotRecord, ExploiterRecord, Record, RowRecord,
+    };
     use svanbot_strategy::kind::PolicyKind;
     use svanbot_strategy::params::{Digest, Params};
     use svanbot_strategy::style::{LOOSE, TIGHT};
@@ -213,6 +229,7 @@ mod tests {
             row: name.into(),
             table,
             archive: archive.map(digest),
+            exploiter: None,
             bouts: vec![mean; 2],
             mean,
             radius,
@@ -236,6 +253,16 @@ mod tests {
                     archive: vec![ArchivedChampion {
                         params: params(1.0 / 7.0),
                     }],
+                    exploiter_log: Vec::new(),
+                    // The best exploiter measured against this very champion: 4 bb/100, inside
+                    // the +5 bb/100 bound, and fresh.
+                    exploiter: Some(ExploiterRecord {
+                        params: params(0.3),
+                        champion: params(0.2).digest(),
+                        win_rate: 4_000.0,
+                        radius: 300.0,
+                        deals: 500,
+                    }),
                     rows: vec![
                         row("pricer", Table::HeadsUp, None, -500.0, Some(1_500.0)),
                         row("nit", Table::HeadsUp, None, 3_000.0, Some(500.0)),
@@ -256,6 +283,8 @@ mod tests {
                     policy: "solving/loose".into(),
                     champion: Params::DEFAULT,
                     archive: Vec::new(),
+                    exploiter_log: Vec::new(),
+                    exploiter: None,
                     rows: vec![row("mixing", Table::SixMax, None, 0.0, None)],
                     regression: Regression::Admitted,
                 },
@@ -318,8 +347,14 @@ mod tests {
         assert_eq!(alpha["guard"]["since_ms"], 1_500);
         assert_eq!(alpha["regression"], format!("refused {}", digest(1)));
         assert_eq!(alpha["measured"], true);
+        assert_eq!(alpha["exploitability"]["mbb_per_100"], 4_000.0);
+        assert_eq!(alpha["exploitability"]["radius"], 300.0);
+        assert_eq!(alpha["exploitability"]["deals"], 500);
+        assert_eq!(alpha["exploitability"]["fresh"], true);
+        assert_eq!(alpha["exploitability"]["within_bound"], true);
         let beta = &found["columns"][1];
         assert!(beta["check"].is_null(), "Beta has no check");
+        assert!(beta["exploitability"].is_null(), "Beta has no exploiter");
         assert_eq!(beta["guard"]["since_ms"], 1_700);
 
         let rows = found["matrix"].as_array().unwrap();
