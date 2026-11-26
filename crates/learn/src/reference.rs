@@ -14,7 +14,7 @@
 use svanbot_core::rng::Rng;
 use svanbot_strategy::params::Digest;
 
-use crate::probe::{Hypothesis, Kind, Probe, Verdict};
+use crate::probe::{Arm, Hypothesis, Kind, Probe, Verdict};
 
 /// The share of a bot's orbits that plays the reference policy.
 pub const SHARE: f64 = 0.1;
@@ -82,10 +82,10 @@ pub struct Standing {
 
 impl Standing {
     /// The arm and the chance it had of being the challenger, as [`Probe::observe`] reads them.
-    pub fn challenger(&self) -> (crate::probe::Arm, f64) {
+    pub fn challenger(&self) -> (Arm, f64) {
         match self.side {
-            Side::Policy => (crate::probe::Arm::Challenger, self.chance),
-            Side::Reference => (crate::probe::Arm::Champion, 1.0 - self.chance),
+            Side::Policy => (Arm::Challenger, self.chance),
+            Side::Reference => (Arm::Champion, 1.0 - self.chance),
         }
     }
 }
