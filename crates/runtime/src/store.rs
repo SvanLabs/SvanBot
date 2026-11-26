@@ -287,32 +287,6 @@ impl Store {
         Ok(())
     }
 
-    /// Every kept hand, in the order it was kept. Each frame comes back as compact JSON.
-    pub fn hands(&self) -> Result<Vec<Hand>, StoreError> {
-        let mut query = self
-            .db
-            .prepare("SELECT hand_id, table_id, frames FROM hands ORDER BY rowid")?;
-        let rows = query.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?;
-        rows.map(|row| {
-            let (hand_id, table_id, frames) = row?;
-            let frames: Vec<serde_json::Value> =
-                serde_json::from_str(&frames).map_err(|e| StoreError(e.to_string()))?;
-            Ok(Hand {
-                hand_id,
-                table_id,
-                frames: frames.iter().map(ToString::to_string).collect(),
-                traced: Vec::new(),
-            })
-        })
-        .collect()
-    }
-
     /// Keeps an incident. Every one is kept, repeats included.
     pub fn append_incident(&self, incident: &Incident, recorded_ms: i64) -> Result<(), StoreError> {
         let (kind, at_id, stablemate) = match incident {
@@ -476,6 +450,7 @@ impl Store {
 }
 
 mod trace;
+mod training;
 mod window;
 
 pub use trace::{TRACED_HANDS, TracedHand};

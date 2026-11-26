@@ -133,3 +133,31 @@ fn a_profile_without_an_id_stops_the_download() {
     served.join().unwrap();
     assert!(store.hands().unwrap().is_empty());
 }
+
+#[test]
+fn a_newest_first_export_is_read_chronologically_for_training() {
+    let (store, _) = store("training");
+    let live = Hand {
+        hand_id: "live".into(),
+        table_id: "t-1".into(),
+        frames: vec![],
+        traced: vec![],
+    };
+    store.append_hand(&live, Source::Live, 2_000).unwrap();
+    let (base, served) = venue(vec![
+        json!({"agent_id": "a-1"}),
+        json!([
+            {"hand_id": "new", "ended_at": "1970-01-01T00:00:03+00:00"},
+            {"hand_id": "old", "ended_at": "1970-01-01T00:00:01+00:00"}
+        ]),
+    ]);
+    download(&mut rest(&base), &store, || 10_000).unwrap();
+    served.join().unwrap();
+    let order: Vec<_> = store
+        .training_hands()
+        .unwrap()
+        .into_iter()
+        .map(|hand| hand.hand_id)
+        .collect();
+    assert_eq!(order, ["old", "live", "new"]);
+}

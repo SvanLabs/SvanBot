@@ -45,35 +45,45 @@ pub(crate) fn run() -> ExitCode {
         eprintln!("svanbot fit: set SVANBOT_NAME");
         return ExitCode::from(2);
     };
-    let hands = match open_store(&me).and_then(|store| store.hands().map_err(|e| e.to_string())) {
-        Ok(hands) => hands,
-        Err(why) => {
-            eprintln!("svanbot fit: {why}");
-            return ExitCode::from(2);
-        }
-    };
-    let cut = hands.len() * 4 / 5;
-    if hands.len() - cut < MIN_HELD_OUT {
+    let hands =
+        match open_store(&me).and_then(|store| store.training_hands().map_err(|e| e.to_string())) {
+            Ok(hands) => hands,
+            Err(why) => {
+                eprintln!("svanbot fit: {why}");
+                return ExitCode::from(2);
+            }
+        };
+    let stored = hands.len();
+    let mut observed_hands: Vec<_> = hands
+        .iter()
+        .enumerate()
+        .map(|(number, hand)| observed(hand, number as u64))
+        .filter(|sides| !sides.is_empty())
+        .collect();
+    drop(hands);
+    let eligible = observed_hands.len();
+    let cut = eligible * 4 / 5;
+    if eligible - cut < MIN_HELD_OUT {
         println!(
-            "svanbot fit: {} hands in the store, too few to fit and gate (needs {})",
-            hands.len(),
+            "svanbot fit: {eligible} of {stored} hands have opponent actions, too few to fit and gate (needs {})",
             MIN_HELD_OUT * 5
         );
         return ExitCode::SUCCESS;
     }
-    let ready = |range: std::ops::Range<usize>| -> Vec<Prepared> {
-        range
-            .flat_map(|number| observed(&hands[number], number as u64))
+    let held_out_hands = observed_hands.split_off(cut);
+    let ready = |hands: Vec<Vec<_>>| -> Vec<Prepared> {
+        hands
+            .into_iter()
+            .flatten()
             .map(|side| prepare(&side))
             .collect()
     };
-    let (train, held_out) = (ready(0..cut), ready(cut..hands.len()));
+    let (train, held_out) = (ready(observed_hands), ready(held_out_hands));
     let fitted = fit(&train, ROUNDS, ALPHA);
     let incumbent = load_model(&me).unwrap_or_else(ActionModel::baseline);
     let verdict = gate(&fitted.model, &incumbent, &held_out, MARGIN);
     println!(
-        "svanbot fit: {} hands, {} held out: gain {:+.4} nats a hand, lower bound {:+.4}, {}",
-        hands.len(),
+        "svanbot fit: {eligible} of {stored} hands have opponent actions, {} held out: gain {:+.4} nats a hand, lower bound {:+.4}, {}",
         verdict.hands,
         verdict.gain,
         verdict.lower,

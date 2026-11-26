@@ -21,17 +21,28 @@ use crate::status::Dossier;
 use crate::store::{Source, Store, StoreError};
 use crate::wire::{Inbound, parse};
 
+mod export;
+
 /// The opponents' sides of `hand`, numbered `number` so the gate can count them as one hand.
 /// Frames that do not parse are skipped.
 pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
+    if let [text] = hand.frames.as_slice()
+        && let Some(frames) = export::frames(text)
+    {
+        return observed_frames(frames, number);
+    }
+    observed_frames(
+        hand.frames.iter().filter_map(|text| parse(text).ok()),
+        number,
+    )
+}
+
+fn observed_frames(frames: impl IntoIterator<Item = Inbound>, number: u64) -> Vec<Observed> {
     let mut lines = Lines::default();
     let mut me = None;
     let mut hole = CardSet::EMPTY;
     let mut shown: Vec<(usize, CardSet)> = Vec::new();
-    for text in &hand.frames {
-        let Ok(frame) = parse(text) else {
-            continue;
-        };
+    for frame in frames {
         match &frame {
             Inbound::HandStart { seat, .. } => me = Some(*seat),
             Inbound::HoleCards { cards } => hole = cards.iter().copied().collect(),
