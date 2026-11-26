@@ -72,7 +72,7 @@ export function rail(lead, note, cells) {
       { class: "rail-lead" },
       h("span", { class: "rail-icon" }, icon("pulse")),
       h("b", {}, lead),
-      h("small", {}, note),
+      note ? h("small", {}, note) : null,
     ),
     h(
       "dl",

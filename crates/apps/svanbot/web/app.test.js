@@ -195,6 +195,21 @@ test("the fleet overview opens with management metrics and a linked roster", () 
   expect(byClass(view, "race-row").length).toBe(2);
 });
 
+test("appearing or clearing a fleet alert preserves the bot status links", () => {
+  show("/");
+  const healthy = fleet();
+  healthy.problems = [];
+  healthy.bots = healthy.bots.map((bot) => ({ ...bot, connected: true, run_incidents: 0 }));
+  const receive = (problems) => listeners.fleet({ data: JSON.stringify({ ...healthy, problems }) });
+  receive([]);
+  const roster = () => byClass(ids.view, "management-roster")[0];
+  const first = roster().all("a")[0];
+  receive(["The Arena run is missing"]);
+  expect(roster().all("a")[0]).toBe(first);
+  receive([]);
+  expect(roster().all("a")[0]).toBe(first);
+});
+
 test("the top bar has a tab a bot, and the bot in view is lit", () => {
   show("/bot/SurSvan");
   const tabs = ids.bots.all("a");
@@ -306,6 +321,9 @@ test("the season shows on the fleet's board and as each bot's rank", () => {
   expect(ids.view.textContent).toContain("Season 17");
   const [roster] = byClass(ids.view, "management-roster");
   expect(roster.all("tbody")[0].all("tr")[0].textContent).toContain("#3");
+  next.season.error = "timeout";
+  listeners.fleet({ data: JSON.stringify(next) });
+  expect(byClass(ids.view, "management-metrics")[0].textContent).toContain("previous read");
   globalThis.location.pathname = "/bot/SurSvan";
   listeners.fleet({ data: JSON.stringify(next) });
   const [tiles] = byClass(ids.view, "summary");

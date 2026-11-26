@@ -319,7 +319,13 @@ kbd {
 }
 
 .management-metrics small {
+  display: block;
+  margin-top: 0.25rem;
   color: var(--muted);
+  font-size: var(--step-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.45;
 }
 
 .management-roster > h2 {

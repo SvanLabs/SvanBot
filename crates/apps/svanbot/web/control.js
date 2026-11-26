@@ -202,8 +202,9 @@ function system(fleet, nowMs) {
 
 /** The operator's first look at the fleet, using the same status and season feed as the boards. */
 function management(fleet, nowMs, problems, online) {
+  const season = fleet.season;
   const standings = new Map(
-    (fleet.season?.rows ?? []).filter((row) => row.ours).map((row) => [row.name, row]),
+    (season?.rows ?? []).filter((row) => row.ours).map((row) => [row.name, row]),
   );
   const best = [...standings.values()].reduce(
     (leader, row) => (leader === null || row.rank < leader.rank ? row : leader),
@@ -215,7 +216,13 @@ function management(fleet, nowMs, problems, online) {
       "trophy",
       "Best season rank",
       best ? `#${best.rank}` : "—",
-      best?.name ?? "No season standing",
+      best
+        ? `${best.name} · ${season.error ? "previous read" : `Season ${season.number}`}`
+        : season?.error
+          ? "Season read failed"
+          : season
+            ? "No season standing"
+            : "Reading season standings…",
     ],
     [
       "alert",
@@ -232,17 +239,17 @@ function management(fleet, nowMs, problems, online) {
       "dl",
       { class: "management-metrics" },
       metrics.map(([symbol, label, value, note]) =>
-        h("div", {}, h("dt", {}, icon(symbol), label), h("dd", {}, value), h("small", {}, note)),
+        h("div", {}, h("dt", {}, icon(symbol), label), h("dd", {}, value, h("small", {}, note))),
       ),
     ),
-    problemList(problems),
+    h("div", { hidden: problems.length === 0 ? "" : null }, problemList(problems)),
     h(
       "section",
       { class: "management-roster", "aria-labelledby": "fleet-roster" },
-      h("h2", { id: "fleet-roster" }, "Bot roster"),
+      h("h2", { id: "fleet-roster" }, "Bot status"),
       h(
         "div",
-        { class: "scroll", tabindex: 0 },
+        { class: "scroll", tabindex: 0, role: "region", "aria-labelledby": "fleet-roster" },
         table(
           "Live status, season rank, and recorded results by bot",
           [
@@ -327,7 +334,7 @@ export function fleetRoom({ fleet, nowMs, problems, log, ui }) {
       nowMs,
     }),
     management(fleet, nowMs, problems, online),
-    rail("Fleet telemetry", "", [
+    rail("Fleet performance", null, [
       [
         "Fleet win rate",
         rateText(winRate({ counted, won_mbb: won })),
