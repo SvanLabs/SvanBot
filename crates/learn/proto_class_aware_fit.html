@@ -1,0 +1,1141 @@
+<!doctype html>
+<!-- V11-115 throwaway prototype. Not production. Aggregate counts and rates only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V11-115 prototype · class-aware online fit</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --paper: #fffefb;
+    --ink: #22221f;
+    --muted: #6b6b63;
+    --line: #ddd9d0;
+    --accent: #0f6b5c;
+    --accent-soft: #e4f0ec;
+    --bad: #a8342a;
+    --bad-soft: #f6e7e4;
+    --warn: #9a5b12;
+    --warn-soft: #f7eddf;
+    --good: #246b3c;
+    --good-soft: #e6f1e8;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+  }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 0.92em; background: #f0eee8; padding: 0.1em 0.28em; border-radius: 3px; }
+  header {
+    max-width: 1180px; margin: 0 auto; padding: 34px 22px 18px;
+  }
+  .pill {
+    display: inline-block; border: 1px solid #c8bda9; background: #fffaf0;
+    color: #6b4c15; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 4px 9px; border-radius: 999px; font-weight: 650;
+  }
+  h1 { margin: 14px 0 6px; font-size: clamp(30px, 4.2vw, 48px); line-height: 1.06; letter-spacing: -0.02em; font-weight: 700; }
+  .lede { max-width: 880px; margin: 10px 0 0; font-size: 17px; color: #42423d; }
+  .lede strong { color: var(--ink); }
+  main { max-width: 1180px; margin: 0 auto; padding: 0 22px 60px; }
+  nav.jump {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 8px;
+  }
+  nav.jump a {
+    text-decoration: none; color: var(--ink); background: var(--paper); border: 1px solid var(--line);
+    padding: 6px 11px; border-radius: 7px; font-size: 13px;
+  }
+  nav.jump a:hover { border-color: var(--accent); color: var(--accent); }
+  section { margin: 34px 0 0; }
+  h2 { font-size: 22px; letter-spacing: -0.01em; margin: 0 0 6px; }
+  h3 { font-size: 16px; margin: 0 0 6px; }
+  .sectionNote { color: var(--muted); max-width: 900px; margin: 0 0 14px; }
+  .verdict {
+    border: 1px solid var(--line); border-left: 6px solid var(--muted); background: var(--paper);
+    border-radius: 10px; padding: 16px 18px; margin: 18px 0 0;
+  }
+  .verdict h3 { font-size: 20px; margin: 4px 0 4px; }
+  .verdict p { margin: 0; color: #45453f; max-width: 950px; }
+  .verdict.bad { border-left-color: var(--bad); background: linear-gradient(90deg, var(--bad-soft), var(--paper) 55%); }
+  .verdict.warn { border-left-color: var(--warn); background: linear-gradient(90deg, var(--warn-soft), var(--paper) 55%); }
+  .verdict.good { border-left-color: var(--good); background: linear-gradient(90deg, var(--good-soft), var(--paper) 55%); }
+  .verdict.wait { opacity: 0.7; }
+  .verdict .pill { margin-bottom: 2px; }
+  .verdict.bad .pill { border-color: #d8b4ad; background: #fff3f1; color: var(--bad); }
+  .verdict.good .pill { border-color: #b5d1bc; background: #f2fbf4; color: var(--good); }
+  .verdict.warn .pill { border-color: #e0c6a0; background: #fff8ed; color: var(--warn); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 16px 0; }
+  .card {
+    background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 13px 14px;
+  }
+  .card .big { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .card .sub { color: #4d4d47; font-size: 13px; margin-top: 3px; }
+  .card .cap { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .callout {
+    border: 1px solid var(--line); background: var(--paper); border-radius: 9px;
+    padding: 12px 14px; margin: 12px 0 0; font-size: 14px;
+  }
+  .callout.bad { border-color: #e0bdb7; background: var(--bad-soft); }
+  .callout.good { border-color: #bfd8c5; background: var(--good-soft); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #e7e3db; vertical-align: top; }
+  th { color: #5b5b54; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 650; }
+  tr:last-child td { border-bottom: 0; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .strong { font-weight: 700; }
+  .muted { color: var(--muted); }
+  .ci { color: var(--muted); font-size: 11px; }
+  .bad { color: var(--bad); }
+  .good { color: var(--good); }
+  .badge {
+    display: inline-block; border-radius: 999px; padding: 1px 7px; font-size: 11px;
+    border: 1px solid var(--line); background: #f4f2ed; color: #505049; font-weight: 600;
+  }
+  .badge.fixed { background: var(--accent-soft); border-color: #bcd8d1; color: #0b5549; }
+  .badge.learning { background: #f5eadb; border-color: #ddc4a3; color: #7a4d13; }
+  .badge.switching { background: #ece7f6; border-color: #cfc4e3; color: #5b4386; }
+  .badge.unknown { background: #eeece7; color: #62625b; }
+  .tableCard { padding: 12px 13px; }
+  .tableCard h3 { margin-bottom: 8px; }
+  table.tight th, table.tight td { padding: 5px 7px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); gap: 12px; }
+  .controls {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px 16px; background: var(--paper); border: 1px solid var(--line);
+    border-radius: 11px; padding: 14px 16px; margin: 14px 0;
+  }
+  .control label { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: #4d4d47; font-weight: 600; }
+  .control output { font-family: var(--mono); font-weight: 500; color: var(--accent); }
+  .control input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: 4px; }
+  .control input[type="number"] { width: 100%; margin-top: 4px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font: inherit; }
+  .control .hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 6px; }
+  .buttonRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button {
+    font: inherit; font-weight: 650; font-size: 13px; padding: 8px 13px; border-radius: 7px;
+    border: 1px solid var(--accent); background: var(--accent); color: white; cursor: pointer;
+  }
+  button.secondary { background: var(--paper); color: var(--accent); }
+  button:hover { filter: brightness(1.05); }
+  .stateGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .stateGrid > div { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: var(--paper); }
+  .stateGrid .label { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stateGrid .value { display: block; margin-top: 3px; font-size: 14px; font-weight: 600; }
+  tr.accent td { background: var(--accent-soft); font-weight: 650; }
+  tr.default td { background: #fbf3e4; }
+  canvas { width: 100%; display: block; background: var(--paper); border: 1px solid var(--line); border-radius: 9px; margin-top: 10px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr); gap: 16px; align-items: start; }
+  .footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); margin-top: 34px; padding-top: 14px; }
+  @media (max-width: 800px) {
+    .split { grid-template-columns: 1fr; }
+    .grid2 { grid-template-columns: 1fr; }
+    .card .big { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="pill">Throwaway prototype · V11-115 · not production</span>
+  <h1>Class-aware fit on one season snapshot</h1>
+  <p class="lede">
+    <strong>Question.</strong> Does a per-opponent read, gated by the opponent's adaptivity class
+    and a budget share, earn enough trustworthy evidence over one season to build — and what does
+    the online fit cost? This page mirrors the repo's rules: a 30-hand evidence floor, trust
+    <code>n/(n+30)</code>, class budgets (Fixed 1, Switching 1, Learning 0.25, Unknown 0), prior 20,
+    and a drift reset at a change point.
+  </p>
+  <div class="verdict bad" id="topVerdict">
+    <div class="pill">Measured verdict · NO-GO for the class gate</div>
+    <h3>NO-GO for the class-aware gate as designed; GO for the underlying per-opponent read.</h3>
+    <p>
+      On the measured snapshot the read is <strong>0.0594 nats/action better</strong> than the
+      population model (well past the repo's 0.005 fit margin), but the class gate is
+      <strong>0.0192 nats/action worse</strong> than the same read without classes. The current
+      in-play gate fires for 5 of 195 opponents and only 0.0028 nats/action. The online update is
+      cheap: about <strong>19 µs per opponent-hand</strong>. The blocker is evidence and gating,
+      not compute.
+    </p>
+  </div>
+  <nav class="jump">
+    <a href="#measured">1 · What was measured</a>
+    <a href="#replay">2 · Drive a season</a>
+    <a href="#one">3 · One opponent</a>
+    <a href="#sensitivity">4 · Sensitivity</a>
+    <a href="#gng">5 · Go / no-go</a>
+  </nav>
+</header>
+<main>
+
+<section id="measured">
+  <h2>1. What the measured snapshot says</h2>
+  <p class="sectionNote">
+    One bot, one verified season snapshot, read only for this prototype. The 5,201 live hands carry
+    venue names; the 13,684 downloaded history hands do not, so per-opponent reads are a
+    <em>live-hand</em> instrument. All numbers below are aggregate counts and rates. No opponent
+    name, hand id or raw hand is in this file.
+  </p>
+  <div class="cards">
+    <div class="card"><div class="big">5,201</div><div class="sub">live hands with named seats</div><div class="cap">13,684 history hands cannot feed per-opponent reads</div></div>
+    <div class="card"><div class="big">195</div><div class="sub">opponents</div><div class="cap">median 89 hands each; max 1,782</div></div>
+    <div class="card"><div class="big">45,323</div><div class="sub">opponent actions</div><div class="cap">58% of them preflop facing a bet</div></div>
+    <div class="card"><div class="big">127 / 65 / 2 / 1</div><div class="sub">fixed / unknown / learning / switching</div><div class="cap">unknown = fewer than 60 hands; the class never leaves unknown earlier</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>Held-out action prediction</h3><div id="policyTable"></div><div id="pairedNote"></div></div>
+    <div class="card"><h3>Which class were the actions predicted under?</h3><div id="classTable"></div></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h3>What the read does to the fitted estimate</h3><div id="estimateTable"></div><div id="estimateNote"></div></div>
+
+  <h3 style="margin-top:22px">How much of the season is actionable?</h3>
+  <div class="cards" id="coverageCards"></div>
+
+  <div class="split" style="margin-top:12px">
+    <div class="card"><h3>Online fit cost</h3><div id="costPanel"></div></div>
+    <div class="card">
+      <h3>Why the class gate loses</h3>
+      <p>
+        <strong>Unknown is a volume class, not a behaviour.</strong> 65 of 195 opponents never reach
+        60 hands, so they stay unknown for the whole season; they still supply 17,225 actions
+        (38%). The design gives unknown a zero budget, so the class-aware estimate is exactly the
+        population model for them — while the class-blind read is 0.049 nats/action better on those
+        very actions.
+      </p>
+      <p>
+        <strong>The class layer has little room to help.</strong> Only 2 opponents are learning and
+        1 is switching. The learning test needs 60 hands where the opponent faced <em>our</em> bet;
+        the whole season contains only 3,222 such observations, a median of 10 per opponent.
+      </p>
+      <p>
+        <strong>The current gate uses almost none of it.</strong> Fixed + at least 30 preflop-facing
+        actions + a raise share above 40% admits 5 opponents and 413 of 5,201 hands. That is why
+        the in-play gate is 0.0028 nats/action better than population, below the 0.005 margin. It also requires Fixed, so the Learning and Switching budget shares never reach a decision today.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="replay">
+  <h2>2. Drive a calibrated season</h2>
+  <p class="sectionNote">
+    This replay does not load raw hands. It generates a season from the measured aggregate
+    distributions — opponent hand counts, situations per action, and per-class action mixes — then
+    runs the same class-aware module over it. The measured panel above is the authoritative number;
+    this panel is for feeling the controls and the failure mode. Change a control and run again.
+  </p>
+  <div class="controls">
+    <div class="control">
+      <label for="floor">Evidence floor <output id="floorValue">30</output></label>
+      <input id="floor" type="range" min="10" max="90" step="5" value="30">
+      <div class="hint">Hands per side of a change point (repo: 30). The class needs 2× this before it leaves unknown.</div>
+    </div>
+    <div class="control">
+      <label for="budgetUnknown">Unknown class budget <output id="budgetUnknownValue">0</output></label>
+      <input id="budgetUnknown" type="range" min="0" max="1" step="0.05" value="0">
+      <div class="hint">Repo: 0. Raising this is the one change that recovers most of the loss.</div>
+    </div>
+    <div class="control">
+      <label for="budgetLearning">Learning class budget <output id="budgetLearningValue">0.25</output></label>
+      <input id="budgetLearning" type="range" min="0" max="1" step="0.05" value="0.25">
+      <div class="hint">Repo: 0.25. Damping a learning opponent's read.</div>
+    </div>
+    <div class="control">
+      <label for="half">Trust half <output id="halfValue">30</output></label>
+      <input id="half" type="range" min="10" max="90" step="5" value="30">
+      <div class="hint">Observations that earn half the budget (repo: 30).</div>
+    </div>
+    <div class="control">
+      <label for="prior">Prior strength <output id="priorValue">20</output></label>
+      <input id="prior" type="range" min="0" max="80" step="5" value="20">
+      <div class="hint">Shrinkage toward population (repo: 20).</div>
+    </div>
+    <div class="control">
+      <label for="hands">Sample size <output id="handsValue">5201</output></label>
+      <input id="hands" type="range" min="500" max="5201" step="1" value="5201">
+      <div class="hint">Live hands replayed. Opponent count scales with it.</div>
+    </div>
+    <div class="control">
+      <label for="seed">Seed</label>
+      <input id="seed" type="number" min="1" step="1" value="115">
+      <div class="hint">Changes the synthetic season.</div>
+    </div>
+    <div class="control">
+      <label>Drift reset</label>
+      <label class="check"><input id="reset" type="checkbox" checked> Reset the read at a detected change</label>
+      <div class="hint">Repo: on. Switching opponents restart where the present strategy began.</div>
+    </div>
+  </div>
+  <div class="buttonRow">
+    <button id="runReplay">Run season</button>
+    <span id="replayStatus" class="muted">Ready.</span>
+  </div>
+  <div id="replayVerdict" class="verdict wait"><div class="pill">WAIT</div><h3>Working…</h3></div>
+  <div class="grid2" style="margin-top:12px">
+    <div class="card"><h3>Replay policies</h3><div id="replayTable"></div></div>
+    <div class="card"><h3>Go / no-go checks on this replay</h3><div id="rubric"></div></div>
+  </div>
+</section>
+
+<section id="one">
+  <h2>3. One opponent, hand by hand</h2>
+  <p class="sectionNote">
+    The season view hides the mechanics. Here is one synthetic opponent with a chosen behaviour.
+    Watch the class, the trust, the drift reset, and what class-aware does to the fitted estimate at
+    preflop facing a bet. The read is damped by the class budget; the class-blind line is the same
+    read with the class layer removed.
+  </p>
+  <div class="controls">
+    <div class="control">
+      <label for="oppClass">Behaviour</label>
+      <select id="oppClass" style="width:100%;margin-top:4px;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit">
+        <option value="fixed">Fixed — one strategy</option>
+        <option value="switching">Switching — changes at a point</option>
+        <option value="learning">Learning — responds to our bets</option>
+        <option value="unknown">Unknown — short series</option>
+      </select>
+      <div class="hint">The detected class is the classifier's, not the intended one.</div>
+    </div>
+    <div class="control">
+      <label>Deal hands</label>
+      <div class="buttonRow" style="margin-top:5px">
+        <button class="secondary" id="step1">1</button>
+        <button class="secondary" id="step10">10</button>
+        <button class="secondary" id="step50">50</button>
+        <button class="secondary" id="stepAll">All</button>
+      </div>
+    </div>
+    <div class="control">
+      <label>Reset</label>
+      <div class="buttonRow" style="margin-top:5px"><button id="newOpp">New opponent</button></div>
+      <div class="hint">Takes the current floor, budgets, half and prior.</div>
+    </div>
+  </div>
+  <div id="oppState" class="stateGrid"></div>
+  <div class="split" style="margin-top:12px">
+    <div class="card"><h3>Fitted estimate at preflop facing</h3><div id="oppEstimate"></div><p class="muted" id="oppNote"></p></div>
+    <div class="card"><h3>Trust over the series</h3><canvas id="trustChart"></canvas></div>
+  </div>
+</section>
+
+<section id="sensitivity">
+  <h2>4. Sensitivity, measured on the real snapshot</h2>
+  <p class="sectionNote">
+    Same 5,201 hands, same causal replay: predict each action from the evidence before that hand.
+    The default row is highlighted. A positive Δ is class-aware doing <em>worse</em> than the same
+    read without classes. No setting of the class budgets makes class-aware beat class-blind on
+    this snapshot; raising Unknown to 1.0 only closes the gap to +0.0007 (still slightly worse).
+  </p>
+  <div id="sensitivity" class="grid2"></div>
+  <div class="card tableCard" style="margin-top:12px">
+    <h3>Revised mixing rules, measured</h3>
+    <div id="revisedTable"></div>
+    <p class="muted" style="margin:8px 0 0">
+      <code>allOneReset</code> equals class-blind exactly: the one switching opponent's reset has no
+      measurable likelihood effect (18 actions after the change). A positive Unknown budget recovers
+      most of the loss but never turns the class layer into a win. The class layer's case has to be
+      an exploit-loss case, not a likelihood case — and this snapshot has only 3 opponents on which
+      to measure it.
+    </p>
+  </div>
+</section>
+
+<section id="gng">
+  <h2>5. Go / no-go</h2>
+  <div class="verdict bad">
+    <div class="pill">Recorded decision</div>
+    <h3>NO-GO for the class-aware gate as designed; GO for the underlying per-opponent read.</h3>
+    <p>
+      Build the per-opponent read: it is cheap (≈19 µs per opponent-hand in JS) and
+      0.0594 nats/action better than population on held-out actions. Do not build the class gate as
+      specified: the zero budget for Unknown makes it 0.0192 nats/action worse than the same read
+      without classes, and the current Fixed-only in-play gate uses 5 of 195 opponents and
+      413 of 5,201 hands.
+    </p>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <h3>What would change the answer</h3>
+    <ul>
+      <li><strong>Separate evidence from class.</strong> Let the read earn trust before the class is known; use class as a cap or damping on top, not an on/off gate. Measured: Unknown 0.5 recovers 0.9660 nats/action, but still loses to class-blind 0.9591.</li>
+      <li><strong>Widen the in-play gate.</strong> Only 5 opponents pass it today. Any read worth building needs a gate that uses the 128 opponents at trust ≥ 0.5 and 98 at trust ≥ 0.75.</li>
+      <li><strong>Measure exploit loss, not only action log-loss.</strong> The Learning damping is a safety choice. This snapshot has 2 learning and 1 switching opponent, so safety cannot be demonstrated; the exploit gate is the right instrument, and this prototype cannot replace it.</li>
+      <li><strong>Re-run on a richer season.</strong> The learning test needs 60 hands facing our bet; the season has a median of 10 per opponent. More live hands, or a name-bearing history export, would change the evidence base.</li>
+    </ul>
+  </div>
+  <p class="footer">
+    V11-115 throwaway prototype · one verified season snapshot, read only · aggregate counts and
+    rates only, no names, hand ids, raw hands, model file or store contents · the online module
+    mirrors <code>crates/learn/src/adapt.rs</code>, <code>reads.rs</code> and
+    <code>crates/strategy/src/read.rs</code> · Generated-by: opencode/deepseek-flash.
+  </p>
+</section>
+
+</main>
+<script>
+const DATA = {"measured":{"source":{"liveHands":5201,"opponents":195,"actions":45323,"opponentHandObservations":25470,"note":"one bot's verified season snapshot; history export seats have no names, so per-opponent reads come from live hands only"},"classes":{"unknown":{"n":65,"hands":{"10":3,"25":8,"50":26,"75":39,"90":48,"99":59},"nPre":{"10":2,"25":7,"50":24,"75":39,"90":47,"99":68},"trustPre":{"10":0,"25":0,"50":0,"75":0,"90":0,"99":0},"earned":{"10":0,"25":0,"50":0,"75":0,"90":0,"99":0},"raiseSharePre":{"10":0,"25":0.0741,"50":0.1667,"75":0.2353,"90":0.3333,"99":0.8}},"fixed":{"n":127,"hands":{"10":70,"25":88,"50":116,"75":208,"90":347,"99":758},"nPre":{"10":71,"25":92,"50":126,"75":215,"90":356,"99":791},"trustPre":{"10":0.703,"25":0.7541,"50":0.8077,"75":0.8776,"90":0.9223,"99":0.9635},"earned":{"10":0.8039,"25":0.8462,"50":0.8864,"75":0.9267,"90":0.9497,"99":0.9762},"raiseSharePre":{"10":0.0964,"25":0.1268,"50":0.1589,"75":0.1979,"90":0.2658,"99":0.6552}},"switching":{"n":1,"hands":{"10":217,"25":217,"50":217,"75":217,"90":217,"99":217},"nPre":{"10":177,"25":177,"50":177,"75":177,"90":177,"99":177},"trustPre":{"10":0.8551,"25":0.8551,"50":0.8551,"75":0.8551,"90":0.8551,"99":0.8551},"earned":{"10":0.8723,"25":0.8723,"50":0.8723,"75":0.8723,"90":0.8723,"99":0.8723},"raiseSharePre":{"10":0.0226,"25":0.0226,"50":0.0226,"75":0.0226,"90":0.0226,"99":0.0226}},"learning":{"n":2,"hands":{"10":270,"25":270,"50":1782,"75":1782,"90":1782,"99":1782},"nPre":{"10":331,"25":331,"50":1821,"75":1821,"90":1821,"99":1821},"trustPre":{"10":0.2292,"25":0.2292,"50":0.2459,"75":0.2459,"90":0.2459,"99":0.2459},"earned":{"10":0.2399,"25":0.2399,"50":0.2472,"75":0.2472,"90":0.2472,"99":0.2472},"raiseSharePre":{"10":0.0937,"25":0.0937,"50":0.1356,"75":0.1356,"90":0.1356,"99":0.1356}}},"predicates":{"trust50":128,"trust75":98,"eligible":5,"eligibleHands":704,"resets":1,"resetOpponents":1},"coverage":{"hands":5201,"anyTrust50":4785,"anyTrust75":4618,"anyGate":413},"timeline":{"firstClass":{"10":60,"25":60,"50":60,"75":60,"90":60,"99":60},"firstTrust50":{"10":60,"25":60,"50":60,"75":60,"90":60,"99":60},"neverTrust50":65},"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9783,"inPlayGate":1.0157},"paired":{"awareVsBlind":{"hands":5200,"actions":45323,"meanPerAction":0.019238683887877032,"se":0.004321925095661044,"lower95":0.012129117105514614,"upper95":0.02634825067023945,"totalNats":871.9548698502507},"blindVsPopulation":{"hands":5200,"actions":45323,"meanPerAction":-0.0594301974111633,"se":0.003533675453157705,"lower95":-0.06524309353160773,"upper95":-0.05361730129071888,"totalNats":-2693.554837266154},"awareVsPopulation":{"hands":5200,"actions":45323,"meanPerAction":-0.04019151352328615,"se":0.0022301970984946566,"lower95":-0.04386018775030986,"upper95":-0.03652283929626244,"totalNats":-1821.5999674158982},"gateVsPopulation":{"hands":5200,"actions":45323,"meanPerAction":-0.0027635751050108957,"se":0.0004429774369600289,"lower95":-0.0034922729888101434,"upper95":-0.002034877221211648,"totalNats":-125.25351448440883}},"byClassPolicy":{"unknown":{"actions":17225,"population":1.0578,"classBlind":1.0089,"classAware":1.0578,"inPlayGate":1.0578},"fixed":{"actions":27424,"population":0.9968,"classBlind":0.9312,"classAware":0.9312,"inPlayGate":0.9923},"learning":{"actions":656,"population":0.9059,"classBlind":0.8309,"classAware":0.8771,"inPlayGate":0.9059},"switching":{"actions":18,"population":0.5677,"classBlind":0.4587,"classAware":0.4458,"inPlayGate":0.5677}},"classMixes":{"fixed":[{"n":264,"mix":[0,1,0,0,0,0]},{"n":22555,"mix":[0.595,0,0.2313,0.0109,0.015,0.1479]},{"n":4787,"mix":[0,0.7433,0,0.0539,0.1609,0.042]},{"n":2731,"mix":[0.4046,0,0.4189,0.0212,0.1,0.0553]},{"n":3401,"mix":[0,0.7027,0,0.0729,0.1773,0.047]},{"n":1659,"mix":[0.3683,0,0.4756,0.0187,0.0958,0.0416]},{"n":2364,"mix":[0,0.6967,0,0.1159,0.1417,0.0457]},{"n":1042,"mix":[0.3407,0,0.4971,0.0259,0.0969,0.0393]}],"unknown":[{"n":27,"mix":[0,1,0,0,0,0]},{"n":1557,"mix":[0.5742,0,0.2453,0.0026,0.0206,0.1574]},{"n":357,"mix":[0,0.7171,0,0.0952,0.1485,0.0392]},{"n":216,"mix":[0.4167,0,0.412,0.0231,0.0787,0.0694]},{"n":268,"mix":[0,0.7052,0,0.0784,0.1828,0.0336]},{"n":147,"mix":[0.2993,0,0.5442,0.0068,0.0816,0.068]},{"n":179,"mix":[0,0.676,0,0.1453,0.1117,0.067]},{"n":93,"mix":[0.2796,0,0.5484,0.0215,0.129,0.0215]}],"learning":[{"n":17,"mix":[0,1,0,0,0,0]},{"n":2152,"mix":[0.6557,0,0.2151,0,0.0005,0.1287]},{"n":413,"mix":[0,0.6223,0,0.2591,0.1065,0.0121]},{"n":232,"mix":[0.5776,0,0.3405,0,0.0043,0.0776]},{"n":257,"mix":[0,0.5292,0,0.2646,0.1595,0.0467]},{"n":106,"mix":[0.6038,0,0.2736,0,0.0189,0.1038]},{"n":152,"mix":[0,0.5395,0,0.3158,0.1053,0.0395]},{"n":58,"mix":[0.8276,0,0.1207,0,0.0172,0.0345]}],"switching":[{"n":4,"mix":[0,1,0,0,0,0]},{"n":224,"mix":[0.817,0,0.1652,0,0,0.0179]},{"n":18,"mix":[0,0.7778,0,0.0556,0,0.1667]},{"n":20,"mix":[0.7,0,0.3,0,0,0]},{"n":8,"mix":[0,0.875,0,0,0.125,0]},{"n":9,"mix":[0.6667,0,0.2222,0,0,0.1111]},{"n":4,"mix":[0,0.75,0,0,0,0.25]},{"n":2,"mix":[0,0,0.5,0,0,0.5]}]},"classEstimates":{"unknown":[{"n":27,"opponentsWithEvidence":21,"meanTrust":0,"meanBlindTrust":0.0408,"readMix":[0,1,0,0,0,0],"aware":[0,0.7024,0,0.0285,0.0992,0.17],"blind":[0,0.7145,0,0.0273,0.0951,0.1631]},{"n":1557,"opponentsWithEvidence":64,"meanTrust":0,"meanBlindTrust":0.3856,"readMix":[0.5742,0,0.2453,0.0026,0.0206,0.1574],"aware":[0.6551,0,0.2271,0.0029,0.0106,0.1044],"blind":[0.6239,0,0.2341,0.0027,0.0144,0.1248]},{"n":357,"opponentsWithEvidence":55,"meanTrust":0,"meanBlindTrust":0.1652,"readMix":[0,0.7171,0,0.0952,0.1485,0.0392],"aware":[0,0.754,0,0.0859,0.1309,0.0292],"blind":[0,0.7479,0,0.0874,0.1338,0.0309]},{"n":216,"opponentsWithEvidence":52,"meanTrust":0,"meanBlindTrust":0.1153,"readMix":[0.4167,0,0.412,0.0231,0.0787,0.0694],"aware":[0.4962,0,0.3915,0.0117,0.0676,0.033],"blind":[0.4871,0,0.3939,0.013,0.0689,0.0372]},{"n":268,"opponentsWithEvidence":55,"meanTrust":0,"meanBlindTrust":0.1321,"readMix":[0,0.7052,0,0.0784,0.1828,0.0336],"aware":[0,0.6854,0,0.1284,0.1459,0.0403],"blind":[0,0.688,0,0.1218,0.1508,0.0394]},{"n":147,"opponentsWithEvidence":50,"meanTrust":0,"meanBlindTrust":0.0862,"readMix":[0.2993,0,0.5442,0.0068,0.0816,0.068],"aware":[0.4926,0,0.3788,0.0153,0.0752,0.0381],"blind":[0.4759,0,0.3931,0.0145,0.0758,0.0407]},{"n":179,"opponentsWithEvidence":49,"meanTrust":0,"meanBlindTrust":0.1035,"readMix":[0,0.676,0,0.1453,0.1117,0.067],"aware":[0,0.6633,0,0.1482,0.1401,0.0484],"blind":[0,0.6646,0,0.1479,0.1371,0.0503]},{"n":93,"opponentsWithEvidence":41,"meanTrust":0,"meanBlindTrust":0.0687,"readMix":[0.2796,0,0.5484,0.0215,0.129,0.0215],"aware":[0.46,0,0.4121,0.0147,0.0706,0.0426],"blind":[0.4476,0,0.4215,0.0152,0.0746,0.0412]}],"fixed":[{"n":264,"opponentsWithEvidence":96,"meanTrust":0.0803,"meanBlindTrust":0.0803,"readMix":[0,1,0,0,0,0],"aware":[0,0.7263,0,0.0262,0.0912,0.1563],"blind":[0,0.7263,0,0.0262,0.0912,0.1563]},{"n":22555,"opponentsWithEvidence":127,"meanTrust":0.8134,"meanBlindTrust":0.8134,"readMix":[0.595,0,0.2313,0.0109,0.015,0.1479],"aware":[0.6062,0,0.2305,0.0094,0.0142,0.1398],"blind":[0.6062,0,0.2305,0.0094,0.0142,0.1398]},{"n":4787,"opponentsWithEvidence":127,"meanTrust":0.4983,"meanBlindTrust":0.4983,"readMix":[0,0.7433,0,0.0539,0.1609,0.042],"aware":[0,0.7486,0,0.07,0.1458,0.0356],"blind":[0,0.7486,0,0.07,0.1458,0.0356]},{"n":2731,"opponentsWithEvidence":127,"meanTrust":0.3705,"meanBlindTrust":0.3705,"readMix":[0.4046,0,0.4189,0.0212,0.1,0.0553],"aware":[0.4623,0,0.4017,0.0152,0.0796,0.0413],"blind":[0.4623,0,0.4017,0.0152,0.0796,0.0413]},{"n":3401,"opponentsWithEvidence":127,"meanTrust":0.4216,"meanBlindTrust":0.4216,"readMix":[0,0.7027,0,0.0729,0.1773,0.047],"aware":[0,0.6927,0,0.105,0.1591,0.0431],"blind":[0,0.6927,0,0.105,0.1591,0.0431]},{"n":1659,"opponentsWithEvidence":127,"meanTrust":0.2693,"meanBlindTrust":0.2693,"readMix":[0.3683,0,0.4756,0.0187,0.0958,0.0416],"aware":[0.4591,0,0.4049,0.0162,0.0808,0.0391],"blind":[0.4591,0,0.4049,0.0162,0.0808,0.0391]},{"n":2364,"opponentsWithEvidence":126,"meanTrust":0.3464,"meanBlindTrust":0.3464,"readMix":[0,0.6967,0,0.1159,0.1417,0.0457],"aware":[0,0.6749,0,0.137,0.1406,0.0474],"blind":[0,0.6749,0,0.137,0.1406,0.0474]},{"n":1042,"opponentsWithEvidence":126,"meanTrust":0.1992,"meanBlindTrust":0.1992,"readMix":[0.3407,0,0.4971,0.0259,0.0969,0.0393],"aware":[0.4362,0,0.429,0.0169,0.0758,0.042],"blind":[0.4362,0,0.429,0.0169,0.0758,0.042]}],"switching":[{"n":3,"opponentsWithEvidence":1,"meanTrust":0.0909,"meanBlindTrust":0.0909,"readMix":[0,1,0,0,0,0],"aware":[0,0.7294,0,0.0259,0.0902,0.1545],"blind":[0,0.7294,0,0.0259,0.0902,0.1545]},{"n":177,"opponentsWithEvidence":1,"meanTrust":0.8551,"meanBlindTrust":0.8551,"readMix":[0.8983,0,0.1017,0,0,0],"aware":[0.8631,0,0.1199,0.0004,0.0015,0.0151],"blind":[0.8631,0,0.1199,0.0004,0.0015,0.0151]},{"n":9,"opponentsWithEvidence":1,"meanTrust":0.2308,"meanBlindTrust":0.2308,"readMix":[0,0.8889,0,0,0,0.1111],"aware":[0,0.7851,0,0.0661,0.1007,0.0481],"blind":[0,0.7851,0,0.0661,0.1007,0.0481]},{"n":9,"opponentsWithEvidence":1,"meanTrust":0.2308,"meanBlindTrust":0.2308,"readMix":[0.8889,0,0.1111,0,0,0],"aware":[0.5868,0,0.3268,0.009,0.052,0.0254],"blind":[0.5868,0,0.3268,0.009,0.052,0.0254]},{"n":3,"opponentsWithEvidence":1,"meanTrust":0.0909,"meanBlindTrust":0.0909,"readMix":[0,1,0,0,0,0],"aware":[0,0.714,0,0.1167,0.1326,0.0366],"blind":[0,0.714,0,0.1167,0.1326,0.0366]},{"n":2,"opponentsWithEvidence":1,"meanTrust":0.0625,"meanBlindTrust":0.0625,"readMix":[1,0,0,0,0,0],"aware":[0.5243,0,0.3551,0.0143,0.0705,0.0357],"blind":[0.5243,0,0.3551,0.0143,0.0705,0.0357]},{"n":2,"opponentsWithEvidence":1,"meanTrust":0.0625,"meanBlindTrust":0.0625,"readMix":[0,1,0,0,0,0],"aware":[0,0.6844,0,0.139,0.1313,0.0453],"blind":[0,0.6844,0,0.139,0.1313,0.0453]},{"n":0,"opponentsWithEvidence":0,"meanTrust":0,"meanBlindTrust":0,"readMix":[0,0,0,0,0,0],"aware":[0.46,0,0.4121,0.0147,0.0706,0.0426],"blind":[0.46,0,0.4121,0.0147,0.0706,0.0426]}],"learning":[{"n":17,"opponentsWithEvidence":1,"meanTrust":0.0904,"meanBlindTrust":0.3617,"readMix":[0,1,0,0,0,0],"aware":[0,0.7293,0,0.0259,0.0902,0.1546],"blind":[0,0.81,0,0.0182,0.0633,0.1085]},{"n":2152,"opponentsWithEvidence":2,"meanTrust":0.2376,"meanBlindTrust":0.9503,"readMix":[0.6557,0,0.2151,0,0.0005,0.1287],"aware":[0.6552,0,0.2242,0.0022,0.0082,0.1102],"blind":[0.6556,0,0.2157,0.0001,0.001,0.1275]},{"n":413,"opponentsWithEvidence":2,"meanTrust":0.2121,"meanBlindTrust":0.8484,"readMix":[0,0.6223,0,0.2591,0.1065,0.0121],"aware":[0,0.726,0,0.1226,0.1257,0.0256],"blind":[0,0.6422,0,0.2328,0.1102,0.0147]},{"n":232,"opponentsWithEvidence":2,"meanTrust":0.1918,"meanBlindTrust":0.7672,"readMix":[0.5776,0,0.3405,0,0.0043,0.0776],"aware":[0.5118,0,0.3817,0.0094,0.0554,0.0416],"blind":[0.5586,0,0.3524,0.0027,0.019,0.0672]},{"n":257,"opponentsWithEvidence":2,"meanTrust":0.1994,"meanBlindTrust":0.7975,"readMix":[0,0.5292,0,0.2646,0.1595,0.0467],"aware":[0,0.6543,0,0.1556,0.1486,0.0416],"blind":[0,0.5608,0,0.237,0.1568,0.0454]},{"n":106,"opponentsWithEvidence":2,"meanTrust":0.1583,"meanBlindTrust":0.6332,"readMix":[0.6038,0,0.2736,0,0.0189,0.1038],"aware":[0.5102,0,0.3621,0.0128,0.0663,0.0485],"blind":[0.563,0,0.3122,0.0056,0.0395,0.0797]},{"n":152,"opponentsWithEvidence":2,"meanTrust":0.1751,"meanBlindTrust":0.7003,"readMix":[0,0.5395,0,0.3158,0.1053,0.0395],"aware":[0,0.6416,0,0.1776,0.134,0.0468],"blind":[0,0.5766,0,0.2656,0.1157,0.0421]},{"n":58,"opponentsWithEvidence":2,"meanTrust":0.1211,"meanBlindTrust":0.4843,"readMix":[0.8276,0,0.1207,0,0.0172,0.0345],"aware":[0.5045,0,0.3768,0.0129,0.0641,0.0416],"blind":[0.638,0,0.271,0.0076,0.0448,0.0387]}]},"cost":{"replayWallMs":602.6,"settleMs":477.6,"handObserves":25470,"usPerHand":18.75,"usPerAction":10.54},"population":[[0,0.7024,0,0.0285,0.0992,0.17],[0.6551,0,0.2271,0.0029,0.0106,0.1044],[0,0.754,0,0.0859,0.1309,0.0292],[0.4962,0,0.3915,0.0117,0.0676,0.033],[0,0.6854,0,0.1284,0.1459,0.0403],[0.4926,0,0.3788,0.0153,0.0752,0.0381],[0,0.6633,0,0.1482,0.1401,0.0484],[0.46,0,0.4121,0.0147,0.0706,0.0426]],"situations":["preflop open","preflop facing","flop open","flop facing","turn open","turn facing","river open","river facing"],"moves":["fold","check","call","small","medium","large"],"budgets":{"unknown":0,"fixed":1,"switching":1,"learning":0.25}},"sensitivity":{"defaults":{"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9783,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0192,"se":0.0043,"lower95":0.0121},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},"grids":{"evidenceFloor":[{"minSide":10,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9632,"inPlayGate":1.0104},"awareVsBlind":{"mean":0.0041,"se":0.0003,"lower95":0.0036},"classes":{"learning":8,"fixed":158,"unknown":28,"switching":1},"eligibleAtEnd":6,"resets":1},{"minSide":15,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9656,"inPlayGate":1.0108},"awareVsBlind":{"mean":0.0065,"se":0.0004,"lower95":0.0059},"classes":{"learning":8,"fixed":148,"unknown":38,"switching":1},"eligibleAtEnd":5,"resets":1},{"minSide":20,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9723,"inPlayGate":1.0152},"awareVsBlind":{"mean":0.0132,"se":0.0043,"lower95":0.0062},"classes":{"fixed":143,"unknown":49,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"minSide":25,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9748,"inPlayGate":1.0156},"awareVsBlind":{"mean":0.0158,"se":0.0043,"lower95":0.0087},"classes":{"fixed":131,"unknown":61,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"minSide":30,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9783,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0192,"se":0.0043,"lower95":0.0121},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"minSide":40,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9834,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0243,"se":0.0043,"lower95":0.0172},"classes":{"fixed":105,"unknown":88,"learning":1,"switching":1},"eligibleAtEnd":4,"resets":1},{"minSide":60,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9926,"inPlayGate":1.0162},"awareVsBlind":{"mean":0.0335,"se":0.0046,"lower95":0.026},"classes":{"fixed":64,"unknown":130,"learning":1},"eligibleAtEnd":1,"resets":0},{"minSide":90,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":1,"inPlayGate":1.0167},"awareVsBlind":{"mean":0.041,"se":0.0034,"lower95":0.0353},"classes":{"unknown":150,"fixed":45},"eligibleAtEnd":1,"resets":0}],"unknownBudget":[{"unknown":0,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9783,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0192,"se":0.0043,"lower95":0.0121},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"unknown":0.1,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.974,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.015,"se":0.0022,"lower95":0.0113},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"unknown":0.25,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9705,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0114,"se":0.0014,"lower95":0.009},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"unknown":0.5,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.966,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0069,"se":0.0008,"lower95":0.0056},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"unknown":0.75,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9625,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0034,"se":0.0004,"lower95":0.0028},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"unknown":1,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9597,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0007,"se":0.0001,"lower95":0.0004},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1}],"learningBudget":[{"learning":0,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9787,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0197,"se":0.0043,"lower95":0.0125},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"learning":0.1,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9786,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0195,"se":0.0043,"lower95":0.0124},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"learning":0.25,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9783,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0192,"se":0.0043,"lower95":0.0121},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"learning":0.5,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.978,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0189,"se":0.0043,"lower95":0.0118},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"learning":0.75,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9778,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0187,"se":0.0043,"lower95":0.0116},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"learning":1,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9777,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0186,"se":0.0043,"lower95":0.0115},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1}],"trustHalf":[{"half":10,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9507,"classAware":0.9745,"inPlayGate":1.0156},"awareVsBlind":{"mean":0.0237,"se":0.0046,"lower95":0.0161},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"half":20,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9555,"classAware":0.9766,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0211,"se":0.0045,"lower95":0.0138},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"half":30,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9783,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0192,"se":0.0043,"lower95":0.0121},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"half":45,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9634,"classAware":0.9805,"inPlayGate":1.0158},"awareVsBlind":{"mean":0.0171,"se":0.0042,"lower95":0.0103},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"half":60,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9668,"classAware":0.9823,"inPlayGate":1.0159},"awareVsBlind":{"mean":0.0155,"se":0.004,"lower95":0.0089},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"half":90,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9721,"classAware":0.9854,"inPlayGate":1.016},"awareVsBlind":{"mean":0.0133,"se":0.0038,"lower95":0.007},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1}],"prior":[{"prior":5,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9511,"classAware":0.9747,"inPlayGate":1.0156},"awareVsBlind":{"mean":0.0235,"se":0.0046,"lower95":0.016},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"prior":10,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9544,"classAware":0.9761,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0217,"se":0.0045,"lower95":0.0144},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"prior":20,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9783,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0192,"se":0.0043,"lower95":0.0121},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"prior":40,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9655,"classAware":0.9815,"inPlayGate":1.0159},"awareVsBlind":{"mean":0.0161,"se":0.0041,"lower95":0.0094},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},{"prior":80,"actions":45323,"policies":{"population":1.0185,"classBlind":0.9735,"classAware":0.9861,"inPlayGate":1.0161},"awareVsBlind":{"mean":0.0126,"se":0.0038,"lower95":0.0064},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1}]},"revised":{"allOneReset":{"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9591,"inPlayGate":1.0157},"awareVsBlind":{"mean":0,"se":0,"lower95":0},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},"allOneNoReset":{"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9591,"inPlayGate":1.0157},"awareVsBlind":{"mean":0,"se":0,"lower95":0},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},"unknownHalfLearningQuarter":{"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.966,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0069,"se":0.0008,"lower95":0.0056},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},"unknownHalfLearningHalf":{"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9656,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0066,"se":0.0008,"lower95":0.0053},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1},"unknownThreeQuarterLearningHalf":{"actions":45323,"policies":{"population":1.0185,"classBlind":0.9591,"classAware":0.9622,"inPlayGate":1.0157},"awareVsBlind":{"mean":0.0031,"se":0.0004,"lower95":0.0025},"classes":{"fixed":127,"unknown":65,"learning":2,"switching":1},"eligibleAtEnd":5,"resets":1}}},"generator":{"handHist":[[0,10,19],[10,20,9],[20,30,10],[30,40,11],[40,50,12],[50,60,4],[60,80,23],[80,100,22],[100,150,30],[150,200,17],[200,300,22],[300,500,11],[500,1000,4],[1000,2000,1]],"actionHist":[[0,1078],[1,16358],[2,1915],[3,1758],[4,2718],[5,1209],[6,336],[7,81],[8,9],[9,1]],"sitWeights":[0.006884,0.584427,0.123006,0.070582,0.086799,0.042385,0.05955,0.026366]}};
+</script>
+<script>
+const ClassFit = (() => {
+// Class-aware online fit prototype module (V11-115, throwaway).
+// Mirrors crates/learn/src/adapt.rs, crates/learn/src/reads.rs and
+// crates/strategy/src/read.rs. Plain JS, no DOM: liftable as-is.
+
+const MIN_SIDE = 30;
+const CHANGE_THRESHOLD = 10.0;
+const Z = 3.0;
+const HALF = 30.0;
+const PRIOR = 20.0;
+const BUDGET = { unknown: 0.0, fixed: 1.0, switching: 1.0, learning: 0.25 };
+const MOVES = ["fold", "check", "call", "small", "medium", "large"];
+const SITUATIONS = [
+  "preflop open", "preflop facing",
+  "flop open", "flop facing",
+  "turn open", "turn facing",
+  "river open", "river facing",
+];
+
+const sit = (street, facing) => street * 2 + (facing ? 1 : 0);
+
+function binomial(k, n) {
+  const term = (c) => (c === 0 ? 0 : c * Math.log(c / n));
+  return term(k) + term(n - k);
+}
+
+// crates/learn/src/adapt.rs: the strongest change point, kept only at the threshold.
+function changePoint(series, threshold = CHANGE_THRESHOLD, minSide = MIN_SIDE) {
+  const n = series.length;
+  if (n < 2 * Math.max(minSide, 1)) return null;
+  const total = series.reduce((a, b) => a + (b ? 1 : 0), 0);
+  const whole = binomial(total, n);
+  let left = 0;
+  for (let i = 0; i < minSide; i++) left += series[i] ? 1 : 0;
+  let best = null;
+  for (let at = minSide; at <= n - minSide; at++) {
+    if (at > minSide) left += series[at - 1] ? 1 : 0;
+    const logRatio = binomial(left, at) + binomial(total - left, n - at) - whole;
+    if (best === null || logRatio > best.logRatio) best = { at, logRatio };
+  }
+  return best && best.logRatio >= threshold ? best : null;
+}
+
+const rate = (xs) => xs.reduce((a, b) => a + (b ? 1 : 0), 0) / Math.max(xs.length, 1);
+
+// adapt.rs: does their fold rate against us differ, and grow, against everyone else?
+function respondsToUs(vsUs, vsOthers, minSide = MIN_SIDE) {
+  if (vsUs.length < 2 * minSide || vsOthers.length < minSide) return false;
+  const ours = rate(vsUs);
+  const theirs = rate(vsOthers);
+  const pooled = (ours * vsUs.length + theirs * vsOthers.length) / (vsUs.length + vsOthers.length);
+  const se = Math.sqrt(pooled * (1 - pooled) * (1 / vsUs.length + 1 / vsOthers.length));
+  if (se === 0 || Math.abs((ours - theirs) / se) < Z) return false;
+  const half = Math.floor(vsUs.length / 2);
+  const gapEarly = rate(vsUs.slice(0, half)) - theirs;
+  const gapLate = rate(vsUs.slice(half)) - theirs;
+  return Math.abs(gapLate) > Math.abs(gapEarly) && Math.sign(gapLate) === Math.sign(ours - theirs);
+}
+
+function classify(tallies, vsUs, vsOthers, minSide = MIN_SIDE, threshold = CHANGE_THRESHOLD) {
+  if (respondsToUs(vsUs, vsOthers, minSide)) return { cls: "learning", change: null };
+  if (tallies.length < 2 * minSide) return { cls: "unknown", change: null };
+  const cp = changePoint(tallies, threshold, minSide);
+  return cp ? { cls: "switching", change: cp.at, logRatio: cp.logRatio } : { cls: "fixed", change: null };
+}
+
+// read.rs: counts per situation and move, and the shrunk frequency.
+function newCounts() {
+  return Array.from({ length: 8 }, () => new Array(6).fill(0));
+}
+function nAt(counts, situation) {
+  return counts[situation].reduce((a, b) => a + b, 0);
+}
+function frequency(counts, situation, mv, population, prior = PRIOR) {
+  const n = nAt(counts, situation);
+  return (counts[situation][mv] + prior * population) / (n + prior);
+}
+function trustAt(cls, n, half = HALF, budgets = BUDGET) {
+  return (budgets[cls] ?? 0) * n / (n + half);
+}
+function earned(cls, actions, half = HALF, budgets = BUDGET) {
+  return trustAt(cls, actions, half, budgets);
+}
+// The fitted estimate: population mixed toward the read at the earned share.
+function estimate(population, counts, situation, w, prior = PRIOR) {
+  const n = nAt(counts, situation);
+  const out = new Array(6).fill(0);
+  for (let mv = 0; mv < 6; mv++) {
+    const p = frequency(counts, situation, mv, population[mv], prior);
+    out[mv] = population[mv] + Math.max(0, Math.min(1, w)) * (p - population[mv]);
+  }
+  return out;
+}
+// reads.rs: the current in-play gate, raises_frequently.
+function raisesFrequently(cls, counts, minSide = MIN_SIDE) {
+  const situation = sit(0, true);
+  if (cls !== "fixed" || nAt(counts, situation) < minSide) return false;
+  const n = nAt(counts, situation);
+  return (counts[situation][3] + counts[situation][4] + counts[situation][5]) / n > 0.4;
+}
+
+// One opponent's online state, in the order the store sees its hands.
+class OnlineOpponent {
+  constructor(opts = {}) {
+    this.minSide = opts.minSide ?? MIN_SIDE;
+    this.threshold = opts.threshold ?? CHANGE_THRESHOLD;
+    this.half = opts.half ?? HALF;
+    this.prior = opts.prior ?? PRIOR;
+    this.budgets = opts.budgets ?? BUDGET;
+    this.tallies = [];
+    this.vsUs = [];
+    this.vsOthers = [];
+    this.hands = [];
+    this.counts = newCounts();
+    this.blindCounts = newCounts();
+    this.actions = 0;
+    this.blindActions = 0;
+    this.cls = "unknown";
+    this.change = null;
+    this.counted = 0;
+    this.reset = opts.reset ?? true;
+  }
+
+  // Predict this hand's actions from the evidence before it: the production read's timing.
+  predict(actions, populations) {
+    return actions.map(([street, facing, mv]) => {
+      const s = sit(street, facing);
+      const pop = populations[s];
+      const n = nAt(this.counts, s);
+      const w = trustAt(this.cls, n, this.half, this.budgets);
+      const aware = estimate(pop, this.counts, s, w, this.prior);
+      const nb = nAt(this.blindCounts, s);
+      const blind = estimate(pop, this.blindCounts, s, trustAt("fixed", nb, this.half, { fixed: 1, switching: 1, learning: 1, unknown: 1 }), this.prior);
+      const gate = raisesFrequently(this.cls, this.counts, this.minSide) ? aware : pop;
+      return { s, mv, aware, blind, gate, pop, cls: this.cls, n };
+    });
+  }
+
+  // Add one hand: actions plus the per-hand series the classifier reads.
+  observe(hand) {
+    this.push(hand);
+    this.settle();
+  }
+
+  push(hand) {
+    for (const [street, facing, mv] of hand.actions) {
+      this.blindCounts[sit(street, facing)][mv]++;
+      this.blindActions++;
+    }
+    this.tallies.push(hand.aggressive);
+    if (hand.vsUs !== null && hand.vsUs !== undefined) this.vsUs.push(hand.vsUs);
+    if (hand.vsOthers !== null && hand.vsOthers !== undefined) this.vsOthers.push(hand.vsOthers);
+    this.hands.push(hand.actions);
+  }
+
+  settle() {
+    const c = classify(this.tallies, this.vsUs, this.vsOthers, this.minSide, this.threshold);
+    const change = c.change ?? null;
+    if (this.reset && change !== this.change) {
+      // Drift reset: the read restarts where the present strategy began.
+      this.counts = newCounts();
+      this.actions = 0;
+      this.counted = change ?? 0;
+    }
+    // Count the hands since the last settle (a bulk load settles once, at the end).
+    for (let i = this.counted; i < this.hands.length; i++) {
+      for (const [street, facing, mv] of this.hands[i]) {
+        this.counts[sit(street, facing)][mv]++;
+        this.actions++;
+      }
+    }
+    this.counted = this.hands.length;
+    this.cls = c.cls;
+    this.change = change;
+  }
+}
+
+function parseModel(text) {
+  // 64 rows: 8 situations x 8 buckets, six move probabilities each.
+  const rows = text.trim().split("\n").slice(1).map((line) => line.trim().split(/\s+/).map(Number));
+  if (rows.length !== 64 || rows.some((r) => r.length !== 6)) throw new Error("bad model");
+  return Array.from({ length: 8 }, (_, s) => {
+    const out = new Array(6).fill(0);
+    for (let b = 0; b < 8; b++) for (let m = 0; m < 6; m++) out[m] += rows[s * 8 + b][m] / 8;
+    return out;
+  });
+}
+
+return { MIN_SIDE, CHANGE_THRESHOLD, Z, HALF, PRIOR, BUDGET, MOVES, SITUATIONS, sit, changePoint, respondsToUs, classify, newCounts, nAt, frequency, trustAt, earned, estimate, raisesFrequently, OnlineOpponent, parseModel };
+})();
+
+</script>
+<script>
+(() => {
+  "use strict";
+  const {
+    MIN_SIDE, CHANGE_THRESHOLD, HALF, PRIOR, BUDGET, MOVES, SITUATIONS, sit,
+    classify, raisesFrequently, nAt, trustAt, earned, estimate, parseModel,
+    OnlineOpponent,
+  } = ClassFit;
+
+  const M = DATA.measured;
+  const S = DATA.sensitivity;
+  const G = DATA.generator;
+  const $ = (id) => document.getElementById(id);
+  const fmt = (x, d = 4) => (Number.isFinite(x) ? x.toFixed(d) : "—");
+  const signed = (x, d = 4) => (Number.isFinite(x) ? (x >= 0 ? "+" : "") + x.toFixed(d) : "—");
+  const pct = (x, d = 0) => (Number.isFinite(x) ? (x * 100).toFixed(d) + "%" : "—");
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ---------------------------------------------------------------- measured panel
+
+  function deltaCell(pair) {
+    if (!pair) return "<td>—</td>";
+    return `<td class="num">${signed(pair.meanPerAction)} <span class="ci">[${fmt(pair.lower95, 4)}, ${fmt(pair.upper95, 4)}]</span></td>`;
+  }
+
+  function renderMeasured() {
+    const p = M.policies;
+    const q = M.paired;
+    const rows = [
+      ["Population (the kept fitted model)", p.population, null, "the prior"],
+      ["Class-blind read (budget 1, no reset)", p.classBlind, q.blindVsPopulation, "one read per opponent"],
+      ["Class-aware read (as designed)", p.classAware, q.awareVsPopulation, "Unknown 0, Learning 0.25, drift reset"],
+      ["Current in-play gate (raises_frequently)", p.inPlayGate, q.gateVsPopulation, "Fixed + 30 preflop-facing + raise > 40%"],
+    ];
+    $("policyTable").innerHTML = `
+      <table>
+        <thead><tr><th>Policy</th><th class="num">Log-loss, nats/action</th><th class="num">Δ vs population [95% CI]</th><th>What it is</th></tr></thead>
+        <tbody>${rows.map(([name, value, pair, why]) => `
+          <tr><td>${esc(name)}</td><td class="num strong">${fmt(value)}</td>${deltaCell(pair)}<td class="muted">${esc(why)}</td></tr>`).join("")}
+        </tbody>
+      </table>`;
+    $("pairedNote").innerHTML = `
+      <div class="callout ${q.awareVsBlind.upper95 < -0.005 ? "good" : "bad"}">
+        <strong>Class-aware minus class-blind: ${signed(q.awareVsBlind.meanPerAction)} nats/action</strong>
+        (95% CI ${signed(q.awareVsBlind.lower95)} to ${signed(q.awareVsBlind.upper95)}, clustered by hand).
+        Positive means the class gate is <em>worse</em> at predicting the opponent's next action.
+        The 0.005 nats/action bar is the repo's own fit margin (<code>fit::MARGIN</code>).
+      </div>`;
+    $("classTable").innerHTML = `
+      <table>
+        <thead><tr><th>Class at prediction time</th><th class="num">Actions</th><th class="num">Population</th><th class="num">Class-blind</th><th class="num">Class-aware</th><th class="num">In-play gate</th></tr></thead>
+        <tbody>${Object.entries(M.byClassPolicy).map(([cls, v]) => `
+          <tr><td><span class="badge ${cls}">${cls}</span></td><td class="num">${v.actions.toLocaleString()}</td><td class="num">${fmt(v.population)}</td><td class="num">${fmt(v.classBlind)}</td><td class="num">${fmt(v.classAware)}</td><td class="num">${fmt(v.inPlayGate)}</td></tr>`).join("")}
+        </tbody>
+      </table>`;
+    const mix = (m) => `${fmt(m[0], 3)} / ${fmt(m[2], 3)} / ${fmt((m[3] + m[4] + m[5]), 3)}`;
+    $("estimateTable").innerHTML = `
+      <table>
+        <thead><tr><th>Class</th><th class="num">n</th><th>Their read: fold / call / raise</th><th>Class-blind estimate</th><th>Class-aware estimate</th><th>Population</th></tr></thead>
+        <tbody>${["unknown", "fixed", "switching", "learning"].map((cls) => {
+          const e = M.classEstimates[cls] && M.classEstimates[cls][1];
+          if (!e) return "";
+          return `<tr><td><span class="badge ${cls}">${cls}</span></td><td class="num">${e.n.toLocaleString()}</td><td class="num">${mix(e.readMix)}</td><td class="num">${mix(e.blind)}</td><td class="num">${mix(e.aware)}</td><td class="num">${mix(M.population[1])}</td></tr>`;
+        }).join("")}
+        </tbody>
+      </table>`;
+    $("estimateNote").innerHTML = `<p class="muted">At <strong>preflop facing a bet</strong>, the situation with 58% of all opponent actions. The read is shrunk toward the population with prior 20 and mixed in at <code>budget × n/(n+30)</code>. For Fixed, class-aware = class-blind. For Unknown the class gate leaves population on the table. For Learning it pulls the read back to 25%. Estimates are compared at the situation marginal, not per strength bucket: the read frequency is bucket-independent, so the class comparison is unaffected, but the absolute nats/action is a marginal figure. All read weights are measured at exploit = 1; the live champion's exploit (about 0.5) scales every weight down without changing the ranking.</p>`;
+
+    const c = M.coverage;
+    $("coverageCards").innerHTML = [
+      [pct(c.anyTrust50 / c.hands), `${c.anyTrust50.toLocaleString()} of ${c.hands.toLocaleString()} live hands`, "had at least one opponent with trust ≥ 0.5 on preflop-facing"],
+      [pct(c.anyTrust75 / c.hands), `${c.anyTrust75.toLocaleString()} hands`, "had an opponent at trust ≥ 0.75"],
+      [pct(c.anyGate / c.hands), `${c.anyGate.toLocaleString()} hands`, "had an opponent the current in-play gate would admit"],
+      [`${M.predicates.eligible} / ${M.source.opponents}`, "opponents", "ever pass the current in-play gate (Fixed, ≥30 preflop-facing, raise > 40%)"],
+    ].map(([big, sub, cap]) => `<div class="card"><div class="big">${big}</div><div class="sub">${esc(sub)}</div><div class="cap">${esc(cap)}</div></div>`).join("");
+
+    $("costPanel").innerHTML = `
+      <table>
+        <tbody>
+          <tr><td>Opponent-hand observations replayed</td><td class="num">${M.cost.handObserves.toLocaleString()}</td></tr>
+          <tr><td>Opponent actions scored</td><td class="num">${M.source.actions.toLocaleString()}</td></tr>
+          <tr><td>Online settle time, total (JS / Bun)</td><td class="num">${fmt(M.cost.settleMs, 1)} ms</td></tr>
+          <tr><td>Online settle time, per opponent-hand</td><td class="num strong">${fmt(M.cost.usPerHand, 2)} µs</td></tr>
+          <tr><td>Online settle time, per action</td><td class="num">${fmt(M.cost.usPerAction, 2)} µs</td></tr>
+          <tr><td>Full four-policy measurement, wall clock</td><td class="num">${fmt(M.cost.replayWallMs, 1)} ms</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">The online path is the per-opponent read: classify the series, count the new actions, reset on a change. It does not run EM. The batch <code>svanbot fit</code> (25 EM rounds, Dirichlet α = 1, last fifth held out, 0.005 nats/hand gate) is a separate command and is not measured here.</p>`;
+  }
+
+  // ---------------------------------------------------------------- synthetic generator
+
+  function makeRng(seed) {
+    let x = (Number(seed) >>> 0) || 1;
+    return () => {
+      x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0;
+      return x / 4294967296;
+    };
+  }
+  function norm(r) {
+    let u = 0, v = 0;
+    while (u === 0) u = r();
+    while (v === 0) v = r();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  function gamma(r, shape) {
+    if (shape < 1) return gamma(r, shape + 1) * Math.pow(r(), 1 / shape);
+    const d = shape - 1 / 3, c = 1 / Math.sqrt(9 * d);
+    for (;;) {
+      const x = norm(r), v0 = 1 + c * x;
+      if (v0 <= 0) continue;
+      const v = v0 * v0 * v0, u = r();
+      if (u < 1 - 0.0331 * x * x * x * x) return d * v;
+      if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+    }
+  }
+  function dirichlet(r, base, alpha) {
+    const gs = base.map((p) => gamma(r, Math.max(1e-6, p) * alpha));
+    const sum = gs.reduce((a, b) => a + b, 0);
+    return gs.map((g) => g / sum);
+  }
+  function pick(r, weights) {
+    let x = r(), s = 0;
+    for (let i = 0; i < weights.length; i++) { s += weights[i]; if (x < s) return i; }
+    return weights.length - 1;
+  }
+  function profileMix(r, base, facing, kind) {
+    const valid = base.map((p, i) => (p > 0 ? i : -1)).filter((i) => i >= 0);
+    const alpha = kind === "aggressive" ? 4 : kind === "passive" ? 6 : 9;
+    const weights = dirichlet(r, valid.map((i) => base[i]), alpha);
+    const mix = new Array(6).fill(0);
+    valid.forEach((i, k) => { mix[i] = weights[k]; });
+    if (kind === "aggressive") {
+      for (const i of [3, 4, 5]) if (mix[i]) mix[i] *= 2.2;
+      if (facing && mix[0]) mix[0] *= 0.65;
+    } else if (kind === "passive") {
+      for (const i of [3, 4, 5]) if (mix[i]) mix[i] *= 0.5;
+      if (facing && mix[0]) mix[0] *= 1.2;
+    }
+    const sum = mix.reduce((a, b) => a + b, 0);
+    return mix.map((x) => x / sum);
+  }
+
+  const HAND_HIST = G.handHist;
+  const ACTION_HIST = G.actionHist;
+  const SIT_WEIGHTS = G.sitWeights;
+  const ACTION_TOTAL = ACTION_HIST.reduce((a, [, n]) => a + n, 0);
+  const HAND_TOTAL = HAND_HIST.reduce((a, [, , n]) => a + n, 0);
+
+  function makeOpponent(kind, hands, r) {
+    const changeAt = kind === "switching" ? Math.floor(hands * (0.45 + 0.25 * r())) : null;
+    let styleA;
+    if (kind === "aggressive") styleA = "aggressive";
+    else if (kind === "passive") styleA = "passive";
+    else if (kind === "normal") styleA = r() < 0.15 ? "aggressive" : r() < 0.18 ? "passive" : "normal";
+    else styleA = "normal";
+    const styleB = kind === "switching" ? "aggressive" : styleA;
+    if (kind === "switching") styleA = "passive";
+    const mixA = Array.from({ length: 8 }, (_, s) => profileMix(r, M.population[s], !!(s % 2), kind === "learning" ? "normal" : styleA));
+    const mixB = Array.from({ length: 8 }, (_, s) => profileMix(r, M.population[s], !!(s % 2), styleB));
+    if (kind === "learning") {
+      for (let s = 1; s < 8; s += 2) mixA[s] = [0.7, 0, 0.2, 0.02, 0.04, 0.04];
+    }
+    if (kind === "switching") {
+      for (let s = 1; s < 8; s += 2) {
+        mixA[s] = [0.75, 0, 0.2, 0.01, 0.02, 0.02];
+        mixB[s] = [0.2, 0, 0.2, 0.1, 0.2, 0.3];
+      }
+      for (let s = 0; s < 8; s += 2) {
+        mixA[s] = [0, 0.85, 0, 0.03, 0.07, 0.05];
+        mixB[s] = [0, 0.2, 0, 0.2, 0.3, 0.3];
+      }
+    }
+    const pUs = kind === "learning" ? 0.6 : 0.13;
+    const out = [];
+    for (let i = 0; i < hands; i++) {
+      const nActs = pick(r, ACTION_HIST.map(([, n]) => n / ACTION_TOTAL));
+      const acts = [];
+      let aggressive = false, vsUs = null, vsOthers = null;
+      let learnF = 1;
+      if (kind === "learning") {
+        const t = hands > 1 ? i / (hands - 1) : 0;
+        learnF = 1.35 - 1.3 * t;
+      }
+      for (let a = 0; a < nActs; a++) {
+        const s = pick(r, SIT_WEIGHTS);
+        const base = (kind === "switching" && i >= changeAt) ? mixB[s] : mixA[s];
+        let probs = base.slice();
+        const facing = !!(s & 1);
+        const us = facing && r() < pUs;
+        if (kind === "learning" && facing && us) {
+          probs[0] *= learnF;
+          const sum = probs.reduce((x, y) => x + y, 0);
+          probs = probs.map((x) => x / sum);
+        }
+        const mv = pick(r, probs);
+        acts.push([s >> 1, s & 1, mv]);
+        if (mv >= 3) aggressive = true;
+        if (facing && (mv === 0 || mv === 2)) {
+          if (us && vsUs === null) vsUs = mv === 0;
+          else if (!us && vsOthers === null) vsOthers = mv === 0;
+        }
+      }
+      out.push({ actions: acts, aggressive, vsUs, vsOthers });
+    }
+    return out;
+  }
+
+  function makeSeason({ hands, seed }) {
+    const r = makeRng(seed);
+    const nOpp = Math.max(10, Math.round(195 * hands / 5201));
+    const totalObs = Math.round(hands * 25470 / 5201);
+    const raw = [];
+    for (let i = 0; i < nOpp; i++) {
+      const bin = HAND_HIST[pick(r, HAND_HIST.map(([, , n]) => n / HAND_TOTAL))];
+      raw.push(Math.max(1, bin[0] + Math.floor(r() * (bin[1] - bin[0]))));
+    }
+    const scale = totalObs / raw.reduce((a, b) => a + b, 0);
+    const counts = raw.map((c) => Math.max(1, Math.round(c * scale)));
+    const kinds = new Array(nOpp).fill("normal");
+    for (let i = 0; i < 2 && i < nOpp; i++) { kinds[i] = "learning"; counts[i] = Math.max(120, Math.round(1000 * hands / 5201)); }
+    if (nOpp > 2) { kinds[2] = "switching"; counts[2] = Math.max(80, Math.round(260 * hands / 5201)); }
+    return counts.map((n, i) => ({ kind: kinds[i], hands: makeOpponent(kinds[i], n, r) }));
+  }
+
+  // ---------------------------------------------------------------- replay
+
+  function paired(map) {
+    if (!map.size) return null;
+    let totalDiff = 0, totalN = 0, ss = 0;
+    for (const h of map.values()) { totalDiff += h.diff; totalN += h.n; }
+    const mean = totalDiff / totalN;
+    for (const h of map.values()) ss += (h.diff - mean * h.n) ** 2;
+    const N = map.size;
+    const se = N > 1 ? Math.sqrt(ss) / totalN * Math.sqrt(N / (N - 1)) : Infinity;
+    return { mean, se, lower95: mean - 1.645 * se, upper95: mean + 1.645 * se, n: totalN, hands: N };
+  }
+
+  function replaySeason(opts) {
+    const season = makeSeason(opts);
+    const policy = { population: 0, classBlind: 0, classAware: 0, inPlayGate: 0 };
+    const maps = { blindPop: new Map(), awareBlind: new Map(), gatePop: new Map(), awarePop: new Map() };
+    let actions = 0, obs = 0, settleMs = 0;
+    let trust50Opp = 0, trust75Opp = 0, eligibleOpp = 0;
+    let trust50Obs = 0, trust75Obs = 0, gateObs = 0;
+    const classes = {};
+    const t0 = performance.now();
+    season.forEach((o, oi) => {
+      const opp = new OnlineOpponent(opts);
+      for (let hi = 0; hi < o.hands.length; hi++) {
+        const hand = o.hands[hi];
+        const ps = opp.predict(hand.actions, M.population);
+        let d = { blindPop: 0, awareBlind: 0, gatePop: 0, awarePop: 0, n: 0 };
+        for (const p of ps) {
+          const loss = (x) => -Math.log(Math.max(1e-12, x));
+          const lp = loss(p.pop[p.mv]), lb = loss(p.blind[p.mv]), la = loss(p.aware[p.mv]), lg = loss(p.gate[p.mv]);
+          policy.population += lp; policy.classBlind += lb; policy.classAware += la; policy.inPlayGate += lg;
+          d.blindPop += lb - lp; d.awareBlind += la - lb; d.gatePop += lg - lp; d.awarePop += la - lp;
+          d.n++; actions++;
+        }
+        if (d.n) {
+          for (const [key, v] of Object.entries(d)) {
+            if (key === "n") continue;
+            let h = maps[key].get(oi + ":" + hi);
+            if (!h) { h = { diff: 0, n: 0 }; maps[key].set(oi + ":" + hi, h); }
+            h.diff += v; h.n += d.n;
+          }
+        }
+        const pre = sit(0, true);
+        const t = trustAt(opp.cls, nAt(opp.counts, pre), opts.half, opts.budgets);
+        if (t >= 0.5) trust50Obs++;
+        if (t >= 0.75) trust75Obs++;
+        if (raisesFrequently(opp.cls, opp.counts, opts.minSide)) gateObs++;
+        const t1 = performance.now();
+        opp.observe(hand);
+        settleMs += performance.now() - t1;
+        obs++;
+      }
+      classes[opp.cls] = (classes[opp.cls] || 0) + 1;
+      const pre = sit(0, true);
+      const t = trustAt(opp.cls, nAt(opp.counts, pre), opts.half, opts.budgets);
+      if (t >= 0.5) trust50Opp++;
+      if (t >= 0.75) trust75Opp++;
+      if (raisesFrequently(opp.cls, opp.counts, opts.minSide)) eligibleOpp++;
+    });
+    const wall = performance.now() - t0;
+    const means = {};
+    for (const k of Object.keys(policy)) means[k] = policy[k] / actions;
+    return {
+      season, actions, obs, classes, means, wall,
+      cost: { settleMs, usPerHand: settleMs / obs * 1000, usPerAction: settleMs / actions * 1000 },
+      trust50Opp, trust75Opp, eligibleOpp, trust50Obs, trust75Obs, gateObs,
+      nOpp: season.length,
+      pairs: {
+        blindPop: paired(maps.blindPop),
+        awareBlind: paired(maps.awareBlind),
+        gatePop: paired(maps.gatePop),
+        awarePop: paired(maps.awarePop),
+      },
+    };
+  }
+
+  function verdictRows(r) {
+    const read = r.pairs.blindPop, cls = r.pairs.awareBlind, gate = r.pairs.gatePop;
+    const coverage = r.trust50Opp / r.nOpp;
+    const rows = [
+      ["Underlying read beats population by > 0.005", read && read.upper95 < -0.005, read ? `${signed(read.mean)} [${signed(read.lower95)}, ${signed(read.upper95)}]` : "—"],
+      ["Class-aware beats class-blind by > 0.005", cls && cls.upper95 < -0.005, cls ? `${signed(cls.mean)} [${signed(cls.lower95)}, ${signed(cls.upper95)}]` : "—"],
+      ["Current in-play gate beats population by > 0.005", gate && gate.upper95 < -0.005, gate ? `${signed(gate.mean)} [${signed(gate.lower95)}, ${signed(gate.upper95)}]` : "—"],
+      ["At least half the opponents reach trust ≥ 0.5", coverage >= 0.5, `${r.trust50Opp}/${r.nOpp} (${pct(coverage)})`],
+      ["Online cost under 1 ms per opponent-hand", r.cost.usPerHand < 1000, `${fmt(r.cost.usPerHand, 2)} µs`],
+    ];
+    return rows;
+  }
+
+  function verdictText(rows) {
+    const [read, cls, gate] = rows;
+    if (!read[1]) return ["NO-GO", "The underlying read does not clear the 0.005 nats/action margin on this season.", "bad"];
+    if (!cls[1]) return ["NO-GO for the class gate; GO for the read", "The read is worth building, but the class gate as specified loses against the same read without classes. The gate is the thing to re-propose.", "bad"];
+    if (!gate[1]) return ["GO for the class-aware read; NO-GO for the current in-play gate", "The class-aware estimate clears the margin, but the raises_frequently gate uses almost none of it.", "warn"];
+    return ["GO", "The class-aware read clears the 0.005 margin, the gate uses it, and the online cost is small.", "good"];
+  }
+
+  function renderReplay() {
+    const r = $("replayStatus");
+    r.textContent = "Generating and replaying the season…";
+    $("replayVerdict").className = "verdict wait";
+    $("replayVerdict").textContent = "Working…";
+    setTimeout(() => {
+      const opts = {
+        hands: Number($("hands").value),
+        seed: Number($("seed").value),
+        minSide: Number($("floor").value),
+        half: Number($("half").value),
+        prior: Number($("prior").value),
+        budgets: {
+          unknown: Number($("budgetUnknown").value),
+          learning: Number($("budgetLearning").value),
+          fixed: 1,
+          switching: 1,
+        },
+        reset: $("reset").checked,
+      };
+      const out = replaySeason(opts);
+      const rows = verdictRows(out);
+      const [headline, why, tone] = verdictText(rows);
+      $("replayVerdict").className = "verdict " + tone;
+      $("replayVerdict").innerHTML = `<div class="pill">${tone === "bad" ? "NO-GO" : tone === "warn" ? "CAUTION" : "GO"}</div><h3>${esc(headline)}</h3><p>${esc(why)}</p>`;
+      $("replayStatus").textContent = `${out.nOpp} opponents, ${out.obs.toLocaleString()} opponent-hand observations, ${out.actions.toLocaleString()} actions, ${fmt(out.wall, 0)} ms wall.`;
+      $("replayTable").innerHTML = `
+        <table>
+          <thead><tr><th>Policy</th><th class="num">Log-loss, nats/action</th><th class="num">Δ vs population [95% CI]</th></tr></thead>
+          <tbody>
+            <tr><td>Population</td><td class="num strong">${fmt(out.means.population)}</td><td class="num">—</td></tr>
+            <tr><td>Class-blind read</td><td class="num">${fmt(out.means.classBlind)}</td><td class="num">${pairCell(out.pairs.blindPop)}</td></tr>
+            <tr><td>Class-aware read</td><td class="num">${fmt(out.means.classAware)}</td><td class="num">${pairCell(out.pairs.awarePop)}</td></tr>
+            <tr><td>Current in-play gate</td><td class="num">${fmt(out.means.inPlayGate)}</td><td class="num">${pairCell(out.pairs.gatePop)}</td></tr>
+          </tbody>
+        </table>
+        <table class="tight">
+          <tbody>
+            <tr><td>Class-aware minus class-blind</td><td class="num">${pairCell(out.pairs.awareBlind)}</td></tr>
+            <tr><td>Opponents by class</td><td class="num">${Object.entries(out.classes).map(([k, v]) => `${k} ${v}`).join(" · ")}</td></tr>
+            <tr><td>Opponents trust ≥ 0.5 / ≥ 0.75</td><td class="num">${out.trust50Opp} / ${out.trust75Opp} of ${out.nOpp}</td></tr>
+            <tr><td>Gate-eligible opponents / opponent-hands</td><td class="num">${out.eligibleOpp} / ${out.gateObs.toLocaleString()} (${pct(out.gateObs / out.obs)})</td></tr>
+            <tr><td>Online settle cost</td><td class="num">${fmt(out.cost.settleMs, 1)} ms · ${fmt(out.cost.usPerHand, 2)} µs/opponent-hand · ${fmt(out.cost.usPerAction, 2)} µs/action</td></tr>
+          </tbody>
+        </table>`;
+      $("rubric").innerHTML = `
+        <table>
+          <thead><tr><th>Criterion</th><th>Result</th><th class="num">Value</th></tr></thead>
+          <tbody>${rows.map(([name, pass, value]) => `<tr><td>${esc(name)}</td><td><span class="badge ${pass ? "fixed" : "unknown"}">${pass ? "PASS" : "FAIL"}</span></td><td class="num">${esc(value)}</td></tr>`).join("")}</tbody>
+        </table>`;
+    }, 30);
+  }
+  function pairCell(p) {
+    if (!p) return "—";
+    return `${signed(p.mean)} <span class="ci">[${signed(p.lower95)}, ${signed(p.upper95)}]</span>`;
+  }
+
+  // ---------------------------------------------------------------- one opponent
+
+  let scenario = null;
+
+  function newScenario() {
+    const kind = $("oppClass").value;
+    const n = kind === "learning" ? 1200 : kind === "switching" ? 280 : kind === "unknown" ? 40 : 240;
+    const r = makeRng(Number($("seed").value) + 17);
+    const genKind = kind === "unknown" ? "normal" : kind;
+    const hands = makeOpponent(genKind, n, r);
+    scenario = {
+      kind, n, hands,
+      opp: new OnlineOpponent({
+        minSide: Number($("floor").value),
+        half: Number($("half").value),
+        prior: Number($("prior").value),
+        budgets: {
+          unknown: Number($("budgetUnknown").value),
+          learning: Number($("budgetLearning").value),
+          fixed: 1,
+          switching: 1,
+        },
+        reset: $("reset").checked,
+      }),
+      idx: 0, log: [],
+    };
+    recordScenario();
+    renderScenario();
+  }
+  function recordScenario() {
+    const o = scenario.opp, pre = sit(0, true);
+    scenario.log.push({
+      i: scenario.idx,
+      cls: o.cls,
+      change: o.change,
+      trust: trustAt(o.cls, nAt(o.counts, pre), Number($("half").value), scenario.opp.budgets),
+      blind: nAt(o.counts, pre) / (nAt(o.counts, pre) + Number($("half").value)),
+    });
+  }
+  function stepScenario(k) {
+    const o = scenario.opp;
+    for (let i = 0; i < k && scenario.idx < scenario.hands.length; i++) {
+      o.observe(scenario.hands[scenario.idx]);
+      scenario.idx++;
+      recordScenario();
+    }
+    renderScenario();
+  }
+  function renderScenario() {
+    const o = scenario.opp, pre = sit(0, true);
+    const nPre = nAt(o.counts, pre);
+    const half = Number($("half").value);
+    const prior = Number($("prior").value);
+    const tAware = trustAt(o.cls, nPre, half, o.budgets);
+    const tBlind = nPre / (nPre + half);
+    const pop = M.population[1];
+    const mix = (m) => `${fmt(m[0], 3)} / ${fmt(m[2], 3)} / ${fmt(m[3] + m[4] + m[5], 3)}`;
+    const read = nPre ? o.counts[pre].map((x) => x / nPre) : new Array(6).fill(0);
+    const aware = estimate(pop, o.counts, pre, tAware, prior);
+    const blind = estimate(pop, o.counts, pre, tBlind, prior);
+    const intended = scenario.kind === "unknown" ? "normal (short series)" : scenario.kind;
+    $("oppState").innerHTML = `
+      <div class="stateGrid">
+        <div><span class="label">Intended behaviour</span><span class="value">${esc(intended)}</span></div>
+        <div><span class="label">Detected class</span><span class="value"><span class="badge ${o.cls}">${o.cls}</span>${o.change !== null ? ` at hand ${o.change}` : ""}</span></div>
+        <div><span class="label">Hands seen</span><span class="value">${scenario.idx} / ${scenario.hands.length}</span></div>
+        <div><span class="label">Read actions</span><span class="value">${o.actions}</span></div>
+        <div><span class="label">n at preflop facing</span><span class="value">${nPre}</span></div>
+        <div><span class="label">Trust at preflop facing</span><span class="value">${fmt(tAware, 3)} <span class="muted">(class-blind ${fmt(tBlind, 3)})</span></span></div>
+        <div><span class="label">Earned over all actions</span><span class="value">${fmt(earned(o.cls, o.actions, half, o.budgets), 3)}</span></div>
+      </div>`;
+    $("oppEstimate").innerHTML = `
+      <table>
+        <thead><tr><th>Estimate at preflop facing</th><th class="num">Fold</th><th class="num">Call</th><th class="num">Raise</th><th class="num">Weight</th></tr></thead>
+        <tbody>
+          <tr><td>Population</td><td class="num">${fmt(pop[0], 3)}</td><td class="num">${fmt(pop[2], 3)}</td><td class="num">${fmt(pop[3] + pop[4] + pop[5], 3)}</td><td class="num">0</td></tr>
+          <tr><td>Their read (unsmoothed)</td><td class="num">${fmt(read[0], 3)}</td><td class="num">${fmt(read[2], 3)}</td><td class="num">${fmt(read[3] + read[4] + read[5], 3)}</td><td class="num">—</td></tr>
+          <tr><td>Class-blind estimate</td><td class="num">${fmt(blind[0], 3)}</td><td class="num">${fmt(blind[2], 3)}</td><td class="num">${fmt(blind[3] + blind[4] + blind[5], 3)}</td><td class="num">${fmt(tBlind, 3)}</td></tr>
+          <tr class="accent"><td>Class-aware estimate</td><td class="num">${fmt(aware[0], 3)}</td><td class="num">${fmt(aware[2], 3)}</td><td class="num">${fmt(aware[3] + aware[4] + aware[5], 3)}</td><td class="num">${fmt(tAware, 3)}</td></tr>
+        </tbody>
+      </table>`;
+    drawChart();
+    const notes = {
+      unknown: "The series is short: classify returns Unknown below 60 hands, and Unknown earns zero budget. The class-blind read still uses the evidence — that is exactly the gap the measured panel finds.",
+      fixed: "A fixed opponent: after 60 hands the change-point test finds no switch, the class is Fixed, the full budget applies, and class-aware equals class-blind.",
+      switching: "A switching opponent: when the change-point test fires, the read restarts at the change point (the drift reset), so pre-change actions stop counting. Class-aware and class-blind both reset; the class only names it.",
+      learning: "A learning opponent: the response test sees its fold rate against us fall while its fold rate against others stays put. The class-aware estimate is damped to the Learning budget (0.25) while class-blind spends the full read.",
+    };
+    $("oppNote").textContent = notes[scenario.kind] || "";
+  }
+  function drawChart() {
+    const canvas = $("trustChart");
+    if (!canvas || !scenario) return;
+    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { width: 800, height: 220 };
+    const w = Math.max(320, Math.round(rect.width || 800));
+    const h = 230;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.height = h + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const left = 38, right = 12, top = 12, bottom = 26;
+    const plotW = w - left - right, plotH = h - top - bottom;
+    const maxI = Math.max(scenario.hands.length, 1);
+    ctx.strokeStyle = "#ddd9d1"; ctx.lineWidth = 1;
+    for (let g = 0; g <= 4; g++) {
+      const y = top + plotH - (g / 4) * plotH;
+      ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(w - right, y); ctx.stroke();
+      ctx.fillStyle = "#6b6b66"; ctx.font = "11px ui-sans-serif, system-ui"; ctx.textAlign = "right";
+      ctx.fillText((g / 4).toFixed(2), left - 6, y + 4);
+    }
+    const line = (key, color, width) => {
+      ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = width;
+      scenario.log.forEach((p, i) => {
+        const x = left + (p.i / maxI) * plotW;
+        const y = top + plotH - Math.max(0, Math.min(1, p[key])) * plotH;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    };
+    line("blind", "#a8a29e", 2);
+    line("trust", "#0f6b5c", 2.5);
+    // change markers
+    ctx.fillStyle = "#b45309";
+    scenario.log.forEach((p, i) => {
+      if (i > 0 && p.change !== scenario.log[i - 1].change && p.change !== null) {
+        const x = left + (p.i / maxI) * plotW;
+        ctx.beginPath(); ctx.arc(x, top + 6, 3, 0, Math.PI * 2); ctx.fill();
+      }
+    });
+    ctx.fillStyle = "#6b6b66"; ctx.font = "11px ui-sans-serif, system-ui"; ctx.textAlign = "left";
+    ctx.fillText("class-aware trust", left, h - 8);
+    ctx.fillStyle = "#a8a29e"; ctx.fillText("class-blind trust", left + 120, h - 8);
+    ctx.fillStyle = "#b45309"; ctx.fillText("• class change", left + 250, h - 8);
+  }
+
+  // ---------------------------------------------------------------- sensitivity
+
+  function renderGrid(rows, key, label, body) {
+    return `<div class="card tableCard"><h3>${esc(label)}</h3><table class="tight">
+      <thead><tr><th>${esc(key)}</th><th class="num">Population</th><th class="num">Class-blind</th><th class="num">Class-aware</th><th class="num">Δ aware−blind</th><th class="num">Fixed/Unk/Sw/Lrn</th><th class="num">Gate</th></tr></thead>
+      <tbody>${rows.map((r) => {
+        const c = r.classes;
+        const def = r[key] === body.default;
+        return `<tr class="${def ? "default" : ""}"><td>${r[key]}</td><td class="num">${r.policies.population}</td><td class="num">${r.policies.classBlind}</td><td class="num">${r.policies.classAware}</td><td class="num ${r.awareVsBlind.mean > 0 ? "bad" : "good"}">${signed(r.awareVsBlind.mean)}</td><td class="num">${c.fixed || 0}/${c.unknown || 0}/${c.switching || 0}/${c.learning || 0}</td><td class="num">${r.eligibleAtEnd}</td></tr>`;
+      }).join("")}</tbody></table></div>`;
+  }
+
+  function renderSensitivity() {
+    const grids = S.grids;
+    $("sensitivity").innerHTML = [
+      renderGrid(grids.evidenceFloor, "minSide", "Evidence floor (hands per side)", { default: 30 }),
+      renderGrid(grids.unknownBudget, "unknown", "Unknown class budget", { default: 0 }),
+      renderGrid(grids.learningBudget, "learning", "Learning class budget", { default: 0.25 }),
+      renderGrid(grids.trustHalf, "half", "Trust half (n at half budget)", { default: 30 }),
+      renderGrid(grids.prior, "prior", "Prior strength (observations)", { default: 20 }),
+    ].join("");
+    const rev = S.revised;
+    $("revisedTable").innerHTML = `<table class="tight">
+      <thead><tr><th>Mixing rule</th><th class="num">Class-blind</th><th class="num">Class-aware</th><th class="num">Δ aware−blind</th><th>Classes</th></tr></thead>
+      <tbody>${Object.entries(rev).map(([name, r]) => `<tr><td><code>${esc(name)}</code></td><td class="num">${r.policies.classBlind}</td><td class="num">${r.policies.classAware}</td><td class="num ${r.awareVsBlind.mean > 0 ? "bad" : "good"}">${signed(r.awareVsBlind.mean)}</td><td class="muted">${Object.entries(r.classes).map(([k, v]) => `${k} ${v}`).join(" · ")}</td></tr>`).join("")}</tbody></table>`;
+  }
+
+  // ---------------------------------------------------------------- wiring
+
+  $("runReplay").addEventListener("click", renderReplay);
+  $("newOpp").addEventListener("click", newScenario);
+  $("step1").addEventListener("click", () => stepScenario(1));
+  $("step10").addEventListener("click", () => stepScenario(10));
+  $("step50").addEventListener("click", () => stepScenario(50));
+  $("stepAll").addEventListener("click", () => stepScenario(scenario ? scenario.hands.length - scenario.idx : 0));
+  $("oppClass").addEventListener("change", newScenario);
+  ["floor", "budgetUnknown", "budgetLearning", "half", "prior", "seed"].forEach((id) => {
+    $(id).addEventListener("input", () => {
+      $(id + "Value").textContent = $(id).value;
+    });
+  });
+  window.addEventListener("resize", () => { if (scenario) drawChart(); });
+
+  renderMeasured();
+  renderSensitivity();
+  newScenario();
+  setTimeout(renderReplay, 120);
+})();
+
+</script>
+</body>
+</html>
