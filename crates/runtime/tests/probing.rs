@@ -235,6 +235,62 @@ fn a_promotion_taken_back_by_hand_reaches_the_canary_too() {
     assert_eq!(canary.params(), Params::DEFAULT);
 }
 
+#[test]
+fn a_bot_plays_its_own_slot_and_a_slot_update_waits_for_the_next_hand() {
+    let dir = scratch("own-slot");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let slot_a = Params { exploit: 0.2 };
+    let slot_b = Params { exploit: 0.7 };
+    fleet.set_champion("A", &slot_a).unwrap();
+    fleet.set_champion("B", &slot_b).unwrap();
+    let a_store = Store::open(&dir.join("A.db"), "A").unwrap();
+    let b_store = Store::open(&dir.join("B.db"), "B").unwrap();
+    let mut a = Probing::open(&a_store, fleet.clone(), false, 500).0;
+    let b = Probing::open(&b_store, fleet.clone(), false, 500).0;
+    assert_eq!(a.params(), slot_a);
+    assert_eq!(b.params(), slot_b);
+    let updated = Params { exploit: 0.3 };
+    fleet.set_champion("A", &updated).unwrap();
+    // Between hands only: the hand in play keeps the champion it began with.
+    assert_eq!(a.params(), slot_a);
+    assert_eq!(b.params(), slot_b);
+    play(&mut a, 0, 1, 0);
+    assert_eq!(a.params(), updated);
+    assert_eq!(b.params(), slot_b);
+    assert_eq!(fleet.champion(), Ok(Params::DEFAULT));
+}
+
+#[test]
+fn a_bot_without_a_slot_plays_and_adopts_the_fleet_champion() {
+    let dir = scratch("no-slot");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let store = Store::open(&dir.join("MegaSvan.db"), "MegaSvan").unwrap();
+    let mut probing = Probing::open(&store, fleet.clone(), false, 500).0;
+    assert_eq!(probing.params(), Params::DEFAULT);
+    fleet.promote(&CHALLENGER).unwrap();
+    assert_eq!(probing.params(), Params::DEFAULT);
+    play(&mut probing, 0, 1, 0);
+    assert_eq!(probing.params(), CHALLENGER);
+}
+
+#[test]
+fn a_slot_that_cannot_be_read_leaves_the_bot_on_the_fleet_champion() {
+    let dir = scratch("bad-slot");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    fleet.promote(&CHALLENGER).unwrap();
+    fleet.set_champion("A", &Params { exploit: 0.3 }).unwrap();
+    let path = dir.join("fleet").join("champions.json");
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, text.replace("\"0.3\"", "\"0.4\"")).unwrap();
+    let store = Store::open(&dir.join("A.db"), "A").unwrap();
+    let (probing, notes) = Probing::open(&store, fleet.clone(), false, 500);
+    assert_eq!(probing.params(), CHALLENGER);
+    assert!(
+        notes.iter().any(|note| note.contains("champion")),
+        "{notes:?}"
+    );
+}
+
 fn ended_calibration(
     name: &str,
     sim_estimate: Option<f64>,

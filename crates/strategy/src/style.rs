@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use crate::params::Params;
 use crate::profile::{ACTIVE, Profile};
 
 pub struct Style {
@@ -13,6 +14,17 @@ pub struct Style {
 impl fmt::Debug for Style {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.name)
+    }
+}
+
+impl Style {
+    /// `params` with this style's pins applied: the numbers a new champion slot starts from.
+    /// The width is pinned in the style itself, and the policy reads it from there, so seeding
+    /// moves no parameter-set number and no digest. A style that pins a parameter-set number
+    /// applies it here.
+    #[must_use]
+    pub fn seed(&self, params: Params) -> Params {
+        params
     }
 }
 
