@@ -8,6 +8,12 @@ use super::{HandSeen, Session, Step, join_lobby};
 use crate::wire::{Frame, Hero, Inbound, Outbound, Player, Resync, Snapshot, Turn};
 
 impl Session {
+    /// The seat reported by cold-start discovery, before any table frames have arrived.
+    pub(crate) fn resume_seat(&mut self, table_id: &str, seat: usize) {
+        self.table_id = table_id.to_owned();
+        self.seat = Some(seat);
+    }
+
     /// An error that changes where the bot sits. `already_seated` names the table to resync, from
     /// its start. Any other error in answer to a resync means the seat is gone: the venue frees it
     /// 120 s after a disconnect.

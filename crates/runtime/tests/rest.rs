@@ -12,8 +12,10 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use svanbot_runtime::client::{Bot, Config, VENUE};
 use svanbot_runtime::limit::Limiter;
 use svanbot_runtime::rest::{EMPTY_PAGE_TRIES, MAX_ATTEMPTS, Rest, RestError, retry_wait};
+use svanbot_runtime::wire::Outbound;
 
 /// Serves each scripted reply to one request, then stops. Returns each request's head.
 fn venue(replies: Vec<String>) -> (String, thread::JoinHandle<Vec<String>>) {
@@ -202,4 +204,64 @@ fn a_short_page_is_the_end_without_another_request() {
     assert_eq!(pager.next_page().unwrap(), Some(vec![json!(1)]));
     assert_eq!(pager.next_page().unwrap(), None);
     assert_eq!(served.join().unwrap().len(), 1);
+}
+
+#[test]
+fn a_cold_bot_discovers_its_seat_before_sending_any_lobby_request() {
+    let (base, served) = venue(vec![reply(
+        "200 OK",
+        &[],
+        &json!({"playing": true, "table_id": "t-abc123", "seat": 2, "stack_chips": 1950}),
+    )]);
+    let (mut rest, _) = client(&base, roomy());
+    let mut bot = Bot::new(&Config {
+        url: VENUE.into(),
+        key: "test-key".into(),
+        me: "my_bot".into(),
+        roster: vec![],
+    });
+
+    bot.discover_seat(&mut rest).unwrap();
+    assert_eq!(
+        bot.session.on_connect(),
+        [Outbound::ResyncRequest {
+            table_id: "t-abc123".into(),
+            last_table_seq: 0,
+        }]
+    );
+    assert_eq!(bot.session.table().unwrap().seat, Some(2));
+    bot.discover_seat(&mut rest).unwrap();
+    let requests = served.join().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].starts_with("get /api/me/active-game "));
+    assert!(requests[0].contains("authorization: bearer test-key"));
+}
+
+#[test]
+fn a_cold_bot_joins_once_after_a_confirmed_off_table_reply() {
+    let (base, served) = venue(vec![
+        reply("200 OK", &[], &json!({"playing": true, "table_id": null})),
+        reply(
+            "200 OK",
+            &[],
+            &json!({"playing": false, "table_id": null, "seat": null}),
+        ),
+    ]);
+    let (mut rest, _) = client(&base, roomy());
+    let mut bot = Bot::new(&Config {
+        url: VENUE.into(),
+        key: "test-key".into(),
+        me: "my_bot".into(),
+        roster: vec![],
+    });
+    assert!(bot.discover_seat(&mut rest).is_err());
+    bot.discover_seat(&mut rest).unwrap();
+    assert_eq!(
+        bot.session.on_connect(),
+        [
+            Outbound::JoinLobby { buy_in: 2_000 },
+            Outbound::SetAutoRebuy { enabled: true }
+        ]
+    );
+    assert_eq!(served.join().unwrap().len(), 2);
 }

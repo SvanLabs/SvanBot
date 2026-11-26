@@ -17,18 +17,30 @@ use svanbot_core::spot::Spot;
 use svanbot_strategy::policy::Decision;
 use tungstenite::client::IntoClientRequest;
 use tungstenite::http::HeaderValue;
+use tungstenite::http::Uri;
 use tungstenite::http::header::AUTHORIZATION;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
 use crate::limit::Limiter;
 use crate::record::{Hand, Recorder};
+use crate::rest::{API, Rest, RestError};
 use crate::session::{Incident, Session};
 use crate::status::Table;
 use crate::wire::{self, Inbound, Outbound, Player};
 
 /// The venue's WebSocket endpoint.
 pub const VENUE: &str = "wss://openpoker.ai/ws";
+
+fn public_venue(uri: &Uri) -> bool {
+    uri.scheme_str() == Some("wss")
+        && uri
+            .host()
+            .is_some_and(|host| host.eq_ignore_ascii_case("openpoker.ai"))
+        && uri.port_u16().unwrap_or(443) == 443
+        && uri.path() == "/ws"
+        && uri.query().is_none_or(str::is_empty)
+}
 
 /// Puts `wait` on the socket under `socket`, so a read the venue has nothing to answer returns
 /// instead of blocking. Both stream kinds reach the same [`std::net::TcpStream`]: plain directly,
@@ -75,6 +87,8 @@ pub enum ClientError {
     AuthFailed,
     /// The URL or the key cannot make a request.
     BadConfig(String),
+    /// Cold-start seat discovery failed before the bot could connect.
+    SeatDiscovery(RestError),
     /// The socket failed.
     Socket(tungstenite::Error),
 }
@@ -84,6 +98,7 @@ impl fmt::Display for ClientError {
         match self {
             Self::AuthFailed => write!(f, "the venue refused the key"),
             Self::BadConfig(why) => write!(f, "bad config: {why}"),
+            Self::SeatDiscovery(error) => write!(f, "active game: {error}"),
             Self::Socket(error) => write!(f, "socket: {error}"),
         }
     }
@@ -115,6 +130,7 @@ pub enum Event<'a> {
 pub struct Bot {
     pub session: Session,
     pub recorder: Recorder,
+    seat_discovered: bool,
 }
 
 impl Bot {
@@ -123,7 +139,38 @@ impl Bot {
         Self {
             session: Session::new(&config.me, config.roster.iter().cloned()),
             recorder: Recorder::default(),
+            seat_discovered: false,
         }
+    }
+
+    /// Reads the public active game once before a cold connection can join the lobby.
+    pub fn discover_seat(&mut self, rest: &mut Rest) -> Result<(), ClientError> {
+        if self.seat_discovered {
+            return Ok(());
+        }
+        let body = rest.get("/me/active-game").map_err(|error| match error {
+            RestError::AuthFailed => ClientError::AuthFailed,
+            error => ClientError::SeatDiscovery(error),
+        })?;
+        let missing = |field| {
+            ClientError::SeatDiscovery(RestError::Body(format!("missing or invalid {field}")))
+        };
+        if body["playing"]
+            .as_bool()
+            .ok_or_else(|| missing("playing"))?
+        {
+            let table_id = body["table_id"]
+                .as_str()
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| missing("table_id"))?;
+            let seat = body["seat"]
+                .as_u64()
+                .filter(|seat| *seat < 6)
+                .ok_or_else(|| missing("seat"))?;
+            self.session.resume_seat(table_id, seat as usize);
+        }
+        self.seat_discovered = true;
+        Ok(())
     }
 }
 
@@ -181,6 +228,10 @@ pub fn play_with_players<D: Into<Decision>>(
     let bearer = HeaderValue::from_str(&format!("Bearer {}", config.key))
         .map_err(|_| ClientError::BadConfig("the key is not a valid header value".into()))?;
     request.headers_mut().insert(AUTHORIZATION, bearer);
+    if public_venue(request.uri()) && !bot.seat_discovered {
+        let mut rest = Rest::new(API, &config.key, Limiter::new(60, Duration::from_secs(60)));
+        bot.discover_seat(&mut rest)?;
+    }
     let (mut socket, _) = tungstenite::connect(request)?;
     // The read timeout is what lets a stop interrupt a read the venue has left idle. A timeout is
     // not an error here: it is an empty read, and the loop asks `stop` again.
@@ -271,4 +322,28 @@ pub fn fresh_seed() -> u64 {
     use std::hash::{BuildHasher, RandomState};
 
     RandomState::new().hash_one("svanbot decision")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::public_venue;
+
+    #[test]
+    fn only_the_public_venue_connection_uses_public_seat_discovery() {
+        for url in [
+            "wss://openpoker.ai/ws",
+            "wss://OPENPOKER.AI:443/ws",
+            "wss://openpoker.ai/ws?",
+        ] {
+            assert!(public_venue(&url.parse().unwrap()), "{url}");
+        }
+        for url in [
+            "wss://openpoker.ai/ws?competition_id=private",
+            "ws://openpoker.ai/ws",
+            "wss://openpoker.ai:8443/ws",
+            "ws://127.0.0.1/ws",
+        ] {
+            assert!(!public_venue(&url.parse().unwrap()), "{url}");
+        }
+    }
 }
