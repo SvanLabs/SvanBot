@@ -57,7 +57,8 @@ impl Fleet {
     pub fn bot_search(&self, bot: &str, champion: &Params) -> Result<BotSearch, String> {
         let digest = champion.digest();
         match self.searches()?.get(bot) {
-            Some(value) => bot_search_from(value, digest),
+            Some(value) => bot_search_from(value, digest)
+                .map_err(|error| format!("{SEARCHES}: {bot}: {error}")),
             None => Ok(BotSearch::empty(digest)),
         }
     }
@@ -78,15 +79,16 @@ impl Fleet {
         let digest = champion.digest();
         let mut bots = self.searches()?;
         let mut search = match bots.get(bot) {
-            Some(value) => bot_search_from(value, digest)?,
+            Some(value) => bot_search_from(value, digest)
+                .map_err(|error| format!("{SEARCHES}: {bot}: {error}"))?,
             None => BotSearch::empty(digest),
         };
         search.entries.extend_from_slice(entries);
         let over = search.entries.len().saturating_sub(SEARCH_KEPT);
         search.entries.drain(..over);
         search.last = Some((at_ms, note.to_owned()));
-        if candidate.is_some() {
-            search.candidate = candidate.cloned();
+        if let Some(candidate) = candidate {
+            search.candidate = Some(candidate.clone());
         }
         bots.insert(bot.into(), bot_search_json(&search));
         self.write(SEARCHES, &json!({ "bots": bots }).to_string())

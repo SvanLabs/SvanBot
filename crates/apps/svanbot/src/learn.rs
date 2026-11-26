@@ -1,18 +1,22 @@
-//! `svanbot learn` (V11-49): one bounded step of the unattended search, then exit. A timer runs
-//! it at low priority; nobody has to.
+//! `svanbot learn` (V11-49, V11-76): one bounded step of the unattended search, then exit. A
+//! timer runs it at low priority; nobody has to.
 //!
-//! A run reads the fleet's files and nothing else: the champion, a waiting proposal, the canary's
-//! running probe, and the search log. It never opens a store, so no bot's reads reach it
-//! (`docs/adr/0004-reads-are-per-bot.md`). Then it does one of:
+//! A run reads the fleet's files and nothing else: the champion, the champion slots, the
+//! assignments, a waiting proposal, the canary's running probe, and the search logs. It never
+//! opens a store, so no bot's reads reach it (`docs/adr/0004-reads-are-per-bot.md`).
 //!
-//! - **waits**, simming nothing, while a proposal waits or a probe runs: that evidence is pending,
-//!   and a sim against a champion it may replace would be wasted;
-//! - **sims** the next step [`search::next`] asks for, one paired sim of a bounded number of deals,
-//!   and logs it; a confirmation that agrees is proposed in the same run;
-//! - **proposes** a challenger both its sims put above the champion, as a promotion with the
-//!   canary's harm guard of [`GUARD_HANDS`] hands, naming the champion it was measured against,
-//!   and only if the canary has nothing else ([`Fleet::propose_if_free`]);
-//! - says the search round this champion is **spent**, until a promotion gives it a new one.
+//! With a champion slot, a run is one bot's step ([`bot_step`]): the slotted bot whose last
+//! search is oldest rotates in, its assigned kind and style are simulated, and it screens or
+//! confirms one challenger against its own champion. A candidate the confirmation puts above the
+//! champion waits for that bot's probe (#1222); otherwise the incumbent holds.
+//!
+//! Without a slot, the fleet champion's search ([`step`]) runs as before: it **waits**, simming
+//! nothing, while a proposal waits or a probe runs; **sims** the next step [`search::next`] asks
+//! for, one paired sim of a bounded number of deals, and logs it; **proposes** a challenger both
+//! its sims put above the champion, as a promotion with the canary's harm guard of
+//! [`GUARD_HANDS`] hands, naming the champion it was measured against, and only if the canary has
+//! nothing else ([`Fleet::propose_if_free`]); and says the search round this champion is
+//! **spent**, until a promotion gives it a new one.
 //!
 //! Every run notes what it did in the search log, so its progress shows without anyone watching.
 
