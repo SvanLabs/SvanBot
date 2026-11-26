@@ -19,6 +19,7 @@
 //! printed, and the ship bar can play a bout again to check them ([`play_bout`]).
 
 use std::process::ExitCode;
+use std::sync::{Mutex, mpsc};
 
 use svanbot_learn::arena::{
     BOUT, BoutReader, Row, bout, ring_bout_at, scoreboard, v10_duel, v10_ring_at,
@@ -207,50 +208,65 @@ pub(crate) fn play_rows<R: Copy + Send + Sync>(
     bouts: u64,
     play: impl Fn(R, u64) -> Vec<f64> + Sync,
 ) -> Vec<(Row, Vec<f64>)> {
-    let mut rows = Vec::new();
-    for &opponent in opponents {
-        // Thread `k` plays bouts k, k + THREADS, …; put back in order, the verdict is the
-        // same on any number of threads.
-        let played: Vec<Vec<(u64, Vec<f64>)>> = std::thread::scope(|scope| {
-            let workers: Vec<_> = (0..THREADS)
-                .map(|k| {
-                    let play = &play;
-                    scope.spawn(move || {
-                        (k..bouts)
-                            .step_by(THREADS as usize)
-                            .map(|number| (number, play(opponent, number)))
-                            .collect()
-                    })
-                })
-                .collect();
-            workers
-                .into_iter()
-                .map(|worker| {
-                    // A panicked worker is a run that would be recorded short of its deals: stop
-                    // here, rather than store numbers it cannot be played again from.
-                    worker.join().expect("an Arena worker panicked")
-                })
-                .collect()
-        });
-        let mut by_bout: Vec<(u64, Vec<f64>)> = played.into_iter().flatten().collect();
-        by_bout.sort_by_key(|(number, _)| *number);
-        // Summed in deal order, the way the ship bar sums a bout it plays again.
-        let sums: Vec<f64> = by_bout
-            .iter()
-            .map(|(_, results)| results.iter().sum())
-            .collect();
-        let results: Vec<f64> = by_bout
-            .into_iter()
-            .flat_map(|(_, results)| results)
-            .collect();
-        let row = Row {
-            opponent: name(opponent),
-            verdict: verdict(&results),
-        };
-        eprintln!("svanbot arena: {} done", row.opponent);
-        rows.push((row, sums));
-    }
-    rows
+    // Any idle worker can start the next row while a slow bout is still finishing.
+    let pending = Mutex::new(
+        (0..opponents.len()).flat_map(|row| (0..bouts).map(move |number| (row, number))),
+    );
+    let (send, receive) = mpsc::sync_channel(THREADS as usize);
+    let mut by_row = vec![Vec::new(); opponents.len()];
+    let mut finished = vec![None; opponents.len()];
+    std::thread::scope(|scope| {
+        for _ in 0..THREADS {
+            let (send, pending, play) = (send.clone(), &pending, &play);
+            scope.spawn(move || {
+                loop {
+                    let next = pending.lock().expect("Arena work queue poisoned").next();
+                    let Some((row, number)) = next else {
+                        return;
+                    };
+                    send.send((row, number, play(opponents[row], number)))
+                        .expect("Arena result receiver closed");
+                }
+            });
+        }
+        drop(send);
+        for (row, number, results) in receive {
+            let deals = &mut by_row[row];
+            deals.push((number, results));
+            if deals.len() as u64 == bouts {
+                finished[row] = Some(score_row(name(opponents[row]), std::mem::take(deals)));
+            }
+        }
+    });
+    opponents
+        .iter()
+        .zip(finished)
+        .map(|(&opponent, row)| {
+            row.unwrap_or_else(|| {
+                assert_eq!(bouts, 0, "Arena finished without a row");
+                score_row(name(opponent), Vec::new())
+            })
+        })
+        .collect()
+}
+
+fn score_row(opponent: String, mut by_bout: Vec<(u64, Vec<f64>)>) -> (Row, Vec<f64>) {
+    by_bout.sort_unstable_by_key(|(number, _)| *number);
+    // Sum and score in the original bout and deal order so the recorded run replays exactly.
+    let sums = by_bout
+        .iter()
+        .map(|(_, results)| results.iter().sum())
+        .collect();
+    let results: Vec<_> = by_bout
+        .into_iter()
+        .flat_map(|(_, results)| results)
+        .collect();
+    eprintln!("svanbot arena: {opponent} done");
+    let row = Row {
+        opponent,
+        verdict: verdict(&results),
+    };
+    (row, sums)
 }
 
 pub(crate) fn report(
@@ -292,5 +308,38 @@ pub(crate) fn measurement(
                 bouts,
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::play_rows;
+
+    #[test]
+    fn short_rows_share_workers_and_keep_scoreboard_order() {
+        use std::sync::{Mutex, mpsc};
+        use std::time::Duration;
+
+        let (ready, called) = mpsc::channel();
+        let called = Mutex::new(called);
+        let rows = play_rows(&["first", "second"], str::to_owned, 2, |opponent, bout| {
+            if opponent == "first" && bout == 0 {
+                called
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(2))
+                    .unwrap();
+                vec![1.0, 2.0]
+            } else {
+                if opponent == "second" && bout == 0 {
+                    ready.send(()).unwrap();
+                }
+                vec![3.0 + bout as f64, 4.0]
+            }
+        });
+        assert_eq!(rows[0].0.opponent, "first");
+        assert_eq!(rows[0].1, [3.0, 8.0]);
+        assert_eq!(rows[1].0.opponent, "second");
+        assert_eq!(rows[1].1, [7.0, 8.0]);
     }
 }
