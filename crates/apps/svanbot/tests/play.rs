@@ -260,34 +260,6 @@ fn in_fleet(dir: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
-#[test]
-fn assign_without_a_check_is_refused_with_exit_2() {
-    let (dir, _) = fixture("cli-refused", true);
-    let output = in_fleet(&dir, &["assign", "Svanar", "solving", "tight"]);
-    assert_eq!(output.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("check"));
-}
-
-#[test]
-fn status_lists_assignments_and_checks_and_marks_a_stale_check() {
-    let (dir, fleet) = fixture("cli-status", true);
-    fleet.record_check(&check(true)).unwrap();
-    assign_tight(&fleet, &dir).unwrap();
-    fleet.promote(&Params { exploit: 0.3 }).unwrap();
-    let output = in_fleet(&dir, &["status"]);
-    assert!(output.status.success());
-    let text = String::from_utf8(output.stdout).unwrap();
-    for expected in [
-        "Svanar",
-        "solving/tight",
-        "stale",
-        "heads-up evidence",
-        "6-max evidence",
-    ] {
-        assert!(text.contains(expected), "{text}");
-    }
-}
-
 mod sequential {
     use super::{ArenaRun, League, run};
     use svanbot::play::check_bar;

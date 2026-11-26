@@ -284,6 +284,17 @@ _Avoid_: per-bot params, brain (a brain is a policy); a lineage is its whole lin
 A parameter set put forward to replace the champion.
 _Avoid_: candidate, mutant, variant
 
+**Frozen reference**:
+The fleet champion at Phase 2's cutover, recorded with its digest and cutover time in
+`reference.json`. Bots without a slot play it, per-bot champions move without it, and only an
+operator rebase moves it.
+_Avoid_: baseline, snapshot
+
+**Rebase**:
+An operator's deliberate move of the frozen reference to a new parameter set, which keeps the
+reference it replaced with its own cutover time.
+_Avoid_: reset, swap
+
 **Archive**:
 A bot's last five champions, newest first, each kept with its parameter set, the style it was
 promoted under and the paired bouts that promoted it. A promotion must clear every one of them

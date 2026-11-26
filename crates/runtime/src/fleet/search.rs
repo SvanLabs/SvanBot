@@ -33,6 +33,7 @@ impl Fleet {
     /// runs. Returns whether it was put forward. A proposal that waits is never replaced, so the
     /// learner cannot overwrite an experiment the operator or an earlier search set up.
     pub fn propose_if_free(&self, proposal: &Proposal) -> Result<bool, String> {
+        self.refuse_when_frozen("fleet-wide proposals are stopped")?;
         if self.probe()?.is_some() {
             return Ok(false);
         }

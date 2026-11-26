@@ -55,6 +55,26 @@ pub fn revert(fleet: &Fleet, bot: &str) -> Result<String, String> {
     Ok(format!("{bot} will play the reference policy"))
 }
 
+/// Freezes the reference at the champion in play, the deliberate Phase 2 cutover.
+pub fn freeze(fleet: &Fleet, now_ms: i64) -> Result<String, String> {
+    let reference = fleet.freeze(now_ms)?;
+    Ok(format!(
+        "reference frozen at {} under {}",
+        reference.cutover_ms,
+        reference.digest()
+    ))
+}
+
+/// Moves the frozen reference to `params` on purpose, keeping the one it replaces.
+pub fn rebase(fleet: &Fleet, params: Params, now_ms: i64) -> Result<String, String> {
+    let reference = fleet.rebase(&params, now_ms)?;
+    Ok(format!(
+        "reference rebased at {} under {}",
+        reference.cutover_ms,
+        reference.digest()
+    ))
+}
+
 /// Seeds `bot`'s champion slot from the fleet champion, under the style it is assigned. It is
 /// the first slice of Phase 2: the numbers are the reference's, so a bot that is seeded plays
 /// exactly as it did, and its own search and promotion move the slot from there.
@@ -89,7 +109,13 @@ pub fn apply_refresh(
 
 pub fn status(fleet: &Fleet) -> Result<String, String> {
     let champion = fleet.champion()?.digest();
-    let mut text = format!("Reference: solving/standard@{champion}\nAssignments:\n");
+    let mut text = match fleet.reference()? {
+        Some(reference) => format!(
+            "Reference: solving/standard@{champion} (frozen at {})\nAssignments:\n",
+            reference.cutover_ms
+        ),
+        None => format!("Reference: solving/standard@{champion}\nAssignments:\n"),
+    };
     let assignments = fleet.assignments()?;
     if assignments.is_empty() {
         text.push_str("  none\n");

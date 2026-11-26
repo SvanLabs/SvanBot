@@ -201,9 +201,10 @@ new build is worse, the harm guard trips and `svanbot-release rollback` is the s
 
 ### Probes and promotions
 
-The fleet plays by one champion parameter set, `~/.local/share/svanbot/fleet/champion.json`
-(`SVANBOT_FLEET` moves the directory). Until a promotion writes it, the champion is the built-in
-default.
+Until the Phase 2 cutover the fleet plays by one champion parameter set,
+`~/.local/share/svanbot/fleet/champion.json` (`SVANBOT_FLEET` moves the directory). Until a
+promotion writes it, the champion is the built-in default. Once the reference is frozen
+(`reference.json`, below), the fleet-wide proposals and promotions described here are stopped.
 
 ```sh
 # The learner: a paired sim of a challenger against the champion. Above the champion, it is
@@ -219,6 +220,29 @@ every other bot adopts it between hands, with no restart. If the challenger is c
 probe ends harmful and the champion stays. To take a promotion back by hand, remove
 `champion.json` (the default returns) or put the earlier file back; the bots follow between hands.
 Run `svanbot propose` at low priority: a sim is CPU the live fleet shares.
+
+### The frozen reference
+
+At the Phase 2 cutover the reference is frozen at the champion in play, with its digest and cutover
+time in `~/.local/share/svanbot/fleet/reference.json` (ADR 0006):
+
+```sh
+svanbot play freeze                 # once: record the champion in play
+svanbot play status                 # Reference: … (frozen at …)
+```
+
+From then the fleet-wide search, proposals and promotions are stopped. `svanbot learn` sims nothing
+and only records that the reference is frozen; `svanbot propose` is refused; and the canary ends
+any fleet-wide probe without promoting it. Each bot's own champion slot keeps moving through the
+per-bot search. To move the reference on purpose, rebase it:
+
+```sh
+svanbot play rebase exploit=0.45    # moves the frozen reference; the old one stays in its history
+```
+
+A rebase does not restart the fleet-wide search. The ship check is unchanged and reads the frozen
+reference; its canary stage is re-based only when the operator approves the new baseline and its
+replayed evidence.
 
 ### The unattended search
 
@@ -240,8 +264,10 @@ exits, and its supervisor starts the next run half an hour after the last one en
 - **It says the search is spent** once every step round the champion is simmed and none is above
   it. It searches afresh round the next champion.
 
-It reads and writes the fleet's files and nothing else: no store, no key, no venue. Every step and
-what the last run did are in `fleet/search.json`; the dashboard shows them too.
+Once `fleet/reference.json` exists the search is stopped for good: each run only notes that the
+reference is frozen, and a restart does not resume it. It reads and writes the fleet's files and
+nothing else: no store, no key, no venue. Every step and what the last run did are in
+`fleet/search.json`; the dashboard shows them too.
 
 ```sh
 svanbot-bot start learn                        # scripts/start.sh starts it too

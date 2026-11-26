@@ -142,6 +142,36 @@ fn every_hand_records_its_reference_digest_and_arm_chance() {
 }
 
 #[test]
+fn the_standing_arm_reads_the_frozen_reference_after_cutover() {
+    let dir = scratch("frozen");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    fleet.promote(&Params { exploit: 0.4 }).unwrap();
+    fleet.freeze(500).unwrap();
+    // The operator rebases the reference; champion.json still holds the pre-freeze numbers.
+    let frozen = Params { exploit: 0.6 };
+    fleet.rebase(&frozen, 600).unwrap();
+    // The bot's own slot moves too, and the standing arm still measures the frozen reference.
+    fleet
+        .set_champion("SurSvan", &Params { exploit: 0.8 })
+        .unwrap();
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut probing = Probing::open(&store, fleet.clone(), false, 500).0;
+    let (mut number, mut stack) = (0, 1_000_000);
+    play(&mut probing, &mut number, &mut stack, 1 + 10 * ORBIT, 0, 0);
+
+    let rows = store.played().unwrap();
+    assert_eq!(rows.len(), 10 * ORBIT as usize);
+    for row in &rows {
+        let arm = row.reference.expect("a standing hand has no arm");
+        assert_eq!(arm.reference, frozen.digest());
+    }
+    assert_eq!(
+        store.reference_orbits(&frozen.digest(), 0).unwrap().len(),
+        10
+    );
+}
+
+#[test]
 fn a_restart_continues_at_the_next_orbit_and_keeps_what_the_arm_counted() {
     let dir = scratch("restart");
     let fleet = Fleet::in_dir(dir.join("fleet"));
