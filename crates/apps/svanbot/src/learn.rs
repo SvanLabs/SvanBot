@@ -26,9 +26,11 @@
 
 use svanbot_learn::paired::Verdict;
 use svanbot_learn::probe::Kind;
-use svanbot_learn::search::{self, BotNext, Entry, Next, Stage, Step, next_bot};
+use svanbot_learn::search::{self, BotNext, Entry, Next, Stage, Step, next_bot_with};
+use svanbot_learn::transfer;
 use svanbot_runtime::fleet::{BotSearch, Candidate, Fleet, Proposal};
 use svanbot_strategy::kind::PolicyKind;
+use svanbot_strategy::params::Params;
 use svanbot_strategy::policy::Policy;
 use svanbot_strategy::style;
 
@@ -170,7 +172,10 @@ pub fn bot_step(
     let mut ready = Vec::new();
     for (bot, champion) in slots {
         let progress = fleet.bot_search(&bot, &champion)?;
-        if progress.candidate.is_some() {
+        if let Some(candidate) = &progress.candidate {
+            // A candidate waiting for its own probe is still offered on: a restart between its
+            // record and its offers is repaired here, and the receiver deduplicates.
+            offer_to_others(fleet, &bot, candidate.challenger)?;
             waiting.push(bot);
         } else {
             ready.push((bot, champion, progress));
@@ -192,7 +197,12 @@ pub fn bot_step(
     };
     let policy = |params| Policy::new(kind, assigned_style, params);
     let champion_policy = policy(champion);
-    let (entries, note, candidate) = match next_bot(&champion, assigned_style, &progress.entries) {
+    let (entries, note, candidate) = match next_bot_with(
+        &champion,
+        assigned_style,
+        &progress.entries,
+        &progress.offers,
+    ) {
         BotNext::Screen { challenger, seed } => {
             let step = Step {
                 champion: champion.digest(),
@@ -271,7 +281,28 @@ pub fn bot_step(
         ),
     };
     fleet.record_bot_search(&bot, &champion, &entries, &note, now_ms, candidate.as_ref())?;
+    if let Some(candidate) = &candidate {
+        offer_to_others(fleet, &bot, candidate.challenger)?;
+    }
     Ok(note)
+}
+
+/// Offers `candidate` to every other bot with a champion slot, inside that bot's style. An offer
+/// carries the numbers only: the receiver screens and confirms it on its own deals, and its own
+/// probe and promotion still decide whether it plays.
+fn offer_to_others(fleet: &Fleet, donor: &str, candidate: Params) -> Result<(), String> {
+    for (bot, champion) in fleet.champion_slots()? {
+        if bot == donor {
+            continue;
+        }
+        let receiver_style = fleet
+            .assignment(&bot)?
+            .map_or(&style::STANDARD, |assignment| assignment.style);
+        if let Some(offer) = transfer::offer(candidate, &champion, receiver_style) {
+            fleet.record_offer(&bot, &champion, offer)?;
+        }
+    }
+    Ok(())
 }
 
 /// When a bot's search last ran; a bot that has never run is oldest.
