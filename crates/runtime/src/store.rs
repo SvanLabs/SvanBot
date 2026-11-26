@@ -16,7 +16,6 @@ use rusqlite::{Connection, OptionalExtension, params};
 use svanbot_learn::probe::Arm;
 
 use crate::ledger::Played;
-use crate::record::Hand;
 use crate::session::Incident;
 
 const SCHEMA: &str = "
@@ -39,6 +38,14 @@ CREATE TRIGGER IF NOT EXISTS hands_no_update BEFORE UPDATE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS hands_no_delete BEFORE DELETE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
+CREATE TABLE IF NOT EXISTS hand_exports (
+    hand_id TEXT PRIMARY KEY REFERENCES hands(hand_id),
+    frame TEXT NOT NULL CHECK (json_valid(frame))
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS hand_exports_no_update BEFORE UPDATE ON hand_exports
+    BEGIN SELECT RAISE(ABORT, 'hand exports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS hand_exports_no_delete BEFORE DELETE ON hand_exports
+    BEGIN SELECT RAISE(ABORT, 'hand exports are append-only'); END;
 CREATE TABLE IF NOT EXISTS downloads (
     id          INTEGER PRIMARY KEY,
     recorded_ms INTEGER NOT NULL,
@@ -176,20 +183,19 @@ impl Store {
         // WAL with NORMAL sync keeps every committed write but the last few across a power cut.
         db.execute_batch("PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;")?;
         db.execute_batch(SCHEMA)?;
+        db.execute_batch(hands::SEASON_DOWNLOAD_SCHEMA)?;
         db.execute(
             "INSERT INTO meta (key, value) VALUES ('bot', ?1) ON CONFLICT (key) DO NOTHING",
             [bot],
         )?;
-        let owner: String =
-            db.query_row("SELECT value FROM meta WHERE key = 'bot'", [], |row| {
-                row.get(0)
-            })?;
+        let store = Self { db };
+        let owner = store.owner()?;
         if owner != bot {
             return Err(StoreError(format!(
                 "this store is {owner}'s; {bot} may not open it"
             )));
         }
-        Ok(Self { db })
+        Ok(store)
     }
 
     /// Opens `path` to read only, with no bot named and none checked.
@@ -236,37 +242,6 @@ impl Store {
         })
     }
 
-    /// Keeps a hand. Returns false if it is kept already: the first copy stands.
-    pub fn append_hand(
-        &self,
-        hand: &Hand,
-        source: Source,
-        recorded_ms: i64,
-    ) -> Result<bool, StoreError> {
-        // Each frame is a JSON object as the venue sent it, so the list is a JSON array.
-        let frames = format!("[{}]", hand.frames.join(","));
-        // The hand and its traces are one write: a trace has no meaning without its hand, and the
-        // recorder drops an open hand when the connection breaks, so a decision written at
-        // decision time can outlive a hand the store never kept.
-        let tx = self.db.unchecked_transaction()?;
-        let added = tx.execute(
-            "INSERT INTO hands (hand_id, table_id, source, recorded_ms, frames)
-             VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (hand_id) DO NOTHING",
-            params![
-                hand.hand_id,
-                hand.table_id,
-                source.name(),
-                recorded_ms,
-                frames
-            ],
-        )?;
-        if added == 1 {
-            trace::keep(&tx, hand)?;
-        }
-        tx.commit()?;
-        Ok(added == 1)
-    }
-
     /// The hand history offset the last download reached, 0 before the first.
     pub fn download_offset(&self) -> Result<u64, StoreError> {
         let offset: i64 = self.db.query_row(
@@ -285,32 +260,6 @@ impl Store {
             params![recorded_ms, offset],
         )?;
         Ok(())
-    }
-
-    /// Every kept hand, in the order it was kept. Each frame comes back as compact JSON.
-    pub fn hands(&self) -> Result<Vec<Hand>, StoreError> {
-        let mut query = self
-            .db
-            .prepare("SELECT hand_id, table_id, frames FROM hands ORDER BY rowid")?;
-        let rows = query.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?;
-        rows.map(|row| {
-            let (hand_id, table_id, frames) = row?;
-            let frames: Vec<serde_json::Value> =
-                serde_json::from_str(&frames).map_err(|e| StoreError(e.to_string()))?;
-            Ok(Hand {
-                hand_id,
-                table_id,
-                frames: frames.iter().map(ToString::to_string).collect(),
-                traced: Vec::new(),
-            })
-        })
-        .collect()
     }
 
     /// Keeps an incident. Every one is kept, repeats included.
@@ -475,9 +424,11 @@ impl Store {
     }
 }
 
+mod hands;
 mod trace;
 mod window;
 
+pub use hands::FitHand;
 pub use trace::{TRACED_HANDS, TracedHand};
 pub use window::ExportLine;
 

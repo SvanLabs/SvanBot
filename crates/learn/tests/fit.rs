@@ -166,6 +166,38 @@ fn a_fit_beats_the_uniform_model_on_held_out_hands_and_the_uniform_model_does_no
 }
 
 #[test]
+fn the_fit_gate_stays_finite_when_the_baseline_expects_no_folds_from_aces() {
+    let held_out: Vec<_> = (0..2)
+        .map(|hand| {
+            prepare(&Observed {
+                hand,
+                seen: vec![Seen {
+                    board: CardSet::EMPTY,
+                    situation: Situation {
+                        street: Street::Preflop,
+                        facing: true,
+                    },
+                    mv: Move::Fold,
+                }],
+                dead: CardSet::EMPTY,
+                outcome: Outcome::Shown("AsAd".parse().unwrap()),
+            })
+        })
+        .collect();
+    let verdict = gate(
+        &ActionModel::uniform(),
+        &ActionModel::baseline(),
+        &held_out,
+        MARGIN,
+    );
+    assert!(
+        verdict.gain.is_finite() && verdict.lower.is_finite(),
+        "{verdict:?}"
+    );
+    assert!(verdict.passed);
+}
+
+#[test]
 fn a_mucked_hand_could_only_be_a_pair_that_lost() {
     let board: CardSet = "AhKhQh7c2d".parse().unwrap();
     let ours: CardSet = "3s3d".parse().unwrap();

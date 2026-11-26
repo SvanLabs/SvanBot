@@ -178,14 +178,36 @@ test("a fleet card draws its live table: seats with plates, our seat, the button
   expect(byClass(view, "felt").length).toBe(1);
 });
 
-test("the fleet overview opens with tiles, and every table card carries a sparkline", () => {
+test("the fleet overview opens with management metrics and a linked roster", () => {
   const view = show("/");
-  const [summary] = byClass(view, "summary");
-  expect(summary.textContent).toContain("1 of 2 playing");
-  expect(summary.textContent).toContain("420 hands");
-  expect(summary.textContent).toContain("+1.5 bb/100");
+  const [metrics] = byClass(view, "management-metrics");
+  expect(metrics.textContent).toContain("1 / 2");
+  expect(metrics.textContent).toContain("Needs attention");
+  const [roster] = byClass(view, "management-roster");
+  expect(roster.all("a").map((anchor) => anchor.attrs.href)).toEqual([
+    "/bot/SurSvan",
+    "/bot/MegaSvan",
+  ]);
+  expect(roster.textContent).toContain("Offline");
+  expect(view.textContent).toContain("420 kept");
+  expect(roster.textContent).toContain("+1.5 bb/100");
   expect(view.all("article").map((card) => byClass(card, "spark").length)).toEqual([1, 1]);
   expect(byClass(view, "race-row").length).toBe(2);
+});
+
+test("appearing or clearing a fleet alert preserves the bot status links", () => {
+  show("/");
+  const healthy = fleet();
+  healthy.problems = [];
+  healthy.bots = healthy.bots.map((bot) => ({ ...bot, connected: true, run_incidents: 0 }));
+  const receive = (problems) => listeners.fleet({ data: JSON.stringify({ ...healthy, problems }) });
+  receive([]);
+  const roster = () => byClass(ids.view, "management-roster")[0];
+  const first = roster().all("a")[0];
+  receive(["The Arena run is missing"]);
+  expect(roster().all("a")[0]).toBe(first);
+  receive([]);
+  expect(roster().all("a")[0]).toBe(first);
 });
 
 test("the top bar has a tab a bot, and the bot in view is lit", () => {
@@ -297,7 +319,11 @@ test("the season shows on the fleet's board and as each bot's rank", () => {
   globalThis.location.pathname = "/";
   listeners.fleet({ data: JSON.stringify(next) });
   expect(ids.view.textContent).toContain("Season 17");
-  expect(ids.view.textContent).toContain("#3 SurSvan");
+  const [roster] = byClass(ids.view, "management-roster");
+  expect(roster.all("tbody")[0].all("tr")[0].textContent).toContain("#3");
+  next.season.error = "timeout";
+  listeners.fleet({ data: JSON.stringify(next) });
+  expect(byClass(ids.view, "management-metrics")[0].textContent).toContain("previous read");
   globalThis.location.pathname = "/bot/SurSvan";
   listeners.fleet({ data: JSON.stringify(next) });
   const [tiles] = byClass(ids.view, "summary");

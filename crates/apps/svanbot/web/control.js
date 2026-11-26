@@ -5,8 +5,9 @@
 
 import { board, viewTabs } from "./board.js";
 import { facts, h, table } from "./dom.js";
-import { area, chips, felt, summary, tiles } from "./felt.js";
-import { botView, chart, duration, rateText, running, winRate } from "./fleet.js";
+import { area, chips, felt, tiles } from "./felt.js";
+import { botView, chart, duration, isStale, rateText, running, winRate } from "./fleet.js";
+import { icon } from "./icons.js";
 import { fleetRace, pageHead, rail, tableCard } from "./room.js";
 import {
   activityView,
@@ -199,15 +200,104 @@ function system(fleet, nowMs) {
   ];
 }
 
+/** The operator's first look at the fleet, using the same status and season feed as the boards. */
+function management(fleet, nowMs, problems, online) {
+  const season = fleet.season;
+  const standings = new Map(
+    (season?.rows ?? []).filter((row) => row.ours).map((row) => [row.name, row]),
+  );
+  const best = [...standings.values()].reduce(
+    (leader, row) => (leader === null || row.rank < leader.rank ? row : leader),
+    null,
+  );
+  const metrics = [
+    ["bots", "Connected", `${online} / ${fleet.bots.length}`, "Fresh bot connections"],
+    [
+      "trophy",
+      "Best season rank",
+      best ? `#${best.rank}` : "—",
+      best
+        ? `${best.name} · ${season.error ? "previous read" : `Season ${season.number}`}`
+        : season?.error
+          ? "Season read failed"
+          : season
+            ? "No season standing"
+            : "Reading season standings…",
+    ],
+    [
+      "alert",
+      "Needs attention",
+      String(problems.length),
+      problems.length ? "See alerts below" : "No active alerts",
+    ],
+    ["pulse", "Current build", fleet.release?.current ?? "—", "Release slot"],
+  ];
+  return h(
+    "section",
+    { class: "management", "aria-label": "Fleet management" },
+    h(
+      "dl",
+      { class: "management-metrics" },
+      metrics.map(([symbol, label, value, note]) =>
+        h("div", {}, h("dt", {}, icon(symbol), label), h("dd", {}, value, h("small", {}, note))),
+      ),
+    ),
+    h("div", { hidden: problems.length === 0 ? "" : null }, problemList(problems)),
+    h(
+      "section",
+      { class: "management-roster", "aria-labelledby": "fleet-roster" },
+      h("h2", { id: "fleet-roster" }, "Bot status"),
+      h(
+        "div",
+        { class: "scroll", tabindex: 0, role: "region", "aria-labelledby": "fleet-roster" },
+        table(
+          "Live status, season rank, and recorded results by bot",
+          [
+            ["Bot", null],
+            ["Status", null],
+            ["Season rank", "number"],
+            ["Win rate", "number"],
+            ["Hands", "number"],
+            ["Build", null],
+          ],
+          fleet.bots.map((bot) => {
+            const status = botView(bot, nowMs);
+            const rank = standings.get(bot.bot)?.rank;
+            const rate = winRate(bot.play);
+            return h(
+              "tr",
+              {},
+              h(
+                "th",
+                { scope: "row" },
+                h("a", { href: `/bot/${encodeURIComponent(bot.bot)}` }, bot.bot),
+              ),
+              h("td", {}, h("span", { class: `pill ${status.tone}` }, status.label)),
+              h("td", { class: "number" }, rank == null ? "—" : `#${rank}`),
+              h(
+                "td",
+                { class: `number ${rate === null ? "" : rate >= 0 ? "up" : "down"}` },
+                rateText(rate),
+              ),
+              h("td", { class: "number" }, chips(bot.hands ?? 0)),
+              h("td", { class: "mono" }, bot.version || "—"),
+            );
+          }),
+        ),
+      ),
+    ),
+  );
+}
+
 /** The fleet room: tiles and the rail, then the board. */
 export function fleetRoom({ fleet, nowMs, problems, log, ui }) {
-  const online = fleet.bots.filter((bot) => bot.connected).length;
-  const builds = [...new Set(fleet.bots.map((bot) => bot.version).filter(Boolean))];
+  const online = fleet.bots.filter((bot) => bot.connected && !isStale(bot, nowMs)).length;
   const champions = [...new Set(fleet.bots.map((bot) => bot.play?.champion).filter(Boolean))];
   const reading = fleet.bots.filter((bot) => bot.reads_in_play).length;
   const incidents = fleet.bots.reduce((sum, bot) => sum + (bot.incidents ?? 0), 0);
-  const ours = (fleet.season?.rows ?? []).filter((row) => row.ours);
-  const best = ours[0];
+  const counted = fleet.bots.reduce((sum, bot) => sum + (bot.play?.counted ?? 0), 0);
+  const won = fleet.bots.reduce((sum, bot) => sum + (bot.play?.won_mbb ?? 0), 0);
+  const kept = fleet.bots.reduce((sum, bot) => sum + (bot.hands ?? 0), 0);
   const widgets = [
     {
       id: "tables",
@@ -241,33 +331,24 @@ export function fleetRoom({ fleet, nowMs, problems, log, ui }) {
     pageHead({
       crumb: "Fleet overview",
       title: "Fleet",
-      after: h(
-        "span",
-        { class: `pill ${online === fleet.bots.length ? "ok" : "warn"}` },
-        `${online} of ${fleet.bots.length} online`,
-      ),
-      detail: "Every bot's table live, the season race, and what changed while you watched.",
-      tools: tools(ui),
       nowMs,
     }),
-    summary(fleet),
-    rail("SV11 signal", "What the fleet plays by, as each bot reports it", [
-      ["Build", builds.join(", ") || "—", builds.length > 1 ? "mixed builds" : "one build"],
+    management(fleet, nowMs, problems, online),
+    rail("Fleet performance", null, [
+      [
+        "Fleet win rate",
+        rateText(winRate({ counted, won_mbb: won })),
+        `${chips(counted)} counted · ${chips(kept)} kept`,
+      ],
       [
         "Champion",
         champions.map((digest) => digest.slice(0, 8)).join(", ") || "—",
         "the parameter set in play",
       ],
-      [
-        "Season",
-        best ? `#${best.rank} ${best.name}` : "—",
-        fleet.season?.number ? `best of ours, season ${fleet.season.number}` : "not read yet",
-      ],
       ["Reads in play", `${reading} of ${fleet.bots.length}`, "per-opponent reads, per bot"],
       ["Incidents", String(incidents), incidents === 0 ? "none recorded" : "see each bot"],
     ]),
-    problemList(problems),
-    viewTabs(FLEET_VIEWS, view.id),
+    h("div", { class: "management-toolbar" }, viewTabs(FLEET_VIEWS, view.id), tools(ui)),
     board(widgets, view, ui),
   ];
 }

@@ -18,20 +18,52 @@ use svanbot_strategy::action::Seen;
 use crate::lines::Lines;
 use crate::record::Hand;
 use crate::status::Dossier;
-use crate::store::{Source, Store, StoreError};
+use crate::store::{FitHand, Source, Store, StoreError};
 use crate::wire::{Inbound, parse};
+
+mod export;
 
 /// The opponents' sides of `hand`, numbered `number` so the gate can count them as one hand.
 /// Frames that do not parse are skipped.
 pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
+    if let [text] = hand.frames.as_slice()
+        && let Some(frames) = export::frames(text)
+    {
+        return observed_frames(frames, number, false);
+    }
+    observed_frames(
+        hand.frames.iter().filter_map(|text| parse(text).ok()),
+        number,
+        true,
+    )
+}
+
+/// Choose one source per hand. An unusable supplemental export cannot hide kept evidence.
+pub fn observed_for_fit(hand: &FitHand, number: u64) -> (Vec<Observed>, Option<bool>) {
+    let kept = observed(&hand.kept, number);
+    if let Some(export) = &hand.export
+        && (!hand.prefer_live || kept.is_empty())
+    {
+        let sides = observed(export, number);
+        if !sides.is_empty() {
+            return (sides, Some(true));
+        }
+        return (kept, Some(false));
+    }
+    let used = hand.kept_is_export.then_some(!kept.is_empty());
+    (kept, used)
+}
+
+fn observed_frames(
+    frames: impl IntoIterator<Item = Inbound>,
+    number: u64,
+    infer_muck: bool,
+) -> Vec<Observed> {
     let mut lines = Lines::default();
     let mut me = None;
     let mut hole = CardSet::EMPTY;
     let mut shown: Vec<(usize, CardSet)> = Vec::new();
-    for text in &hand.frames {
-        let Ok(frame) = parse(text) else {
-            continue;
-        };
+    for frame in frames {
         match &frame {
             Inbound::HandStart { seat, .. } => me = Some(*seat),
             Inbound::HoleCards { cards } => hole = cards.iter().copied().collect(),
@@ -40,17 +72,33 @@ pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
         }
         lines.on(&frame);
     }
+    let Some(me) = me else {
+        return Vec::new();
+    };
     let board = lines.board();
-    let showdown = board.len() == 5 && !shown.is_empty();
+    let showdown = infer_muck && board.len() == 5 && !shown.is_empty();
     // The best hand at the showdown: the best shown, or ours if we were in it.
-    let mut best = shown.iter().map(|&(_, pair)| strength(pair | board)).max();
-    if showdown && me.is_some_and(|seat| !lines.folded(seat)) && hole.len() == 2 {
+    let mut best = showdown
+        .then(|| shown.iter().map(|&(_, pair)| strength(pair | board)).max())
+        .flatten();
+    if showdown && !lines.folded(me) && hole.len() == 2 {
         best = best.max(Some(strength(hole | board)));
     }
     lines
         .seats()
-        .filter(|&seat| Some(seat) != me)
-        .map(|seat| {
+        .filter(|&seat| seat != me)
+        .filter_map(|seat| {
+            // A warm replay can contain the turn or river card without the earlier board.
+            // The bucket evaluator needs a whole board as it was at the action.
+            let seen: Vec<_> = lines
+                .of(seat)
+                .iter()
+                .filter(|act| matches!(act.board.len(), 0 | 3..=5))
+                .map(Seen::of)
+                .collect();
+            if seen.is_empty() {
+                return None;
+            }
             let own = shown
                 .iter()
                 .find(|&&(at, _)| at == seat)
@@ -64,12 +112,12 @@ pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
                 .iter()
                 .filter(|&&(at, _)| at != seat)
                 .fold(CardSet::EMPTY, |cards, &(_, pair)| cards | pair);
-            Observed {
+            Some(Observed {
                 hand: number,
-                seen: lines.of(seat).iter().map(Seen::of).collect(),
+                seen,
                 dead: hole | board | others_shown,
                 outcome,
-            }
+            })
         })
         .collect()
 }
