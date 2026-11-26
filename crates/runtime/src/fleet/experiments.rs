@@ -8,7 +8,6 @@
 //! about is never asked again.
 
 use std::collections::BTreeSet;
-use std::fs;
 
 use serde_json::{Map, Value, json};
 use svanbot_learn::experiment::{Claim, Experiment, Metric, Outcome, StopRule};
@@ -18,6 +17,10 @@ use svanbot_strategy::params::Digest;
 use super::{Fleet, params_from, params_json};
 
 const EXPERIMENTS: &str = "experiments.json";
+
+/// The reserved entry for the waiting experiment, and for the retired ones. No bot has a `~`.
+const WAITING: &str = "~waiting";
+const HISTORY: &str = "~history";
 
 /// The file's three parts: the waiting experiment, each bot's record, and the retired ones.
 type Ledger = (Option<Value>, Map<String, Value>, Vec<Value>);
@@ -268,31 +271,17 @@ impl Fleet {
         Ok(true)
     }
 
+    /// The ledger's three parts, read through the fleet's one file reader: the reserved keys
+    /// `~waiting` and `~history` beside one entry a bot.
     fn experiments(&self) -> Result<Ledger, String> {
-        let text = match fs::read_to_string(self.dir.join(EXPERIMENTS)) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok((None, Map::new(), Vec::new()));
-            }
-            Err(error) => return Err(format!("{EXPERIMENTS}: {error}")),
+        let mut all = self.bots_in(EXPERIMENTS)?;
+        let waiting = all.remove(WAITING);
+        let history = match all.remove(HISTORY) {
+            Some(Value::Array(history)) => history,
+            Some(_) => return Err(format!("{EXPERIMENTS}: expected a history list")),
+            None => Vec::new(),
         };
-        let value: Value =
-            serde_json::from_str(&text).map_err(|error| format!("{EXPERIMENTS}: {error}"))?;
-        let waiting = match &value["waiting"] {
-            Value::Null => None,
-            held => Some(held.clone()),
-        };
-        let bots = match &value["bots"] {
-            Value::Object(bots) => bots.clone(),
-            Value::Null => Map::new(),
-            _ => return Err(format!("{EXPERIMENTS}: expected a bots object")),
-        };
-        let history = match &value["history"] {
-            Value::Array(history) => history.clone(),
-            Value::Null => Vec::new(),
-            _ => return Err(format!("{EXPERIMENTS}: expected a history list")),
-        };
-        Ok((waiting, bots, history))
+        Ok((waiting, all, history))
     }
 
     fn write_experiments(
@@ -301,13 +290,15 @@ impl Fleet {
         bots: &Map<String, Value>,
         history: &[Value],
     ) -> Result<(), String> {
-        let text = json!({
-            "waiting": waiting.cloned().unwrap_or(Value::Null),
-            "bots": Value::Object(bots.clone()),
-            "history": history,
-        })
-        .to_string();
-        self.write(EXPERIMENTS, &text)
+        let mut all = bots.clone();
+        if let Some(waiting) = waiting {
+            all.insert(WAITING.to_owned(), waiting.clone());
+        }
+        all.insert(HISTORY.to_owned(), Value::Array(history.to_vec()));
+        self.write(
+            EXPERIMENTS,
+            &json!({ "bots": Value::Object(all) }).to_string(),
+        )
     }
 }
 
