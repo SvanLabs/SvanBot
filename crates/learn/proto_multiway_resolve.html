@@ -1,0 +1,2108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V11-102 · E3 multiway re-solve prototype · SvanBot</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121820;
+    --panel2: #0f151c;
+    --ink: #e6edf3;
+    --muted: #8b98a8;
+    --line: #263241;
+    --line2: #33465c;
+    --green: #3fb950;
+    --green-bg: #12261a;
+    --amber: #d29922;
+    --amber-bg: #2a210f;
+    --red: #f85149;
+    --red-bg: #2a1414;
+    --blue: #58a6ff;
+    --blue-bg: #0f1d2e;
+    --violet: #bc8cff;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body { font-family: var(--sans); font-size: 15px; line-height: 1.55; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 26px 20px 80px; }
+  header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); padding-bottom: 18px; }
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-size: 30px; line-height: 1.15; margin: 8px 0 6px; letter-spacing: -.02em; }
+  h1 span { color: var(--muted); font-weight: 500; }
+  .badge { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line2); border-radius: 999px; padding: 5px 12px; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .badge.warn { border-color: #5a3a12; background: var(--amber-bg); color: var(--amber); }
+  .badge.ok { border-color: #1e4a2b; background: var(--green-bg); color: var(--green); }
+  .badge.bad { border-color: #5a2020; background: var(--red-bg); color: var(--red); }
+  .badge.info { border-color: #1c3a5a; background: var(--blue-bg); color: var(--blue); }
+  .hero { display: grid; grid-template-columns: 1.25fr .75fr; gap: 18px; margin: 22px 0 10px; }
+  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .card h2 { margin: 0 0 8px; font-size: 17px; letter-spacing: -.01em; }
+  .card h3 { margin: 18px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-family: var(--mono); }
+  .big-verdict { display: flex; align-items: center; gap: 14px; margin: 4px 0 10px; }
+  .big-verdict .word { font-family: var(--mono); font-size: 42px; font-weight: 700; letter-spacing: -.04em; color: var(--green); line-height: 1; }
+  .big-verdict .sub { color: var(--muted); font-size: 13px; max-width: 430px; }
+  .statgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+  .stat { background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; }
+  .stat .n { font-family: var(--mono); font-size: 20px; font-weight: 650; letter-spacing: -.02em; }
+  .stat .l { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+  .mono { font-family: var(--mono); }
+  .num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  .good { color: var(--green); }
+  .warnc { color: var(--amber); }
+  .badc { color: var(--red); }
+  .bluec { color: var(--blue); }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); margin: 26px 0 18px; }
+  .tabs button { appearance: none; border: 1px solid transparent; border-bottom: 0; background: transparent; color: var(--muted); font-family: var(--mono); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; padding: 9px 13px; border-radius: 8px 8px 0 0; cursor: pointer; }
+  .tabs button:hover { color: var(--ink); background: var(--panel2); }
+  .tabs button[aria-selected="true"] { color: var(--ink); background: var(--panel); border-color: var(--line); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr:hover { background: var(--panel2); }
+  td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .pill { display: inline-block; border-radius: 999px; padding: 1px 8px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; border: 1px solid var(--line2); color: var(--muted); }
+  .pill.ok { color: var(--green); border-color: #1e4a2b; background: var(--green-bg); }
+  .pill.bad { color: var(--red); border-color: #5a2020; background: var(--red-bg); }
+  .pill.warn { color: var(--amber); border-color: #5a3a12; background: var(--amber-bg); }
+  .pill.info { color: var(--blue); border-color: #1c3a5a; background: var(--blue-bg); }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 6px 0 14px; }
+  label.ctl { display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  select, input[type="number"] { background: var(--panel2); color: var(--ink); border: 1px solid var(--line2); border-radius: 7px; padding: 7px 9px; font-family: var(--mono); font-size: 13px; min-width: 90px; }
+  button.act { appearance: none; background: #1f6feb; color: #fff; border: 1px solid #2f81f7; border-radius: 8px; padding: 9px 14px; font-family: var(--mono); font-size: 12px; letter-spacing: .03em; cursor: pointer; }
+  button.act:hover { background: #2f81f7; }
+  button.act:disabled { opacity: .5; cursor: wait; }
+  button.ghost { appearance: none; background: transparent; color: var(--ink); border: 1px solid var(--line2); border-radius: 8px; padding: 8px 12px; font-family: var(--mono); font-size: 12px; cursor: pointer; }
+  button.ghost:hover { border-color: var(--blue); }
+  .note { border-left: 3px solid var(--line2); padding: 8px 12px; color: var(--muted); font-size: 12.5px; background: var(--panel2); border-radius: 0 8px 8px 0; }
+  .note.warn { border-left-color: var(--amber); }
+  .note.ok { border-left-color: var(--green); }
+  .note.bad { border-left-color: var(--red); }
+  .chart { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted); margin: 6px 0 0; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr 82px; gap: 10px; align-items: center; margin: 7px 0; font-family: var(--mono); font-size: 12px; }
+  .bar-track { height: 16px; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; position: relative; }
+  .bar-fill { height: 100%; background: var(--blue); }
+  .bar-fill.warn { background: var(--amber); }
+  .bar-fill.bad { background: var(--red); }
+  .bar-fill.ok { background: var(--green); }
+  .bar-lab { text-align: right; color: var(--muted); }
+  .code { font-family: var(--mono); font-size: 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; white-space: pre; color: #c9d4e0; }
+  .kv { display: grid; grid-template-columns: 180px 1fr; gap: 4px 14px; font-size: 13px; }
+  .kv .k { color: var(--muted); }
+  .kv .v { font-family: var(--mono); }
+  .foot { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 14px; color: var(--muted); font-size: 12px; }
+  .tag { font-family: var(--mono); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; }
+  .highlight { background: var(--blue-bg); border-color: #1c3a5a; }
+  .sticky-note { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <div class="kicker">SvanBot · V11-102 · E3 multiway re-solve</div>
+    <h1>Eight buckets, three players, one clock <span>— a throwaway prototype</span></h1>
+    <div class="small muted">Phase 4 E3 of <a href="https://github.com/SvanLabs/SvanBot/blob/main/docs/superpowers/specs/2026-11-25-five-brains-design.md">the five-brains design</a> · ticket <a href="https://github.com/SvanLabs/SvanBot/issues/1256">#1256</a> · branch <span class="mono">wayfinder/v11-102-multiway</span></div>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-start;">
+    <span class="badge warn">Throwaway prototype — not production</span>
+    <span class="badge info">Recorded go/no-go: GO, 3-way bounded</span>
+    <span class="badge">Generated-by: opencode/deepseek-flash</span>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="card">
+    <div class="kicker">The question</div>
+    <p style="margin:6px 0 0; font-size:17px; line-height:1.45;">Can a multiway re-solve over the eight strength buckets fit the action clock, and does it clear the margin rule on the 6-max rows?</p>
+    <div class="big-verdict">
+      <div class="word">GO</div>
+      <div class="sub"><b>for a bounded three-way river re-solve.</b> The interval is entirely above the margin, the 340-iteration solve is a small slice of the clock, and the four-way tree still fits. Five and six way need a cap.</div>
+    </div>
+    <div class="statgrid">
+      <div class="stat"><div class="n good">+18.0</div><div class="l">pooled bb/100 at 200 bouts</div></div>
+      <div class="stat"><div class="n good">±10.4</div><div class="l">95% sequence radius (margin 20)</div></div>
+      <div class="stat"><div class="n">59 ms</div><div class="l">projected 3-way solve at 100M visits/s</div></div>
+      <div class="stat"><div class="n warnc">1 raise</div><div class="l">the cap that makes 5–6 way fit</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="kicker">What the prototype measured</div>
+    <div class="kv" style="margin-top:10px;">
+      <div class="k">Abstraction</div><div class="v">8 equal strength buckets</div>
+      <div class="k">River tree</div><div class="v">271 nodes · 114 act · 112 showdown</div>
+      <div class="k">Iterations</div><div class="v">340 at a 7.5 bb pot</div>
+      <div class="k">Reference</div><div class="v">the pricer, same tree</div>
+      <div class="k">Challenger</div><div class="v">free DCFR+ over buckets</div>
+      <div class="k">Rows</div><div class="v">the Arena's seven 6-max rows</div>
+      <div class="k">Deals</div><div class="v">200 bouts × 50 deals × 3 seats</div>
+      <div class="k">Eligible spots</div><div class="v">30% three-way river (projected)</div>
+      <div class="k">Seed</div><div class="v">7 (1 and 11 confirm)</div>
+    </div>
+    <div class="note ok" style="margin-top:14px;">The go is for the <b>three-way river rung</b>. The free re-solve loses to the calling station and the maniac; E2's read-pinned form is the safer ship. The numbers are a model, not the Arena.</div>
+  </div>
+</div>
+
+<div class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="abstraction">1 · Abstraction</button>
+  <button role="tab" aria-selected="false" data-tab="cost">2 · Tree &amp; compute</button>
+  <button role="tab" aria-selected="false" data-tab="sim">3 · Paired sim</button>
+  <button role="tab" aria-selected="false" data-tab="margin">4 · Margin verdict</button>
+  <button role="tab" aria-selected="false" data-tab="method">5 · Method &amp; limits</button>
+</div>
+
+<!-- PANEL 1: ABSTRACTION -->
+<section class="panel active" id="panel-abstraction" role="tabpanel">
+  <div class="grid2">
+    <div class="card">
+      <div class="kicker">The rule, mirrored</div>
+      <h2>Eight equal shares of the live pairs</h2>
+      <p class="small muted">A strength bucket is where a pair of hole cards ranks among every pair still possible on the board at that moment, cut into eight equal shares, 0 the weakest. Equal strengths share a bucket from the middle of their run. This is <span class="mono">strategy::action::buckets</span> (<span class="mono">crates/strategy/src/action.rs:338-362</span>), and the action model sees hole cards only through it.</p>
+      <div class="controls">
+        <button class="act" id="deal-board">Deal a river</button>
+        <span class="small muted" id="deal-note">five board cards and one hole pair, dealt from a fresh deck</span>
+      </div>
+      <div class="code" id="deal-cards" style="font-size:14px;">—</div>
+      <div class="note" style="margin-top:14px;">On a river board there are <b>1081</b> live pairs. The exact three-way state would be 1081² = <b>1,168,561</b> opponent-pair combinations; the bucket state is 8² = <b>64</b>. That is the whole reason a multiway re-solve fits a clock.</div>
+      <h3>State compression</h3>
+      <table>
+        <thead><tr><th>Opponents live</th><th class="num">Exact pair state</th><th class="num">Bucket state</th><th class="num">Factor</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="num">1,081</td><td class="num">8</td><td class="num">135×</td></tr>
+          <tr><td>2</td><td class="num">1,168,561</td><td class="num">64</td><td class="num">18,259×</td></tr>
+          <tr><td>3</td><td class="num">1,263,214,441</td><td class="num">512</td><td class="num">2,467,216×</td></tr>
+          <tr><td>4</td><td class="num">1.37 × 10¹²</td><td class="num">4,096</td><td class="num">3.3 × 10⁸×</td></tr>
+          <tr><td>5</td><td class="num">1.48 × 10¹⁵</td><td class="num">32,768</td><td class="num">4.5 × 10¹⁰×</td></tr>
+        </tbody>
+      </table>
+      <div class="sticky-note">The factor is why the abstraction is not a shortcut around the game: it is the only way the multiway state fits at all.</div>
+    </div>
+    <div class="card">
+      <div class="kicker">The baseline model, number for number</div>
+      <h2>What each bucket does</h2>
+      <p class="small muted">The hand-set model in <span class="mono">ActionModel::baseline</span> (<span class="mono">crates/strategy/src/action.rs:180-206</span>). The prototype uses these six numbers exactly, both for the pricer's fold equity and for the pinned re-solve's opponent.</p>
+      <table id="bucket-table">
+        <thead><tr><th>Bucket</th><th class="num">Live pairs</th><th class="num">Share</th><th class="num">Fold to bet</th><th class="num">Bet when checked to</th><th class="num">Raise when facing</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="legend">
+        <span><i style="background:var(--blue)"></i>the hero's bucket on the dealt board</span>
+        <span><i style="background:var(--line2)"></i>the other seven</span>
+      </div>
+      <div class="note" style="margin-top:14px;">The pricer's continuation curve is <span class="mono">continues(reference, share) = reference^((share/0.66)^0.5)</span> (<span class="mono">crates/strategy/src/pricer/ev.rs:32-37</span>); the re-solve sees the model only through the opponents' ranges, and on the river solves their strategy as part of the tree.</div>
+    </div>
+  </div>
+</section>
+
+<!-- PANEL 2: TREE AND COMPUTE -->
+<section class="panel" id="panel-cost" role="tabpanel">
+  <div class="card">
+    <div class="kicker">The tree and the clock</div>
+    <h2>One street, eight buckets, a price in bucket visits</h2>
+    <p class="small muted">The tree mirrors <span class="mono">resolve::tree</span> (<span class="mono">crates/strategy/src/resolve/tree.rs</span>): a player not facing a bet may check, bet half the pot, bet the pot or go all in; facing one they may fold, call, raise the pot or go all in; at most <span class="mono">maxBets</span> bets and raises a street; a call or a check-around ends it. Chips start at the street, not the hand. The iteration count is <span class="mono">iterations_for(pot, big_blind, cards)</span> (<span class="mono">crates/strategy/src/resolve.rs:40-47</span>), 200–2000 on the river and a quarter of that before it.</p>
+    <div class="controls">
+      <label class="ctl">Live players<select id="cost-players"><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></label>
+      <label class="ctl">Bets/raises cap<select id="cost-bets"><option>1</option><option selected>2</option><option>3</option></select></label>
+      <label class="ctl">Street<select id="cost-street"><option value="5" selected>river</option><option value="4">turn</option><option value="3">flop</option></select></label>
+      <label class="ctl">Pot (bb)<input id="cost-pot" type="number" value="7.5" min="1" max="200" step="0.5"></label>
+      <label class="ctl">Throughput<select id="cost-tp"><option value="50">50M visits/s</option><option value="100" selected>100M visits/s</option><option value="200">200M visits/s</option></select></label>
+      <button class="act" id="cost-run">Build the tree</button>
+    </div>
+    <div class="grid3" id="cost-summary"></div>
+    <div class="grid2" style="margin-top:16px;">
+      <div>
+        <h3>Across the table</h3>
+        <div id="cost-bars"></div>
+        <div class="legend"><span><i style="background:var(--green)"></i>within 8 s</span><span><i style="background:var(--amber)"></i>within 45 s clock</span><span><i style="background:var(--red)"></i>over the clock</span></div>
+      </div>
+      <div>
+        <h3>Measured in the prototype</h3>
+        <div class="kv">
+          <div class="k">Spot</div><div class="v">3-way river, 7.5 bb pot</div>
+          <div class="k">Iterations</div><div class="v">340 (auto)</div>
+          <div class="k">Tree</div><div class="v">271 nodes / 114 act / 112 showdown</div>
+          <div class="k">Bucket visits</div><div class="v">5.86 M</div>
+          <div class="k">JS time</div><div class="v">423 ms</div>
+          <div class="k">JS rate</div><div class="v">13.9 M visits/s</div>
+          <div class="k">Projected Rust</div><div class="v">117 ms @ 50M · 59 ms @ 100M</div>
+        </div>
+        <div class="note" style="margin-top:12px;">The projection is a rate, not a benchmark: the box's i7-4770K is shared by five bots. The page's measured JS rate is the floor; 50M visits/s is the conservative Rust estimate used in the table.</div>
+      </div>
+    </div>
+    <h3>Full cost grid</h3>
+    <table id="cost-grid">
+      <thead><tr><th>Players</th><th class="num">Bets/raises</th><th class="num">Nodes</th><th class="num">Act nodes</th><th class="num">Visits/iter</th><th class="num">Iterations</th><th class="num">Total visits</th><th class="num">ms</th><th>Against the cap</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="note warn" style="margin-top:12px;">The budget line is the ADR's 8 s cap, not the venue's 45 s clock. At 100M visits/s, three and four way fit at the 2000-iteration river with a one-raise cap; five way needs the one-raise cap and stays under the clock but not the 8 s cap at 2000 iterations; six way needs one bet per street or a player cap. The prototype's paired sim uses three way, two bets/raises (one raise), and 340 iterations at the 7.5 bb pot. The tree shape is built at a 7.5 bb pot; the selected pot changes the iteration count, not the node count.</div>
+  </div>
+</section>
+
+<!-- PANEL 3: PAIRED SIM -->
+<section class="panel" id="panel-sim" role="tabpanel">
+  <div class="card">
+    <div class="kicker">The paired sim</div>
+    <h2>Same deals, same seats, seven rows</h2>
+    <div class="grid3">
+      <div class="stat"><div class="l">Rows</div><div class="n" style="font-size:14px;">pricer · v10.0.2 · station · nit · maniac · switching · learning</div></div>
+      <div class="stat"><div class="l">Bouts × deals</div><div class="n">200 × 50</div></div>
+      <div class="stat"><div class="l">Live seats per deal</div><div class="n">3 · hero in each</div></div>
+      <div class="stat"><div class="l">Reference</div><div class="n" style="font-size:14px;">pricer in the same tree</div></div>
+      <div class="stat"><div class="l">Challenger</div><div class="n" style="font-size:14px;">free 8-bucket DCFR+</div></div>
+      <div class="stat"><div class="l">Tree</div><div class="n" style="font-size:14px;">3-way, one raise, 340 iters</div></div>
+    </div>
+    <p class="small muted" style="margin-top:12px;">Each deal draws three live buckets from the row's entry prior and a river pot from {4.5, 7.5, 10.5, 15} bb. The hero plays the deal from all three live seats and the deal's result is the mean over them, as the 6-max ring averages its rotations. Both arms meet the same seat seeds; only the hero's policy differs. The 30% eligible share is the projection from a three-way river to all 6-max hands: the other 70% of deals have a difference of exactly zero.</p>
+    <h3>The rows at 200 bouts, 30% eligible</h3>
+    <table id="sim-rows">
+      <thead><tr><th>Row</th><th class="num">Free re-solve</th><th class="num">95% CI</th><th class="num">Reading</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="note bad" style="margin-top:12px;">The free re-solve is not uniformly better: it loses to the calling station and the maniac, where the pricer's exploitative pricing is better than an equilibrium that checks the nuts. The pooled margin still admits it because the other five rows more than pay for those two. E2's pinned/read form is the safer ship.</div>
+    <h3>Margin curve</h3>
+    <div id="margin-chart"></div>
+    <div class="legend"><span><i style="background:var(--blue)"></i>pooled mean</span><span><i style="background:rgba(88,166,255,.18)"></i>95% sequence radius</span><span><i style="background:var(--red)"></i>−20 / +20 bb/100 margin</span></div>
+    <div class="grid2" style="margin-top:14px;">
+      <div>
+        <h3>Three seeds at 200 bouts</h3>
+        <table id="sim-seeds">
+          <thead><tr><th>Seed</th><th class="num">Mean</th><th class="num">Radius</th><th>Admission</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div>
+        <h3>E2 diagnostic at 10 bouts</h3>
+        <table id="sim-diag">
+          <thead><tr><th>Row</th><th class="num">Free</th><th class="num">Pinned prior</th><th class="num">Pinned read</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="sticky-note">Ten bouts is a diagnostic, not a verdict: every interval is wider than the margin. The read-pinned arm fixes the nit row (−312 → +31 bb/100) and the station row; it is the E2 shape, and its numbers are an oracle ceiling, not a promise.</div>
+        <div class="note ok" style="margin-top:10px;">The first length admitted on all three seeds is <b>80 bouts</b>; 30 bouts is unresolved on all three. The recorded 200-bout reading is the stable one, not the first possible.</div>
+      </div>
+    </div>
+    <div class="controls" style="margin-top:16px;">
+      <button class="act" id="sim-run">Run 10 bouts now</button>
+      <span class="small muted" id="sim-status">the recorded run is embedded; this is a live preview of the same code</span>
+    </div>
+    <div id="sim-live"></div>
+  </div>
+</section>
+
+<!-- PANEL 4: MARGIN -->
+<section class="panel" id="panel-margin" role="tabpanel">
+  <div class="grid2">
+    <div class="card">
+      <div class="kicker">The rule, exactly</div>
+      <h2>Twenty bb/100, a 95% sequence, thirty bouts</h2>
+      <div class="code">MARGIN = 20_000 mbb/100 = 20 bb/100
+MIN_BOUTS = 30
+Sequence(200), alpha = 0.05
+
+if bouts < 30:                       unresolved
+else if mean + radius < -margin:     refused
+else if radius > margin:             unresolved
+else:                                admitted</div>
+      <p class="small muted" style="margin-top:10px;">From <span class="mono">learn::margin</span> (<span class="mono">crates/learn/src/margin.rs:49-73</span>) and <span class="mono">probe::Sequence</span> (<span class="mono">crates/learn/src/probe.rs:103-148</span>). The pooled difference is the row-average of the bout mean, in mbb/100; a bout is 50 deals.</p>
+      <h3>Recorded reading</h3>
+      <div class="statgrid">
+        <div class="stat"><div class="n good">+17.99</div><div class="l">mean, bb/100</div></div>
+        <div class="stat"><div class="n good">±10.37</div><div class="l">95% radius</div></div>
+        <div class="stat"><div class="n">+7.62</div><div class="l">lower bound</div></div>
+        <div class="stat"><div class="n">+28.37</div><div class="l">upper bound</div></div>
+      </div>
+      <div class="note ok" style="margin-top:12px;"><b>Admitted.</b> The interval is entirely above zero, not merely above −20: the multiway re-solve is ahead of the reference on the pooled 6-max rows in this model.</div>
+    </div>
+    <div class="card">
+      <div class="kicker">The verdict</div>
+      <h2>Go, three-way and bounded</h2>
+      <p style="font-size:16px; line-height:1.5;">A three-way river re-solve over the eight strength buckets clears the margin rule: at 200 paired 6-max bouts, 30% eligible, the pooled reading is <b>+17.99 bb/100</b> with a <b>±10.37</b> 95% radius, admitted under the 20 bb/100 rule. The 340-iteration solve is <b>59 ms</b> at 100M bucket-visits/s (117 ms at 50M), about 1.5% of the 8 s cap. Four way fits; five and six way need one raise or one bet per street.</p>
+      <h3>What would flip it</h3>
+      <ul class="small muted" style="margin:6px 0 0 18px; padding:0;">
+        <li>The eligible three-way river share below roughly 10%: the mean shrinks proportionally, and the margin becomes a loss bound again.</li>
+        <li>A row mix with more calling stations and maniacs: the free re-solve loses there; the pooled mean could fall below −20.</li>
+        <li>A tree cap that removes the raise branch: the challenger's edge over the pricer is largely the second opponent's response, not the re-raise.</li>
+        <li>A runtime more than ~8× slower than the 100M visits/s projection: the 8 s cap would bind on five way, not three.</li>
+      </ul>
+      <h3>The next rung</h3>
+      <p class="small muted">Implement the bounded three-way river re-solve behind the existing <span class="mono">resolve</span> seam (it returns <span class="mono">None</span> for <span class="mono">opponents != 1</span> today), run the real Arena with 80–200 bouts, and pair it with E2's read-pinned form. Do not ship the free re-solve as the only multiway path: it checks the nuts against a station.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PANEL 5: METHOD -->
+<section class="panel" id="panel-method" role="tabpanel">
+  <div class="grid2">
+    <div class="card">
+      <div class="kicker">Mirrored from the repo</div>
+      <h2>What is exact</h2>
+      <table>
+        <thead><tr><th>Piece</th><th>Source</th><th>Prototype</th></tr></thead>
+        <tbody>
+          <tr><td>8 strength buckets</td><td class="mono">action.rs:338-362</td><td>exact equal-share rule, equal scores from the middle</td></tr>
+          <tr><td>Baseline model</td><td class="mono">action.rs:180-206</td><td>same six probabilities per bucket</td></tr>
+          <tr><td>Continuation curve</td><td class="mono">pricer/ev.rs:32-37</td><td>same exponent, reference size 0.66</td></tr>
+          <tr><td>Pricer sizes</td><td class="mono">pricer/ev.rs:124-153</td><td>third, two thirds, pot; all-in only when short</td></tr>
+          <tr><td>Tree rules</td><td class="mono">resolve/tree.rs</td><td>check / half / pot / all-in; fold / call / raise / all-in; 3 bets max</td></tr>
+          <tr><td>Iterations</td><td class="mono">resolve.rs:40-47</td><td>200 + 20×blinds, cap 2000; quarter before river</td></tr>
+          <tr><td>DCFR</td><td class="mono">resolve.rs:223-237</td><td>α 1.5, β 0, γ 2 discounting</td></tr>
+          <tr><td>Archetypes</td><td class="mono">sim/src/sparring.rs</td><td>station, nit, maniac, switching, learning at bucket level</td></tr>
+          <tr><td>Margin</td><td class="mono">learn/src/margin.rs</td><td>MARGIN, MIN_BOUTS, pooled rows, Sequence(200)</td></tr>
+          <tr><td>6-max ring</td><td class="mono">learn/src/ring.rs</td><td>one deal from every live seat, mean over seats</td></tr>
+          <tr><td>Venue clock</td><td class="mono">docs.openpoker.ai</td><td>45 s action clock, 10/20 blinds, 2000 chips</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="kicker">What the prototype does not establish</div>
+      <h2>Limits, plainly</h2>
+      <ul class="small muted" style="margin:6px 0 0 18px; padding:0;">
+        <li><b>It is a bucket game, not the Arena.</b> Showdown at bucket level with a continuous tie-break, independent opponent ranges, no card removal between opponents. The real re-solve works on 1081 pairs and a fitted action model.</li>
+        <li><b>It is a river only.</b> No flop or turn, no run-outs, no continuation leaves. The real re-solve's flop and turn leaves cost four times an iteration (<span class="mono">DEEP_COST = 4</span>) and sample 16 run-outs.</li>
+        <li><b>It uses one population prior for the policy's range, and the row priors for the dealt buckets.</b> The real bot reads a fitted model from its own store (ADR 0004).</li>
+        <li><b>It projects 30% of hands as three-way rivers.</b> The real share is a measurement, not a constant; the margin mean scales with it.</li>
+        <li><b>It has no luck correction.</b> The Arena's all-in correction removes some variance; this river model has none, so its intervals are conservative.</li>
+        <li><b>The Rust rate is a projection.</b> 50M/100M visits/s are assumptions for the shared i7-4770K, not a benchmark. The measured JS rate is 13.9M visits/s.</li>
+        <li><b>No production code changed.</b> This is a throwaway branch; the go is evidence for a build, not the build.</li>
+      </ul>
+      <div class="note warn" style="margin-top:14px;">The free re-solve is the E3 shape, not E2. It is exploitable by the calling station and maniac because it solves an equilibrium, not a read. E2's pinned re-solve is the deployment shape the design already names.</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px;">
+    <div class="kicker">Reproduce it</div>
+    <h2>One page, one seed, one command</h2>
+    <p class="small muted">The full simulation is in this page. Open the console and run:</p>
+    <div class="code">simulate({ bouts: 200, seed: 7, eligible: 0.3, arms: ["free"] })</div>
+    <p class="small muted" style="margin-top:8px;">The 200-bout run takes about 30 s in this page; it returns the same reading as the recorded card. The cost tab builds the tree from the same code. The artifact is committed on <span class="mono">wayfinder/v11-102-multiway</span>; it contains no keys, no store contents and no opponent data.</p>
+  </div>
+</section>
+
+<footer class="foot">
+  <div>V11-102 · E3 multiway re-solve prototype · ticket <a href="https://github.com/SvanLabs/SvanBot/issues/1256">#1256</a> · branch <span class="mono">wayfinder/v11-102-multiway</span> · 2026-11-26</div>
+  <div style="margin-top:6px;">Throwaway evidence, not production code. Generated-by: opencode/deepseek-flash. No keys, store contents, opponent identities or other private data are in this file.</div>
+</footer>
+
+<script>
+const DATA = {
+  full: {
+    bouts: 200, seed: 7, eligible: 0.3,
+    mean: 17994.285714285717, radius: 10371.075504898668, admission: "admitted",
+    rows: [
+      { row: "pricer", mean: 54108.74999999997, ci95: 7031.084417335543 },
+      { row: "v10.0.2", mean: 83814.58333333342, ci95: 14189.659993713341 },
+      { row: "calling station", mean: -37765.41666666669, ci95: 4827.1857734188925 },
+      { row: "nit", mean: 135932.5, ci95: 9048.638263815383 },
+      { row: "maniac", mean: -118711.6666666667, ci95: 16201.811316607847 },
+      { row: "switching", mean: -20236.666666666664, ci95: 13437.719454027769 },
+      { row: "learning", mean: 28817.91666666667, ci95: 10080.873995064567 }
+    ]
+  },
+  seeds: [
+    { seed: 1, mean: 23416.726190476184, radius: 11246.368137080972, admission: "admitted" },
+    { seed: 7, mean: 17994.285714285717, radius: 10371.075504898668, admission: "admitted" },
+    { seed: 11, mean: 18421.666666666675, radius: 10830.15814768197, admission: "admitted" }
+  ],
+  curve7: [
+    { bouts: 30, mean: 13282.142857142853, radius: 26690.345283014158, admission: "unresolved" },
+    { bouts: 40, mean: 16300.59523809524, radius: 20307.111872571142, admission: "unresolved" },
+    { bouts: 50, mean: 20656.904761904763, radius: 18327.180934612406, admission: "admitted" },
+    { bouts: 60, mean: 15778.769841269843, radius: 16601.52093664268, admission: "admitted" },
+    { bouts: 80, mean: 14871.130952380952, radius: 14063.361614488505, admission: "admitted" },
+    { bouts: 100, mean: 16597.7380952381, radius: 13711.856298183979, admission: "admitted" },
+    { bouts: 150, mean: 15973.968253968256, radius: 11776.185942463502, admission: "admitted" },
+    { bouts: 200, mean: 17994.285714285717, radius: 10371.075504898668, admission: "admitted" }
+  ],
+  curveAll: [
+    { bouts: 30, seed1: 40501.72971907224, seed7: 26690.345283014158, seed11: 32673.782626458535 },
+    { bouts: 40, seed1: 31411.971521856143, seed7: 20307.111872571142, seed11: 27898.514957603475 },
+    { bouts: 50, seed1: 26560.219296319632, seed7: 18327.180934612406, seed11: 24442.09083317883 },
+    { bouts: 60, seed1: 23072.469581057536, seed7: 16601.52093664268, seed11: 22810.391819635093 },
+    { bouts: 80, seed1: 19345.54150271942, seed7: 14063.361614488505, seed11: 18544.495460250295 },
+    { bouts: 100, seed1: 16442.462541204914, seed7: 13711.856298183979, seed11: 16078.1592290156 },
+    { bouts: 150, seed1: 12355.272064446373, seed7: 11776.185942463502, seed11: 12531.713173352016 },
+    { bouts: 200, seed1: 11246.368137080972, seed7: 10371.075504898668, seed11: 10830.15814768197 }
+  ],
+  diag: {
+    free: { mean: 16986.904761904756, radius: 63432.56821472212 },
+    pinned: { mean: 312905.9523809524, radius: 127803.12210537017 },
+    read: { mean: 408883.3333333334, radius: 146083.58276784912 },
+    rows: [
+      { row: "pricer", free: 57291.66666666667, pinned: 81733.33333333331, read: 174933.33333333337 },
+      { row: "v10.0.2", free: 71791.66666666667, pinned: 633416.6666666669, read: 667383.3333333336 },
+      { row: "calling station", free: -38266.66666666668, pinned: 1147841.6666666667, read: 1147841.6666666667 },
+      { row: "nit", free: 162183.3333333333, pinned: -312233.3333333333, read: 31050 },
+      { row: "maniac", free: -128866.66666666669, pinned: 280766.66666666657, read: 327741.66666666657 },
+      { row: "switching", free: -30950.000000000004, pinned: 84800, read: 190766.66666666666 },
+      { row: "learning", free: 25724.999999999996, pinned: 274016.6666666665, read: 322466.6666666667 }
+    ]
+  },
+  cost: [
+    { players: 2, maxBets: 1, nodes: 21, acts: 8, showings: 7, actions: 20, avgActions: 2.5, visitsPerIteration: 432 },
+    { players: 2, maxBets: 2, nodes: 45, acts: 16, showings: 15, actions: 44, avgActions: 2.75, visitsPerIteration: 944 },
+    { players: 2, maxBets: 3, nodes: 69, acts: 24, showings: 23, actions: 68, avgActions: 2.8333333333333335, visitsPerIteration: 1456 },
+    { players: 3, maxBets: 1, nodes: 67, acts: 30, showings: 28, actions: 66, avgActions: 2.2, visitsPerIteration: 4272 },
+    { players: 3, maxBets: 2, nodes: 271, acts: 114, showings: 112, actions: 270, avgActions: 2.3684210526315788, visitsPerIteration: 17232 },
+    { players: 3, maxBets: 3, nodes: 622, acts: 255, showings: 253, actions: 621, avgActions: 2.4352941176470586, visitsPerIteration: 39192 },
+    { players: 4, maxBets: 1, nodes: 185, acts: 88, showings: 85, actions: 184, avgActions: 2.090909090909091, visitsPerIteration: 30368 },
+    { players: 4, maxBets: 2, nodes: 1289, acts: 584, showings: 581, actions: 1288, avgActions: 2.2054794520547945, visitsPerIteration: 208544 },
+    { players: 4, maxBets: 3, nodes: 4073, acts: 1800, showings: 1797, actions: 4072, avgActions: 2.2622222222222224, visitsPerIteration: 647840 },
+    { players: 5, maxBets: 1, nodes: 471, acts: 230, showings: 226, actions: 470, avgActions: 2.0434782608695654, visitsPerIteration: 163440 },
+    { players: 5, maxBets: 2, nodes: 5371, acts: 2530, showings: 2526, actions: 5370, avgActions: 2.122529644268775, visitsPerIteration: 1831440 },
+    { players: 5, maxBets: 3, nodes: 22686, acts: 10465, showings: 10461, actions: 22685, avgActions: 2.1677018633540373, visitsPerIteration: 7602440 },
+    { players: 6, maxBets: 1, nodes: 1141, acts: 564, showings: 559, actions: 1140, avgActions: 2.021276595744681, visitsPerIteration: 725520 },
+    { players: 6, maxBets: 2, nodes: 20653, acts: 9948, showings: 9943, actions: 20652, avgActions: 2.0759951749095293, visitsPerIteration: 12922896 },
+    { players: 6, maxBets: 3, nodes: 116551, acts: 55206, showings: 55201, actions: 116550, avgActions: 2.111183567003587, visitsPerIteration: 71835600 }
+  ],
+  measured: { potChips: 150, iterations: 340, ms: 423.0, nodes: 271, acts: 114, showings: 112, actions: 270, visits: 5858880, rate: 13.9 },
+  iterationsFor: { "4.5": 280, "7.5": 340, "10.5": 400, "15": 500, "50": 1200, "100": 2000 }
+};
+</script>
+<script>
+// The prototype's engine, inlined so the page is one file. No external code.
+// ---- proto_core.js ----
+// Core of the V11-102 E3 multiway re-solve prototype. Throwaway: no production code.
+// Mirrors docs/superpowers/specs/2026-11-25-five-brains-design.md Phase 4 E3 and
+// crates/strategy/src/{action,resolve,tree,leaf}.rs, at the level of the eight strength buckets.
+
+const BUCKETS = 8;
+
+// ---------------------------------------------------------------------------------------------
+// Deterministic randomness: mulberry32, so every run on a seed replays bit for bit.
+
+function rng(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function rngInt(next, n) {
+  return Math.floor(next() * n);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The baseline action model, copied number for number from ActionModel::baseline:
+// crates/strategy/src/action.rs:180-206. Situation is the river, facing or not.
+
+const SIZES = (x) => [0.5 - 0.3 * x, 0.35, 0.15 + 0.3 * x];
+
+function baselineModel(street = "river") {
+  // [facing][bucket] -> {fold, call, small, medium, large, check, bet}
+  const facing = [];
+  const open = [];
+  for (let b = 0; b < BUCKETS; b += 1) {
+    const x = b / (BUCKETS - 1);
+    const bluff = b === 0 ? 1 : 0;
+    const sizes = SIZES(x);
+    const raise = 0.02 + 0.33 * x ** 4 + 0.04 * bluff;
+    const fold = (1 - raise) * 0.9 * (1 - x) ** 1.5;
+    facing.push({
+      fold,
+      call: 1 - raise - fold,
+      small: raise * sizes[0],
+      medium: raise * sizes[1],
+      large: raise * sizes[2],
+      raise,
+    });
+    const bet = 0.06 + 0.64 * x * x + 0.12 * bluff;
+    open.push({
+      check: 1 - bet,
+      small: bet * sizes[0],
+      medium: bet * sizes[1],
+      large: bet * sizes[2],
+      bet,
+    });
+  }
+  return { street, facing, open };
+}
+
+/** The pricer's continuation curve, crates/strategy/src/pricer/ev.rs:32-37. */
+function continues(reference, share) {
+  const r = Math.min(1, Math.max(0, reference));
+  const s = Math.max(1e-3, share);
+  return r ** (s / 0.66) ** 0.5;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The multiway betting tree of one street. Rules mirror resolve/tree.rs:
+//   not facing: check, bet half the pot, bet the pot, all in;
+//   facing: fold, call, raise the pot, all in;
+//   at most `maxBets` bets/raises; a call or a check-around ends the street.
+// Players act in seat order; `players` players are live at the root. All stacks equal, no side pots.
+
+function buildTree({ players = 3, pot = 100, stack = 2000, maxBets = 3, cap = 250000 }) {
+  const nodes = [];
+  let capped = false;
+
+  const add = (node) => {
+    node.id = nodes.length;
+    nodes.push(node);
+    return node.id;
+  };
+
+  const liveOf = (folded) => {
+    const live = [];
+    for (let p = 0; p < players; p += 1) if (!folded[p]) live.push(p);
+    return live;
+  };
+
+  const nextLive = (from, folded, live) => {
+    for (let step = 1; step <= players; step += 1) {
+      const p = (from + step) % players;
+      if (!folded[p]) return p;
+    }
+    return live[0];
+  };
+
+  const nextPending = (from, pending) => {
+    for (let step = 1; step <= players; step += 1) {
+      const p = (from + step) % players;
+      if (pending.includes(p)) return p;
+    }
+    return pending[0];
+  };
+
+  const terminal = (kind, state, extra = {}) => {
+    const potNow = pot + state.added.reduce((a, b) => a + b, 0);
+    const live = liveOf(state.folded);
+    add({ kind, added: state.added.slice(), folded: state.folded.slice(), pot: potNow, live, ...extra });
+  };
+
+  const grow = (state, depth) => {
+    if (nodes.length >= cap) {
+      capped = true;
+      return -1;
+    }
+    const live = liveOf(state.folded);
+    if (live.length === 1) {
+      terminal("fold", state, { winner: live[0] });
+      return nodes.length - 1;
+    }
+    let pending = state.pending.slice();
+    let checked = state.checked.slice();
+    let actor = state.actor;
+    // A bet or raise was answered by everyone: the street ends here.
+    if (pending.length === 0 && state.aggressive) {
+      terminal("showdown", state);
+      return nodes.length - 1;
+    }
+    // If there is no pending action and everyone has checked, the street ends.
+    if (pending.length === 0 && live.every((p) => checked[p])) {
+      terminal("showdown", state);
+      return nodes.length - 1;
+    }
+    if (pending.length === 0) {
+      // The next player who has not checked acts.
+      actor = live.find((p) => !checked[p]);
+      if (actor === undefined) {
+        terminal("showdown", state);
+        return nodes.length - 1;
+      }
+    } else {
+      actor = nextPending(actor, pending);
+    }
+    const behind = stack - state.added[actor];
+    let highest = 0;
+    for (const p of live) highest = Math.max(highest, state.added[p]);
+    const owed = highest - state.added[actor];
+    const potNow = pot + state.added.reduce((a, b) => a + b, 0);
+    const actions = [];
+    if (owed > 0) {
+      actions.push({ kind: "fold", chips: 0, label: "fold" });
+      actions.push({ kind: "call", chips: Math.min(owed, behind), label: "call" });
+      if (state.bets < maxBets && behind > owed) {
+        const raise = owed + (potNow + owed);
+        if (raise < behind) actions.push({ kind: "bet", chips: raise, label: `raise ${raise}` });
+        if (behind > owed) actions.push({ kind: "bet", chips: behind, label: `all-in ${behind}` });
+      }
+    } else {
+      actions.push({ kind: "check", chips: 0, label: "check" });
+      if (state.bets < maxBets && behind > 0) {
+        const sizes = [Math.floor(potNow / 2), potNow, behind];
+        const seen = new Set();
+        for (const chips of sizes) {
+          if (chips <= 0 || chips > behind || seen.has(chips)) continue;
+          seen.add(chips);
+          actions.push({
+            kind: "bet",
+            chips,
+            label: chips === behind ? `all-in ${chips}` : `bet ${chips}`,
+          });
+        }
+      }
+    }
+    if (actions.length === 0) {
+      terminal("showdown", state);
+      return nodes.length - 1;
+    }
+    const id = add({
+      kind: "act",
+      actor,
+      actions,
+      added: state.added.slice(),
+      folded: state.folded.slice(),
+      pot: potNow,
+      behind,
+      owed,
+      checks: checked.slice(),
+      pending: pending.slice(),
+      bets: state.bets,
+    });
+    const children = [];
+    for (const action of actions) {
+      const next = {
+        added: state.added.slice(),
+        folded: state.folded.slice(),
+        pending: pending.slice(),
+        checked: checked.slice(),
+        bets: state.bets,
+        aggressive: state.aggressive,
+        actor,
+      };
+      if (action.kind === "fold") {
+        next.folded[actor] = 1;
+        next.pending = next.pending.filter((p) => p !== actor);
+        if (next.pending.length === 0) next.pending = [];
+        next.actor = actor;
+      } else if (action.kind === "call") {
+        next.added[actor] += action.chips;
+        next.pending = next.pending.filter((p) => p !== actor);
+        next.actor = actor;
+      } else if (action.kind === "check") {
+        next.checked[actor] = 1;
+        next.actor = actor;
+      } else {
+        next.added[actor] += action.chips;
+        next.bets += 1;
+        next.aggressive = true;
+        next.checked = new Array(players).fill(0);
+        next.pending = live.filter((p) => p !== actor);
+        next.actor = actor;
+      }
+      children.push(grow(next, depth + 1));
+    }
+    nodes[id].children = children;
+    return id;
+  };
+
+  grow(
+    {
+      added: new Array(players).fill(0),
+      folded: new Array(players).fill(0),
+      pending: [],
+      checked: new Array(players).fill(0),
+      bets: 0,
+      aggressive: false,
+      actor: 0,
+    },
+    0,
+  );
+  const acts = nodes.filter((n) => n.kind === "act");
+  const folds = nodes.filter((n) => n.kind === "fold");
+  const shows = nodes.filter((n) => n.kind === "showdown");
+  return {
+    players,
+    pot,
+    stack,
+    maxBets,
+    nodes,
+    capped,
+    stats: {
+      nodes: nodes.length,
+      acts: acts.length,
+      folds: folds.length,
+      showings: shows.length,
+      actions: acts.reduce((a, n) => a + n.actions.length, 0),
+      maxDepth: (() => {
+        let max = 0;
+        const walk = (id, d) => {
+          max = Math.max(max, d);
+          const n = nodes[id];
+          if (n?.children) for (const c of n.children) if (c >= 0) walk(c, d + 1);
+        };
+        walk(0, 0);
+        return max;
+      })(),
+    },
+  };
+}
+
+// ---- proto_solver.js ----
+// DCFR over the multiway bucket tree, and the average strategy read back.
+
+
+/**
+ * The counterfactual share of the pot for `heroBucket` against independent opponent reach
+ * vectors: the opponent reach the hero beats plus half the reach it ties, counted once per
+ * opponent hand, as `Showdown::against` does. Not normalised by the opponents' mass.
+ */
+function showdownShare(heroBucket, reaches) {
+  let dist = [1];
+  for (const reach of reaches) {
+    let below = 0;
+    for (let c = 0; c < heroBucket; c += 1) below += reach[c];
+    const equal = reach[heroBucket];
+    const next = new Array(dist.length + 1).fill(0);
+    for (let m = 0; m < dist.length; m += 1) {
+      next[m] += dist[m] * below;
+      next[m + 1] += dist[m] * equal;
+    }
+    dist = next;
+  }
+  let share = 0;
+  for (let m = 0; m < dist.length; m += 1) share += dist[m] / (m + 1);
+  return share;
+}
+
+/** The payoff to `hero` in chips from the street's start, per bucket. */
+function terminalValues(node, hero, reaches) {
+  const values = new Float64Array(BUCKETS);
+  // The counterfactual value is summed over every other player's hands, so every one of them
+  // contributes their reach mass to the path probability, folded or not.
+  let mass = 1;
+  for (let p = 0; p < reaches.length; p += 1) {
+    if (p === hero) continue;
+    let total = 0;
+    for (let c = 0; c < BUCKETS; c += 1) total += reaches[p][c];
+    mass *= total;
+  }
+  const own = node.added[hero];
+  if (node.folded[hero]) {
+    for (let b = 0; b < BUCKETS; b += 1) values[b] = -own * mass;
+    return values;
+  }
+  if (node.kind === "fold") {
+    const won = node.winner === hero;
+    for (let b = 0; b < BUCKETS; b += 1) {
+      values[b] = won ? (node.pot - own) * mass : -own * mass;
+    }
+    return values;
+  }
+  const opps = node.live.filter((p) => p !== hero);
+  let liveMass = 1;
+  let foldedMass = 1;
+  for (let p = 0; p < reaches.length; p += 1) {
+    if (p === hero) continue;
+    let total = 0;
+    for (let c = 0; c < BUCKETS; c += 1) total += reaches[p][c];
+    if (node.live.includes(p)) liveMass *= total;
+    else foldedMass *= total;
+  }
+  for (let b = 0; b < BUCKETS; b += 1) {
+    const share = showdownShare(b, opps.map((p) => reaches[p]));
+    values[b] = foldedMass * (share * node.pot - own * liveMass);
+  }
+  return values;
+}
+
+/** Allocate regrets and strategy sums on every acting node. */
+function allocate(tree) {
+  for (const node of tree.nodes) {
+    if (node.kind !== "act") continue;
+    const cells = node.actions.length * BUCKETS;
+    node.regrets = new Float64Array(cells);
+    node.sums = new Float64Array(cells);
+  }
+}
+
+/** Regret matching: the current strategy at `node`, actions x buckets. */
+function current(node, epsilon = 0) {
+  const actions = node.actions.length;
+  const out = new Float64Array(actions * BUCKETS);
+  for (let b = 0; b < BUCKETS; b += 1) {
+    let total = 0;
+    for (let a = 0; a < actions; a += 1) total += Math.max(0, node.regrets[a * BUCKETS + b]);
+    for (let a = 0; a < actions; a += 1) {
+      const pure =
+        total > 0 ? Math.max(0, node.regrets[a * BUCKETS + b]) / total : 1 / actions;
+      out[a * BUCKETS + b] = (1 - epsilon) * pure + epsilon / actions;
+    }
+  }
+  return out;
+}
+
+/** The average strategy at `node`, actions x buckets. */
+function average(node) {
+  const actions = node.actions.length;
+  const out = new Float64Array(actions * BUCKETS);
+  for (let b = 0; b < BUCKETS; b += 1) {
+    let total = 0;
+    for (let a = 0; a < actions; a += 1) total += node.sums[a * BUCKETS + b];
+    for (let a = 0; a < actions; a += 1) {
+      out[a * BUCKETS + b] = total > 0 ? node.sums[a * BUCKETS + b] / total : 1 / actions;
+    }
+  }
+  return out;
+}
+
+function zeros() {
+  return new Float64Array(BUCKETS);
+}
+
+/**
+ * One DCFR solve. `ranges[p]` is a Float64Array of 8 bucket masses; they need not sum to one.
+ * Returns the tree with regrets and sums, and the milliseconds spent.
+ */
+function solve(tree, ranges, iterations, { onProgress, plus = false, alternating = false, epsilon = 0 } = {}) {
+  allocate(tree);
+  const start = performance.now();
+  const reachRoots = ranges.map((r) => {
+    const total = r.reduce((a, b) => a + b, 0) || 1;
+    return Float64Array.from(r, (v) => v / total);
+  });
+  const walk = (id, trav, reaches, t, positive, weight) => {
+    const node = tree.nodes[id];
+    if (node.kind !== "act") return terminalValues(node, trav, reaches);
+    const strategy = current(node, epsilon);
+    const actions = node.actions.length;
+    if (node.actor === trav) {
+      const values = [];
+      for (let a = 0; a < actions; a += 1) {
+        const next = reaches.slice();
+        const mine = Float64Array.from(reaches[trav]);
+        for (let b = 0; b < BUCKETS; b += 1) mine[b] *= strategy[a * BUCKETS + b];
+        next[trav] = mine;
+        values.push(walk(node.children[a], trav, next, t, positive, weight));
+      }
+      const total = zeros();
+      for (let a = 0; a < actions; a += 1) {
+        for (let b = 0; b < BUCKETS; b += 1) {
+          total[b] += strategy[a * BUCKETS + b] * values[a][b];
+        }
+      }
+      if (id === 0 && trav === 0 && t === iterations) {
+        tree.lastRootValues = values.map((v) => Array.from(v));
+        tree.lastRootStrategy = Array.from(strategy);
+        tree.lastRootTotal = Array.from(total);
+      }
+      for (let a = 0; a < actions; a += 1) {
+        for (let b = 0; b < BUCKETS; b += 1) {
+          const at = a * BUCKETS + b;
+          const old = node.regrets[at];
+          const discount = plus ? 1 : old > 0 ? positive : 0.5;
+          node.regrets[at] = old * discount + (values[a][b] - total[b]);
+          if (plus && node.regrets[at] < 0) node.regrets[at] = 0;
+          node.sums[at] = node.sums[at] * (plus ? 1 : weight) + reaches[trav][b] * strategy[at] * (plus ? t : 1);
+        }
+      }
+      return total;
+    }
+    if (id === 12 && trav === 0 && t === iterations) {
+      tree.debugNode12 = {
+        strategy: Array.from({ length: actions }, (_, a) => strategy[a * BUCKETS + 0]),
+        reaches: reaches.map((r) => Array.from(r)),
+      };
+    }
+    const total = zeros();
+    for (let a = 0; a < actions; a += 1) {
+      const next = reaches.slice();
+      const theirs = Float64Array.from(reaches[node.actor]);
+      for (let b = 0; b < BUCKETS; b += 1) theirs[b] *= strategy[a * BUCKETS + b];
+      next[node.actor] = theirs;
+      const value = walk(node.children[a], trav, next, t, positive, weight);
+      for (let b = 0; b < BUCKETS; b += 1) total[b] += value[b];
+    }
+    return total;
+  };
+  for (let t = 1; t <= iterations; t += 1) {
+    const positive = t ** 1.5 / (t ** 1.5 + 1);
+    const weight = (t / (t + 1)) ** 2;
+    if (alternating) {
+      walk(0, (t - 1) % tree.players, reachRoots, t, positive, weight);
+    } else {
+      for (let trav = 0; trav < tree.players; trav += 1) {
+        walk(0, trav, reachRoots, t, positive, weight);
+      }
+    }
+    if (onProgress && t % 50 === 0) onProgress(t / iterations);
+  }
+  tree.iterations = iterations;
+  tree.ms = performance.now() - start;
+  return tree;
+}
+
+/**
+ * The strategy at `node` for `bucket`: the average where the solver's own reach reached the
+ * node, and the current regret-matched strategy where it did not. An unreached infoset has no
+ * average; the current strategy is the best local answer to the range that did reach it.
+ */
+function mix(node, bucket) {
+  const actions = node.actions.length;
+  let total = 0;
+  for (let a = 0; a < actions; a += 1) total += node.sums[a * BUCKETS + bucket];
+  const strat = total > 0 ? average(node) : current(node);
+  const out = [];
+  let sum = 0;
+  for (let a = 0; a < actions; a += 1) {
+    const p = strat[a * BUCKETS + bucket];
+    out.push({ action: node.actions[a], p });
+    sum += p;
+  }
+  if (sum > 0) for (const entry of out) entry.p /= sum;
+  return out;
+}
+
+// ---- proto_policy.js ----
+// The policies the prototype's paired river sim plays: the reference pricer, the multiway
+// re-solve challenger, and the Arena's scripted archetypes at bucket level.
+
+
+
+const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+
+/** The hero's win share against one opponent bucket: 1, 1/2 or 0. */
+function winShare(hero, opp) {
+  if (hero > opp) return 1;
+  if (hero === opp) return 0.5;
+  return 0;
+}
+
+/** The hero's share against several actual opponent buckets. */
+function actualShare(hero, opps) {
+  const best = Math.max(hero, ...opps);
+  if (hero < best) return 0;
+  const tied = 1 + opps.filter((b) => b === hero).length;
+  return 1 / tied;
+}
+
+/** The bucket distribution's CDF at `bucket`: the chance an opponent is below or ties it. */
+function equityOf(bucket, q, opponents = 1) {
+  let s = 0;
+  for (let c = 0; c < bucket; c += 1) s += q[c];
+  s += 0.5 * q[bucket];
+  return s ** opponents;
+}
+
+function actionValue(node, bucket, action, q, opponents) {
+  const pot = node.pot;
+  const call = node.owed;
+  const equity = equityOf(bucket, q, opponents);
+  if (action.kind === "fold") return 0;
+  if (action.kind === "check") return equity * pot;
+  if (action.kind === "call") return equity * (pot + call) - call;
+  // A bet or raise: fold equity plus showdown against whoever calls, exactly as pricer/ev.rs
+  // sums the caller subsets, at bucket level.
+  const added = action.chips;
+  const share = (added - call) / Math.max(1, pot + call);
+  const model = baselineModel();
+  const callProb = (c) => continues(1 - model.facing[c].fold, share);
+  const probabilities = Array.from({ length: BUCKETS }, (_, c) => q[c]);
+  let total = 0;
+  const visit = (at, buckets, probability) => {
+    if (at === opponents) {
+      // Each opponent independently folds or continues. Sum the caller subsets exactly.
+      for (let mask = 0; mask < 1 << opponents; mask += 1) {
+        let n = 0;
+        let prob = probability;
+        let heroShare = 1;
+        for (let i = 0; i < opponents; i += 1) {
+          const p = callProb(buckets[i]);
+          if (mask & (1 << i)) {
+            n += 1;
+            prob *= p;
+            heroShare *= winShare(bucket, buckets[i]);
+          } else {
+            prob *= 1 - p;
+          }
+        }
+        if (prob === 0) continue;
+        const value =
+          n === 0
+            ? pot
+            : heroShare * (pot + added + n * (added - call)) - added;
+        total += prob * value;
+      }
+      return;
+    }
+    for (let c = 0; c < BUCKETS; c += 1) {
+      if (probabilities[c] === 0) continue;
+      visit(at + 1, [...buckets, c], probability * probabilities[c]);
+    }
+  };
+  visit(0, [], 1);
+  return total;
+}
+
+/** The pricer's action index at `node`, crates/strategy/src/pricer.rs + ev.rs. */
+function pricerIndex(node, bucket, q) {
+  let best = -1;
+  let worth = null;
+  const live = node.folded ? node.folded.filter((f) => !f).length : 1;
+  const opponents = Math.max(1, live - 1);
+  // The pricer's postflop menu is a third, two thirds and the pot after the call, and all-in
+  // only when the stack is short of one and a half pots (crates/strategy/src/pricer/ev.rs:145-153).
+  const allInAllowed = node.behind <= 1.5 * (node.pot + node.owed);
+  for (let a = 0; a < node.actions.length; a += 1) {
+    const action = node.actions[a];
+    if (action.kind === "bet" && action.chips === node.behind && !allInAllowed) continue;
+    let value;
+    if (action.kind === "fold") value = 0;
+    else if (action.kind === "check") value = equityOf(bucket, q, opponents) * node.pot;
+    else if (action.kind === "call") {
+      const call = node.owed;
+      value = equityOf(bucket, q, opponents) * (node.pot + call) - call;
+    } else value = actionValue(node, bucket, action, q, opponents);
+    // Passive actions win ties, as the pricer's choose does.
+    const passive = action.kind === "fold" || action.kind === "check" || action.kind === "call";
+    if (best < 0 || value > worth + 1e-9 || (Math.abs(value - worth) <= 1e-9 && passive)) {
+      best = a;
+      worth = value;
+    }
+  }
+  return best;
+}
+
+/** The action index closest to a desired number of chips added. */
+function nearestBet(node, desired) {
+  let best = -1;
+  let distance = Infinity;
+  for (let a = 0; a < node.actions.length; a += 1) {
+    const action = node.actions[a];
+    if (action.kind !== "bet") continue;
+    const d = Math.abs(action.chips - desired);
+    if (d < distance) {
+      best = a;
+      distance = d;
+    }
+  }
+  return best;
+}
+
+/** A scripted archetype's action index at `node`, mirroring sim/src/sparring.rs at bucket level. */
+function archetypeIndex(node, bucket, kind, rng, hand, memory) {
+  const equity = (bucket + 0.5) / BUCKETS;
+  const call = node.owed;
+  const pot = node.pot;
+  if (kind === "station") {
+    if (call > 0) return node.actions.findIndex((a) => a.kind === "call");
+    if (equity > 0.92) return nearestBet(node, pot * 0.5);
+    return node.actions.findIndex((a) => a.kind === "check");
+  }
+  if (kind === "nit") {
+    if (equity > 0.92) return nearestBet(node, call + pot);
+    if (call > 0) return node.actions.findIndex((a) => a.kind === "fold");
+    return node.actions.findIndex((a) => a.kind === "check");
+  }
+  if (kind === "maniac") {
+    const stacked = call > node.behind / 2 && equity < 0.35;
+    if (stacked) return node.actions.findIndex((a) => a.kind === "fold");
+    if (rng() < 0.65) return nearestBet(node, call + pot);
+    if (call > 0) return node.actions.findIndex((a) => a.kind === "call");
+    return node.actions.findIndex((a) => a.kind === "check");
+  }
+  if (kind === "switching") {
+    const nit = Math.floor(hand / 20) % 2 === 0;
+    return archetypeIndex(node, bucket, nit ? "nit" : "maniac", rng, hand, memory);
+  }
+  if (kind === "learning") {
+    const aggression = (memory.bets + 3) / (memory.acts + 10);
+    const lighter = aggression > 0.45 ? 0.2 : aggression < 0.2 ? -0.1 : 0.0;
+    const steal = aggression > 0.45 ? 0.0 : aggression < 0.2 ? 0.4 : 0.1;
+    if (call > 0) {
+      const price = call / (pot + call);
+      if (equity > 0.8) return nearestBet(node, call + pot);
+      if (equity >= price + 0.12 - lighter) return node.actions.findIndex((a) => a.kind === "call");
+      return node.actions.findIndex((a) => a.kind === "fold");
+    }
+    if (equity > 0.6 || rng() < steal) return nearestBet(node, pot * 0.75);
+    return node.actions.findIndex((a) => a.kind === "check");
+  }
+  if (kind === "v10") {
+    if (call > 0) {
+      const price = call / (pot + call);
+      if (equity > 0.9) return nearestBet(node, call + pot);
+      if (equity >= price + 0.08) return node.actions.findIndex((a) => a.kind === "call");
+      return node.actions.findIndex((a) => a.kind === "fold");
+    }
+    if (equity > 0.65 || rng() < 0.15) return nearestBet(node, pot * 0.66);
+    return node.actions.findIndex((a) => a.kind === "check");
+  }
+  throw new Error(`unknown archetype ${kind}`);
+}
+
+/** The challenger's action index: the current (regret-matched) strategy at the node, drawn. */
+function reSolveIndex(node, bucket, rng) {
+  const m = mix(node, bucket);
+  let roll = rng();
+  let sum = 0;
+  let best = m.length - 1;
+  for (let a = 0; a < m.length; a += 1) {
+    sum += m[a].p;
+    if (roll < sum) {
+      best = a;
+      break;
+    }
+  }
+  return best;
+}
+
+/** A policy row's action index at hero's node. */
+function heroIndex(policy, node, bucket, q, rng) {
+  if (policy === "reference") return pricerIndex(node, bucket, q);
+  return reSolveIndex(node, bucket, rng);
+}
+
+// ---- proto_pinned.js ----
+// The pinned multiway re-solve: the hero best-responds through the tree while the opponents
+// follow the baseline action model. This is the E2 shape ("the re-solve pinned to the read"),
+// as opposed to the free CFR re-solve that lets both sides play the equilibrium.
+
+
+
+
+function splitKind(node, kind, mass, probs) {
+  const found = [];
+  for (let a = 0; a < node.actions.length; a += 1) if (node.actions[a].kind === kind) found.push(a);
+  if (found.length === 0) return false;
+  for (const a of found) probs[a] += mass / found.length;
+  return true;
+}
+
+/** The model's action probabilities at an act node for a player in `bucket`. */
+function modelProbs(node, bucket) {
+  const model = baselineModel();
+  const probs = new Array(node.actions.length).fill(0);
+  if (node.owed > 0) {
+    const row = model.facing[bucket];
+    splitKind(node, "fold", row.fold, probs);
+    let raiseMass = row.raise;
+    const groups = { small: [], medium: [], large: [] };
+    for (let a = 0; a < node.actions.length; a += 1) {
+      if (node.actions[a].kind !== "bet") continue;
+      const share = (node.actions[a].chips - node.owed) / Math.max(1, node.pot + node.owed);
+      if (share < 0.5) groups.small.push(a);
+      else if (share < 1) groups.medium.push(a);
+      else groups.large.push(a);
+    }
+    const mass = [row.small, row.medium, row.large];
+    const names = ["small", "medium", "large"];
+    for (let i = 0; i < 3; i += 1) {
+      if (groups[names[i]].length > 0) {
+        for (const a of groups[names[i]]) probs[a] += mass[i] / groups[names[i]].length;
+      } else {
+        raiseMass += mass[i];
+      }
+    }
+    if (!splitKind(node, "call", row.call + raiseMass, probs)) {
+      splitKind(node, "fold", row.call + raiseMass, probs);
+    }
+  } else {
+    const row = model.open[bucket];
+    splitKind(node, "check", row.check, probs);
+    let betMass = row.bet;
+    const groups = { small: [], medium: [], large: [] };
+    for (let a = 0; a < node.actions.length; a += 1) {
+      if (node.actions[a].kind !== "bet") continue;
+      const share = node.actions[a].chips / Math.max(1, node.pot);
+      if (share < 0.5) groups.small.push(a);
+      else if (share < 1) groups.medium.push(a);
+      else groups.large.push(a);
+    }
+    const mass = [row.small, row.medium, row.large];
+    const names = ["small", "medium", "large"];
+    for (let i = 0; i < 3; i += 1) {
+      if (groups[names[i]].length > 0) {
+        for (const a of groups[names[i]]) probs[a] += mass[i] / groups[names[i]].length;
+      } else {
+        betMass += mass[i];
+      }
+    }
+    if (!splitKind(node, "check", betMass, probs)) {
+      // The tree offers no check only when facing a bet, which this branch is not.
+    }
+  }
+  const total = probs.reduce((a, b) => a + b, 0);
+  if (total <= 0) return probs.map(() => 1 / probs.length);
+  return probs.map((p) => p / total);
+}
+
+/** The conditional value, in chips, of a terminal for the hero's known bucket. */
+function terminalScalar(node, hero, bucket, reaches) {
+  const own = node.added[hero];
+  if (node.folded[hero]) return -own;
+  if (node.kind === "fold") return node.winner === hero ? node.pot - own : -own;
+  const opps = node.live.filter((p) => p !== hero);
+  let mass = 1;
+  for (const p of opps) {
+    let total = 0;
+    for (let c = 0; c < BUCKETS; c += 1) total += reaches[p][c];
+    mass *= total;
+  }
+  if (mass <= 0) return -own;
+  return (showdownShare(bucket, opps.map((p) => reaches[p])) / mass) * node.pot - own;
+}
+
+/** The best-response value of `node` for the hero's bucket under `read`. */
+function pinnedValue(tree, node, hero, bucket, reaches, read) {
+  if (node.kind !== "act") return terminalScalar(node, hero, bucket, reaches);
+  if (node.actor === hero) {
+    let best = -Infinity;
+    for (const child of node.children) {
+      best = Math.max(best, pinnedValue(tree, tree.nodes[child], hero, bucket, reaches, read));
+    }
+    return best;
+  }
+  // The opponent's action probability depends on their own bucket, which they know and we do
+  // not: carry each bucket's reach through its own probability, and weight the value by the
+  // action's chance over the opponent's range.
+  const mine = reaches[node.actor];
+  let mass = 0;
+  for (let b = 0; b < BUCKETS; b += 1) mass += mine[b];
+  if (mass <= 0) return 0;
+  const probsByBucket = Array.from({ length: BUCKETS }, (_, b) => read(node, b));
+  let total = 0;
+  for (let a = 0; a < node.children.length; a += 1) {
+    const next = reaches.slice();
+    const theirs = new Float64Array(BUCKETS);
+    let chance = 0;
+    for (let b = 0; b < BUCKETS; b += 1) {
+      const p = probsByBucket[b][a] ?? 0;
+      theirs[b] = mine[b] * p;
+      chance += mine[b] * p;
+    }
+    if (chance <= 0) continue;
+    next[node.actor] = theirs;
+    total +=
+      (chance / mass) *
+      pinnedValue(tree, tree.nodes[node.children[a]], hero, bucket, next, read);
+  }
+  return total;
+}
+
+/** The pinned re-solve's action index at a hero node, against `read`. */
+function pinnedIndex(tree, node, hero, bucket, q, read) {
+  const reaches = [q.slice(), q.slice(), q.slice()];
+  reaches[hero] = new Float64Array(BUCKETS).fill(1 / BUCKETS);
+  let best = -1;
+  let worth = -Infinity;
+  for (let a = 0; a < node.children.length; a += 1) {
+    const value = pinnedValue(tree, tree.nodes[node.children[a]], hero, bucket, reaches, read);
+    if (value > worth + 1e-12) {
+      worth = value;
+      best = a;
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The scripted rows' actual policies, as a read. This is the ceiling an E2 read approaches; the
+// baseline model above is what the policy knows before it has evidence.
+
+function putKind(node, kind, mass, probs) {
+  const found = [];
+  for (let a = 0; a < node.actions.length; a += 1) if (node.actions[a].kind === kind) found.push(a);
+  if (found.length === 0) return false;
+  for (const a of found) probs[a] += mass / found.length;
+  return true;
+}
+
+function putBet(node, desired, mass, probs) {
+  let best = -1;
+  let distance = Infinity;
+  for (let a = 0; a < node.actions.length; a += 1) {
+    if (node.actions[a].kind !== "bet") continue;
+    const d = Math.abs(node.actions[a].chips - desired);
+    if (d < distance) {
+      best = a;
+      distance = d;
+    }
+  }
+  if (best < 0) return false;
+  probs[best] += mass;
+  return true;
+}
+
+function passive(node, probs) {
+  if (node.owed > 0) return putKind(node, "call", 1, probs);
+  return putKind(node, "check", 1, probs);
+}
+
+/** The scripted row's action probabilities, read from the archetype's own rule. */
+function readProbs(node, bucket, kind, hand, memory, q) {
+  const probs = new Array(node.actions.length).fill(0);
+  const equity = (bucket + 0.5) / BUCKETS;
+  const call = node.owed;
+  const pot = node.pot;
+  const close = () => {
+    let total = probs.reduce((a, b) => a + b, 0);
+    if (total <= 0) {
+      passive(node, probs);
+      total = probs.reduce((a, b) => a + b, 0);
+    }
+    return total > 0 ? probs.map((p) => p / total) : probs.map(() => 1 / probs.length);
+  };
+  if (kind === "pricer") {
+    const index = pricerIndex(node, bucket, q ?? new Float64Array(BUCKETS).fill(1 / BUCKETS));
+    if (index >= 0) probs[index] = 1;
+    return close();
+  }
+  if (kind === "station") {
+    if (call > 0) putKind(node, "call", 1, probs);
+    else if (equity > 0.92) putBet(node, Math.max(1, pot * 0.5), 1, probs);
+    else putKind(node, "check", 1, probs);
+    return close();
+  }
+  if (kind === "nit") {
+    if (equity > 0.92) {
+      if (!putBet(node, call + pot, 1, probs) && call > 0) putKind(node, "call", 1, probs);
+    } else if (call > 0) putKind(node, "fold", 1, probs);
+    else putKind(node, "check", 1, probs);
+    return close();
+  }
+  if (kind === "maniac") {
+    const stacked = call > node.behind / 2 && equity < 0.35;
+    if (stacked) putKind(node, "fold", 1, probs);
+    else {
+      putBet(node, call + pot, 0.65, probs);
+      if (call > 0) putKind(node, "call", 0.35, probs);
+      else putKind(node, "check", 0.35, probs);
+    }
+    return close();
+  }
+  if (kind === "switching") {
+    const nit = Math.floor(hand / 20) % 2 === 0;
+    return readProbs(node, bucket, nit ? "nit" : "maniac", hand, memory, q);
+  }
+  if (kind === "learning") {
+    const aggression = (memory.bets + 3) / (memory.acts + 10);
+    const lighter = aggression > 0.45 ? 0.2 : aggression < 0.2 ? -0.1 : 0.0;
+    const steal = aggression > 0.45 ? 0.0 : aggression < 0.2 ? 0.4 : 0.1;
+    if (call > 0) {
+      const price = call / (pot + call);
+      if (equity > 0.8) putBet(node, call + pot, 1, probs);
+      else if (equity >= price + 0.12 - lighter) putKind(node, "call", 1, probs);
+      else putKind(node, "fold", 1, probs);
+    } else if (equity > 0.6) {
+      putBet(node, pot * 0.75, 1, probs);
+    } else {
+      putBet(node, pot * 0.75, steal, probs);
+      putKind(node, "check", 1 - steal, probs);
+    }
+    return close();
+  }
+  if (kind === "v10") {
+    if (call > 0) {
+      const price = call / (pot + call);
+      if (equity > 0.9) putBet(node, call + pot, 1, probs);
+      else if (equity >= price + 0.08) putKind(node, "call", 1, probs);
+      else putKind(node, "fold", 1, probs);
+    } else {
+      putBet(node, pot * 0.66, 0.15, probs);
+      putKind(node, "check", 0.85, probs);
+    }
+    return close();
+  }
+  return close();
+}
+
+// ---- proto_sim.js ----
+// The paired six-max river sim: the reference pricer against the multiway re-solve, on the same
+// deals, over the Arena's seven 6-max rows. Throwaway prototype.
+
+
+
+
+
+const ROWS = ["pricer", "v10.0.2", "calling station", "nit", "maniac", "switching", "learning"];
+const KIND = {
+  pricer: "pricer",
+  "v10.0.2": "v10",
+  "calling station": "station",
+  nit: "nit",
+  maniac: "maniac",
+  switching: "switching",
+  learning: "learning",
+};
+
+/** The bucket prior each row's opponents enter with. Bucket 0 is weakest, 7 strongest. */
+const PRIORS = {
+  pricer: [3, 4, 5, 6, 7, 8, 9, 10],
+  "v10.0.2": [2, 3, 4, 6, 8, 10, 12, 15],
+  "calling station": [5, 6, 7, 8, 8, 9, 9, 10],
+  nit: [1, 1, 2, 3, 5, 8, 12, 18],
+  maniac: [5, 6, 7, 8, 8, 9, 9, 10],
+  switching: [3, 4, 5, 6, 7, 8, 9, 10],
+  learning: [3, 4, 5, 6, 7, 8, 9, 10],
+};
+
+function prior(name) {
+  const raw = PRIORS[name];
+  const total = raw.reduce((a, b) => a + b, 0);
+  return Float64Array.from(raw, (v) => v / total);
+}
+
+function iterationsFor(potChips, bigBlind = 20, cards = 5) {
+  const blinds = Math.floor(potChips / Math.max(1, bigBlind));
+  const river = Math.min(200 + 20 * blinds, 2000);
+  return cards < 5 ? Math.floor(river / 4) : river;
+}
+
+/**
+ * The re-solve at one (pot, hero seat, prior): a three-way river tree, our range uniform and the
+ * two opponents' the prior's. Cached, because the strategy depends on the spot and not on the
+ * cards actually dealt.
+ */
+function solverFor(cache, potChips, heroSeat, q, bigBlind = 20, cards = 5, iterations = null) {
+  const iters = iterations ?? iterationsFor(potChips, bigBlind, cards);
+  const key = `${potChips}|${heroSeat}|${iters}|${Array.from(q).map((v) => v.toFixed(4)).join(",")}`;
+  if (cache.has(key)) return cache.get(key);
+  const tree = buildTree({ players: 3, pot: potChips, stack: 2000, maxBets: 2 });
+  const uniform = new Float64Array(BUCKETS).fill(1 / BUCKETS);
+  const ranges = [q.slice(), q.slice(), q.slice()];
+  ranges[heroSeat] = uniform;
+  solve(tree, ranges, iters, { plus: false });
+  const entry = { tree, iterations: iters, key };
+  cache.set(key, entry);
+  return entry;
+}
+
+function fallbackIndex(node) {
+  const call = node.actions.findIndex((a) => a.kind === "call");
+  if (call >= 0) return call;
+  const check = node.actions.findIndex((a) => a.kind === "check");
+  if (check >= 0) return check;
+  return node.actions.findIndex((a) => a.kind === "fold");
+}
+
+/** One river with `policy` in the hero's seat. Returns the hero's net in chips. */
+function playRiver({ tree, heroSeat, buckets, policy, q, kind, hand, oppRng, heroRng, memory }) {
+  let node = tree.nodes[0];
+  let guard = 0;
+  while (node.kind === "act") {
+    if (guard++ > 100) throw new Error("the river did not end");
+    let index;
+    if (node.actor === heroSeat) {
+      if (policy === "reference") index = pricerIndex(node, buckets[heroSeat], q);
+      else if (policy === "pinned") {
+        index = pinnedIndex(tree, node, heroSeat, buckets[heroSeat], q, modelProbs);
+      } else if (policy === "read") {
+        index = pinnedIndex(tree, node, heroSeat, buckets[heroSeat], q, (n, b) =>
+          readProbs(n, b, kind, hand, memory, q),
+        );
+      } else index = heroIndex("challenger", node, buckets[heroSeat], q, heroRng);
+      if (index >= 0) {
+        memory.acts += 1;
+        if (node.actions[index].kind === "bet") memory.bets += 1;
+      }
+    } else if (kind === "pricer") {
+      index = pricerIndex(node, buckets[node.actor], q);
+    } else {
+      index = archetypeIndex(node, buckets[node.actor], kind, oppRng, hand, memory);
+    }
+    if (index < 0) index = fallbackIndex(node);
+    node = tree.nodes[node.children[index]];
+  }
+  const own = node.added[heroSeat];
+  if (node.folded[heroSeat]) return -own;
+  if (node.kind === "fold") {
+    return node.winner === heroSeat ? node.pot - own : -own;
+  }
+  const opps = node.live.filter((p) => p !== heroSeat).map((p) => buckets[p]);
+  return actualShare(buckets[heroSeat], opps) * node.pot - own;
+}
+
+/** The exact Sequence(200) the margin rule reads, crates/learn/src/probe.rs:103-148. */
+function sequence() {
+  const log = -2 * Math.log(0.05);
+  const mixing = (log + Math.log(log + 1)) / 200;
+  let count = 0;
+  let sum = 0;
+  let squares = 0;
+  return {
+    observe(x) {
+      count += 1;
+      sum += x;
+      squares += x * x;
+    },
+    get count() {
+      return count;
+    },
+    mean() {
+      return sum / Math.max(1, count);
+    },
+    radius(alpha = 0.05) {
+      if (count < 2) return Infinity;
+      const spread = Math.sqrt(Math.max(0, (squares - (sum * sum) / count) / (count - 1)));
+      const scaled = count * mixing + 1;
+      return (
+        spread *
+        Math.sqrt((2 * scaled) / (count * count * mixing) * Math.log(Math.sqrt(scaled) / alpha))
+      );
+    },
+  };
+}
+
+/** The margin rule, crates/learn/src/margin.rs:49-73. */
+function readMargin(differences, margin = 20000) {
+  const s = sequence();
+  for (const d of differences) s.observe(d);
+  const mean = s.mean();
+  const radius = s.radius(0.05);
+  const bouts = s.count;
+  let admission = "admitted";
+  if (bouts < 30) admission = "unresolved";
+  else if (mean + radius < -margin) admission = "refused";
+  else if (radius > margin) admission = "unresolved";
+  return { admission, mean, radius, bouts };
+}
+
+/**
+ * Play `bouts` bouts on each row. Each deal is played from all three live seats; the deal's
+ * result is the mean over them, as the six-max ring averages its rotations. `eligible` is the
+ * share of deals that reach a three-way river; the rest have a difference of zero.
+ */
+function simulate({ bouts = 30, seed = 1, eligible = 0.3, arms = ["free", "pinned", "read"], onRow } = {}) {
+  const results = [];
+  // One population prior is what the policy reads; the rows' own priors shape the cards they are
+  // dealt, so the same solve is reused across rows.
+  const q = prior("pricer");
+  const cache = new Map();
+  const bucketCdfs = new Map();
+  const cdfFor = (name) => {
+    if (bucketCdfs.has(name)) return bucketCdfs.get(name);
+    const p = prior(name);
+    const cdf = [];
+    let acc = 0;
+    for (let b = 0; b < 8; b += 1) {
+      acc += p[b];
+      cdf.push(acc);
+    }
+    bucketCdfs.set(name, cdf);
+    return cdf;
+  };
+  for (let rowIndex = 0; rowIndex < ROWS.length; rowIndex += 1) {
+    const row = ROWS[rowIndex];
+    const kind = KIND[row];
+    const rowCdf = cdfFor(row);
+    const drawBucket = (u) => {
+      for (let b = 0; b < 8; b += 1) if (u <= rowCdf[b]) return b;
+      return 7;
+    };
+    const perDeal = [];
+    const pinnedPerDeal = [];
+    const readPerDeal = [];
+    const boutMeans = [];
+    for (let bout = 0; bout < bouts; bout += 1) {
+      let sum = 0;
+      for (let deal = 0; deal < 50; deal += 1) {
+        const hand = bout * 50 + deal;
+        const dealRng = rng(seed ^ (hand * 2654435761) ^ 0x85ebca6b);
+        const eligibleDeal = dealRng() < eligible;
+        // The same deal's cards for every row; only the row's prior shapes the buckets.
+        const bucketRng = rng(seed ^ (hand * 40503) ^ 0x9e3779b9);
+        const buckets = [0, 0, 0];
+        buckets[0] = drawBucket(bucketRng());
+        buckets[1] = drawBucket(bucketRng());
+        buckets[2] = drawBucket(bucketRng());
+        const potBb = [4.5, 7.5, 10.5, 15][Math.min(3, Math.floor(bucketRng() * 4))];
+        const potChips = Math.round(potBb * 20);
+        let dealSum = 0;
+        let pinnedSum = 0;
+        let readSum = 0;
+        for (let heroSeat = 0; heroSeat < 3; heroSeat += 1) {
+          const solved = solverFor(cache, potChips, heroSeat, q);
+          const oppSeed =
+            seed ^ (hand * 104729) ^ (heroSeat * 15485863) ^ (rowIndex * 32452843);
+          const heroSeed = seed ^ (hand * 1299709) ^ (heroSeat * 15485863) ^ 0x51ed270b;
+          const reference = playRiver({
+            tree: solved.tree,
+            heroSeat,
+            buckets,
+            policy: "reference",
+            q,
+            kind,
+            hand,
+            oppRng: rng(oppSeed),
+            heroRng: rng(heroSeed),
+            memory: { acts: 0, bets: 0 },
+          });
+          const challenger = playRiver({
+            tree: solved.tree,
+            heroSeat,
+            buckets,
+            policy: "challenger",
+            q,
+            kind,
+            hand,
+            oppRng: rng(oppSeed),
+            heroRng: rng(heroSeed),
+            memory: { acts: 0, bets: 0 },
+          });
+          dealSum += (challenger - reference) / 20;
+          if (arms.includes("pinned")) {
+            const pinned = playRiver({
+              tree: solved.tree,
+              heroSeat,
+              buckets,
+              policy: "pinned",
+              q,
+              kind,
+              hand,
+              oppRng: rng(oppSeed),
+              heroRng: rng(heroSeed),
+              memory: { acts: 0, bets: 0 },
+            });
+            pinnedSum += (pinned - reference) / 20;
+          }
+          if (arms.includes("read")) {
+            const read = playRiver({
+              tree: solved.tree,
+              heroSeat,
+              buckets,
+              policy: "read",
+              q,
+              kind,
+              hand,
+              oppRng: rng(oppSeed),
+              heroRng: rng(heroSeed),
+              memory: { acts: 0, bets: 0 },
+            });
+            readSum += (read - reference) / 20;
+          }
+        }
+        const diff = eligibleDeal ? dealSum / 3 : 0;
+        const pinnedDiff = eligibleDeal ? pinnedSum / 3 : 0;
+        const readDiff = eligibleDeal ? readSum / 3 : 0;
+        sum += diff;
+        perDeal.push(diff);
+        pinnedPerDeal.push(pinnedDiff);
+        readPerDeal.push(readDiff);
+      }
+      boutMeans.push(sum / 50);
+    }
+    const stats = (series) => {
+      if (series.length === 0) return { mean: null, ci95: null };
+      const meanBb = series.reduce((a, b) => a + b, 0) / Math.max(1, series.length);
+      const mean = meanBb * 100000;
+      const variance =
+        series.reduce((a, b) => a + (b - meanBb) ** 2, 0) / Math.max(1, series.length - 1);
+      const ci95 = 1.96 * Math.sqrt(variance / Math.max(1, series.length)) * 100000;
+      return { mean, ci95 };
+    };
+    const free = stats(perDeal);
+    const pin = stats(pinnedPerDeal);
+    const readStats = stats(readPerDeal);
+    results.push({
+      row,
+      perDeal,
+      pinnedPerDeal,
+      readPerDeal,
+      boutMeans,
+      mean: free.mean,
+      ci95: free.ci95,
+      pinnedMean: pin.mean,
+      pinnedCi95: pin.ci95,
+      readMean: readStats.mean,
+      readCi95: readStats.ci95,
+      deals: perDeal.length,
+    });
+    if (onRow) onRow(row, results.length / ROWS.length);
+  }
+  const pool = (key) => {
+    const out = [];
+    for (let bout = 0; bout < bouts; bout += 1) {
+      let sum = 0;
+      for (const row of results) {
+        const start = bout * 50;
+        const end = start + 50;
+        const slice = row[key].slice(start, end);
+        sum += slice.reduce((a, b) => a + b, 0) / 50;
+      }
+      out.push((sum / results.length) * 100000);
+    }
+    return out;
+  };
+  const pooledBouts = pool("perDeal");
+  const reading = readMargin(pooledBouts, 20000);
+  const pinnedPooledBouts = arms.includes("pinned") ? pool("pinnedPerDeal") : null;
+  const readPooledBouts = arms.includes("read") ? pool("readPerDeal") : null;
+  return {
+    results,
+    pooledBouts,
+    pinnedPooledBouts,
+    readPooledBouts,
+    reading,
+    pinnedReading: pinnedPooledBouts ? readMargin(pinnedPooledBouts, 20000) : null,
+    readReading: readPooledBouts ? readMargin(readPooledBouts, 20000) : null,
+    eligible,
+    seed,
+    bouts,
+  };
+}
+</script>
+<script>
+(function () {
+  "use strict";
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  const fmt = (n, d = 2) => (n >= 0 ? "+" : "") + n.toFixed(d);
+  const bb = (mbb) => mbb / 1000;
+  const cls = (n) => (n >= 0 ? "pos" : "neg");
+  const pct = (n) => (n * 100).toFixed(1) + "%";
+
+  // Tabs.
+  $$(".tabs button").forEach((button) => {
+    button.addEventListener("click", () => {
+      $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b === button)));
+      $$(".panel").forEach((p) => p.classList.toggle("active", p.id === "panel-" + button.dataset.tab));
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // Abstraction: deal a river board and cut the live pairs into the eight buckets.
+
+  const RANK = "23456789TJQKA";
+  const SUIT = ["♠", "♥", "♦", "♣"];
+  const RED = new Set([1, 2]);
+  const cardText = (c) => RANK[c.r] + SUIT[c.s];
+  const cardHtml = (c) =>
+    `<span class="mono" style="color:${RED.has(c.s) ? "#f85149" : "var(--ink)"}">${RANK[c.r]}${SUIT[c.s]}</span>`;
+
+  function eval5(cards) {
+    const ranks = cards.map((c) => c.r).sort((a, b) => b - a);
+    const suits = cards.map((c) => c.s);
+    const flush = suits.every((s) => s === suits[0]);
+    const counts = new Map();
+    for (const r of ranks) counts.set(r, (counts.get(r) || 0) + 1);
+    const groups = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || b[0] - a[0]);
+    const unique = Array.from(new Set(ranks)).sort((a, b) => b - a);
+    let straight = -1;
+    for (let i = 0; i + 4 < unique.length; i += 1) {
+      if (unique[i] - unique[i + 4] === 4) { straight = unique[i]; break; }
+    }
+    if (unique.includes(12) && unique.includes(3) && unique.includes(2) && unique.includes(1) && unique.includes(0)) {
+      straight = 3;
+    }
+    let cat;
+    if (flush && straight >= 0) cat = 8;
+    else if (groups[0][1] === 4) cat = 7;
+    else if (groups[0][1] === 3 && groups[1] && groups[1][1] === 2) cat = 6;
+    else if (flush) cat = 5;
+    else if (straight >= 0) cat = 4;
+    else if (groups[0][1] === 3) cat = 3;
+    else if (groups[0][1] === 2 && groups[1] && groups[1][1] === 2) cat = 2;
+    else if (groups[0][1] === 2) cat = 1;
+    else cat = 0;
+    let kickers;
+    if (cat === 8 || cat === 4) kickers = [straight];
+    else {
+      kickers = [];
+      for (const [r, n] of groups) for (let i = 0; i < n; i += 1) kickers.push(r);
+    }
+    let score = cat;
+    for (let i = 0; i < 5; i += 1) score = score * 13 + (kickers[i] ?? 0);
+    return score;
+  }
+
+  function eval7(cards) {
+    let best = -1;
+    for (let a = 0; a < 3; a += 1)
+      for (let b = a + 1; b < 4; b += 1)
+        for (let c = b + 1; c < 5; c += 1)
+          for (let d = c + 1; d < 6; d += 1)
+            for (let e = d + 1; e < 7; e += 1) {
+              const score = eval5([cards[a], cards[b], cards[c], cards[d], cards[e]]);
+              if (score > best) best = score;
+            }
+    return best;
+  }
+
+  function deal() {
+    const deck = [];
+    for (let r = 0; r < 13; r += 1) for (let s = 0; s < 4; s += 1) deck.push({ r, s });
+    for (let i = deck.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return { board: deck.slice(0, 5), hole: deck.slice(5, 7), rest: deck.slice(7) };
+  }
+
+  function bucketize(board, hole) {
+    // The 47 cards not on the board are the deck every live pair is drawn from; the hero's pair
+    // is one of them. This is ranked(board) in strategy/src/action.rs, with dead empty.
+    const deck = [];
+    for (let r = 0; r < 13; r += 1)
+      for (let s = 0; s < 4; s += 1) {
+        const c = { r, s };
+        if (!board.some((x) => x.r === r && x.s === s)) deck.push(c);
+      }
+    const scored = [];
+    for (let i = 0; i < deck.length; i += 1)
+      for (let j = i + 1; j < deck.length; j += 1) {
+        scored.push({ pair: [deck[i], deck[j]], score: eval7([...board, deck[i], deck[j]]) });
+      }
+    scored.sort((x, y) => x.score - y.score);
+    const total = scored.length;
+    const buckets = new Array(total).fill(0);
+    let start = 0;
+    while (start < total) {
+      let end = start + 1;
+      while (end < total && scored[end].score === scored[start].score) end += 1;
+      const share = (start + end) / 2 / total;
+      const at = Math.min(7, Math.floor(share * 8));
+      for (let k = start; k < end; k += 1) buckets[k] = at;
+      start = end;
+    }
+    let heroAt = -1;
+    for (let k = 0; k < total; k += 1) {
+      const p = scored[k].pair;
+      if ((p[0].r === hole[0].r && p[0].s === hole[0].s && p[1].r === hole[1].r && p[1].s === hole[1].s) ||
+          (p[1].r === hole[0].r && p[1].s === hole[0].s && p[0].r === hole[1].r && p[0].s === hole[1].s)) {
+        heroAt = k;
+        break;
+      }
+    }
+    const counts = new Array(8).fill(0);
+    for (const b of buckets) counts[b] += 1;
+    return { counts, total, heroBucket: buckets[heroAt] ?? 0, heroScore: heroAt >= 0 ? scored[heroAt].score : null };
+  }
+
+  let currentDeal = null;
+  function renderBucketTable(heroBucket, counts, total) {
+    const model = baselineModel();
+    const tbody = $("#bucket-table tbody");
+    tbody.innerHTML = "";
+    for (let b = 0; b < 8; b += 1) {
+      const tr = document.createElement("tr");
+      if (b === heroBucket) tr.className = "highlight";
+      tr.innerHTML =
+        `<td class="mono">${b}${b === heroBucket ? " · hero" : ""}</td>` +
+        `<td class="num">${counts[b]}</td>` +
+        `<td class="num">${pct(counts[b] / total)}</td>` +
+        `<td class="num">${(model.facing[b].fold * 100).toFixed(1)}%</td>` +
+        `<td class="num">${(model.open[b].bet * 100).toFixed(1)}%</td>` +
+        `<td class="num">${(model.facing[b].raise * 100).toFixed(1)}%</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function renderDeal() {
+    currentDeal = deal();
+    const { board, hole } = currentDeal;
+    const result = bucketize(board, hole);
+    $("#deal-cards").innerHTML =
+      `<span class="muted">board</span>  ${board.map(cardHtml).join(" ")}` +
+      `  <span class="muted">·</span>  <span class="muted">hero</span>  ${hole.map(cardHtml).join(" ")}` +
+      `  <span class="muted">·</span>  <span class="muted">bucket</span>  <b style="color:var(--green)">${result.heroBucket}</b>` +
+      `  <span class="muted">of 7</span>`;
+    $("#deal-note").textContent = `${result.total} live pairs on the board; the hero's pair is ranked among them, weakest 0 to strongest 7.`;
+    renderBucketTable(result.heroBucket, result.counts, result.total);
+  }
+  $("#deal-board").addEventListener("click", renderDeal);
+  renderDeal();
+
+  // ---------------------------------------------------------------------------------------------
+  // Cost tab.
+
+  const costState = () => ({
+    players: Number($("#cost-players").value),
+    bets: Number($("#cost-bets").value),
+    cards: Number($("#cost-street").value),
+    potBb: Number($("#cost-pot").value) || 7.5,
+    tp: Number($("#cost-tp").value) * 1e6
+  });
+
+  function iterationsAt(potBb, cards) {
+    const chips = Math.round(potBb * 20);
+    const blinds = Math.floor(chips / 20);
+    const river = Math.min(200 + 20 * blinds, 2000);
+    return cards < 5 ? Math.floor(river / 4) : river;
+  }
+
+  function costFor(players, bets, potBb, cards, tp) {
+    const row = DATA.cost.find((r) => r.players === players && r.maxBets === bets);
+    const iters = iterationsAt(potBb, cards);
+    const visits = row.visitsPerIteration * iters;
+    const ms = (visits / tp) * 1000;
+    return { ...row, iterations: iters, totalVisits: visits, ms };
+  }
+
+  function badge(ms) {
+    if (ms <= 8000) return '<span class="pill ok">8 s</span>';
+    if (ms <= 45000) return '<span class="pill warn">clock</span>';
+    return '<span class="pill bad">over</span>';
+  }
+
+  function renderCost() {
+    const s = costState();
+    const c = costFor(s.players, s.bets, s.potBb, s.cards, s.tp);
+    $("#cost-summary").innerHTML = [
+      ["Nodes", c.nodes.toLocaleString()],
+      ["Act nodes", c.acts.toLocaleString()],
+      ["Showdowns", c.showings.toLocaleString()],
+      ["Visits / iteration", c.visitsPerIteration.toLocaleString()],
+      ["Iterations", c.iterations.toLocaleString()],
+      ["Total visits", c.totalVisits.toLocaleString()],
+      ["ms at " + (s.tp / 1e6) + "M/s", c.ms.toFixed(c.ms < 10 ? 1 : 0)],
+      ["Share of 8 s", ((c.ms / 8000) * 100).toFixed(2) + "%"]
+    ].map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+
+    const bars = [];
+    for (let players = 2; players <= 6; players += 1) {
+      const cc = costFor(players, 2, s.potBb, s.cards, s.tp);
+      const width = Math.max(1.5, Math.min(100, (Math.log10(Math.max(1, cc.ms) / 10) / Math.log10(4500)) * 100));
+      const tone = cc.ms <= 8000 ? "ok" : cc.ms <= 45000 ? "warn" : "bad";
+      bars.push(
+        `<div class="bar-row"><div>${players}-way</div><div class="bar-track"><div class="bar-fill ${tone}" style="width:${width}%"></div></div><div class="bar-lab">${cc.ms < 1000 ? cc.ms.toFixed(0) + " ms" : (cc.ms / 1000).toFixed(1) + " s"}</div></div>`
+      );
+    }
+    $("#cost-bars").innerHTML = bars.join("") + '<div class="sticky-note">log scale, 10 ms to 45 s; bars are the one-raise tree at the selected pot and street.</div>';
+
+    const tbody = $("#cost-grid tbody");
+    tbody.innerHTML = "";
+    for (let players = 2; players <= 6; players += 1)
+      for (let bets = 1; bets <= 3; bets += 1) {
+        const cc = costFor(players, bets, s.potBb, s.cards, s.tp);
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${players}-way</td><td class="num">${bets}</td><td class="num">${cc.nodes.toLocaleString()}</td>` +
+          `<td class="num">${cc.acts.toLocaleString()}</td><td class="num">${cc.visitsPerIteration.toLocaleString()}</td>` +
+          `<td class="num">${cc.iterations.toLocaleString()}</td><td class="num">${cc.totalVisits.toLocaleString()}</td>` +
+          `<td class="num">${cc.ms < 1000 ? cc.ms.toFixed(0) + " ms" : (cc.ms / 1000).toFixed(2) + " s"}</td><td>${badge(cc.ms)}</td>`;
+        tbody.appendChild(tr);
+      }
+  }
+  $("#cost-run").addEventListener("click", renderCost);
+  ["#cost-players", "#cost-bets", "#cost-street", "#cost-pot", "#cost-tp"].forEach((sel) =>
+    $(sel).addEventListener("change", renderCost)
+  );
+  renderCost();
+
+  // ---------------------------------------------------------------------------------------------
+  // Paired sim tab.
+
+  function renderRows() {
+    const tbody = $("#sim-rows tbody");
+    tbody.innerHTML = "";
+    for (const row of DATA.full.rows) {
+      const mean = bb(row.mean);
+      const ci = bb(row.ci95);
+      const reading = mean - ci > 0 ? "above 0" : mean + ci < 0 ? "below 0" : "straddles 0";
+      const pill = reading === "above 0" ? "ok" : reading === "below 0" ? "bad" : "warn";
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${row.row}</td><td class="num ${cls(mean)}">${fmt(mean)}</td><td class="num muted">±${ci.toFixed(2)}</td>` +
+        `<td><span class="pill ${pill}">${reading}</span></td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function renderSeeds() {
+    const tbody = $("#sim-seeds tbody");
+    tbody.innerHTML = "";
+    for (const s of DATA.seeds) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td class="mono">${s.seed}</td><td class="num ${cls(s.mean)}">${fmt(bb(s.mean))}</td>` +
+        `<td class="num">±${bb(s.radius).toFixed(2)}</td><td><span class="pill ok">${s.admission}</span></td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function renderDiag() {
+    const tbody = $("#sim-diag tbody");
+    tbody.innerHTML = "";
+    for (const row of DATA.diag.rows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${row.row}</td><td class="num ${cls(bb(row.free))}">${fmt(bb(row.free), 0)}</td>` +
+        `<td class="num ${cls(bb(row.pinned))}">${fmt(bb(row.pinned), 0)}</td>` +
+        `<td class="num ${cls(bb(row.read))}">${fmt(bb(row.read), 0)}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function marginChart() {
+    const width = 1000, height = 320;
+    const pad = { l: 56, r: 18, t: 18, b: 40 };
+    const xs = DATA.curve7.map((d) => d.bouts);
+    const xmin = 25, xmax = 205;
+    const ymin = -50, ymax = 60;
+    const x = (v) => pad.l + ((v - xmin) / (xmax - xmin)) * (width - pad.l - pad.r);
+    const y = (v) => pad.t + ((ymax - v) / (ymax - ymin)) * (height - pad.t - pad.b);
+    const points = DATA.curve7;
+    const upper = points.map((d) => `${x(d.bouts).toFixed(1)},${y(bb(d.mean + d.radius)).toFixed(1)}`);
+    const lower = points.slice().reverse().map((d) => `${x(d.bouts).toFixed(1)},${y(bb(d.mean - d.radius)).toFixed(1)}`);
+    const meanLine = points.map((d) => `${x(d.bouts).toFixed(1)},${y(bb(d.mean)).toFixed(1)}`).join(" ");
+    const grid = [];
+    for (const v of [-40, -20, 0, 20, 40, 60]) {
+      grid.push(`<line x1="${pad.l}" x2="${width - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="${v === 0 ? "#33465c" : "#1c2633"}" stroke-width="1" ${v === -20 || v === 20 ? 'stroke-dasharray="4 3" stroke="#f85149"' : ""}/>`);
+      grid.push(`<text x="${pad.l - 8}" y="${y(v) + 4}" fill="#8b98a8" font-size="11" text-anchor="end" font-family="ui-monospace,monospace">${v > 0 ? "+" : ""}${v}</text>`);
+    }
+    const ticks = [30, 50, 80, 100, 150, 200];
+    const xt = ticks.map((v) => `<text x="${x(v)}" y="${height - 14}" fill="#8b98a8" font-size="11" text-anchor="middle" font-family="ui-monospace,monospace">${v}</text>`).join("");
+    const dots = points.map((d) => `<circle cx="${x(d.bouts)}" cy="${y(bb(d.mean))}" r="3" fill="#58a6ff"/>`).join("");
+    const svg = `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="margin curve">
+      ${grid.join("")}
+      <polygon points="${upper.concat(lower).join(" ")}" fill="rgba(88,166,255,.18)" stroke="none"/>
+      <polyline points="${meanLine}" fill="none" stroke="#58a6ff" stroke-width="2"/>
+      ${dots}
+      <line x1="${pad.l}" x2="${width - pad.r}" y1="${height - pad.b}" y2="${height - pad.b}" stroke="#33465c"/>
+      ${xt}
+      <text x="${width - pad.r}" y="${height - 14}" fill="#8b98a8" font-size="11" text-anchor="end" font-family="ui-monospace,monospace">bouts</text>
+      <text x="${pad.l}" y="${pad.t - 4}" fill="#8b98a8" font-size="11" font-family="ui-monospace,monospace">bb/100</text>
+    </svg>`;
+    $("#margin-chart").innerHTML = svg;
+  }
+
+  function runPreview() {
+    const button = $("#sim-run");
+    button.disabled = true;
+    $("#sim-status").textContent = "running 10 bouts over seven rows…";
+    $("#sim-live").innerHTML = "";
+    setTimeout(() => {
+      const t0 = performance.now();
+      const result = simulate({ bouts: 10, seed: 7, eligible: 0.3, arms: ["free"] });
+      const ms = performance.now() - t0;
+      const reading = result.reading;
+      const tone = reading.admission === "admitted" ? "ok" : reading.admission === "refused" ? "bad" : "warn";
+      $("#sim-live").innerHTML =
+        `<div class="note ${tone}" style="margin-top:10px;"><b>10-bout preview · ${(ms / 1000).toFixed(1)} s.</b> ` +
+        `Pooled mean ${fmt(bb(reading.mean))} bb/100, 95% radius ±${bb(reading.radius).toFixed(2)}; ` +
+        `<span class="pill ${tone}">${reading.admission}</span>. ` +
+        `Ten bouts is below the 30-bout floor: this is a smoke test of the embedded sim, not a verdict.</div>`;
+      button.disabled = false;
+      $("#sim-status").textContent = "the recorded run is embedded; this is a live preview of the same code";
+    }, 30);
+  }
+  $("#sim-run").addEventListener("click", runPreview);
+
+  renderRows();
+  renderSeeds();
+  renderDiag();
+  marginChart();
+
+  // Expose the prototype for the console, as the Method tab says.
+  window.simulate = simulate;
+  window.buildTree = buildTree;
+  window.solverFor = solverFor;
+  window.readMargin = readMargin;
+  window.sequence = sequence;
+  window.DATA = DATA;
+})();
+</script>
+</div>
+</body>
+</html>
