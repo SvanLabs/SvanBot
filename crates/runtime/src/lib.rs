@@ -27,6 +27,7 @@ pub mod probing;
 pub mod record;
 pub mod release;
 pub mod rest;
+pub mod round_robin;
 pub mod season;
 pub mod session;
 pub mod ship;

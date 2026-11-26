@@ -28,7 +28,8 @@
 //! ([`download`]). `svanbot fit` fits the action model on the store's hands ([`fit`]), and
 //! `svanbot field` fits the bot's own field from its store and plays it as one Arena row, apart
 //! from the release rows ([`field`]). `svanbot arena` plays the policy against every sparring
-//! archetype ([`arena`]). `svanbot paired` runs a
+//! archetype ([`arena`]). `svanbot round-robin` plays each bot's gauntlet once, bounded and in
+//! order, into the fleet's own record ([`round_robin`]). `svanbot paired` runs a
 //! paired sim of the policy against the pricer ([`paired`]). `svanbot propose` puts a challenger
 //! forward for the canary ([`propose`]), and `svanbot learn` runs one step of the unattended
 //! search for one ([`svanbot::learn`]). `svanbot dashboard` serves the fleet's dashboard on
@@ -61,6 +62,7 @@ mod paired_compare;
 mod paired_reads;
 mod play_arena;
 mod propose;
+mod round_robin;
 mod ship;
 mod tables;
 
@@ -120,6 +122,11 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("play") {
         let args: Vec<String> = std::env::args().skip(2).collect();
         return play_arena::run(&args);
+    }
+    // Nor is a round-robin pass: it reads the fleet's files and plays sims, and is no bot's start.
+    if std::env::args().nth(1).as_deref() == Some("round-robin") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return round_robin::run(&args);
     }
     // Nor is fitting a bot's own field: the learner never opens a store, and a per-bot fit is no
     // bot's start.

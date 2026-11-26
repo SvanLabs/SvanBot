@@ -547,6 +547,21 @@ it), so each keeps its own runs and its own board, and a result is never pooled 
 headline states the heads-up league, and the ship bar reads heads up and 6-max.
 _Avoid_: format, mode, division
 
+**Gauntlet**:
+One bot's rows in the round-robin: the ten shared opponents heads up, the same ten at the 6-max
+ring, and one row against each champion in its archive.
+_Avoid_: suite, ladder, opponent set
+
+**Round-robin**:
+The standing test that plays every bot's gauntlet in one bounded, sequential pass at low priority,
+and records each bot's matrix in the fleet's own record. It never gates a release.
+_Avoid_: tournament, ladder, sweep
+
+**Matrix**:
+The round-robin's per-bot results: every row's paired bouts and its reading, kept apart from the
+release Arena.
+_Avoid_: board, table, standings
+
 **Ring**:
 One deal played once from every seat of a table of three or more, the challenger moving a seat each time
 against the same opponents, so it holds every hand in every position and the luck of the cards

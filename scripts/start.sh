@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Starts the fleet: every bot with an env file in ~/.config/svanbot/, the dashboard and the learner,
-# each under its supervisor (scripts/bot.sh, V11-52). One already running is left as it is. The
+# Starts the fleet: every bot with an env file in ~/.config/svanbot/, the dashboard, the learner and
+# the round-robin, each under its supervisor (scripts/bot.sh, V11-52). One already running is left as it is. The
 # operator or an agent runs it (deploy/README.md); a crontab `@reboot` line runs it on a reboot.
 set -euo pipefail
 
@@ -29,7 +29,7 @@ if ((${#bots[@]} == 0)); then
 fi
 
 lock_install_tree
-for name in "${bots[@]}" dashboard learn; do
+for name in "${bots[@]}" dashboard learn round-robin; do
     if ! said=$("$supervisor" start "$name" 2>&1); then
         # Already running is what start is for; anything else is reported and the rest still start.
         [[ $said == *"is already running"* ]] || { printf '%s\n' "$said" >&2; failed=1; }
