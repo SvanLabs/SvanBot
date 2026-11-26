@@ -17,6 +17,7 @@ use svanbot_core::spot::Spot;
 use svanbot_strategy::policy::Decision;
 use tungstenite::client::IntoClientRequest;
 use tungstenite::http::HeaderValue;
+use tungstenite::http::Uri;
 use tungstenite::http::header::AUTHORIZATION;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
@@ -30,6 +31,16 @@ use crate::wire::{self, Inbound, Outbound, Player};
 
 /// The venue's WebSocket endpoint.
 pub const VENUE: &str = "wss://openpoker.ai/ws";
+
+fn public_venue(uri: &Uri) -> bool {
+    uri.scheme_str() == Some("wss")
+        && uri
+            .host()
+            .is_some_and(|host| host.eq_ignore_ascii_case("openpoker.ai"))
+        && uri.port_u16().unwrap_or(443) == 443
+        && uri.path() == "/ws"
+        && uri.query().is_none_or(str::is_empty)
+}
 
 /// Puts `wait` on the socket under `socket`, so a read the venue has nothing to answer returns
 /// instead of blocking. Both stream kinds reach the same [`std::net::TcpStream`]: plain directly,
@@ -217,7 +228,7 @@ pub fn play_with_players<D: Into<Decision>>(
     let bearer = HeaderValue::from_str(&format!("Bearer {}", config.key))
         .map_err(|_| ClientError::BadConfig("the key is not a valid header value".into()))?;
     request.headers_mut().insert(AUTHORIZATION, bearer);
-    if config.url == VENUE && !bot.seat_discovered {
+    if public_venue(request.uri()) && !bot.seat_discovered {
         let mut rest = Rest::new(API, &config.key, Limiter::new(60, Duration::from_secs(60)));
         bot.discover_seat(&mut rest)?;
     }
@@ -311,4 +322,28 @@ pub fn fresh_seed() -> u64 {
     use std::hash::{BuildHasher, RandomState};
 
     RandomState::new().hash_one("svanbot decision")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::public_venue;
+
+    #[test]
+    fn only_the_public_venue_connection_uses_public_seat_discovery() {
+        for url in [
+            "wss://openpoker.ai/ws",
+            "wss://OPENPOKER.AI:443/ws",
+            "wss://openpoker.ai/ws?",
+        ] {
+            assert!(public_venue(&url.parse().unwrap()), "{url}");
+        }
+        for url in [
+            "wss://openpoker.ai/ws?competition_id=private",
+            "ws://openpoker.ai/ws",
+            "wss://openpoker.ai:8443/ws",
+            "ws://127.0.0.1/ws",
+        ] {
+            assert!(!public_venue(&url.parse().unwrap()), "{url}");
+        }
+    }
 }

@@ -236,3 +236,32 @@ fn a_cold_bot_discovers_its_seat_before_sending_any_lobby_request() {
     assert!(requests[0].starts_with("get /api/me/active-game "));
     assert!(requests[0].contains("authorization: bearer test-key"));
 }
+
+#[test]
+fn a_cold_bot_joins_once_after_a_confirmed_off_table_reply() {
+    let (base, served) = venue(vec![
+        reply("200 OK", &[], &json!({"playing": true, "table_id": null})),
+        reply(
+            "200 OK",
+            &[],
+            &json!({"playing": false, "table_id": null, "seat": null}),
+        ),
+    ]);
+    let (mut rest, _) = client(&base, roomy());
+    let mut bot = Bot::new(&Config {
+        url: VENUE.into(),
+        key: "test-key".into(),
+        me: "my_bot".into(),
+        roster: vec![],
+    });
+    assert!(bot.discover_seat(&mut rest).is_err());
+    bot.discover_seat(&mut rest).unwrap();
+    assert_eq!(
+        bot.session.on_connect(),
+        [
+            Outbound::JoinLobby { buy_in: 2_000 },
+            Outbound::SetAutoRebuy { enabled: true }
+        ]
+    );
+    assert_eq!(served.join().unwrap().len(), 2);
+}
