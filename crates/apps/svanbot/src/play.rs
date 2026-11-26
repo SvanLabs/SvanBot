@@ -3,9 +3,12 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
+use svanbot_learn::probe::Verdict;
+use svanbot_learn::refresh::Refresh;
 use svanbot_runtime::fleet::{Assignment, Fleet};
 use svanbot_strategy::{
     kind::PolicyKind,
+    params::Params,
     style::{self, Style},
 };
 
@@ -66,6 +69,22 @@ pub fn seed(fleet: &Fleet, data_dir: &Path, bot: &str) -> Result<String, String>
         "{bot}'s champion slot seeded from the reference at {}",
         champion.digest()
     ))
+}
+
+/// Puts a refresh's selected champion in `bot`'s slot, but only once the live guard cleared it.
+/// The guard is the same one every promotion runs (`probe::Kind::Guard`), and `Verdict::Cleared`
+/// is its only pass: any other verdict leaves the incumbent in the slot. `guard` is the verdict
+/// of the guard run for this refresh.
+pub fn apply_refresh(
+    fleet: &Fleet,
+    refresh: &Refresh,
+    guard: Verdict,
+) -> Result<Option<Params>, String> {
+    let Some(champion) = refresh.through_guard(guard) else {
+        return Ok(None);
+    };
+    fleet.set_champion(&refresh.bot, &champion)?;
+    Ok(Some(champion))
 }
 
 pub fn status(fleet: &Fleet) -> Result<String, String> {
