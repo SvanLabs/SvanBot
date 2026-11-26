@@ -83,6 +83,7 @@ use svanbot_runtime::probing::Probing;
 use svanbot_runtime::status::{Play, Status, status_path};
 use svanbot_runtime::store::Store;
 use svanbot_strategy::action::ActionModel;
+use svanbot_strategy::policy::Policy;
 use svanbot_strategy::pricer::Budget;
 use svanbot_strategy::resolve::iterations_for;
 
@@ -229,8 +230,12 @@ fn main() -> ExitCode {
                 };
                 // The compute budget: a bigger pot buys the re-solve more iterations.
                 let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
-                // The parameter set of the hand in play: the champion's, or a probe's arm.
-                let params = probing.borrow().params();
+                // The parameter set of the hand in play, and whether it is the standing
+                // reference arm's reference side: a probe's arm, a champion's, or the reference.
+                let (params, on_reference) = {
+                    let probing = probing.borrow();
+                    (probing.params(), probing.on_reference())
+                };
                 // Each eligible opponent has their own read, built from this bot's hands.
                 // Everyone else uses the fitted population model or the baseline.
                 let named: Vec<(usize, &str)> = players
@@ -241,7 +246,11 @@ fn main() -> ExitCode {
                 let population = model.as_ref().unwrap_or(&baseline);
                 let reads = reads.borrow();
                 let personal = reads.deciding(&named, population, params.exploit);
-                let policy = policies.policy(params);
+                let policy = if on_reference {
+                    Policy::reference(params)
+                } else {
+                    policies.policy(params)
+                };
                 let stats = profile_stats(&policy, &reads, &named);
                 let decision =
                     policy.decide(spot, model.as_ref(), &personal, budget, iterations, &stats);

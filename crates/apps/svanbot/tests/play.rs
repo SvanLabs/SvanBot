@@ -281,6 +281,7 @@ mod guard {
                         luck: 0.,
                         big_blind: 20,
                         orbit: None,
+                        reference: None,
                     },
                     at,
                 )

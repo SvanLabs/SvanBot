@@ -178,10 +178,10 @@ fn a_guard_that_clears_promotes_the_challenger_and_the_fleet_adopts_it() {
     );
     assert_eq!(store.open_probe().unwrap(), None);
     assert_eq!(fleet.champion(), Ok(CHALLENGER));
-    assert_eq!(canary.params(), CHALLENGER);
-    // The others adopt between hands.
+    assert_eq!(canary.champion(), CHALLENGER);
+    // The others adopt between hands. A reference-arm hand still plays the reference.
     play(&mut other, 2, 1, 0);
-    assert_eq!(other.params(), CHALLENGER);
+    assert_eq!(other.champion(), CHALLENGER);
 }
 
 #[test]
@@ -229,10 +229,10 @@ fn a_promotion_taken_back_by_hand_reaches_the_canary_too() {
     fleet.promote(&CHALLENGER).unwrap();
     let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
     let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
-    assert_eq!(canary.params(), CHALLENGER);
+    assert_eq!(canary.champion(), CHALLENGER);
     std::fs::remove_file(dir.join("fleet").join("champion.json")).unwrap();
     play(&mut canary, 0, 1, 0);
-    assert_eq!(canary.params(), Params::DEFAULT);
+    assert_eq!(canary.champion(), Params::DEFAULT);
 }
 
 fn ended_calibration(
