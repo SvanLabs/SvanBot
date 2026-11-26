@@ -128,6 +128,7 @@ test("a path names its view, and a name that is not a bot's falls back to the fl
   expect(route("/")).toEqual({ view: "fleet" });
   expect(route("/release")).toEqual({ view: "release" });
   expect(route("/scoreboard")).toEqual({ view: "scoreboard" });
+  expect(route("/round-robin")).toEqual({ view: "round-robin" });
   expect(route("/bot/SurSvan")).toEqual({ view: "bot", bot: "SurSvan" });
   expect(route("/bot/<script>")).toEqual({ view: "fleet" });
 });

@@ -7,9 +7,11 @@ use std::path::PathBuf;
 
 use svanbot_learn::paired::Verdict;
 use svanbot_learn::search::{Entry, Stage, Step};
+use svanbot_learn::transfer;
 use svanbot_runtime::fleet::{BotSearch, Candidate, Fleet, SEARCH_KEPT};
 use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
+use svanbot_strategy::style;
 
 fn scratch(name: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -66,6 +68,7 @@ fn a_bot_s_search_is_keyed_by_the_champion_it_measured() {
             entries: vec![screened],
             last: Some((10, "screened it".into())),
             candidate: None,
+            offers: Vec::new(),
         }
     );
     // A new champion invalidates the old progress, and a new run starts its own log.
@@ -165,5 +168,43 @@ fn a_bot_s_log_keeps_only_its_newest_entries() {
     assert_eq!(
         fleet.bot_search("A", &incumbent).unwrap().entries.len(),
         SEARCH_KEPT
+    );
+}
+
+#[test]
+fn an_offer_is_stored_once_with_no_donor_evidence_and_dropped_on_a_champion_change() {
+    let fleet = Fleet::in_dir(scratch("offers"));
+    let receiver = champion(0.7);
+    let donor = champion(0.4);
+    let offer = transfer::offer(donor, &receiver, &style::STANDARD).unwrap();
+    assert!(fleet.record_offer("B", &receiver, offer.clone()).unwrap());
+    assert!(
+        !fleet.record_offer("B", &receiver, offer.clone()).unwrap(),
+        "the same receiver candidate is offered once"
+    );
+    let search = fleet.bot_search("B", &receiver).unwrap();
+    assert_eq!(search.offers, vec![offer.clone()]);
+    assert!(search.entries.is_empty(), "no donor evidence was stored");
+    assert_eq!(search.candidate, None, "an offer is not a candidate");
+
+    // A search run keeps the offers: they are pending, not part of the evidence.
+    fleet
+        .record_bot_search(
+            "B",
+            &receiver,
+            &[entry(&receiver, champion(0.56))],
+            "screened",
+            10,
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        fleet.bot_search("B", &receiver).unwrap().offers,
+        vec![offer]
+    );
+    // A new champion's log starts empty, offers included.
+    assert_eq!(
+        fleet.bot_search("B", &champion(0.6)).unwrap().offers,
+        Vec::new()
     );
 }

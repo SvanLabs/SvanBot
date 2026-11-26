@@ -9,6 +9,7 @@ use std::process::Command;
 use svanbot::learn::bot_step;
 use svanbot_learn::paired::Verdict;
 use svanbot_learn::search::{Stage, Step};
+use svanbot_learn::transfer;
 use svanbot_runtime::fleet::{Assignment, Candidate, Fleet};
 use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
@@ -295,4 +296,57 @@ fn the_cli_searches_the_slotted_bot() {
             .sum::<usize>(),
         2
     );
+}
+
+#[test]
+fn a_candidate_is_offered_to_another_bot_which_screens_it_against_its_own_champion() {
+    let dir = scratch("transfer");
+    let fleet = Fleet::in_dir(&dir);
+    let a = Params { exploit: 0.5 };
+    let b = Params { exploit: 0.7 };
+    fleet.set_champion("A", &a).unwrap();
+    fleet.set_champion("B", &b).unwrap();
+    fleet.assign("A", tight(), 1).unwrap();
+    fleet.assign("B", loose(), 1).unwrap();
+
+    let calls = RefCell::new(Vec::new());
+    let sim = |challenger: &Policy, champion: &Policy, step: &Step, deals: u64| {
+        calls
+            .borrow_mut()
+            .push((challenger.params, champion.params, step.stage));
+        if champion.params == a {
+            Verdict {
+                deals: deals as usize,
+                mbb_per_100: 100.0,
+                ci95: 10.0,
+            }
+        } else {
+            below(deals)
+        }
+    };
+    let mut candidate = None;
+    for at in 0..30 {
+        bot_step(&fleet, 200, 1_600, at, &sim).unwrap();
+        if let Some(found) = fleet.bot_search("A", &a).unwrap().candidate {
+            candidate = Some(found);
+            break;
+        }
+    }
+    let candidate = candidate.expect("A's search finds a candidate");
+    let offered = transfer::offer(candidate.challenger, &b, &LOOSE).unwrap();
+    assert_eq!(
+        fleet.bot_search("B", &b).unwrap().offers,
+        vec![offered.clone()],
+        "A's candidate is offered to B, deduplicated"
+    );
+
+    // A waits on its candidate, so B is next; the offer screens on B's own champion first.
+    calls.borrow_mut().clear();
+    let note = bot_step(&fleet, 200, 1_600, 100, &sim).unwrap();
+    assert!(note.starts_with("B "), "{note}");
+    let calls = calls.borrow();
+    assert_eq!(calls[0].0, offered.challenger);
+    assert_eq!(calls[0].1, b);
+    assert_eq!(calls[0].2, Stage::First);
+    assert!(note.contains("screened"), "{note}");
 }

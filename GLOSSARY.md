@@ -415,6 +415,12 @@ Both sims compare the same parameter sets or action models. A single sim cannot 
 challenger for promotion.
 _Avoid_: re-test, replication, validation run
 
+**Gene transfer**:
+A move that cleared one bot's search, offered to the other bots' searches. A receiver takes it
+only inside its style's pins and bounds, and screens and confirms it against its own champion on
+its own deals; no evidence and no opponent read travels with the move.
+_Avoid_: cross-training, sharing a champion, cloning a bot
+
 **Ledger**:
 A bot's own record of what each hand won, with the luck of its own draws set beside it.
 _Avoid_: results, bankroll, tracker
@@ -555,6 +561,21 @@ something different (the re-solve after the flop, and the pricer at each count o
 it), so each keeps its own runs and its own board, and a result is never pooled across them. The
 headline states the heads-up league, and the ship bar reads heads up and 6-max.
 _Avoid_: format, mode, division
+
+**Gauntlet**:
+One bot's rows in the round-robin: the ten shared opponents heads up, the same ten at the 6-max
+ring, and one row against each champion in its archive.
+_Avoid_: suite, ladder, opponent set
+
+**Round-robin**:
+The standing test that plays every bot's gauntlet in one bounded, sequential pass at low priority,
+and records each bot's matrix in the fleet's own record. It never gates a release.
+_Avoid_: tournament, ladder, sweep
+
+**Matrix**:
+The round-robin's per-bot results: every row's paired bouts and its reading, kept apart from the
+release Arena.
+_Avoid_: board, table, standings
 
 **Ring**:
 One deal played once from every seat of a table of three or more, the challenger moving a seat each time

@@ -369,6 +369,10 @@ test("the release page says where the slots point and what each bot runs", () =>
   expect(view.textContent).toContain("308e7da4");
 });
 
+test("the round-robin page is one of the page's own views", () => {
+  expect(show("/round-robin").textContent).toContain("No round-robin pass is recorded yet.");
+});
+
 test("a bot that has written no status says so", () => {
   expect(show("/bot/Nobody").textContent).toContain("This bot has written no status.");
 });

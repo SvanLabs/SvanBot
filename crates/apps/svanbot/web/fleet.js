@@ -209,6 +209,9 @@ export function route(path) {
   if (path === "/release") {
     return { view: "release" };
   }
+  if (path === "/round-robin") {
+    return { view: "round-robin" };
+  }
   return { view: path === "/scoreboard" ? "scoreboard" : "fleet" };
 }
 
