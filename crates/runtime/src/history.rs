@@ -29,15 +29,20 @@ pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
     if let [text] = hand.frames.as_slice()
         && let Some(frames) = export::frames(text)
     {
-        return observed_frames(frames, number);
+        return observed_frames(frames, number, false);
     }
     observed_frames(
         hand.frames.iter().filter_map(|text| parse(text).ok()),
         number,
+        true,
     )
 }
 
-fn observed_frames(frames: impl IntoIterator<Item = Inbound>, number: u64) -> Vec<Observed> {
+fn observed_frames(
+    frames: impl IntoIterator<Item = Inbound>,
+    number: u64,
+    infer_muck: bool,
+) -> Vec<Observed> {
     let mut lines = Lines::default();
     let mut me = None;
     let mut hole = CardSet::EMPTY;
@@ -52,9 +57,11 @@ fn observed_frames(frames: impl IntoIterator<Item = Inbound>, number: u64) -> Ve
         lines.on(&frame);
     }
     let board = lines.board();
-    let showdown = board.len() == 5 && !shown.is_empty();
+    let showdown = infer_muck && board.len() == 5 && !shown.is_empty();
     // The best hand at the showdown: the best shown, or ours if we were in it.
-    let mut best = shown.iter().map(|&(_, pair)| strength(pair | board)).max();
+    let mut best = showdown
+        .then(|| shown.iter().map(|&(_, pair)| strength(pair | board)).max())
+        .flatten();
     if showdown && me.is_some_and(|seat| !lines.folded(seat)) && hole.len() == 2 {
         best = best.max(Some(strength(hole | board)));
     }

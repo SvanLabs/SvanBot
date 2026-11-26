@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use svanbot_runtime::download::{MAX_BODY, PAGE, TIMEOUT, download};
+use svanbot_runtime::history::observed;
 use svanbot_runtime::limit::Limiter;
 use svanbot_runtime::record::Hand;
 use svanbot_runtime::rest::Rest;
@@ -135,7 +136,7 @@ fn a_profile_without_an_id_stops_the_download() {
 }
 
 #[test]
-fn a_newest_first_export_is_read_chronologically_for_training() {
+fn a_newest_first_export_is_read_chronologically_for_the_fit() {
     let (store, _) = store("training");
     let live = Hand {
         hand_id: "live".into(),
@@ -154,10 +155,41 @@ fn a_newest_first_export_is_read_chronologically_for_training() {
     download(&mut rest(&base), &store, || 10_000).unwrap();
     served.join().unwrap();
     let order: Vec<_> = store
-        .training_hands()
+        .hands_for_fit()
         .unwrap()
         .into_iter()
         .map(|hand| hand.hand_id)
         .collect();
     assert_eq!(order, ["old", "live", "new"]);
+}
+
+#[test]
+fn an_export_fills_a_partial_live_hand_for_the_fit_without_replacing_it() {
+    let (store, _) = store("partial-live");
+    let live = Hand {
+        hand_id: "known".into(),
+        table_id: "t-1".into(),
+        frames: vec![json!({"type": "hand_start"}).to_string()],
+        traced: vec![],
+    };
+    store.append_hand(&live, Source::Live, 2_000).unwrap();
+    let (base, served) = venue(vec![
+        json!({"agent_id": "a-1"}),
+        json!([{
+            "hand_id": "known", "table_id": "t-1", "seat": 0, "dealer_seat": 0,
+            "small_blind": 10, "big_blind": 20, "num_players": 2,
+            "hole_cards": ["3c", "3d"], "board": [], "shown_cards": {},
+            "all_actions": [
+                {"seat": 0, "sequence_in_hand": 1, "street": "preflop", "action": "call", "amount": 0},
+                {"seat": 1, "sequence_in_hand": 2, "street": "preflop", "action": "check", "amount": 0}
+            ]
+        }]),
+    ]);
+    let summary = download(&mut rest(&base), &store, || 5).unwrap();
+    served.join().unwrap();
+    assert_eq!((summary.added, summary.known), (0, 1));
+    assert_eq!(store.hands().unwrap()[0].frames, live.frames);
+    let hands = store.hands_for_fit().unwrap();
+    assert_eq!(hands.len(), 1);
+    assert_eq!(observed(&hands[0], 0).len(), 1);
 }

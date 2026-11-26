@@ -37,8 +37,8 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
     dealt.sort_unstable();
     dealt.dedup();
     // Do not assign a blind to the wrong seat if an all-in or absent player never acted.
-    if hand["num_players"].as_u64() != Some(dealt.len() as u64) {
-        dealt.clear();
+    if hand["num_players"].as_u64() != Some(dealt.len() as u64) || dealt.len() < 2 {
+        return None;
     }
     let mut frames = vec![
         Inbound::HandStart {
@@ -55,6 +55,11 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
     let mut street = Street::Preflop;
     let mut highest = big_blind;
     let mut dealt_cards = 0;
+    let mut active = [false; 6];
+    for &seat in &dealt {
+        active[seat] = true;
+    }
+    let mut acted = [false; 6];
     for (_, action) in actions {
         let who = seat(&action["seat"])?;
         let at = match action["street"].as_str()? {
@@ -65,7 +70,12 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
         if at < street {
             return None;
         }
-        if at > street {
+        // The closing move can already carry the next street's label. Finish the current
+        // betting round before revealing any new board cards to the fit.
+        let betting_complete = dealt.iter().all(|&seat| {
+            !active[seat] || (acted[seat] && lines.committed(seat, &dealt) == highest)
+        });
+        if at > street && betting_complete {
             let through = board_len(at);
             let frame = Inbound::CommunityCards {
                 cards: board.get(dealt_cards..through)?.to_vec(),
@@ -75,15 +85,9 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
             dealt_cards = through;
             highest = 0;
             street = at;
+            acted.fill(false);
         }
         let kind = action["action"].as_str()?;
-        if street == Street::Preflop && dealt.is_empty() {
-            // Keep the action classes where possible, but do not treat an unknown blind layout
-            // as a precise chip contribution.
-            if matches!(kind, "raise" | "all_in" | "bet") {
-                break;
-            }
-        }
         let committed = lines.committed(who, &dealt);
         let to_call = highest.saturating_sub(committed);
         let amount = action["amount"].as_u64().unwrap_or(0);
@@ -92,7 +96,6 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
             "call" => to_call,
             "raise" | "bet" | "all_in" if amount > committed => amount - committed,
             // When the export lacks an all-in amount, later pot and bet sizes are unknown.
-            "raise" | "bet" | "all_in" => break,
             _ => return None,
         };
         lines.pot().checked_add(added)?;
@@ -111,6 +114,21 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
         };
         lines.on(&frame);
         frames.push(frame);
+        acted[who] = true;
+        if matches!(kind, "fold" | "all_in") {
+            active[who] = false;
+        }
+    }
+    if let Some(reported) = hand["pot_total"].as_u64() {
+        let mut commitments: Vec<_> = dealt
+            .iter()
+            .map(|&seat| lines.committed(seat, &dealt))
+            .collect();
+        commitments.sort_unstable_by(|a, b| b.cmp(a));
+        let refund = commitments[0] - commitments[1];
+        if reported != lines.pot() && reported != lines.pot().checked_sub(refund)? {
+            return None;
+        }
     }
     if dealt_cards < board.len() {
         frames.push(Inbound::CommunityCards {

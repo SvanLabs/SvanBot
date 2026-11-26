@@ -104,6 +104,7 @@ pub fn download(
     store: &Store,
     mut now_ms: impl FnMut() -> i64,
 ) -> Result<Summary, DownloadError> {
+    store.wait_for_download_writer()?;
     let profile = rest.get(ME)?;
     let agent_id = text(&profile, &["agent_id"]).ok_or(DownloadError::NoAgentId)?;
     let mut summary = Summary::default();

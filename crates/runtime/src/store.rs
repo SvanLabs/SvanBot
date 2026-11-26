@@ -39,6 +39,14 @@ CREATE TRIGGER IF NOT EXISTS hands_no_update BEFORE UPDATE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS hands_no_delete BEFORE DELETE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
+CREATE TABLE IF NOT EXISTS hand_exports (
+    hand_id TEXT PRIMARY KEY REFERENCES hands(hand_id),
+    frame TEXT NOT NULL CHECK (json_valid(frame))
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS hand_exports_no_update BEFORE UPDATE ON hand_exports
+    BEGIN SELECT RAISE(ABORT, 'hand exports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS hand_exports_no_delete BEFORE DELETE ON hand_exports
+    BEGIN SELECT RAISE(ABORT, 'hand exports are append-only'); END;
 CREATE TABLE IF NOT EXISTS downloads (
     id          INTEGER PRIMARY KEY,
     recorded_ms INTEGER NOT NULL,
@@ -262,6 +270,15 @@ impl Store {
         )?;
         if added == 1 {
             trace::keep(&tx, hand)?;
+        } else if source == Source::History {
+            tx.execute(
+                "INSERT INTO hand_exports (hand_id, frame)
+                 SELECT hand_id, json_extract(?2, '$[0]') FROM hands
+                 WHERE hand_id = ?1 AND frames <> ?2
+                   AND json_array_length(?2) = 1 AND json_type(?2, '$[0]') = 'object'
+                 ON CONFLICT (hand_id) DO NOTHING",
+                params![hand.hand_id, frames],
+            )?;
         }
         tx.commit()?;
         Ok(added == 1)
@@ -449,8 +466,8 @@ impl Store {
     }
 }
 
+mod hands;
 mod trace;
-mod training;
 mod window;
 
 pub use trace::{TRACED_HANDS, TracedHand};

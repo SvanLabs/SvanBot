@@ -46,7 +46,7 @@ pub(crate) fn run() -> ExitCode {
         return ExitCode::from(2);
     };
     let hands =
-        match open_store(&me).and_then(|store| store.training_hands().map_err(|e| e.to_string())) {
+        match open_store(&me).and_then(|store| store.hands_for_fit().map_err(|e| e.to_string())) {
             Ok(hands) => hands,
             Err(why) => {
                 eprintln!("svanbot fit: {why}");
