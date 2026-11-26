@@ -56,16 +56,6 @@ impl Fleet {
     }
 
     fn slots(&self) -> Result<Map<String, Value>, String> {
-        let text = match std::fs::read_to_string(self.dir.join(CHAMPIONS)) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
-            Err(error) => return Err(format!("{CHAMPIONS}: {error}")),
-        };
-        let mut value: Value =
-            serde_json::from_str(&text).map_err(|error| format!("{CHAMPIONS}: {error}"))?;
-        match value.as_object_mut().and_then(|root| root.remove("bots")) {
-            Some(Value::Object(bots)) => Ok(bots),
-            _ => Err(format!("{CHAMPIONS}: expected a bots object")),
-        }
+        self.bots_in(CHAMPIONS)
     }
 }

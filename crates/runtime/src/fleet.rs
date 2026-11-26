@@ -446,6 +446,22 @@ impl Fleet {
         self.write(file, &format!("{{\"runs\":[{}]}}", runs.join(",")))
     }
 
+    /// The `bots` map of a fleet file (the assignments, the champion slots): one entry per bot,
+    /// and an empty map before the file exists.
+    pub(super) fn bots_in(&self, file: &str) -> Result<Map<String, Value>, String> {
+        let text = match fs::read_to_string(self.dir.join(file)) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
+            Err(error) => return Err(format!("{file}: {error}")),
+        };
+        let mut value: Value =
+            serde_json::from_str(&text).map_err(|error| format!("{file}: {error}"))?;
+        match value.as_object_mut().and_then(|root| root.remove("bots")) {
+            Some(Value::Object(bots)) => Ok(bots),
+            _ => Err(format!("{file}: expected a bots object")),
+        }
+    }
+
     fn write(&self, name: &str, text: &str) -> Result<(), String> {
         fs::create_dir_all(&self.dir).map_err(|e| format!("fleet: {e}"))?;
         write_atomically(&self.dir.join(name), text.as_bytes()).map_err(|e| format!("fleet: {e}"))

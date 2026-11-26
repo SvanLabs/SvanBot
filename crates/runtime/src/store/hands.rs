@@ -25,14 +25,6 @@ pub struct FitHand {
 }
 
 impl Store {
-    pub(crate) fn owner(&self) -> Result<String, StoreError> {
-        Ok(self
-            .db
-            .query_row("SELECT value FROM meta WHERE key = 'bot'", [], |row| {
-                row.get(0)
-            })?)
-    }
-
     /// Keeps a hand. Returns false if it is kept already: the first copy stands.
     pub fn append_hand(
         &self,

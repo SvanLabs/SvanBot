@@ -146,7 +146,7 @@ fn agent_id(rest: &mut Rest, store: &Store) -> Result<String, DownloadError> {
     let agent_id = text(&profile, &["agent_id"])
         .filter(|id| is_identifier(id))
         .ok_or(DownloadError::NoAgentId)?;
-    if profile["name"].as_str() != Some(store.owner()?.as_str()) {
+    if profile["name"].as_str() != Some(store.bot()?.as_str()) {
         return Err(DownloadError::AccountMismatch);
     }
     Ok(agent_id)

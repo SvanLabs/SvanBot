@@ -61,12 +61,9 @@ pub fn seed(fleet: &Fleet, data_dir: &Path, bot: &str) -> Result<String, String>
     {
         return Err(format!("{bot} has no bot store"));
     }
-    let style = fleet
-        .assignment(bot)?
-        .map_or(style::STANDARD.name, |assignment| assignment.style.name);
     let champion = fleet.seed_champion(bot)?;
     Ok(format!(
-        "{bot}'s champion slot seeded from the reference at {} with style {style}",
+        "{bot}'s champion slot seeded from the reference at {}",
         champion.digest()
     ))
 }
