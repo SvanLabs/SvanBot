@@ -114,6 +114,9 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
         }
     );
     assert_eq!(last.3, promoted);
+    // B's log is untouched, and A's new champion started a fresh log.
+    assert_eq!(fleet.bot_search("B", &b).unwrap().entries.len(), 2);
+    assert_eq!(fleet.bot_search("A", &promoted).unwrap().entries.len(), 1);
 }
 
 #[test]
