@@ -8,12 +8,12 @@ use svanbot_core::card::CardSet;
 use svanbot_core::rules::{Action, Street};
 use svanbot_core::spot::Spot;
 
-use crate::action::{ActionModel, BUCKETS, Seen, masses, range, ranked};
+use crate::action::{ActionModel, BUCKETS, Seen, Situation, masses, range, ranked};
 use crate::kind::PolicyKind;
 use crate::params::Params;
 use crate::pricer::{self, Budget};
 use crate::profile::{ACTIVE, Profile, SeatedStats};
-use crate::read::Class;
+use crate::read::{Class, Read};
 pub use crate::resolve::Abstract;
 use crate::resolve::resolve;
 use crate::style::{STANDARD, Style};
@@ -142,6 +142,10 @@ pub struct Personal {
     /// The share of the exploit budget the read earned, or `None` when it is held and decides
     /// nothing: the line is then read by the population's model.
     pub trust: Option<f64>,
+    /// The evidence behind the read, when the caller kept it, so a decision can cap a pin by
+    /// what the read knows at the situation that follows. A held read keeps its evidence here
+    /// but decides nothing: `trust` is `None` or zero.
+    pub read: Option<Read>,
 }
 
 /// What the pricer decided from: our equity against the opponents' ranges, the price of the call
@@ -209,6 +213,15 @@ pub struct Policy {
     pub kind: PolicyKind,
     pub style: &'static Style,
     pub params: Params,
+    continuation_pin: ContinuationPin,
+}
+
+/// Which share of the next-street opponent continuation the re-solve pins to its selected model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContinuationPin {
+    Fixed,
+    Zero,
+    EvidenceCap,
 }
 
 impl Policy {
@@ -217,6 +230,7 @@ impl Policy {
             kind,
             style,
             params,
+            continuation_pin: ContinuationPin::Fixed,
         }
     }
 
@@ -226,6 +240,14 @@ impl Policy {
 
     pub fn name(&self) -> String {
         format!("{}/{}", self.kind.name(), self.style.name)
+    }
+
+    /// Varies the continuation pin for an experiment while leaving the selected range model and
+    /// the read-mixing parameters in place.
+    #[must_use]
+    pub fn with_continuation_pin(mut self, continuation_pin: ContinuationPin) -> Self {
+        self.continuation_pin = continuation_pin;
+        self
     }
 
     pub fn decide(
@@ -272,14 +294,53 @@ impl Policy {
             .collect();
         let model = models.first().copied().unwrap_or(population);
         let street = Street::of(spot.board);
+        let pin = match self.continuation_pin {
+            ContinuationPin::Fixed => self.params.exploit,
+            ContinuationPin::Zero => 0.0,
+            ContinuationPin::EvidenceCap => {
+                let trust = reads
+                    .first()
+                    .copied()
+                    .flatten()
+                    .and_then(|read| {
+                        let next = next_street(street)?;
+                        let damp = match read.class {
+                            Class::Fixed | Class::Switching => 1.0,
+                            // A learner moves with us: half the evidence it would otherwise earn.
+                            Class::Learning => 0.5,
+                            Class::Unknown => 0.0,
+                        };
+                        read.read
+                            .as_ref()
+                            .map(|evidence| {
+                                let budget = read.class.budget();
+                                let facing = evidence.trust(
+                                    Situation {
+                                        street: next,
+                                        facing: true,
+                                    },
+                                    budget,
+                                );
+                                let open = evidence.trust(
+                                    Situation {
+                                        street: next,
+                                        facing: false,
+                                    },
+                                    budget,
+                                );
+                                // The lower supported share: a pin needs evidence for both
+                                // answers the opponent can give on the next street.
+                                facing.min(open) * damp
+                            })
+                            .or_else(|| read.trust.map(|trust| trust * damp))
+                    })
+                    .filter(|trust| trust.is_finite())
+                    .unwrap_or(0.0);
+                self.params.exploit.clamp(0.0, 1.0) * trust.clamp(0.0, 1.0)
+            }
+        };
         let resolved = match self.kind {
-            PolicyKind::Solving => resolve(
-                spot,
-                Some(model),
-                self.params.exploit,
-                iterations,
-                budget.seed,
-            ),
+            PolicyKind::Solving => resolve(spot, Some(model), pin, iterations, budget.seed),
             PolicyKind::Pricing => None,
         };
         match resolved {
@@ -344,6 +405,12 @@ impl Policy {
             }
         }
     }
+}
+
+/// The street after `street`, or `None` on the river, where no continuation is left to pin.
+fn next_street(street: Street) -> Option<Street> {
+    let at = Street::ALL.iter().position(|&each| each == street)?;
+    Street::ALL.get(at + 1).copied()
 }
 
 /// The opponents' ranges from `model` and their lines, summarised by strength bucket: one per

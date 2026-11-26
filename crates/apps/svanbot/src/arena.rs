@@ -25,7 +25,7 @@ use svanbot_learn::arena::{
     BOUT, BoutReader, Row, bout, ring_bout_at, scoreboard, v10_duel, v10_ring_at,
 };
 use svanbot_learn::field::Field;
-use svanbot_learn::paired::{Match, duel_seen, verdict};
+use svanbot_learn::paired::{Challenger, Match, duel_seen, verdict};
 use svanbot_learn::play::{self, STABLEMATE};
 use svanbot_learn::reads::Reads;
 use svanbot_learn::ring::ring_seen;
@@ -52,11 +52,21 @@ pub(crate) enum Opponent {
 }
 
 impl Opponent {
-    /// Every row, in the scoreboard's order.
+    /// Every row the release gate reads, in the scoreboard's order. New shared rows go in
+    /// [`Self::shared`], never here: a release's bar is the rows it was measured on.
     pub(crate) fn all() -> Vec<Self> {
         [Self::Pricer, Self::V10]
             .into_iter()
             .chain(Archetype::ALL.map(Self::Sparring))
+            .collect()
+    }
+
+    /// Every row a policy's Arena run plays: [`Self::all`] and the shared archetypes. They are
+    /// recorded apart from the release Arena (`Fleet::record_policy_arena`).
+    pub(crate) fn shared() -> Vec<Self> {
+        Self::all()
+            .into_iter()
+            .chain(Archetype::SHARED.map(Self::Sparring))
             .collect()
     }
 
@@ -71,7 +81,7 @@ impl Opponent {
 
     /// The opponent a scoreboard row names.
     pub(crate) fn named(name: &str) -> Option<Self> {
-        Self::all()
+        Self::shared()
             .into_iter()
             .find(|opponent| opponent.name() == name)
     }
@@ -88,9 +98,42 @@ pub(crate) fn play_bout(
     policy: &Policy,
     fixed: Option<u64>,
 ) -> Vec<f64> {
+    play_bout_with_reads(
+        game,
+        league,
+        opponent,
+        number,
+        policy,
+        fixed,
+        Reads::deciding,
+    )
+}
+
+pub(crate) fn play_bout_with_reads(
+    game: &Match,
+    league: League,
+    opponent: Opponent,
+    number: u64,
+    policy: &Policy,
+    fixed: Option<u64>,
+    take: play::Take,
+) -> Vec<f64> {
     let seats = league.seats();
-    let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, Reads::deciding, None))
+    let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, take, None))
         .with_profile_stats(!policy.style.profile.is_empty());
+    play_bout_for(game, league, opponent, number, policy, fixed, challenger)
+}
+
+pub(crate) fn play_bout_for(
+    game: &Match,
+    league: League,
+    opponent: Opponent,
+    number: u64,
+    policy: &Policy,
+    fixed: Option<u64>,
+    challenger: &impl Challenger,
+) -> Vec<f64> {
+    let seats = league.seats();
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;
     // Heads up is the mirrored duel; every bigger table is the ring at its own size.
@@ -364,6 +407,30 @@ mod tests {
             Opponent::named(&name).is_none(),
             "a field row stays out of Opponent::all()"
         );
+    }
+
+    #[test]
+    fn the_shared_rows_carry_the_new_archetypes_and_leave_the_release_rows_alone() {
+        // The release gate reads this list and no other, so a row added below must not move it.
+        let release: Vec<String> = Opponent::all().into_iter().map(Opponent::name).collect();
+        assert_eq!(
+            release,
+            [
+                "pricer",
+                "v10.0.2",
+                "calling station",
+                "nit",
+                "maniac",
+                "switching",
+                "learning",
+            ]
+        );
+        let shared: Vec<String> = Opponent::shared().into_iter().map(Opponent::name).collect();
+        assert_eq!(&shared[..release.len()], release);
+        assert_eq!(&shared[release.len()..], ["sizing", "bluffer", "mixing"]);
+        for name in ["sizing", "bluffer", "mixing"] {
+            assert!(Opponent::named(name).is_some(), "{name} is not named");
+        }
     }
 
     #[test]

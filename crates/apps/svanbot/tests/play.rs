@@ -19,6 +19,14 @@ fn play_with_no_subcommand_says_its_usage_and_exits_2() {
 }
 
 #[test]
+fn an_unknown_continuation_pin_is_refused_before_anything_plays() {
+    let result = play(&["pin", "unknown", "1"]);
+    assert_eq!(result.status.code(), Some(2));
+    assert!(result.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("unknown continuation pin"));
+}
+
+#[test]
 fn an_unknown_kind_or_style_is_refused_before_anything_plays() {
     for args in [
         ["arena", "unknown", "standard", "2"],
@@ -134,7 +142,9 @@ fn runs_that_are_not_the_same_bouts_are_refused() {
 }
 
 fn fixture(name: &str, store: bool) -> (PathBuf, Fleet) {
-    let dir = std::env::temp_dir().join(format!("svanbot-play-{}-{name}", std::process::id()));
+    // The test's own directory under the build tree: not `temp_dir()`, whose path the
+    // environment can move.
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     if store {
@@ -189,6 +199,36 @@ fn a_bot_with_no_store_is_refused_and_nothing_is_written() {
     fleet.record_check(&check(true)).unwrap();
     assert!(assign_tight(&fleet, &dir).unwrap_err().contains("store"));
     assert!(!dir.join("fleet/plays.json").exists());
+}
+
+#[test]
+fn seed_creates_a_slot_from_the_reference_for_a_bot_with_a_store() {
+    let (dir, fleet) = fixture("seed-cli", true);
+    fleet.promote(&Params { exploit: 0.4 }).unwrap();
+    let output = in_fleet(&dir, &["seed", "Svanar"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fleet.champion_slot("Svanar"),
+        Ok(Some(Params { exploit: 0.4 }))
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("champion"));
+    // A second seed is refused: a learned champion is not a seed's to overwrite.
+    let again = in_fleet(&dir, &["seed", "Svanar"]);
+    assert_eq!(again.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&again.stderr).contains("already"));
+}
+
+#[test]
+fn seed_refuses_a_bot_with_no_store_and_writes_nothing() {
+    let (dir, _) = fixture("seed-no-store", false);
+    let output = in_fleet(&dir, &["seed", "Svanar"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("store"));
+    assert!(!dir.join("fleet/champions.json").exists());
 }
 
 #[test]
@@ -393,4 +433,27 @@ mod sequential {
         }
         assert_eq!(check_bar(&runs, MARGIN), Bar::Open);
     }
+}
+
+#[test]
+fn the_policy_arena_plays_the_shared_archetypes_and_records_them_apart() {
+    let (dir, fleet) = fixture("cli-shared-rows", false);
+    let output = in_fleet(&dir, &["arena", "solving", "standard", "1", "7", "1"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let runs = fleet.policy_arena_runs().unwrap();
+    assert_eq!(runs.len(), 1);
+    let names: Vec<&str> = runs[0]
+        .rows
+        .iter()
+        .map(|row| row.opponent.as_str())
+        .collect();
+    for name in ["sizing", "bluffer", "mixing"] {
+        assert!(names.contains(&name), "{name} is not in {names:?}");
+    }
+    // The release Arena, which the ship bar reads, stays untouched.
+    assert!(!dir.join("fleet/arena.json").exists());
 }

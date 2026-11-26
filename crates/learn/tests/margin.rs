@@ -44,3 +44,20 @@ fn a_wide_interval_wholly_below_minus_the_margin_is_still_refused() {
     let differences = [-350_000., -50_000.].repeat(20);
     assert_eq!(read(&differences, MARGIN).admission, Admission::Refused);
 }
+
+#[test]
+fn a_model_needs_an_overall_edge_and_must_clear_every_opponent_margin() {
+    use svanbot_learn::margin::model_comparison;
+
+    let gain = [8.; 30];
+    let tolerable = [-2.5; 30];
+    let harmful = [-3.; 30];
+    let accepted = model_comparison(&[&gain, &tolerable]).unwrap();
+    assert_eq!(accepted.overall.mean, 5_500.0);
+    assert_eq!(accepted.rows[1].mean, -5_000.0);
+    assert!(accepted.passes());
+    assert!(!model_comparison(&[&gain, &harmful]).unwrap().passes());
+    assert!(!model_comparison(&[&[0.; 30]]).unwrap().passes());
+    assert!(!model_comparison(&[&[8.; 29]]).unwrap().passes());
+    assert!(model_comparison(&[&[f64::NAN]]).is_none());
+}

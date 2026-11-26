@@ -29,6 +29,17 @@ use crate::{arena, deciders, open_store, store_path};
 /// Rounds of EM a field's fit runs.
 const ROUNDS: usize = 25;
 
+/// The bot's own name, as the fleet's env files write it: only the characters a fleet name uses,
+/// so a store or field path can never leave the store directory.
+fn bot_name() -> Result<String, String> {
+    let me = std::env::var("SVANBOT_NAME").map_err(|_| "set SVANBOT_NAME".to_string())?;
+    if me.is_empty() || me.len() > 32 || !me.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err("SVANBOT_NAME is not a bot name".into());
+    }
+    Ok(me)
+}
+
 /// The Dirichlet prior on each move's count.
 const ALPHA: f64 = 1.0;
 
@@ -54,7 +65,7 @@ pub(crate) fn keep_field(path: &Path, field: &Field) -> Result<(), String> {
     let partial = path.with_extension("field.partial");
     std::fs::write(&partial, field.to_text())
         .and_then(|()| std::fs::rename(&partial, path))
-        .map_err(|error| format!("{}: {error}", path.display()))
+        .map_err(|error| format!("the field was not kept: {error}"))
 }
 
 /// The field kept at `path`, if one reads whole. A half-written or unreadable file is no field.
@@ -82,9 +93,12 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         );
         return ExitCode::from(2);
     };
-    let Ok(me) = std::env::var("SVANBOT_NAME") else {
-        eprintln!("svanbot field: set SVANBOT_NAME");
-        return ExitCode::from(2);
+    let me = match bot_name() {
+        Ok(me) => me,
+        Err(why) => {
+            eprintln!("svanbot field: {why}");
+            return ExitCode::from(2);
+        }
     };
     let store = match open_store(&me) {
         Ok(store) => store,
@@ -96,7 +110,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     let field = match from_store(&store) {
         Ok(Some(field)) => field,
         Ok(None) => {
-            println!("svanbot field: {me}'s store has no opponent-hand to fit a field from");
+            println!("svanbot field: the store has no opponent-hand to fit a field from");
             return ExitCode::SUCCESS;
         }
         Err(why) => {
@@ -118,9 +132,8 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     };
     println!(
-        "svanbot field: {me}'s field from {} opponent-hands, kept at {}",
-        field.sides(),
-        path.display()
+        "svanbot field: field from {} opponent-hands, kept",
+        field.sides()
     );
     let fleet = Fleet::in_dir(crate::fleet_dir());
     let champion = match fleet.champion() {
@@ -155,7 +168,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     if let Some(out) = args.get(3)
         && let Err(error) = std::fs::write(out, run.as_text() + "\n")
     {
-        eprintln!("svanbot field: {out} was not written: {error}");
+        eprintln!("svanbot field: the output file was not written: {error}");
         return ExitCode::from(1);
     }
     ExitCode::SUCCESS

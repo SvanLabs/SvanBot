@@ -33,7 +33,7 @@ pub fn reading(
     take: Take,
     draws: Option<Draws>,
 ) -> impl Fn(&Spot, u64, &Reads) -> Action {
-    reading_with(policy, fixed, seats, take, move |drawn| {
+    reading_with(policy, fixed, seats, take, None, move |drawn| {
         if let Some(draws) = &draws {
             draws.borrow_mut().push(drawn);
         }
@@ -47,7 +47,18 @@ pub fn reading_untracked(
     seats: usize,
     take: Take,
 ) -> impl Fn(&Spot, u64, &Reads) -> Action + Sync {
-    reading_with(policy, fixed, seats, take, |_| {})
+    reading_model(policy, fixed, seats, take, None)
+}
+
+/// Evaluates the population model with the normal policy and read path.
+pub fn reading_model(
+    policy: Policy,
+    fixed: Option<u64>,
+    seats: usize,
+    take: Take,
+    model: Option<ActionModel>,
+) -> impl Fn(&Spot, u64, &Reads) -> Action + Sync {
+    reading_with(policy, fixed, seats, take, model, |_| {})
 }
 
 fn reading_with<F>(
@@ -55,20 +66,22 @@ fn reading_with<F>(
     fixed: Option<u64>,
     seats: usize,
     take: Take,
+    model: Option<ActionModel>,
     report: F,
 ) -> impl Fn(&Spot, u64, &Reads) -> Action
 where
     F: Fn(Decided),
 {
     let names: Vec<_> = (0..seats).map(|seat| opponent_name(seats, seat)).collect();
-    let baseline = ActionModel::baseline();
+    let fitted = model.is_some();
+    let population = model.unwrap_or_else(ActionModel::baseline);
     move |spot, seed, reads| {
         let named: Vec<_> = spot
             .seats
             .iter()
             .map(|&seat| (seat, names[seat].as_str()))
             .collect();
-        let personal = take(reads, &named, &baseline, policy.params.exploit);
+        let personal = take(reads, &named, &population, policy.params.exploit);
         let stats = profile_stats(&policy, reads, &named);
         let budget = Budget {
             samples: SAMPLES,
@@ -76,7 +89,7 @@ where
         };
         let decision = policy.decide(
             spot,
-            None,
+            fitted.then_some(&population),
             &personal,
             budget,
             iterations(spot, fixed),
