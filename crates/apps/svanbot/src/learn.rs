@@ -134,12 +134,19 @@ pub fn step(
                 break;
             }
             Next::Exhausted => {
-                note.get_or_insert_with(|| {
+                let spent = note.get_or_insert_with(|| {
                     format!(
                         "spent: every step round champion {} is simmed and none is above it",
                         champion.digest()
                     )
                 });
+                // The search's own bar is spent; the bot's experiment asks the question the
+                // sims could not: whether the closest challenger keeps the margin live.
+                match experiment_step(fleet, &log, &champion, now_ms) {
+                    Ok(Some(extra)) => spent.push_str(&format!(". {extra}")),
+                    Ok(None) => {}
+                    Err(why) => spent.push_str(&format!(". The experiment was not written: {why}")),
+                }
                 break;
             }
         }
@@ -147,6 +154,66 @@ pub fn step(
     let note = note.unwrap_or_default();
     fleet.record_search(&ran, &note, now_ms)?;
     Ok(note)
+}
+
+/// Writes the next experiment from the learner's own search log, and puts it to the canary under
+/// the existing guard (#1302): the best challenger the sims did not put above the champion, one
+/// at a time. A waiting experiment is offered again until the canary is free; one whose champion
+/// has moved is retired undecided.
+fn experiment_step(
+    fleet: &Fleet,
+    log: &[Entry],
+    champion: &Params,
+    now_ms: i64,
+) -> Result<Option<String>, String> {
+    if let Some(waiting) = fleet.waiting_experiment()? {
+        if waiting.experiment.claim.champion() != champion.digest() {
+            fleet.retire_waiting("the champion moved before a bot took it up", now_ms)?;
+        } else {
+            return Ok(Some(propose_experiment(
+                fleet,
+                &waiting.experiment,
+                champion,
+            )?));
+        }
+    }
+    let tried = fleet.tried_challengers()?;
+    let budget = svanbot_learn::experiment::Budget { hands: GUARD_HANDS };
+    let Some(experiment) =
+        svanbot_learn::experiment::choose(log, champion, &tried, budget, GUARD_MARGIN)
+    else {
+        return Ok(None);
+    };
+    if !fleet.open_experiment(&experiment, now_ms)? {
+        return Ok(None);
+    }
+    Ok(Some(propose_experiment(fleet, &experiment, champion)?))
+}
+
+/// Offers `experiment`'s challenger as the canary's next guard, saying whether the canary can
+/// take it now.
+fn propose_experiment(
+    fleet: &Fleet,
+    experiment: &svanbot_learn::experiment::Experiment,
+    champion: &Params,
+) -> Result<String, String> {
+    let svanbot_learn::experiment::Claim::ChallengerKeepsMargin {
+        challenger, sim, ..
+    } = &experiment.claim;
+    let proposal = Proposal {
+        challenger: *challenger,
+        kind: Kind::Guard { hands: GUARD_HANDS },
+        harm_margin: GUARD_MARGIN,
+        sim_estimate: Some(sim.mbb_per_100 / 1000.0),
+        max_orbits: PROBE_ORBITS,
+        against: Some(champion.digest()),
+    };
+    let described = svanbot_learn::experiment::describe(experiment);
+    Ok(if fleet.propose_if_free(&proposal)? {
+        format!("experiment proposed: {described}")
+    } else {
+        format!("experiment waits for the canary: {described}")
+    })
 }
 
 /// Runs one bounded step of the per-bot search at `now_ms`: the bot with a champion slot whose
@@ -323,4 +390,61 @@ fn describe(step: &Step) -> String {
         Stage::Confirmation => "confirmation",
     };
     format!("{}, {stage}", changed.join(", "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../target/dev")
+            .join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_spent_search_writes_and_proposes_its_experiment_once() {
+        let fleet = Fleet::in_dir(scratch("learn-experiment"));
+        let champion = Params::DEFAULT;
+        let challenger = Params {
+            exploit: 0.4,
+            ..Params::DEFAULT
+        };
+        let log = vec![Entry::Simmed {
+            step: Step {
+                champion: champion.digest(),
+                challenger,
+                stage: Stage::First,
+                seed: 7,
+            },
+            verdict: Verdict {
+                deals: 100,
+                mbb_per_100: -300.0,
+                ci95: 100.0,
+            },
+        }];
+        let note = experiment_step(&fleet, &log, &champion, 1_000)
+            .unwrap()
+            .expect("a note");
+        assert!(note.contains("experiment proposed"), "{note}");
+        let waiting = fleet
+            .waiting_experiment()
+            .unwrap()
+            .expect("a waiting experiment");
+        assert_eq!(waiting.experiment.claim.challenger(), challenger);
+        assert_eq!(
+            fleet.waiting().unwrap().expect("a proposal").challenger,
+            challenger
+        );
+        // A later cycle offers the same waiting experiment; it does not ask a new question.
+        let again = experiment_step(&fleet, &log, &champion, 2_000)
+            .unwrap()
+            .expect("a note");
+        assert!(again.contains("waits for the canary"), "{again}");
+        assert_eq!(fleet.tried_challengers().unwrap().len(), 1);
+    }
 }
