@@ -10,14 +10,11 @@
 //! The answers are summed over every way the table can split into folders and callers, so the
 //! value is exact for its deals rather than drawn again.
 
-use std::collections::BTreeMap;
-
-use svanbot_core::card::CardSet;
 use svanbot_core::rules::{Chips, Street};
 use svanbot_core::spot::Spot;
 use svanbot_sim::equity::{MAX_OPPONENTS, Showdown};
 
-use crate::action::{ActionModel, Move, Situation};
+use crate::action::{ActionModel, Move, Ranked, Situation};
 
 /// The bet, as a share of the pot after the call, at which a bucket continues exactly as its
 /// model says. The model counts every size of bet together, and two thirds of the pot is the
@@ -49,7 +46,7 @@ pub(super) fn references(
     spot: &Spot,
     dealt: &[Showdown],
     models: &[&ActionModel],
-    ranked: &BTreeMap<CardSet, usize>,
+    ranked: &Ranked,
 ) -> Vec<Answer> {
     let facing = Situation {
         street: Street::of(spot.board),
@@ -60,10 +57,7 @@ pub(super) fn references(
         for (hole, model) in deal.holes().iter().zip(models) {
             // Every live pair is ranked on the board; a pair the table does not know
             // reads as the middle of the range.
-            let bucket = ranked
-                .get(hole)
-                .copied()
-                .unwrap_or(crate::action::BUCKETS / 2);
+            let bucket = ranked.get(hole).unwrap_or(crate::action::BUCKETS / 2);
             answers.push(Answer {
                 goes_on: 1.0 - model.prob(facing, bucket, Move::Fold),
             });

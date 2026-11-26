@@ -88,11 +88,11 @@ fn a_priced_decision_allocates_a_bounded_number_of_times() {
     COUNTING.store(false, Ordering::SeqCst);
     let allocations = ALLOCATIONS.load(Ordering::SeqCst);
     assert!(decision.equity > 0.0);
-    // A constant: the deal buffer, the per-decision range buffers and the ranked-pairs map. The
-    // bound is the guard rail — 2,000 deals would blow through any per-deal allocation long
-    // before this. What remains constant is ticketed as its own follow-up.
+    // A constant: the deal buffer and the per-decision range buffers, the ranked-pairs table one
+    // buffer rather than a tree node per pair. The bound is the guard rail — 2,000 deals would
+    // blow through any per-deal allocation long before this.
     assert!(
-        allocations <= 200,
+        allocations <= 42,
         "{allocations} allocations for one priced decision"
     );
 }
