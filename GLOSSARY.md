@@ -140,6 +140,12 @@ What SvanBot believes about an opponent it has not yet seen enough of, taken fro
 population.
 _Avoid_: default, baseline profile
 
+**Field**:
+The players a bot meets, cloned as one identity-free action model fitted from that bot's own
+store. It plays as one Arena row for that bot, recorded apart from the release rows, and never
+crosses to a stablemate.
+_Avoid_: population, pool, opponent set
+
 **Read**:
 An opponent's own departure from the prior, learned from their hands alone. One bot's reads are its
 own, never pooled across stablemates.

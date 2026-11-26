@@ -25,8 +25,10 @@
 //! (`svanbot_runtime::probing`).
 //!
 //! `svanbot download` instead downloads the bot's season hand history into its store, and exits
-//! ([`download`]). `svanbot fit` fits the action model on the store's hands ([`fit`]). `svanbot
-//! arena` plays the policy against every sparring archetype ([`arena`]). `svanbot paired` runs a
+//! ([`download`]). `svanbot fit` fits the action model on the store's hands ([`fit`]), and
+//! `svanbot field` fits the bot's own field from its store and plays it as one Arena row, apart
+//! from the release rows ([`field`]). `svanbot arena` plays the policy against every sparring
+//! archetype ([`arena`]). `svanbot paired` runs a
 //! paired sim of the policy against the pricer ([`paired`]). `svanbot propose` puts a challenger
 //! forward for the canary ([`propose`]), and `svanbot learn` runs one step of the unattended
 //! search for one ([`svanbot::learn`]). `svanbot dashboard` serves the fleet's dashboard on
@@ -52,6 +54,7 @@ mod arena_ship;
 mod calibration;
 mod deciders;
 mod download;
+mod field;
 mod fit;
 mod paired;
 mod paired_compare;
@@ -116,6 +119,12 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("play") {
         let args: Vec<String> = std::env::args().skip(2).collect();
         return play_arena::run(&args);
+    }
+    // Nor is fitting a bot's own field: the learner never opens a store, and a per-bot fit is no
+    // bot's start.
+    if std::env::args().nth(1).as_deref() == Some("field") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return field::run(&args);
     }
     if std::env::args().nth(1).as_deref() == Some("calibration") {
         return calibration::run();

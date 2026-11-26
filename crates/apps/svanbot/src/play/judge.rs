@@ -1,5 +1,5 @@
 use svanbot_learn::margin::{self, Admission, Reading};
-use svanbot_learn::play::STABLEMATE;
+use svanbot_learn::play::apart;
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, League};
 use svanbot_runtime::ship::Bar;
 
@@ -48,9 +48,7 @@ pub fn judge(
 }
 
 fn standard(run: &ArenaRun) -> impl Iterator<Item = &ArenaRow> {
-    run.rows
-        .iter()
-        .filter(|row| !row.opponent.starts_with(STABLEMATE))
+    run.rows.iter().filter(|row| !apart(&row.opponent))
 }
 
 /// Read the reference and candidate for heads-up, followed by the same pair for 6-max.
