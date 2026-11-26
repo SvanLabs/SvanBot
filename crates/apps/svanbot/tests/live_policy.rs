@@ -4,12 +4,15 @@ use std::path::PathBuf;
 
 use svanbot::live_policy::LivePolicy;
 use svanbot_runtime::fleet::{Assignment, Fleet};
+use svanbot_runtime::probing::Probing;
+use svanbot_runtime::store::Store;
 use svanbot_strategy::{kind::PolicyKind, params::Params, style::TIGHT};
 
 fn scratch(name: &str) -> PathBuf {
     let dir =
         std::env::temp_dir().join(format!("svanbot-live-policy-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
     dir
 }
 
@@ -71,4 +74,42 @@ fn the_champions_numbers_ride_along() {
     let (live, _) = LivePolicy::open(fleet, "A");
     let params = Params { exploit: 0.3 };
     assert_eq!(live.policy(params).params, params);
+}
+
+#[test]
+fn a_seeded_slot_plays_the_bots_style_and_its_own_numbers() {
+    let dir = scratch("slot");
+    let fleet = Fleet::in_dir(&dir);
+    let reference = Params { exploit: 0.4 };
+    fleet.assign("A", TIGHT_PLAY, 1).unwrap();
+    fleet.promote(&reference).unwrap();
+    assert_eq!(fleet.seed_champion("A"), Ok(reference));
+    let slot = Params { exploit: 0.2 };
+    fleet.set_champion("A", &slot).unwrap();
+    let store = Store::open(&dir.join("A.db"), "A").unwrap();
+    let (live, _) = LivePolicy::open(fleet.clone(), "A");
+    let probing = Probing::open(&store, fleet, false, 0).0;
+    let policy = live.policy(probing.params());
+    assert_eq!(policy.name(), "solving/tight");
+    // The style pins the width; the slot carries the numbers the bot learns.
+    assert_eq!(policy.style.open_scale, 0.75);
+    assert_eq!(policy.params, slot);
+}
+
+#[test]
+fn a_bot_without_a_slot_plays_the_fleet_champion_exactly() {
+    let dir = scratch("no-slot");
+    let fleet = Fleet::in_dir(&dir);
+    let champion = Params { exploit: 0.3 };
+    fleet.promote(&champion).unwrap();
+    let store = Store::open(&dir.join("A.db"), "A").unwrap();
+    let (live, notes) = LivePolicy::open(fleet.clone(), "A");
+    assert!(notes.is_empty());
+    let probing = Probing::open(&store, fleet, false, 0).0;
+    assert_eq!(probing.params(), champion);
+    let policy = live.policy(probing.params());
+    let reference = svanbot_strategy::policy::Policy::reference(champion);
+    assert_eq!(policy.kind, reference.kind);
+    assert_eq!(policy.style.name, reference.style.name);
+    assert_eq!(policy.params, reference.params);
 }

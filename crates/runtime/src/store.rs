@@ -193,7 +193,7 @@ impl Store {
             [bot],
         )?;
         let store = Self { db };
-        let owner = store.owner()?;
+        let owner = store.bot()?;
         if owner != bot {
             return Err(StoreError(format!(
                 "this store is {owner}'s; {bot} may not open it"
@@ -218,10 +218,14 @@ impl Store {
     }
 
     /// The bot this store belongs to: the name it was opened under. A store is one bot's
-    /// (`docs/adr/0004-reads-are-per-bot.md`), and this is what makes its standing reference arm
-    /// its own.
+    /// (`docs/adr/0004-reads-are-per-bot.md`), and this is what makes its champion slot and its
+    /// standing reference arm its own.
     pub fn bot(&self) -> Result<String, StoreError> {
-        self.owner()
+        Ok(self
+            .db
+            .query_row("SELECT value FROM meta WHERE key = 'bot'", [], |row| {
+                row.get(0)
+            })?)
     }
 
     /// The journal mode SQLite reports: `wal` once open.

@@ -185,6 +185,11 @@ One of the compiled ways a policy chooses. `solving` is today's: the profile, th
 then the pricer. `pricing` never re-solves.
 _Avoid_: engine, mode
 
+**Continuation pin**:
+The share of the opponent's next-street play that the re-solve fixes to its selected action
+model. The remaining share can respond freely. The pin affects the continuation, while the
+selected range model reads the current hand.
+
 **Style**:
 A named, designed way of playing. It pins some of the numbers a policy plays by and names the
 profile it plays with; the rest come from the bot's champion. `standard` is today's play. A
@@ -199,6 +204,9 @@ _Avoid_: baseline (that trusts no read), control
 **Baseline**:
 The policy a bot falls back on when it trusts no read: hard to exploit, not tuned to anyone.
 _Avoid_: GTO, default strategy
+
+**Baseline action model**:
+The built-in population prior used when a bot has no fitted action model.
 
 **Exploit budget**:
 How far the policy may move from the baseline toward what the reads suggest.
@@ -257,9 +265,36 @@ _Avoid_: version, id
 The parameter set the fleet plays by default.
 _Avoid_: incumbent, best, main
 
+**Champion slot**:
+One bot's own **champion**: the parameter set in `champions.json` under the bot's name, seeded
+from the fleet champion with its style's pins and moved only by that bot's search and promotion. A
+bot with no slot plays the fleet champion.
+_Avoid_: lineage, per-bot params, brain (a brain is a policy)
+
 **Challenger**:
 A parameter set put forward to replace the champion.
 _Avoid_: candidate, mutant, variant
+
+**Archive**:
+A bot's last five champions, newest first, each named by its digest with the paired bouts that
+promoted it. A promotion must clear every one of them (the regression rule).
+_Avoid_: history, vault
+
+**Regression rule**:
+The check that refuses a promotion which loses to a champion in the bot's archive at the 95% bound,
+and, once exploiters exist, one that raises exploitability past its bound (+5 bb/100).
+_Avoid_: backtest, safety net
+
+**Exploiter**:
+A policy searched to beat one brain's champion in the paired sim. The best one's win rate is that
+brain's exploitability.
+_Avoid_: adversary, attacker
+
+**Exploitability**:
+How much the best exploiter wins against a policy in the paired sim, in mbb/100. The best
+exploiter's win rate against a brain's champion is that brain's exploitability, reported beside its
+win rate.
+_Avoid_: vulnerability, leak
 
 **Learner**:
 The part of SvanBot that turns stored hands into new action models and reads, and proposes
@@ -267,8 +302,8 @@ challengers.
 _Avoid_: trainer, optimizer
 
 **Paired sim**:
-A sim in which two parameter sets play the same deals from mirrored seats, so the luck of the cards
-cancels out.
+A sim in which two parameter sets or two action models play the same deals from each seat, so the
+luck of the cards cancels out.
 _Avoid_: A/B sim, duplicate sim
 
 **Luck correction**:
@@ -310,9 +345,8 @@ It waits while a proposal waits or a probe runs.
 _Avoid_: optimizer, tuning loop, sweep
 
 **Confirmation**:
-A second paired sim of a challenger on fresh deals, after a first put it above the champion. The
-search proposes only a challenger both put above, so one lucky sim among many cannot become a
-promotion.
+A second paired sim on fresh deals after the first cleared the same margins. Both sims compare
+the same parameter sets or action models. A single sim cannot qualify a challenger for promotion.
 _Avoid_: re-test, replication, validation run
 
 **Ledger**:
