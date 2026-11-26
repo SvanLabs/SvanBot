@@ -63,18 +63,18 @@ fn price(facts: &Facts<'_>) -> Option<f64> {
 }
 
 /// A bet or raise adding `share` of the pot to what is owed.
-fn pot_bet(facts: &Facts<'_>, share: f64) -> Action {
+pub(crate) fn pot_bet(facts: &Facts<'_>, share: f64) -> Action {
     let owed = facts.legal().call.unwrap_or(0);
     Action::RaiseTo(facts.committed() + owed + (facts.pot() as f64 * share) as Chips)
 }
 
-/// The first profile's rules, in order: the first to match decides.
-pub const RULES: [Rule; 7] = [
+/// The station's rules, in order: no type condition, because the rule set chosen is the type
+/// ([`crate::playbook`]). The first profile below adds the condition back.
+pub const STATION_RULES: [Rule; 3] = [
     // Its bet is strong. Before the flop an owed call is only the blind, not a bet.
     Rule {
         when: |facts| {
-            against_station(facts)
-                && facts.street() != Street::Preflop
+            facts.street() != Street::Preflop
                 && facts.legal().call.is_some()
                 && facts.equity() < RESPECT
         },
@@ -82,35 +82,70 @@ pub const RULES: [Rule; 7] = [
     },
     // It calls with everything, so a hand ahead of a random one is worth a pot-sized bet.
     Rule {
-        when: |facts| against_station(facts) && facts.equity() >= VALUE,
+        when: |facts| facts.equity() >= VALUE,
         then: |facts| pot_bet(facts, 1.0),
     },
     // It never folds, so a bluff has nobody to fold out: check what is not worth a bet.
     Rule {
-        when: |facts| against_station(facts) && facts.legal().call.is_none(),
+        when: |facts| facts.legal().call.is_none(),
         then: |_| Action::Check,
     },
+];
+
+/// The maniac's rules, in order: no type condition, as for the station's.
+pub const MANIAC_RULES: [Rule; 4] = [
     // A maniac bets with any two cards, so a hand far ahead of one re-raises its bet or bets into
     // its check.
     Rule {
-        when: |facts| against_maniac(facts) && facts.equity() >= RERAISE,
+        when: |facts| facts.equity() >= RERAISE,
         then: |facts| pot_bet(facts, 1.0),
     },
     // Facing its bet, a call that beats the pot odds is worth it, and one that does not folds.
     Rule {
-        when: |facts| {
-            against_maniac(facts)
-                && price(facts).is_some_and(|price| facts.equity() >= price + CUSHION)
-        },
+        when: |facts| price(facts).is_some_and(|price| facts.equity() >= price + CUSHION),
         then: |_| Action::Call,
     },
     Rule {
-        when: |facts| against_maniac(facts) && facts.legal().call.is_some(),
+        when: |facts| facts.legal().call.is_some(),
         then: |_| Action::Fold,
     },
     // Checked to with a middling hand: let it bluff into us.
     Rule {
-        when: |facts| against_maniac(facts),
+        when: |_| true,
         then: |_| Action::Check,
+    },
+];
+
+/// The first profile's rules, in order: the first to match decides. Each type's rules apply only
+/// against that type's read, as they always have; the playbook above is the same rules without
+/// that condition, chosen by the read instead.
+pub const RULES: [Rule; 7] = [
+    Rule {
+        when: |facts| against_station(facts) && (STATION_RULES[0].when)(facts),
+        then: STATION_RULES[0].then,
+    },
+    Rule {
+        when: |facts| against_station(facts) && (STATION_RULES[1].when)(facts),
+        then: STATION_RULES[1].then,
+    },
+    Rule {
+        when: |facts| against_station(facts) && (STATION_RULES[2].when)(facts),
+        then: STATION_RULES[2].then,
+    },
+    Rule {
+        when: |facts| against_maniac(facts) && (MANIAC_RULES[0].when)(facts),
+        then: MANIAC_RULES[0].then,
+    },
+    Rule {
+        when: |facts| against_maniac(facts) && (MANIAC_RULES[1].when)(facts),
+        then: MANIAC_RULES[1].then,
+    },
+    Rule {
+        when: |facts| against_maniac(facts) && (MANIAC_RULES[2].when)(facts),
+        then: MANIAC_RULES[2].then,
+    },
+    Rule {
+        when: |facts| against_maniac(facts) && (MANIAC_RULES[3].when)(facts),
+        then: MANIAC_RULES[3].then,
     },
 ];

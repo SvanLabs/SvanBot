@@ -160,6 +160,11 @@ _Avoid_: disabled, off, shadow
 The opponent's hands at spots like the current one. A read counts for only as much as its evidence.
 _Avoid_: sample, data
 
+**Evidence floor**:
+The opponent's hands at spots like the current one below which no stat and no read may be trusted:
+30.
+_Avoid_: sample minimum, bar
+
 **Drift**:
 The actions opponents take no longer match what the action model predicts.
 _Avoid_: decay, staleness
@@ -168,7 +173,12 @@ _Avoid_: decay, staleness
 Whether an opponent plays a fixed strategy, switches between strategies, or learns from how we play;
 **unknown** until there is enough of them to tell, and an unknown opponent's read earns none of the
 exploit budget.
-_Avoid_: opponent type, style
+_Avoid_: style, type
+
+**Opponent type**:
+What an opponent's stats say it is, for the playbook: a station, a maniac or a nit, read against
+their cuts. An opponent type says what a player does; the adaptivity class says how it changes.
+_Avoid_: archetype (a sparring archetype is a scripted opponent), player style
 
 **Sparring archetype**:
 A scripted opponent style that the sim plays against, standing in for a kind of real opponent. Eight
@@ -193,8 +203,20 @@ _Avoid_: strategy (for one bot's rules)
 One of the compiled ways a policy chooses. `solving` is today's: the profile, then the re-solve,
 then the pricer. `balanced` is the baseline made a brain: the pricer, but it draws among actions
 within the mixing spread of the best and blends the opening boundary, with reads held and no
-profile. `pricing` never re-solves.
+profile. `exploiting` is Hunter's: the playbook, then the re-solve pinned to the read, then the
+pricer. `pricing` never re-solves.
 _Avoid_: engine, mode
+
+**Playbook**:
+The compiled rules a policy plays by against one opponent type, read from that opponent's stats
+alone and applied only as far as their adaptivity class earns. It decides before the re-solve, and
+the re-solve is pinned to the read.
+_Avoid_: script, chart, cheat sheet
+
+**Cut**:
+A value of one stat that separates an opponent type from the next. The playbook reads a station, a
+maniac or a nit from the stats against its cuts, and a style may let the learner move them.
+_Avoid_: threshold, line (a line is a hand's actions)
 
 **Continuation pin**:
 The share of the opponent's next-street play that the re-solve fixes to its selected action
@@ -223,6 +245,11 @@ The built-in population prior used when a bot has no fitted action model.
 **Exploit budget**:
 How far the policy may move from the baseline toward what the reads suggest.
 _Avoid_: aggression, exploit level
+
+**Exploit gate**:
+The rule that a read set comes into play only if playing by it against the champion loses less per
+hand than the cap, read at 95% confidence.
+_Avoid_: safety check, guard (the guard is the live harm check)
 
 **Mixing spread**:
 The share of the pot within which the `Balanced` kind may take an action that is not the best, and
