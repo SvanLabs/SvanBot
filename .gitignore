@@ -11,3 +11,11 @@ node_modules/
 
 # What a bot run from a checkout writes beside it: its record of starts, read by the updater.
 crates/apps/svanbot/health/
+
+# A bot run from a checkout writes its store and run files beside it; they never belong in git
+# (AGENTS.md: store contents stay out of the repo).
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.pid
