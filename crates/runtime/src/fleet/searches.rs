@@ -1,14 +1,16 @@
 //! Each bot's search progress (`searches.json`): the log a run continues after a restart, keyed
-//! by the champion it measured, and the candidate its search found for its own probe and
-//! promotion (#1222). Parameter sets and sim numbers only, never a read of an opponent
-//! (`docs/adr/0004-reads-are-per-bot.md`).
+//! by the champion it measured, the candidate its search found for its own probe and promotion
+//! (#1222), and the moves other bots' searches offered it (V11-80). Parameter sets and sim numbers
+//! only, never a read of an opponent (`docs/adr/0004-reads-are-per-bot.md`).
 //!
-//! A champion change invalidates a bot's log and its candidate: the next read under the new
-//! champion starts empty, and the next write replaces the old entry rather than merging it.
+//! A champion change invalidates a bot's log, its candidate and its offers: the next read under
+//! the new champion starts empty, and the next write replaces the old entry rather than merging
+//! it. An offer is a parameter set only: the receiver screens and confirms it on its own deals.
 
 use serde_json::{Map, Value, json};
 use svanbot_learn::paired::Verdict;
 use svanbot_learn::search::Entry;
+use svanbot_learn::transfer::{self, Offer};
 use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::{Digest, Params};
 use svanbot_strategy::style;
@@ -18,14 +20,16 @@ use super::{Fleet, SEARCH_KEPT, params_from, params_json};
 
 const SEARCHES: &str = "searches.json";
 
-/// One bot's search: what it has screened and confirmed, what it last did, and the candidate it
-/// found, all against `champion`.
+/// One bot's search: what it has screened and confirmed, what it last did, the candidate it
+/// found, and the moves other bots offered it, all against `champion`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BotSearch {
     pub champion: Digest,
     pub entries: Vec<Entry>,
     pub last: Option<(i64, String)>,
     pub candidate: Option<Candidate>,
+    /// Moves other bots' searches offered this one, deduplicated, numbers only.
+    pub offers: Vec<Offer>,
 }
 
 impl BotSearch {
@@ -36,6 +40,7 @@ impl BotSearch {
             entries: Vec::new(),
             last: None,
             candidate: None,
+            offers: Vec::new(),
         }
     }
 }
@@ -94,6 +99,26 @@ impl Fleet {
         self.write(SEARCHES, &json!({ "bots": bots }).to_string())
     }
 
+    /// Offers `offer` to `bot`'s search under `champion`, unless it already holds that receiver
+    /// candidate. Returns whether it was added. A search under another champion is replaced: an
+    /// offer made to the old champion's search is stale.
+    pub fn record_offer(&self, bot: &str, champion: &Params, offer: Offer) -> Result<bool, String> {
+        let _lock = self.lock_fleet_file(SEARCHES)?;
+        let digest = champion.digest();
+        let mut bots = self.searches()?;
+        let mut search = match bots.get(bot) {
+            Some(value) => bot_search_from(value, digest)
+                .map_err(|error| format!("{SEARCHES}: {bot}: {error}"))?,
+            None => BotSearch::empty(digest),
+        };
+        if !transfer::push(&mut search.offers, offer) {
+            return Ok(false);
+        }
+        bots.insert(bot.into(), bot_search_json(&search));
+        self.write(SEARCHES, &json!({ "bots": bots }).to_string())?;
+        Ok(true)
+    }
+
     fn searches(&self) -> Result<Map<String, Value>, String> {
         self.bots_in(SEARCHES)
     }
@@ -121,11 +146,21 @@ fn bot_search_from(value: &Value, champion: Digest) -> Result<BotSearch, String>
         Value::Null => None,
         found => Some(candidate_from(found)?),
     };
+    let offers = match value.get("offers") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(offers) => offers
+            .as_array()
+            .ok_or("a bot's search offers are not a list")?
+            .iter()
+            .map(offer_from)
+            .collect::<Result<_, _>>()?,
+    };
     Ok(BotSearch {
         champion,
         entries,
         last,
         candidate,
+        offers,
     })
 }
 
@@ -136,6 +171,7 @@ fn bot_search_json(search: &BotSearch) -> Value {
         "last_ms": search.last.as_ref().map(|(at, _)| *at),
         "last": search.last.as_ref().map(|(_, note)| note),
         "candidate": search.candidate.as_ref().map(candidate_json),
+        "offers": search.offers.iter().map(offer_json).collect::<Vec<_>>(),
     })
 }
 
@@ -177,5 +213,18 @@ fn candidate_from(value: &Value) -> Result<Candidate, String> {
             mbb_per_100: number("mbb_per_100")?,
             ci95: number("ci95")?,
         },
+    })
+}
+
+fn offer_json(offer: &Offer) -> Value {
+    json!({
+        "challenger": params_json(&offer.challenger),
+    })
+}
+
+fn offer_from(value: &Value) -> Result<Offer, String> {
+    Ok(Offer {
+        challenger: params_from(&value["challenger"])
+            .map_err(|error| format!("a transfer offer's challenger: {error}"))?,
     })
 }

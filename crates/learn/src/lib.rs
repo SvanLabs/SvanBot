@@ -7,8 +7,9 @@
 //! ([`arena`]). It keeps each bot's last five champions and the regression rule that a promotion
 //! must clear against them ([`archive`]), and refreshes a dominated lineage to its best eligible
 //! archived champion of its own style ([`refresh`]). It clones a bot's own field ([`field`]) and
-//! plans the unattended search for a challenger ([`search`]). It takes hands as values and returns
-//! its results. Reading and writing the store is `runtime`'s job.
+//! plans the unattended search for a challenger ([`search`]), and offers a candidate one bot's
+//! search cleared to another's, inside the receiver's style ([`transfer`]). It takes hands as
+//! values and returns its results. Reading and writing the store is `runtime`'s job.
 //!
 //! `learn` sits on `strategy`, `sim` and `core` (`docs/adr/0003-crate-graph.md`) and is pure: no
 //! network, no store, no clock, and the same result for the same inputs.
@@ -33,3 +34,4 @@ pub mod reference;
 pub mod refresh;
 pub mod ring;
 pub mod search;
+pub mod transfer;

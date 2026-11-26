@@ -10,6 +10,9 @@
 //! - Each sim's seed is named by the champion and the challenger, so the same step is the same
 //!   sim on any machine, and a step the log holds is never run again.
 //! - The log is keyed by the champion: a promotion starts the search afresh round the new one.
+//! - A candidate another bot's search cleared may be offered in as an extra challenger
+//!   ([`next_bot_with`]). It is screened and confirmed on this champion's own deals and log; the
+//!   donor's evidence is never read.
 //!
 //! What the search proposes still goes through the canary's harm guard before the fleet adopts
 //! it. The search only decides what to sim next; running a sim and keeping the log are the
@@ -166,8 +169,32 @@ pub enum BotNext {
 /// screening deal is used as promotion evidence. A style keeps the search inside the numbers it
 /// bounds and never moves a number it pins.
 pub fn next_bot(champion: &Params, style: &Style, log: &[Entry]) -> BotNext {
+    next_bot_with(champion, style, log, &[])
+}
+
+/// [`next_bot`], with offers from other bots' searches screened first. A transferred candidate
+/// is an extra challenger, accepted only inside the receiver's style and then given exactly the
+/// receiver's own screen and confirmation; the donor's evidence is never read.
+pub fn next_bot_with(
+    champion: &Params,
+    style: &Style,
+    log: &[Entry],
+    offers: &[crate::transfer::Offer],
+) -> BotNext {
     let digest = champion.digest();
-    let challengers = bot_challengers(champion, style);
+    let mut challengers = Vec::new();
+    for offer in offers {
+        if crate::transfer::allowed(&offer.challenger, champion, style)
+            && !challengers.contains(&offer.challenger)
+        {
+            challengers.push(offer.challenger);
+        }
+    }
+    for challenger in bot_challengers(champion, style) {
+        if !challengers.contains(&challenger) {
+            challengers.push(challenger);
+        }
+    }
     for challenger in &challengers {
         if screening(digest, *challenger, log).is_none() {
             return BotNext::Screen {

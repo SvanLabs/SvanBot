@@ -402,6 +402,12 @@ Both sims compare the same parameter sets or action models. A single sim cannot 
 challenger for promotion.
 _Avoid_: re-test, replication, validation run
 
+**Gene transfer**:
+A move that cleared one bot's search, offered to the other bots' searches. A receiver takes it
+only inside its style's pins and bounds, and screens and confirms it against its own champion on
+its own deals; no evidence and no opponent read travels with the move.
+_Avoid_: cross-training, sharing a champion, cloning a bot
+
 **Ledger**:
 A bot's own record of what each hand won, with the luck of its own draws set beside it.
 _Avoid_: results, bankroll, tracker
