@@ -47,6 +47,9 @@ SVANBOT_ROSTER=<name>,<name>,...
 
 Add `SVANBOT_CANARY=SurSvan` to every bot's file: the bot it names runs the probes and takes each
 promotion first, and the others wait for its harm guard (see "Probes and promotions" below).
+Leave `SVANBOT_PER_BOT_PROMOTION` unset until the per-bot gauntlet evidence source is live. With
+`SVANBOT_PER_BOT_PROMOTION=yes`, a waiting per-bot proposal starts its own standing-arm guard on
+the bot it names; without it, the proposal waits and the slot stays put.
 
 The supervisor sets `SVANBOT_STORE=~/.local/share/svanbot/<name>.db`, one store per bot, unless the
 env file names another. It runs `~/.local/lib/svanbot/current/svanbot`, the slot the updater points

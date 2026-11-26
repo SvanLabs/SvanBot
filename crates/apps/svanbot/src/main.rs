@@ -17,6 +17,9 @@
 //!
 //! - `SVANBOT_CANARY`: the name of the canary, the one bot that runs probes and takes each
 //!   promotion first. The operator names it; no rank does.
+//! - `SVANBOT_PER_BOT_PROMOTION`: `yes` lets a waiting per-bot promotion start its live guard on
+//!   the bot whose slot it names. Off by default; the operator turns it on only once the gauntlet
+//!   evidence that feeds a proposal is live.
 //! - `SVANBOT_FLEET`: where the fleet's champion and proposal files are, the `fleet` directory
 //!   beside the store unless set.
 //!
@@ -210,8 +213,11 @@ fn main() -> ExitCode {
     );
     let baseline = ActionModel::baseline();
     let canary = std::env::var("SVANBOT_CANARY").is_ok_and(|name| name == config.me);
+    let live_promotions =
+        std::env::var("SVANBOT_PER_BOT_PROMOTION").is_ok_and(|value| value == "yes");
     let fleet = Fleet::in_dir(fleet_dir());
-    let (probing, notes) = Probing::open(&store, fleet.clone(), canary, now_ms());
+    let (probing, notes) =
+        Probing::open_with_live(&store, fleet.clone(), canary, now_ms(), live_promotions);
     let (policies, policy_notes) = LivePolicy::open(fleet, &config.me);
     for note in notes.into_iter().chain(policy_notes) {
         eprintln!("svanbot: {note}");

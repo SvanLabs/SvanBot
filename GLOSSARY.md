@@ -356,6 +356,18 @@ _Avoid_: backtest, safety net
 One bot's own line of champions: its slot, its search and its archive, all under the bot's style.
 _Avoid_: branch, family
 
+**Gauntlet**:
+A policy's paired test rows against the designated opponents, one row for each. Before a bot's
+live guard starts, every row must rule out a loss past 5 bb/100 and the fresh 6-max row must be
+wholly above the incumbent.
+_Avoid_: suite, battery
+
+**Bot promotion**:
+A candidate a bot's own proposal puts through the fresh 6-max and gauntlet gate, and then through
+the bot's own standing reference arm's live guard. A clear changes only that bot's slot; a harmful
+or incomplete guard leaves the incumbent in it.
+_Avoid_: fleet promotion (that is the canary's), rollout
+
 **Round-robin**:
 The standing test in which each brain's policy meets its gauntlet. A lineage is **dominated** when
 another row beats it at the 95% bound, and a dominated lineage refreshes.
@@ -418,7 +430,8 @@ the orbit is the unit its verdict counts.
 _Avoid_: round, block, batch
 
 **Proposal**:
-A challenger the learner puts forward for the canary, as a probe or as a promotion.
+A challenger the learner puts forward for the canary, as a probe or as a promotion. A per-bot
+proposal names its bot, kind, style and incumbent and is taken up only by that bot.
 _Avoid_: request, queue entry
 
 **Search**:
@@ -458,7 +471,9 @@ moment it is read, not only at a planned end.
 _Avoid_: result, outcome
 
 **Harm guard**:
-The check that stops a probe or a rollout as soon as the challenger is clearly losing.
+The check that stops a probe or a rollout as soon as the challenger is clearly losing. In Phase 2
+a bot promotion's guard reads that bot's own standing reference arm, and harm or an incomplete
+run leaves the incumbent in its slot.
 _Avoid_: circuit breaker, kill switch
 
 **Margin**:

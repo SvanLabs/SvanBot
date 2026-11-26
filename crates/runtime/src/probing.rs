@@ -30,6 +30,8 @@ use crate::ledger::{Ledger, Played};
 use crate::record::Hand;
 use crate::store::Store;
 
+mod promotion;
+
 /// What a finished hand came to: the hand as the ledger counted it, if it could be, and notes
 /// for the operator.
 #[derive(Clone, Debug, PartialEq)]
@@ -49,6 +51,9 @@ pub struct Probing<'a> {
     /// frozen reference once it is frozen.
     reference: Params,
     canary: bool,
+    /// Whether a per-bot promotion may start its live guard. Off by default: the rollout switch
+    /// is the operator's, and the evidence sources must be present first.
+    live_promotions: bool,
     /// The running probe's id and proposal.
     running: Option<(u64, Proposal)>,
 }
@@ -56,8 +61,21 @@ pub struct Probing<'a> {
 impl<'a> Probing<'a> {
     /// Opens the bot's ledger on the champion its slot names, or the fleet champion while it has
     /// no slot, at `now_ms`, with notes for the operator. The canary also takes up the probe its
-    /// store left open.
+    /// store left open. Per-bot promotions stay in their waiting state: this is the disabled
+    /// production path.
     pub fn open(store: &'a Store, fleet: Fleet, canary: bool, now_ms: i64) -> (Self, Vec<String>) {
+        Self::open_with_live(store, fleet, canary, now_ms, false)
+    }
+
+    /// [`Probing::open`], with the per-bot promotion guard allowed or held back. An explicit
+    /// seam so the live path is off unless the operator or a test turns it on.
+    pub fn open_with_live(
+        store: &'a Store,
+        fleet: Fleet,
+        canary: bool,
+        now_ms: i64,
+        live_promotions: bool,
+    ) -> (Self, Vec<String>) {
         let mut notes = Vec::new();
         let bot = store.bot().unwrap_or_else(|why| {
             notes.push(format!(
@@ -108,6 +126,7 @@ impl<'a> Probing<'a> {
             bot,
             reference,
             canary,
+            live_promotions,
             running: None,
         };
         if canary {
@@ -125,6 +144,11 @@ impl<'a> Probing<'a> {
                 },
                 Err(why) => notes.push(format!("the frozen reference is refused: {why}")),
             }
+        }
+        match probing.open_promotion(now_ms) {
+            Ok(Some(note)) => notes.push(note),
+            Ok(None) => {}
+            Err(why) => notes.push(format!("the open promotion is not taken up: {why}")),
         }
         (probing, notes)
     }
@@ -206,10 +230,11 @@ impl<'a> Probing<'a> {
         {
             notes.push(format!("NOT KEPT: {error}"));
         }
-        let done = if self.canary {
-            self.between_hands(now_ms)
-        } else {
-            self.adopt()
+        let done = match self.promotion_step(now_ms) {
+            Ok(Some(note)) => Ok(Some(note)),
+            Ok(None) if self.canary => self.between_hands(now_ms),
+            Ok(None) => self.adopt(),
+            Err(why) => Err(why),
         };
         match done {
             Ok(note) => notes.extend(note),

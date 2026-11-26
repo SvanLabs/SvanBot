@@ -31,6 +31,7 @@ pub mod play;
 pub mod prior;
 pub mod probe;
 pub mod profile;
+pub mod promotion;
 pub mod read_sim;
 pub mod reads;
 pub mod reference;

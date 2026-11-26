@@ -14,6 +14,8 @@
 //!   it up, and removes it, when no probe is running; a frozen reference stops proposals.
 //! - `searches.json`: each bot's search progress, keyed by the champion it measured, and the
 //!   candidate its search found for its own probe and promotion (Phase 2).
+//! - `promotions.json`: each bot's per-bot proposal, its fresh and gauntlet evidence, and the
+//!   state of its own live guard.
 //! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
 //!   search's log ([`search`]).
 //! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
@@ -39,6 +41,8 @@ mod checks;
 pub use checks::Check;
 mod policies;
 pub use policies::Assignment;
+mod promotions;
+pub use promotions::{Promotion, Status};
 mod reference;
 pub use reference::Reference;
 mod search;
