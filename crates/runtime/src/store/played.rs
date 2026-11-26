@@ -69,6 +69,19 @@ impl Store {
         Ok(added == 1)
     }
 
+    /// Every hand's winnings with when it was kept, in the order they were kept (V11-128): what a
+    /// SvanDB import copies, where [`Store::played`] drops the time.
+    pub(crate) fn played_with_ms(&self) -> Result<Vec<(Played, i64)>, StoreError> {
+        let all = self.played()?;
+        let mut query = self
+            .db
+            .prepare("SELECT recorded_ms FROM played ORDER BY rowid")?;
+        let times = query
+            .query_map([], |row| row.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(all.into_iter().zip(times).collect())
+    }
+
     /// Every hand's winnings, in the order they were kept.
     pub fn played(&self) -> Result<Vec<Played>, StoreError> {
         let mut query = self.db.prepare(
@@ -204,14 +217,14 @@ pub(super) fn migrate(db: &Connection) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn arm_name(arm: Arm) -> &'static str {
+pub(super) fn arm_name(arm: Arm) -> &'static str {
     match arm {
         Arm::Champion => "champion",
         Arm::Challenger => "challenger",
     }
 }
 
-fn arm_named(name: &str) -> Arm {
+pub(super) fn arm_named(name: &str) -> Arm {
     match name {
         "challenger" => Arm::Challenger,
         _ => Arm::Champion,

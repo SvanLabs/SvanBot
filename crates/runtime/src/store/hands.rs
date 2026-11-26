@@ -215,6 +215,70 @@ fn hand(hand_id: String, table_id: String, frames: &str) -> Result<Hand, StoreEr
     })
 }
 
+/// One kept hand with the row's own fields, for a SvanDB import (V11-128): the public reads drop
+/// the source and the recorded time, and a migration must keep them.
+pub(crate) struct MigrationHand {
+    pub(crate) hand: Hand,
+    pub(crate) source: Source,
+    pub(crate) recorded_ms: i64,
+    pub(crate) quality: Option<String>,
+    pub(crate) export: Option<String>,
+}
+
+impl Store {
+    /// Every kept hand with the row's source, recorded time, provenance and export, in the order
+    /// it was kept (V11-128).
+    pub(crate) fn hands_for_migration(&self) -> Result<Vec<MigrationHand>, StoreError> {
+        let mut query = self.db.prepare(
+            "SELECT h.hand_id, h.table_id, h.frames, h.source, h.recorded_ms, h.quality, e.frame
+             FROM hands h LEFT JOIN hand_exports e USING (hand_id)
+             ORDER BY h.rowid",
+        )?;
+        let rows = query.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+            ))
+        })?;
+        rows.map(|row| {
+            let (hand_id, table_id, frames, source, recorded_ms, quality, export) = row?;
+            Ok(MigrationHand {
+                hand: hand(hand_id, table_id, &frames)?,
+                source: Source::named(&source)
+                    .ok_or_else(|| StoreError(format!("no source {source}")))?,
+                recorded_ms,
+                quality,
+                export,
+            })
+        })
+        .collect()
+    }
+
+    /// Every verified season export, in the order it was recorded (V11-128).
+    pub(crate) fn seasons_verified(&self) -> Result<Vec<(String, u64, i64)>, StoreError> {
+        let mut query = self.db.prepare(
+            "SELECT season_id, hands, recorded_ms FROM verified_season_exports ORDER BY rowid",
+        )?;
+        let rows = query.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?;
+        rows.map(|row| {
+            let (season, hands, recorded_ms) = row?;
+            Ok((season, u64::try_from(hands).unwrap_or(0), recorded_ms))
+        })
+        .collect()
+    }
+}
+
 /// What a hand's frames say about how it was recorded, as the row's `quality` text: the parser
 /// revision, how many frames arrived, how many do not parse, whether the hand finished (a
 /// `hand_result` is in the frames), and whether any betting action's amount was left out by the
@@ -222,7 +286,7 @@ fn hand(hand_id: String, table_id: String, frames: &str) -> Result<Hand, StoreEr
 ///
 /// The raw frames stay the record; this is the mark beside them, so "missing" never reads as
 /// "no" and a lossy parse is visible where the hand is read.
-fn quality(frames: &[String]) -> String {
+pub(super) fn quality(frames: &[String]) -> String {
     let mut unparsed = 0usize;
     let mut complete = false;
     let mut inferred_amounts = 0usize;

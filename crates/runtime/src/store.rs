@@ -135,10 +135,18 @@ pub enum Source {
 }
 
 impl Source {
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Self::Live => "live",
             Self::History => "history",
+        }
+    }
+
+    pub(super) fn named(name: &str) -> Option<Self> {
+        match name {
+            "live" => Some(Self::Live),
+            "history" => Some(Self::History),
+            _ => None,
         }
     }
 }
@@ -338,6 +346,50 @@ impl Store {
         Ok(())
     }
 
+    /// Every probe event, oldest first (V11-128): what a SvanDB import copies.
+    pub(crate) fn probe_events(&self) -> Result<Vec<(i64, u64, String, String)>, StoreError> {
+        let mut query = self
+            .db
+            .prepare("SELECT recorded_ms, probe, event, detail FROM probes ORDER BY id")?;
+        let rows = query.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        rows.map(|row| {
+            let (recorded_ms, probe, event, detail) = row?;
+            Ok((
+                recorded_ms,
+                u64::from_str_radix(&probe, 16).unwrap_or(0),
+                event,
+                detail,
+            ))
+        })
+        .collect()
+    }
+
+    /// Every release mark, as `(version, recorded_ms)` (V11-128).
+    pub(crate) fn release_marks(&self) -> Result<Vec<(String, i64)>, StoreError> {
+        let mut query = self
+            .db
+            .prepare("SELECT key, value FROM meta WHERE key LIKE 'release %' ORDER BY rowid")?;
+        let rows = query.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        rows.map(|row| {
+            let (key, value) = row?;
+            let version = key.strip_prefix("release ").unwrap_or(&key).to_owned();
+            let at = value
+                .parse()
+                .map_err(|_| StoreError(format!("release {version} is marked at {value:?}")))?;
+            Ok((version, at))
+        })
+        .collect()
+    }
+
     /// The probe that started last, with the detail it started with, unless it has ended.
     pub fn open_probe(&self) -> Result<Option<(u64, String)>, StoreError> {
         let last = self
@@ -362,10 +414,12 @@ impl Store {
 
 mod hands;
 mod played;
+mod svandb;
 mod trace;
 mod window;
 
 pub use hands::FitHand;
 pub use played::ReferenceOrbit;
+pub use svandb::Svandb;
 pub use trace::{TRACED_HANDS, TracedHand};
 pub use window::ExportLine;
