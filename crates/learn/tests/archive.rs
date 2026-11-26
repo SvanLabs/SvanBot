@@ -130,6 +130,22 @@ fn a_tie_with_an_archived_champion_holds_the_incumbent() {
 }
 
 #[test]
+fn a_wide_interval_around_zero_holds_the_incumbent() {
+    let champions = [0.1, 0.2, 0.3, 0.4, 0.5];
+    let archive = archive_of(&champions);
+    let mut evidence: Vec<Bouts> = champions
+        .iter()
+        .map(|&exploit| bouts(exploit, 2_000.0))
+        .collect();
+    evidence[1] = Bouts {
+        champion: digest(0.2),
+        differences: [1_000.0, -1_000.0].repeat(20),
+    };
+
+    assert_eq!(regression(&archive, &evidence), Regression::Unresolved);
+}
+
+#[test]
 fn missing_evidence_holds_the_incumbent() {
     let champions = [0.1, 0.2, 0.3, 0.4, 0.5];
     let archive = archive_of(&champions);

@@ -116,7 +116,8 @@ pub enum Regression {
 ///
 /// The rule refuses when the candidate's edge against any champion is wholly below zero at the
 /// 95% bound, so a tie never refuses. It admits only when the candidate beats all of them; a
-/// champion with no resolved evidence holds the incumbent.
+/// champion with no resolved evidence holds the incumbent. An empty archive has nothing to lose
+/// to, so a bot's first champion is admitted.
 pub fn regression(archive: &Archive, bouts: &[Bouts]) -> Regression {
     let mut unresolved = false;
     for champion in archive.champions() {
@@ -165,7 +166,8 @@ pub const EXPLOITABILITY_BOUND: f64 = 5_000.0;
 /// An exploiter is a policy searched to beat one brain's champion in the paired sim; the best
 /// one's win rate against the candidate, in mbb/100, is that candidate's exploitability. A
 /// promotion may not raise it past [`EXPLOITABILITY_BOUND`]. Until the exploiters exist nothing
-/// measures it, and [`Exploitability::Unmeasured`] passes: the bound arrives with them.
+/// measures it, and [`Exploitability::Unmeasured`] passes: the bound arrives with them. A caller
+/// reads [`Exploitability::within_bound`] beside the [`regression`] verdict.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Exploitability {
     /// No exploiter has measured the candidate yet.
