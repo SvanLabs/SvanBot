@@ -205,6 +205,9 @@ _Avoid_: baseline (that trusts no read), control
 The policy a bot falls back on when it trusts no read: hard to exploit, not tuned to anyone.
 _Avoid_: GTO, default strategy
 
+**Baseline action model**:
+The built-in population prior used when a bot has no fitted action model.
+
 **Exploit budget**:
 How far the policy may move from the baseline toward what the reads suggest.
 _Avoid_: aggression, exploit level
@@ -272,8 +275,8 @@ challengers.
 _Avoid_: trainer, optimizer
 
 **Paired sim**:
-A sim in which two parameter sets play the same deals from mirrored seats, so the luck of the cards
-cancels out.
+A sim in which two parameter sets or two action models play the same deals from each seat, so the
+luck of the cards cancels out.
 _Avoid_: A/B sim, duplicate sim
 
 **Luck correction**:
@@ -308,9 +311,8 @@ It waits while a proposal waits or a probe runs.
 _Avoid_: optimizer, tuning loop, sweep
 
 **Confirmation**:
-A second paired sim of a challenger on fresh deals, after a first put it above the champion. The
-search proposes only a challenger both put above, so one lucky sim among many cannot become a
-promotion.
+A second paired sim on fresh deals after the first cleared the same margins. Both sims compare
+the same parameter sets or action models. A single sim cannot qualify a challenger for promotion.
 _Avoid_: re-test, replication, validation run
 
 **Ledger**:
