@@ -84,7 +84,7 @@ jobs:
         run: rustup component add llvm-tools-preview
       - name: build the instrumented binary
         run: |
-          echo "RUSTFLAGS=-C target-cpu=x86-64-v2 -Cprofile-generate=$PWD/target/pgo" >> "$GITHUB_ENV"
+          export RUSTFLAGS="-C target-cpu=x86-64-v2 -Cprofile-generate=$PWD/target/pgo"
           mkdir -p target/pgo
           nice -n 15 ionice -c3 cargo build --release --locked -j4 --bins
       - name: train on the fixed-seed workload
@@ -96,7 +96,7 @@ jobs:
           "$sysroot/lib/rustlib/$host/bin/llvm-profdata" merge -o target/pgo/merged.profdata target/pgo/*.profraw
       - name: rebuild with the profile
         run: |
-          echo "RUSTFLAGS=-C target-cpu=x86-64-v2 -Cprofile-use=$PWD/target/pgo/merged.profdata -Cllvm-args=-pgo-warn-missing-function" >> "$GITHUB_ENV"
+          export RUSTFLAGS="-C target-cpu=x86-64-v2 -Cprofile-use=$PWD/target/pgo/merged.profdata -Cllvm-args=-pgo-warn-missing-function"
           nice -n 15 ionice -c3 cargo build --release --locked -j4 --bins
           {
             echo "commit $(git rev-parse HEAD)"
