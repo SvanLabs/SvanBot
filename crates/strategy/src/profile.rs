@@ -51,6 +51,16 @@ impl Rate {
         self.hands
     }
 
+    /// The observed hits behind the rate.
+    pub fn hits(self) -> usize {
+        self.hits
+    }
+
+    /// The observed opportunities behind the rate: the denominator a display shows beside it.
+    pub fn opportunities(self) -> usize {
+        self.opportunities
+    }
+
     pub fn value(self) -> Option<f64> {
         (self.hands >= MIN_EVIDENCE_HANDS).then(|| self.hits as f64 / self.opportunities as f64)
     }
