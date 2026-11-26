@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS hands (
     table_id    TEXT NOT NULL,
     source      TEXT NOT NULL CHECK (source IN ('live', 'history')),
     recorded_ms INTEGER NOT NULL,
-    frames      TEXT NOT NULL CHECK (json_valid(frames))
+    frames      TEXT NOT NULL CHECK (json_valid(frames)),
+    -- What the frames say about how the hand was recorded; NULL on rows recorded before the
+    -- column existed: unknown provenance, not clean provenance.
+    quality     TEXT
 ) STRICT;
 CREATE TRIGGER IF NOT EXISTS hands_no_update BEFORE UPDATE ON hands
     BEGIN SELECT RAISE(ABORT, 'hands are append-only'); END;
@@ -188,6 +191,7 @@ impl Store {
         db.execute_batch(SCHEMA)?;
         db.execute_batch(hands::SEASON_DOWNLOAD_SCHEMA)?;
         played::migrate(&db)?;
+        hands::migrate(&db)?;
         db.execute(
             "INSERT INTO meta (key, value) VALUES ('bot', ?1) ON CONFLICT (key) DO NOTHING",
             [bot],

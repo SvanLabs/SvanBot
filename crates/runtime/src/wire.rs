@@ -6,6 +6,10 @@
 //! Frames the bot does not act on read as [`Inbound::Other`], never as an error: the venue adds
 //! message types without notice.
 
+/// The venue documentation revision this parser implements, recorded on every stored hand as
+/// its provenance: a parser update that changes how frames are read is a new revision here.
+pub const DOCS_REVISION: &str = "2026-09-02";
+
 mod inbound;
 mod outbound;
 mod snapshot;

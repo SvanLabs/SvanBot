@@ -26,6 +26,9 @@ pub struct TracedHand {
     pub recorded_ms: i64,
     /// How many decisions in it carry a trace.
     pub decisions: usize,
+    /// The hand's provenance text: what its frames said about how it was recorded. `None` on
+    /// rows recorded before the column existed.
+    pub quality: Option<String>,
 }
 
 /// The trace as JSON. Written by hand: `strategy` carries no serialiser, and the record is a
@@ -269,7 +272,7 @@ impl Store {
     /// The newest hands whose decisions are kept, newest first — what the replayer's list opens.
     pub fn traced_hands(&self) -> Result<Vec<TracedHand>, StoreError> {
         let mut statement = self.db.prepare(
-            "SELECT h.hand_id, h.table_id, h.recorded_ms, COUNT(d.seq)
+            "SELECT h.hand_id, h.table_id, h.recorded_ms, COUNT(d.seq), h.quality
              FROM hands h JOIN decisions d ON d.hand_id = h.hand_id
              GROUP BY h.hand_id
              ORDER BY h.recorded_ms DESC, h.rowid DESC
@@ -283,6 +286,7 @@ impl Store {
                     table_id: row.get(1)?,
                     recorded_ms: row.get(2)?,
                     decisions: usize::try_from(row.get::<_, i64>(3)?).unwrap_or(0),
+                    quality: row.get(4)?,
                 })
             },
         )?;
