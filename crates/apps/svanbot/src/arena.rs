@@ -19,6 +19,7 @@
 //! printed, and the ship bar can play a bout again to check them ([`play_bout`]).
 
 use std::process::ExitCode;
+use std::sync::Mutex;
 
 use svanbot_learn::arena::{
     BOUT, BoutReader, Row, bout, ring_bout_at, scoreboard, v10_duel, v10_ring_at,
@@ -207,32 +208,36 @@ pub(crate) fn play_rows<R: Copy + Send + Sync>(
     bouts: u64,
     play: impl Fn(R, u64) -> Vec<f64> + Sync,
 ) -> Vec<(Row, Vec<f64>)> {
-    let mut rows = Vec::new();
-    for &opponent in opponents {
-        // Thread `k` plays bouts k, k + THREADS, …; put back in order, the verdict is the
-        // same on any number of threads.
-        let played: Vec<Vec<(u64, Vec<f64>)>> = std::thread::scope(|scope| {
-            let workers: Vec<_> = (0..THREADS)
-                .map(|k| {
-                    let play = &play;
-                    scope.spawn(move || {
-                        (k..bouts)
-                            .step_by(THREADS as usize)
-                            .map(|number| (number, play(opponent, number)))
-                            .collect()
-                    })
+    // Any idle worker can take the next bout, even when another opponent's row is still busy.
+    let pending = Mutex::new(
+        (0..bouts).flat_map(|number| (0..opponents.len()).map(move |row| (row, number))),
+    );
+    let played = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..THREADS)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut played = Vec::new();
+                    loop {
+                        let next = pending.lock().expect("Arena work queue poisoned").next();
+                        let Some((row, number)) = next else {
+                            return played;
+                        };
+                        played.push((row, number, play(opponents[row], number)));
+                    }
                 })
-                .collect();
-            workers
-                .into_iter()
-                .map(|worker| {
-                    // A panicked worker is a run that would be recorded short of its deals: stop
-                    // here, rather than store numbers it cannot be played again from.
-                    worker.join().expect("an Arena worker panicked")
-                })
-                .collect()
-        });
-        let mut by_bout: Vec<(u64, Vec<f64>)> = played.into_iter().flatten().collect();
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| worker.join().expect("an Arena worker panicked"))
+            .collect::<Vec<_>>()
+    });
+    let mut by_row = vec![Vec::new(); opponents.len()];
+    for (row, number, results) in played {
+        by_row[row].push((number, results));
+    }
+    let mut rows = Vec::with_capacity(opponents.len());
+    for (&opponent, mut by_bout) in opponents.iter().zip(by_row) {
         by_bout.sort_by_key(|(number, _)| *number);
         // Summed in deal order, the way the ship bar sums a bout it plays again.
         let sums: Vec<f64> = by_bout
@@ -292,5 +297,37 @@ pub(crate) fn measurement(
                 bouts,
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::play_rows;
+
+    #[test]
+    fn short_rows_share_workers_and_keep_scoreboard_order() {
+        use std::sync::{Mutex, mpsc};
+        use std::time::Duration;
+
+        let (ready, called) = mpsc::channel();
+        let called = Mutex::new(called);
+        let rows = play_rows(&["first", "second"], str::to_owned, 1, |opponent, bout| {
+            assert_eq!(bout, 0);
+            if opponent == "first" {
+                called
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(2))
+                    .unwrap();
+                vec![1.0, 2.0]
+            } else {
+                ready.send(()).unwrap();
+                vec![3.0, 4.0]
+            }
+        });
+        assert_eq!(rows[0].0.opponent, "first");
+        assert_eq!(rows[0].1, [3.0]);
+        assert_eq!(rows[1].0.opponent, "second");
+        assert_eq!(rows[1].1, [7.0]);
     }
 }
