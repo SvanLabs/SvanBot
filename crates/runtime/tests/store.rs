@@ -195,6 +195,7 @@ fn played(id: &str, net: i64, orbit: Option<(u64, u64, Arm)>) -> Played {
         luck: 10.0,
         big_blind: 20,
         orbit,
+        reference: None,
     }
 }
 

@@ -29,6 +29,7 @@ pub mod probe;
 pub mod profile;
 pub mod read_sim;
 pub mod reads;
+pub mod reference;
 pub mod refresh;
 pub mod ring;
 pub mod search;

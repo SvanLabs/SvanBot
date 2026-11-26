@@ -81,6 +81,7 @@ fn played(id: &str) -> Played {
         luck: 0.0,
         big_blind: 20,
         orbit: None,
+        reference: None,
     }
 }
 
