@@ -12,8 +12,14 @@ use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
 use svanbot_strategy::style::{LOOSE, TIGHT};
 
-const INCUMBENT: Params = Params { exploit: 0.4 };
-const CHALLENGER: Params = Params { exploit: 0.32 };
+const INCUMBENT: Params = Params {
+    exploit: 0.4,
+    ..Params::DEFAULT
+};
+const CHALLENGER: Params = Params {
+    exploit: 0.32,
+    ..Params::DEFAULT
+};
 
 fn scratch(name: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -72,7 +78,15 @@ fn fixture(name: &str) -> (PathBuf, Fleet) {
     fleet.freeze(1_000).unwrap();
     fleet.set_champion("A", &INCUMBENT).unwrap();
     fleet.assign("A", tight(), 1).unwrap();
-    fleet.set_champion("B", &Params { exploit: 0.6 }).unwrap();
+    fleet
+        .set_champion(
+            "B",
+            &Params {
+                exploit: 0.6,
+                ..Params::DEFAULT
+            },
+        )
+        .unwrap();
     fleet.assign("B", loose(), 1).unwrap();
     (dir, fleet)
 }
@@ -113,7 +127,16 @@ fn a_valid_proposal_waits_for_its_bot_and_survives_a_restart() {
 fn a_second_proposal_is_refused_until_the_first_finishes_and_other_bots_are_separate() {
     let (_dir, fleet) = fixture("competing");
     let a = proposal("A", admitted(INCUMBENT, TIGHT.name));
-    let b = proposal("B", admitted(Params { exploit: 0.6 }, LOOSE.name));
+    let b = proposal(
+        "B",
+        admitted(
+            Params {
+                exploit: 0.6,
+                ..Params::DEFAULT
+            },
+            LOOSE.name,
+        ),
+    );
     assert_eq!(fleet.propose_bot(&a), Ok(true));
     assert_eq!(
         fleet.propose_bot(&a),
@@ -146,7 +169,16 @@ fn a_second_proposal_is_refused_until_the_first_finishes_and_other_bots_are_sepa
 #[test]
 fn a_proposal_naming_another_incumbent_or_policy_is_refused() {
     let (_dir, fleet) = fixture("stale");
-    let wrong_incumbent = proposal("A", admitted(Params { exploit: 0.7 }, TIGHT.name));
+    let wrong_incumbent = proposal(
+        "A",
+        admitted(
+            Params {
+                exploit: 0.7,
+                ..Params::DEFAULT
+            },
+            TIGHT.name,
+        ),
+    );
     assert!(
         fleet
             .propose_bot(&wrong_incumbent)

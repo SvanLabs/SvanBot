@@ -27,8 +27,14 @@ fn rows(lower: f64) -> Vec<GauntletRow> {
 
 fn evidence(fresh: Verdict, gauntlet: Vec<GauntletRow>) -> Evidence {
     Evidence {
-        incumbent: Params { exploit: 0.4 },
-        challenger: Params { exploit: 0.32 },
+        incumbent: Params {
+            exploit: 0.4,
+            ..Params::DEFAULT
+        },
+        challenger: Params {
+            exploit: 0.32,
+            ..Params::DEFAULT
+        },
         kind: PolicyKind::Solving,
         style: TIGHT.name,
         fresh,

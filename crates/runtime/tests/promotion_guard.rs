@@ -17,10 +17,22 @@ use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
 use svanbot_strategy::style::{LOOSE, TIGHT};
 
-const INCUMBENT: Params = Params { exploit: 0.4 };
-const CHALLENGER: Params = Params { exploit: 0.32 };
-const B_SLOT: Params = Params { exploit: 0.6 };
-const B_CHALLENGER: Params = Params { exploit: 0.48 };
+const INCUMBENT: Params = Params {
+    exploit: 0.4,
+    ..Params::DEFAULT
+};
+const CHALLENGER: Params = Params {
+    exploit: 0.32,
+    ..Params::DEFAULT
+};
+const B_SLOT: Params = Params {
+    exploit: 0.6,
+    ..Params::DEFAULT
+};
+const B_CHALLENGER: Params = Params {
+    exploit: 0.48,
+    ..Params::DEFAULT
+};
 
 fn scratch(name: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -273,7 +285,10 @@ fn a_proposal_whose_slot_or_assignment_changed_is_dropped_before_it_starts() {
     let store = Store::open(&dir.join("A.db"), "A").unwrap();
     fleet.propose_bot(&proposal(18)).unwrap();
     // The operator moves A's slot: the proposal's incumbent is no longer there.
-    let moved = Params { exploit: 0.55 };
+    let moved = Params {
+        exploit: 0.55,
+        ..Params::DEFAULT
+    };
     fleet.set_champion("A", &moved).unwrap();
     let (_probing, notes) = Probing::open_with_live(&store, fleet.clone(), false, 1_000, true);
     assert!(
