@@ -362,7 +362,9 @@ impl Policy {
             }
         };
         let resolved = match self.kind {
-            PolicyKind::Solving => resolve(spot, Some(model), pin, iterations, budget.seed),
+            PolicyKind::Solving | PolicyKind::Exploiting => {
+                resolve(spot, Some(model), pin, iterations, budget.seed)
+            }
             PolicyKind::Balanced | PolicyKind::Pricing => None,
         };
         match resolved {
