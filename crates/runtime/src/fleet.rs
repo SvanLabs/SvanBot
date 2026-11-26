@@ -1,5 +1,4 @@
-//! What the fleet's bots share about parameter sets, through two files in one directory beside
-//! their stores:
+//! What the fleet's bots share about parameter sets, through files in one directory beside stores:
 //!
 //! - `champion.json`: the parameter set every bot plays by before the freeze. The canary writes
 //!   it when a promotion's harm guard clears, and each bot reads it between hands. With no file,
@@ -7,21 +6,18 @@
 //! - `champions.json`: each bot's own champion slot, seeded from `champion.json` and moved only
 //!   by that bot's search and promotion (Phase 2). A bot with no entry plays the fleet champion.
 //! - `reference.json`: the frozen reference (Phase 2's cutover): the champion in play, its digest
-//!   and cutover time, and the references it replaced. While it exists, it is the champion every
-//!   bot without a slot plays, and the fleet-wide proposal and promotion path is stopped
-//!   ([`Reference`], `docs/adr/0006-the-reference-is-frozen.md`).
-//! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
-//!   it up, and removes it, when no probe is running; a frozen reference stops proposals.
+//!   and cutover time, and the references it replaced. While it exists, the fleet's proposal and
+//!   promotion path is stopped ([`Reference`], `docs/adr/0006-the-reference-is-frozen.md`).
+//! - `proposal.json`: a challenger the learner puts forward; the canary takes it up, and removes
+//!   it, when no probe is running; a frozen reference stops proposals.
 //! - `searches.json`: each bot's search progress, keyed by the champion it measured, and the
 //!   candidate its search found for its own probe and promotion (Phase 2).
-//! - `promotions.json`: each bot's per-bot proposal, its fresh and gauntlet evidence, and the
-//!   state of its own live guard.
+//! - `promotions.json`: each bot's per-bot proposal, its evidence, and its own guard.
 //! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
 //!   search's log ([`search`]).
 //! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
 //!   its board on the scoreboard, and the newest of each from a tag's commit is what the ship
-//!   bar reads; [`ARENA_HISTORY`] of each league are kept, so a trend across commits is a read
-//!   and not a re-run.
+//!   bar reads; [`ARENA_HISTORY`] of each league are kept, so a trend is a read, not a re-run.
 //!
 //! A parameter set is numbers the owner tuned, not a read of an opponent, so sharing it crosses no
 //! bot's reads (`docs/adr/0004-reads-are-per-bot.md`). Each number is written as the text that
