@@ -8,7 +8,7 @@ use svanbot::play::assign;
 use svanbot_runtime::fleet::{Check, Fleet};
 use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::params::Params;
-use svanbot_strategy::style::TIGHT;
+use svanbot_strategy::style::{ANCHOR, TIGHT};
 
 fn fixture(name: &str) -> (PathBuf, Fleet) {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
@@ -44,10 +44,30 @@ fn check() -> Check {
     }
 }
 
+fn balanced(admitted: bool) -> Check {
+    Check {
+        kind: PolicyKind::Balanced,
+        style: ANCHOR.name.into(),
+        reference: Params::DEFAULT.digest(),
+        seed: 7,
+        iterations: Some(20),
+        bouts: 60,
+        admitted,
+        heads_up: "heads-up evidence".into(),
+        six_max: "6-max evidence".into(),
+        checked_ms: 1,
+    }
+}
+
 #[test]
 fn freeze_records_the_reference_and_rebase_moves_it_on_purpose() {
     let (dir, fleet) = fixture("cli-freeze");
-    fleet.promote(&Params { exploit: 0.3 }).unwrap();
+    fleet
+        .promote(&Params {
+            exploit: 0.3,
+            spread: 0.0,
+        })
+        .unwrap();
     let output = in_fleet(&dir, &["freeze"]);
     assert!(
         output.status.success(),
@@ -55,7 +75,13 @@ fn freeze_records_the_reference_and_rebase_moves_it_on_purpose() {
         String::from_utf8_lossy(&output.stderr)
     );
     let frozen = fleet.reference().unwrap().expect("the reference is frozen");
-    assert_eq!(frozen.params, Params { exploit: 0.3 });
+    assert_eq!(
+        frozen.params,
+        Params {
+            exploit: 0.3,
+            spread: 0.0
+        }
+    );
     assert!(String::from_utf8_lossy(&output.stdout).contains("frozen"));
 
     let rebase = in_fleet(&dir, &["rebase", "exploit=0.6"]);
@@ -66,7 +92,10 @@ fn freeze_records_the_reference_and_rebase_moves_it_on_purpose() {
     );
     assert_eq!(
         fleet.reference().unwrap().unwrap().params,
-        Params { exploit: 0.6 }
+        Params {
+            exploit: 0.6,
+            spread: 0.0
+        }
     );
     assert_eq!(fleet.rebases().unwrap(), vec![frozen]);
     // Status names the freeze and its cutover.
@@ -95,7 +124,12 @@ fn status_lists_assignments_and_checks_and_marks_a_stale_check() {
     let (dir, fleet) = fixture("cli-status");
     fleet.record_check(&check()).unwrap();
     assign(&fleet, &dir, "Svanar", PolicyKind::Solving, &TIGHT, 2).unwrap();
-    fleet.promote(&Params { exploit: 0.3 }).unwrap();
+    fleet
+        .promote(&Params {
+            exploit: 0.3,
+            spread: 0.0,
+        })
+        .unwrap();
     let output = in_fleet(&dir, &["status"]);
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
@@ -108,4 +142,41 @@ fn status_lists_assignments_and_checks_and_marks_a_stale_check() {
     ] {
         assert!(text.contains(expected), "{text}");
     }
+}
+
+#[test]
+fn balanced_is_selectable_by_the_arena_and_the_policy_check() {
+    let (dir, _) = fixture("cli-balanced-select");
+    // Parsing reaches the settings, not an unknown-policy error: no bouts is a usage error.
+    for command in [
+        &["arena", "balanced", "anchor", "heads-up", "0"][..],
+        &["check", "balanced", "anchor", "0"][..],
+    ] {
+        let output = in_fleet(&dir, command);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("usage"), "{stderr}");
+        assert!(!stderr.contains("unknown policy"), "{stderr}");
+    }
+}
+
+#[test]
+fn a_balanced_check_is_what_admits_the_assignment() {
+    let (dir, fleet) = fixture("cli-balanced-assign");
+    fleet.record_check(&balanced(false)).unwrap();
+    let refused = in_fleet(&dir, &["assign", "Svanar", "balanced", "anchor"]);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("not admitted"));
+
+    fleet.record_check(&balanced(true)).unwrap();
+    let admitted = in_fleet(&dir, &["assign", "Svanar", "balanced", "anchor"]);
+    assert!(
+        admitted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&admitted.stderr)
+    );
+    let assignment = fleet.assignment("Svanar").unwrap().unwrap();
+    assert_eq!(assignment.kind, PolicyKind::Balanced);
+    assert_eq!(assignment.style.name, "anchor");
+    let status = in_fleet(&dir, &["status"]);
+    assert!(String::from_utf8_lossy(&status.stdout).contains("balanced/anchor"));
 }

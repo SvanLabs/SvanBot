@@ -14,7 +14,10 @@ fn a_continuation_pin_experiment_keeps_the_range_model_fixed() {
     let mut turn = spot("AhKh", "QhJh2c3d", 400, 80, 1);
     turn.seats = vec![1];
     turn.lines = vec![vec![]];
-    let params = Params { exploit: 0.8 };
+    let params = Params {
+        exploit: 0.8,
+        spread: 0.0,
+    };
     let action_model = ActionModel::baseline();
     let policy = Policy::reference(params);
     for (pin, class, trust, expected) in [
@@ -57,7 +60,10 @@ fn a_continuation_pin_experiment_keeps_the_range_model_fixed() {
 #[test]
 fn an_evidence_cap_uses_the_next_streets_own_evidence_on_the_flop_and_turn() {
     let action_model = ActionModel::baseline();
-    let params = Params { exploit: 0.8 };
+    let params = Params {
+        exploit: 0.8,
+        spread: 0.0,
+    };
     let policy = Policy::reference(params).with_continuation_pin(ContinuationPin::EvidenceCap);
     for (board, next) in [("QhJh2c", Street::Turn), ("QhJh2c3d", Street::River)] {
         let mut at = spot("AhKh", board, 400, 80, 1);
@@ -105,7 +111,10 @@ fn a_river_decision_ignores_the_continuation_pin() {
     river.seats = vec![1];
     river.lines = vec![vec![]];
     let action_model = ActionModel::baseline();
-    let policy = Policy::reference(Params { exploit: 0.8 });
+    let policy = Policy::reference(Params {
+        exploit: 0.8,
+        spread: 0.0,
+    });
     let direct = resolve(&river, Some(&action_model), 0.8, 24, BUDGET.seed).unwrap();
     for pin in [
         ContinuationPin::Fixed,

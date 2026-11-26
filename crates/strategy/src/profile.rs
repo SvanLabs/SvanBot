@@ -19,6 +19,9 @@ const EQUITY_STREAM: u64 = u64::MAX;
 /// The profile used in live play and the Arena.
 pub const ACTIVE: Profile<'static> = Profile::new(&crate::first_profile::RULES);
 
+/// The profile that never fires.
+pub const EMPTY: Profile<'static> = Profile::new(&[]);
+
 /// One rule. The action is evaluated only when its condition matches.
 pub struct Rule {
     pub when: fn(&Facts<'_>) -> bool,

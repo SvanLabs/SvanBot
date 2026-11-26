@@ -13,6 +13,7 @@ use svanbot_learn::reads::Reads;
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Check, Fleet, League};
 use svanbot_runtime::ship::{self, Bar, Bout, CAP_HOURS};
 use svanbot_strategy::kind::PolicyKind;
+use svanbot_strategy::params::Digest;
 use svanbot_strategy::policy::{ContinuationPin, Policy};
 use svanbot_strategy::style::{self, Style};
 
@@ -21,7 +22,7 @@ use crate::{arena_ship, deciders};
 
 mod model;
 
-const USAGE: &str = "usage: svanbot play arena <solving|pricing> <standard|tight|loose> [league] <bouts> [seed] [iterations] [out.json]
+const USAGE: &str = "usage: svanbot play arena <solving|pricing|balanced> <standard|tight|loose|anchor> [league] <bouts> [seed] [iterations] [out.json]
        svanbot play pin <fixed|zero|cap> [league] <bouts> [seed] [iterations] [out.json]
        svanbot play compare-model <candidate> <baseline|incumbent> <bouts> [seed] [iterations] [--confirm <fresh-seed>]
        svanbot play check <kind> <style> <bouts|--until-decided> [seed] [iterations]
@@ -184,7 +185,9 @@ fn play_arena(
     }
     let settings = settings(&args[..args.len().min(3)])?;
     let champion = fleet.champion().map_err(|error| (2, error))?;
-    let mut policy = Policy::new(kind, style, champion);
+    // A style may clamp or pin numbers, so the Arena plays the seeded set, the same one a new
+    // champion slot for this style would start from.
+    let mut policy = Policy::new(kind, style, style.seed(champion));
     let take: svanbot_learn::play::Take = if let Some((pin, _)) = pin {
         policy = policy.with_continuation_pin(pin);
         Reads::personal
@@ -227,8 +230,9 @@ fn play_arena(
 
 fn check(fleet: &Fleet, kind: PolicyKind, style: &'static Style, args: &[String]) -> CommandResult {
     let champion = fleet.champion().map_err(|error| (2, error))?;
+    let reference_digest = champion.digest();
     let reference = Policy::reference(champion);
-    let candidate = Policy::new(kind, style, champion);
+    let candidate = Policy::new(kind, style, style.seed(champion));
     if let Some((flag, tail)) = args.split_first()
         && flag == "--until-decided"
     {
@@ -257,7 +261,15 @@ fn check(fleet: &Fleet, kind: PolicyKind, style: &'static Style, args: &[String]
     let (heads, heads_up) = judge(League::HeadsUp)?;
     let (ring, six_max) = judge(League::SixMax)?;
     let admitted = heads.admission == Admission::Admitted && ring.admission == Admission::Admitted;
-    record_check(fleet, candidate, settings, admitted, heads_up, six_max)
+    record_check(
+        fleet,
+        candidate,
+        reference_digest,
+        settings,
+        admitted,
+        heads_up,
+        six_max,
+    )
 }
 
 fn check_until_decided(
@@ -273,6 +285,7 @@ fn check_until_decided(
     if args.len() > 2 {
         return Err(usage());
     }
+    let reference_digest = reference.params.digest();
     let game = deciders::game(seed.unwrap_or(1));
     let fresh = |league, policy: Policy| ArenaRun {
         commit: std::env::var("SVANBOT_COMMIT").unwrap_or_else(|_| ArenaRun::LOCAL_COMMIT.into()),
@@ -331,12 +344,21 @@ fn check_until_decided(
         seed: game.seed,
         fixed,
     };
-    record_check(fleet, candidate, settings, admitted, heads_up, six_max)
+    record_check(
+        fleet,
+        candidate,
+        reference_digest,
+        settings,
+        admitted,
+        heads_up,
+        six_max,
+    )
 }
 
 fn record_check(
     fleet: &Fleet,
     policy: Policy,
+    reference: Digest,
     settings: Settings,
     admitted: bool,
     heads_up: String,
@@ -347,7 +369,7 @@ fn record_check(
         .record_check(&Check {
             kind: policy.kind,
             style: policy.style.name.into(),
-            reference: policy.params.digest(),
+            reference,
             seed: settings.seed,
             iterations: settings.fixed,
             bouts: settings.bouts,

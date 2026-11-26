@@ -66,15 +66,19 @@ pub fn params_json(params: &Params) -> Value {
     json!({ "digest": params.digest().to_string(), "numbers": numbers })
 }
 
-/// The parameter set in `value`, refused when a number is missing or the numbers do not hash to
-/// the digest written beside them.
+/// The parameter set in `value`, refused when a number is malformed or the numbers do not hash
+/// to the digest written beside them. A number the file does not name keeps its default, so a
+/// champion written before that number existed still reads.
 pub fn params_from(value: &Value) -> Result<Params, String> {
     let mut params = Params::DEFAULT;
     for (name, _) in Params::DEFAULT.named() {
-        let number = value["numbers"][name]
-            .as_str()
-            .and_then(|text| text.parse::<f64>().ok())
-            .ok_or_else(|| format!("the parameter set lacks {name}"))?;
+        let number = match &value["numbers"][name] {
+            Value::Null => continue,
+            Value::String(text) => text
+                .parse::<f64>()
+                .map_err(|_| format!("the parameter set's {name} is not a number"))?,
+            _ => return Err(format!("the parameter set's {name} is not text")),
+        };
         params = params.with(name, number).unwrap_or(params);
     }
     if value["digest"].as_str() != Some(&params.digest().to_string()) {

@@ -48,8 +48,14 @@ fn below(deals: u64) -> Verdict {
 fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
     let dir = scratch("rotate");
     let fleet = Fleet::in_dir(&dir);
-    let a = Params { exploit: 0.4 };
-    let b = Params { exploit: 0.6 };
+    let a = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
+    let b = Params {
+        exploit: 0.6,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &a).unwrap();
     fleet.set_champion("B", &b).unwrap();
     fleet.assign("A", tight(), 1).unwrap();
@@ -80,14 +86,26 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
             (calls[0].0.as_str(), calls[0].1.as_str()),
             ("solving/tight", "solving/tight")
         );
-        assert_eq!(calls[0].2, Params { exploit: 0.4 * 0.8 });
+        assert_eq!(
+            calls[0].2,
+            Params {
+                exploit: 0.4 * 0.8,
+                spread: 0.0
+            }
+        );
         assert_eq!(calls[0].3, a);
         assert_eq!(calls[0].4, Stage::First);
         assert_eq!(
             (calls[1].0.as_str(), calls[1].1.as_str()),
             ("solving/loose", "solving/loose")
         );
-        assert_eq!(calls[1].2, Params { exploit: 0.6 * 0.8 });
+        assert_eq!(
+            calls[1].2,
+            Params {
+                exploit: 0.6 * 0.8,
+                spread: 0.0
+            }
+        );
         assert_eq!(calls[1].3, b);
         assert_eq!(
             calls[2].3, a,
@@ -102,7 +120,10 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
         "after A at 100 and 300, B is oldest: {note}"
     );
     // A champion change invalidates A's progress: A is searched from its new champion.
-    let promoted = Params { exploit: 0.35 };
+    let promoted = Params {
+        exploit: 0.35,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &promoted).unwrap();
     let note = bot_step(&fleet, 200, 1_600, 500, &sim).unwrap();
     assert!(note.starts_with("A "), "{note}");
@@ -111,7 +132,8 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
     assert_eq!(
         last.2,
         Params {
-            exploit: 0.35 * 0.8
+            exploit: 0.35 * 0.8,
+            spread: 0.0,
         }
     );
     assert_eq!(last.3, promoted);
@@ -123,8 +145,14 @@ fn two_slots_rotate_and_each_search_plays_its_own_kind_and_style() {
 #[test]
 fn promising_candidates_get_the_long_confirmation_and_become_a_candidate() {
     let fleet = Fleet::in_dir(scratch("candidate"));
-    let champion = Params { exploit: 0.4 };
-    let promising = Params { exploit: 0.4 * 0.8 };
+    let champion = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
+    let promising = Params {
+        exploit: 0.4 * 0.8,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &champion).unwrap();
     fleet.assign("A", tight(), 1).unwrap();
     let calls = RefCell::new(Vec::new());
@@ -179,8 +207,14 @@ fn promising_candidates_get_the_long_confirmation_and_become_a_candidate() {
 #[test]
 fn a_confirmation_budget_that_expires_without_a_verdict_holds_the_incumbent() {
     let fleet = Fleet::in_dir(scratch("held"));
-    let champion = Params { exploit: 0.4 };
-    let promising = Params { exploit: 0.4 * 0.8 };
+    let champion = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
+    let promising = Params {
+        exploit: 0.4 * 0.8,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &champion).unwrap();
     let sim = |_challenger: &Policy, _champion: &Policy, step: &Step, deals: u64| {
         let mbb = match step.stage {
@@ -207,12 +241,21 @@ fn a_confirmation_budget_that_expires_without_a_verdict_holds_the_incumbent() {
 #[test]
 fn a_bot_with_a_candidate_waiting_is_not_searched_again() {
     let fleet = Fleet::in_dir(scratch("waiting"));
-    let a = Params { exploit: 0.4 };
-    let b = Params { exploit: 0.6 };
+    let a = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
+    let b = Params {
+        exploit: 0.6,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &a).unwrap();
     fleet.set_champion("B", &b).unwrap();
     let waiting = Candidate {
-        challenger: Params { exploit: 0.32 },
+        challenger: Params {
+            exploit: 0.32,
+            spread: 0.0,
+        },
         kind: PolicyKind::Solving,
         style: "standard",
         verdict: Verdict {
@@ -268,7 +311,10 @@ fn the_cli_with_no_slots_still_searches_the_fleet_champion() {
 fn the_cli_searches_the_slotted_bot() {
     let dir = scratch("cli");
     let fleet = Fleet::in_dir(&dir);
-    let champion = Params { exploit: 0.4 };
+    let champion = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &champion).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
         .env_clear()
@@ -302,8 +348,14 @@ fn the_cli_searches_the_slotted_bot() {
 fn a_candidate_is_offered_to_another_bot_which_screens_it_against_its_own_champion() {
     let dir = scratch("transfer");
     let fleet = Fleet::in_dir(&dir);
-    let a = Params { exploit: 0.5 };
-    let b = Params { exploit: 0.7 };
+    let a = Params {
+        exploit: 0.5,
+        spread: 0.0,
+    };
+    let b = Params {
+        exploit: 0.7,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &a).unwrap();
     fleet.set_champion("B", &b).unwrap();
     fleet.assign("A", tight(), 1).unwrap();

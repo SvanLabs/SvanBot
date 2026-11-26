@@ -7,10 +7,16 @@ use svanbot_strategy::params::Params;
 use svanbot_strategy::profile::ACTIVE;
 use svanbot_strategy::style::{self, Style};
 
-const CHAMPION: Params = Params { exploit: 0.5 };
+const CHAMPION: Params = Params {
+    exploit: 0.5,
+    spread: 0.0,
+};
 
 fn at(exploit: f64) -> Params {
-    Params { exploit }
+    Params {
+        exploit,
+        spread: 0.0,
+    }
 }
 
 fn found(deals: usize, mbb: f64) -> Verdict {

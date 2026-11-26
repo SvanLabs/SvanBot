@@ -136,7 +136,13 @@ fn a_second_pass_appends_to_the_standing_matrix_until_a_champion_changes() {
 
     // A new champion starts every row afresh: the old policy's evidence is not about this one.
     fleet
-        .set_champion("Alpha", &Params { exploit: 0.9 })
+        .set_champion(
+            "Alpha",
+            &Params {
+                exploit: 0.9,
+                spread: 0.0,
+            },
+        )
         .unwrap();
     let third = pass(&fleet, settings(), 20, Some(&second), &mut |_, _| {
         Ok(vec![3.0])
@@ -153,8 +159,14 @@ fn a_second_pass_appends_to_the_standing_matrix_until_a_champion_changes() {
 #[test]
 fn a_champion_change_archives_the_old_one_and_the_pass_measures_the_new_one_against_it() {
     let fleet = fleet("archive", &["Alpha"]);
-    let old = Params { exploit: 0.4 };
-    let new = Params { exploit: 0.7 };
+    let old = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
+    let new = Params {
+        exploit: 0.7,
+        spread: 0.0,
+    };
     fleet.set_champion("Alpha", &new).unwrap();
     let previous = Record {
         recorded_ms: 1,
@@ -225,7 +237,10 @@ fn an_archived_champion_plays_a_real_six_max_bout() {
         &game,
         League::SixMax,
         &policy,
-        Params { exploit: 0.4 },
+        Params {
+            exploit: 0.4,
+            spread: 0.0,
+        },
         0,
         Some(1),
     );

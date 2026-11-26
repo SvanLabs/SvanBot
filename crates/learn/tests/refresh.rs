@@ -8,7 +8,10 @@ use svanbot_learn::refresh::{Matchup, Outcome, Reason, Row, refresh};
 use svanbot_strategy::params::Params;
 
 fn params(exploit: f64) -> Params {
-    Params { exploit }
+    Params {
+        exploit,
+        spread: 0.0,
+    }
 }
 
 fn archived(exploit: f64, style: &'static str, edge: f64) -> Archived {

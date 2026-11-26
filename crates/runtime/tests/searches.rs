@@ -20,7 +20,10 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 fn champion(exploit: f64) -> Params {
-    Params { exploit }
+    Params {
+        exploit,
+        spread: 0.0,
+    }
 }
 
 fn verdict(mbb: f64) -> Verdict {

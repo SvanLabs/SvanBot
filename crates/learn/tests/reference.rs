@@ -55,7 +55,11 @@ fn the_chance_of_the_arm_played_is_the_chance_the_estimate_weights_by() {
 #[test]
 fn the_estimate_recovers_the_policy_s_edge_through_a_one_in_ten_arm() {
     let reference = Params::DEFAULT.digest();
-    let policy = Params { exploit: 0.4 }.digest();
+    let policy = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    }
+    .digest();
     let mut estimate = Estimate::new(reference, policy);
     let seed = bot_seed("SurSvan");
     // The policy wins a big blind a hand; the reference breaks even.
@@ -75,7 +79,11 @@ fn the_estimate_recovers_the_policy_s_edge_through_a_one_in_ten_arm() {
 #[test]
 fn the_guard_clears_a_level_arm_and_trips_a_losing_one() {
     let reference = Params::DEFAULT.digest();
-    let policy = Params { exploit: 0.4 }.digest();
+    let policy = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    }
+    .digest();
     let seed = bot_seed("SurSvan");
     let mut level = Estimate::guard(reference, policy, 3_000, 20.0);
     let mut losing = Estimate::guard(reference, policy, 3_000, 20.0);

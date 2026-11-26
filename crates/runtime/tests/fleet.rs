@@ -16,7 +16,10 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 /// Numbers with no short decimal form: they must come back to the bit.
-const CHALLENGER: Params = Params { exploit: 0.1 + 0.2 };
+const CHALLENGER: Params = Params {
+    exploit: 0.1 + 0.2,
+    spread: 0.0,
+};
 
 fn proposal() -> Proposal {
     Proposal {
@@ -33,7 +36,10 @@ fn proposal() -> Proposal {
 fn a_search_proposal_waits_its_turn_and_never_replaces_one_waiting_or_a_probe_running() {
     let fleet = Fleet::in_dir(scratch("if-free"));
     let other = Proposal {
-        challenger: Params { exploit: 0.4 },
+        challenger: Params {
+            exploit: 0.4,
+            spread: 0.0,
+        },
         ..proposal()
     };
     assert_eq!(fleet.propose_if_free(&proposal()), Ok(true));

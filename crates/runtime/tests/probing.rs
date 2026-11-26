@@ -12,7 +12,10 @@ use svanbot_runtime::record::Hand;
 use svanbot_runtime::store::Store;
 use svanbot_strategy::params::Params;
 
-const CHALLENGER: Params = Params { exploit: 0.9 };
+const CHALLENGER: Params = Params {
+    exploit: 0.9,
+    spread: 0.0,
+};
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("svanbot-probing-{}-{name}", std::process::id()));
@@ -131,7 +134,10 @@ fn a_restarted_canary_does_not_take_a_probe_up_after_the_freeze() {
 fn a_proposal_measured_against_another_champion_is_dropped_unplayed() {
     let dir = scratch("stale");
     let fleet = Fleet::in_dir(dir.join("fleet"));
-    let promoted = Params { exploit: 0.4 };
+    let promoted = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
     fleet.promote(&promoted).unwrap();
     let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
     let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
@@ -286,8 +292,14 @@ fn a_promotion_taken_back_by_hand_reaches_the_canary_too() {
 fn a_bot_plays_its_own_slot_and_a_slot_update_waits_for_the_next_hand() {
     let dir = scratch("own-slot");
     let fleet = Fleet::in_dir(dir.join("fleet"));
-    let slot_a = Params { exploit: 0.2 };
-    let slot_b = Params { exploit: 0.7 };
+    let slot_a = Params {
+        exploit: 0.2,
+        spread: 0.0,
+    };
+    let slot_b = Params {
+        exploit: 0.7,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &slot_a).unwrap();
     fleet.set_champion("B", &slot_b).unwrap();
     let a_store = Store::open(&dir.join("A.db"), "A").unwrap();
@@ -300,7 +312,10 @@ fn a_bot_plays_its_own_slot_and_a_slot_update_waits_for_the_next_hand() {
     assert_eq!(b.champion(), slot_b);
     assert!(b.on_reference());
     assert_eq!(b.params(), Params::DEFAULT);
-    let updated = Params { exploit: 0.3 };
+    let updated = Params {
+        exploit: 0.3,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &updated).unwrap();
     // Between hands only: the hand in play keeps the champion it began with.
     assert_eq!(a.params(), slot_a);
@@ -333,7 +348,15 @@ fn a_slot_that_cannot_be_read_leaves_the_bot_on_the_fleet_champion() {
     let dir = scratch("bad-slot");
     let fleet = Fleet::in_dir(dir.join("fleet"));
     fleet.promote(&CHALLENGER).unwrap();
-    fleet.set_champion("A", &Params { exploit: 0.3 }).unwrap();
+    fleet
+        .set_champion(
+            "A",
+            &Params {
+                exploit: 0.3,
+                spread: 0.0,
+            },
+        )
+        .unwrap();
     let path = dir.join("fleet").join("champions.json");
     let text = std::fs::read_to_string(&path).unwrap();
     std::fs::write(&path, text.replace("\"0.3\"", "\"0.4\"")).unwrap();

@@ -31,7 +31,10 @@ fn loose() -> Assignment {
 }
 
 /// A parameter set that is not the default.
-const CHALLENGER: Params = Params { exploit: 0.1 + 0.2 };
+const CHALLENGER: Params = Params {
+    exploit: 0.1 + 0.2,
+    spread: 0.0,
+};
 
 #[test]
 fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
@@ -39,7 +42,10 @@ fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
     let fleet = Fleet::in_dir(&dir);
     fleet.assign("A", tight(), 1).unwrap();
     fleet.assign("B", loose(), 1).unwrap();
-    let reference = Params { exploit: 0.4 };
+    let reference = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
     fleet.promote(&reference).unwrap();
     // Before any slot, both bots read the fleet champion, and no file was made.
     assert_eq!(fleet.champion_slot("A"), Ok(None));
@@ -50,8 +56,14 @@ fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
     assert_eq!(fleet.seed_champion("A"), Ok(reference));
     assert_eq!(fleet.seed_champion("B"), Ok(reference));
     // Distinct slots stay distinct, and the fleet champion does not move.
-    let slot_a = Params { exploit: 0.2 };
-    let slot_b = Params { exploit: 0.9 };
+    let slot_a = Params {
+        exploit: 0.2,
+        spread: 0.0,
+    };
+    let slot_b = Params {
+        exploit: 0.9,
+        spread: 0.0,
+    };
     fleet.set_champion("A", &slot_a).unwrap();
     fleet.set_champion("B", &slot_b).unwrap();
     assert_eq!(fleet.champion_slot("A"), Ok(Some(slot_a)));
@@ -70,8 +82,14 @@ fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
 fn the_slots_are_listed_by_bot_name_for_the_learner_to_rotate_through() {
     let fleet = Fleet::in_dir(scratch("list"));
     assert_eq!(fleet.champion_slots(), Ok(Vec::new()));
-    let a = Params { exploit: 0.2 };
-    let b = Params { exploit: 0.7 };
+    let a = Params {
+        exploit: 0.2,
+        spread: 0.0,
+    };
+    let b = Params {
+        exploit: 0.7,
+        spread: 0.0,
+    };
     fleet.set_champion("B", &b).unwrap();
     fleet.set_champion("A", &a).unwrap();
     assert_eq!(
@@ -97,13 +115,30 @@ fn a_fleet_with_no_champions_file_keeps_playing_the_fleet_champion() {
 fn a_slot_is_seeded_once_and_its_numbers_must_hash_to_their_digest() {
     let dir = scratch("tamper");
     let fleet = Fleet::in_dir(&dir);
-    let reference = Params { exploit: 0.4 };
+    let reference = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
     fleet.promote(&reference).unwrap();
     fleet.seed_champion("A").unwrap();
-    fleet.set_champion("A", &Params { exploit: 0.2 }).unwrap();
+    fleet
+        .set_champion(
+            "A",
+            &Params {
+                exploit: 0.2,
+                spread: 0.0,
+            },
+        )
+        .unwrap();
     // Seeding fills a new slot; it never replaces the champion a bot has learned.
     assert!(fleet.seed_champion("A").unwrap_err().contains("already"));
-    assert_eq!(fleet.champion_slot("A"), Ok(Some(Params { exploit: 0.2 })));
+    assert_eq!(
+        fleet.champion_slot("A"),
+        Ok(Some(Params {
+            exploit: 0.2,
+            spread: 0.0
+        }))
+    );
     // A hand-written number that does not hash to its digest is refused, as champion.json is.
     let path = dir.join("champions.json");
     let text = std::fs::read_to_string(&path).unwrap();

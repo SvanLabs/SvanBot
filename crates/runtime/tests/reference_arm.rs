@@ -39,7 +39,10 @@ fn hand(number: u32, stack: i64) -> Hand {
 
 fn guard(hands: u64) -> Proposal {
     Proposal {
-        challenger: Params { exploit: 0.9 },
+        challenger: Params {
+            exploit: 0.9,
+            spread: 0.0,
+        },
         kind: Kind::Guard { hands },
         harm_margin: 5.0,
         sim_estimate: None,
@@ -98,8 +101,14 @@ fn played(id: &str, net: i64, reference: Option<Standing>) -> Played {
 fn every_hand_records_its_reference_digest_and_arm_chance() {
     let dir = scratch("records");
     let fleet = Fleet::in_dir(dir.join("fleet"));
-    let reference = Params { exploit: 0.4 };
-    let policy = Params { exploit: 0.6 };
+    let reference = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    };
+    let policy = Params {
+        exploit: 0.6,
+        spread: 0.0,
+    };
     fleet.promote(&reference).unwrap();
     let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
     let mut probing = Probing::open(&store, fleet.clone(), false, 500).0;
@@ -145,14 +154,28 @@ fn every_hand_records_its_reference_digest_and_arm_chance() {
 fn the_standing_arm_reads_the_frozen_reference_after_cutover() {
     let dir = scratch("frozen");
     let fleet = Fleet::in_dir(dir.join("fleet"));
-    fleet.promote(&Params { exploit: 0.4 }).unwrap();
+    fleet
+        .promote(&Params {
+            exploit: 0.4,
+            spread: 0.0,
+        })
+        .unwrap();
     fleet.freeze(500).unwrap();
     // The operator rebases the reference; champion.json still holds the pre-freeze numbers.
-    let frozen = Params { exploit: 0.6 };
+    let frozen = Params {
+        exploit: 0.6,
+        spread: 0.0,
+    };
     fleet.rebase(&frozen, 600).unwrap();
     // The bot's own slot moves too, and the standing arm still measures the frozen reference.
     fleet
-        .set_champion("SurSvan", &Params { exploit: 0.8 })
+        .set_champion(
+            "SurSvan",
+            &Params {
+                exploit: 0.8,
+                spread: 0.0,
+            },
+        )
         .unwrap();
     let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
     let mut probing = Probing::open(&store, fleet.clone(), false, 500).0;
@@ -343,7 +366,11 @@ fn a_standing_hand_survives_a_reopen_with_its_reference_digest() {
         orbit: 7,
         side: Side::Reference,
         chance: reference::SHARE,
-        reference: Params { exploit: 0.4 }.digest(),
+        reference: Params {
+            exploit: 0.4,
+            spread: 0.0,
+        }
+        .digest(),
     };
     {
         let store = Store::open(&path, "A").unwrap();
@@ -353,7 +380,11 @@ fn a_standing_hand_survives_a_reopen_with_its_reference_digest() {
     }
     let store = Store::open(&path, "A").unwrap();
     assert_eq!(store.played().unwrap()[0].reference, Some(arm));
-    let digest: Digest = Params { exploit: 0.4 }.digest();
+    let digest: Digest = Params {
+        exploit: 0.4,
+        spread: 0.0,
+    }
+    .digest();
     let orbits = store.reference_orbits(&digest, 0).unwrap();
     assert_eq!(orbits.len(), 1);
     assert_eq!(

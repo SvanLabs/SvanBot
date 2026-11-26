@@ -15,8 +15,14 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-const FIRST: Params = Params { exploit: 0.3 };
-const SECOND: Params = Params { exploit: 0.7 };
+const FIRST: Params = Params {
+    exploit: 0.3,
+    spread: 0.0,
+};
+const SECOND: Params = Params {
+    exploit: 0.7,
+    spread: 0.0,
+};
 
 #[test]
 fn a_freeze_records_the_champion_in_play_with_its_digest_and_cutover_and_a_restart_keeps_it() {
@@ -92,7 +98,10 @@ fn a_deliberate_rebase_moves_the_reference_and_keeps_the_old_one() {
     assert_eq!(restarted.reference(), Ok(Some(rebased)));
     assert_eq!(restarted.rebases(), Ok(vec![frozen]));
     // A second rebase keeps the newest first.
-    let third = Params { exploit: 0.9 };
+    let third = Params {
+        exploit: 0.9,
+        spread: 0.0,
+    };
     fleet.rebase(&third, 3_000).unwrap();
     assert_eq!(
         fleet

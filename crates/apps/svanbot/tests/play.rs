@@ -180,7 +180,11 @@ fn a_bot_is_assigned_only_with_a_current_admitted_check() {
     fleet.record_check(&check(false)).unwrap();
     assert!(assign_tight(&fleet, &dir).unwrap_err().contains("admitted"));
     let stale = Check {
-        reference: Params { exploit: 0.3 }.digest(),
+        reference: Params {
+            exploit: 0.3,
+            spread: 0.0,
+        }
+        .digest(),
         ..check(true)
     };
     fleet.record_check(&stale).unwrap();
@@ -204,7 +208,12 @@ fn a_bot_with_no_store_is_refused_and_nothing_is_written() {
 #[test]
 fn seed_creates_a_slot_from_the_reference_for_a_bot_with_a_store() {
     let (dir, fleet) = fixture("seed-cli", true);
-    fleet.promote(&Params { exploit: 0.4 }).unwrap();
+    fleet
+        .promote(&Params {
+            exploit: 0.4,
+            spread: 0.0,
+        })
+        .unwrap();
     let output = in_fleet(&dir, &["seed", "Svanar"]);
     assert!(
         output.status.success(),
@@ -213,7 +222,10 @@ fn seed_creates_a_slot_from_the_reference_for_a_bot_with_a_store() {
     );
     assert_eq!(
         fleet.champion_slot("Svanar"),
-        Ok(Some(Params { exploit: 0.4 }))
+        Ok(Some(Params {
+            exploit: 0.4,
+            spread: 0.0
+        }))
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("champion"));
     // A second seed is refused: a learned champion is not a seed's to overwrite.
@@ -236,7 +248,12 @@ fn a_promotion_after_assignment_does_not_unassign() {
     let (dir, fleet) = fixture("promotion", true);
     fleet.record_check(&check(true)).unwrap();
     assign_tight(&fleet, &dir).unwrap();
-    fleet.promote(&Params { exploit: 0.3 }).unwrap();
+    fleet
+        .promote(&Params {
+            exploit: 0.3,
+            spread: 0.0,
+        })
+        .unwrap();
     assert!(fleet.assignment("Svanar").unwrap().is_some());
     assert!(assign_tight(&fleet, &dir).unwrap_err().contains("stale"));
 }
@@ -335,9 +352,15 @@ fn a_refresh_changes_the_slot_only_after_the_live_guard_clears() {
     use svanbot_learn::refresh::{Matchup, Outcome, Row, refresh};
 
     let (_, fleet) = fixture("refresh-guard", false);
-    let incumbent = Params { exploit: 0.5 };
+    let incumbent = Params {
+        exploit: 0.5,
+        spread: 0.0,
+    };
     let selected = Archived {
-        params: Params { exploit: 0.4 },
+        params: Params {
+            exploit: 0.4,
+            spread: 0.0,
+        },
         style: "tight",
         promotion: vec![3_000.0; 40],
     };

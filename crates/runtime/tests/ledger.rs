@@ -5,7 +5,10 @@ use svanbot_runtime::ledger::{Ledger, ORBIT};
 use svanbot_runtime::record::Hand;
 use svanbot_strategy::params::Params;
 
-const CHALLENGER: Params = Params { exploit: 0.9 };
+const CHALLENGER: Params = Params {
+    exploit: 0.9,
+    spread: 0.0,
+};
 
 /// A hand at `table` that leaves our seat, 2, with `stack` chips, in the venue's own frames.
 fn hand(table: &str, number: u32, stack: u64) -> Hand {
