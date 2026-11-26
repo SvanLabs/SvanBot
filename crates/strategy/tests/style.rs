@@ -1,6 +1,7 @@
 use svanbot_strategy::kind::PolicyKind;
+use svanbot_strategy::params::Params;
 use svanbot_strategy::profile::ACTIVE;
-use svanbot_strategy::style::{self, LOOSE, STANDARD, TIGHT};
+use svanbot_strategy::style::{self, LOOSE, STANDARD, Style, TIGHT};
 
 #[test]
 fn a_kind_and_a_style_are_known_by_the_name_they_print() {
@@ -45,12 +46,40 @@ fn every_style_pins_a_width_a_player_could_play() {
 
 #[test]
 fn a_style_seeds_a_slot_with_its_pins_applied() {
-    use svanbot_strategy::params::Params;
     // The width is pinned in the style, not in a parameter set, so seeding moves no number and
     // no digest: the policy reads the width from the style it plays.
     assert_eq!(TIGHT.seed(Params::DEFAULT), Params::DEFAULT);
     assert_eq!(LOOSE.seed(Params::DEFAULT), Params::DEFAULT);
     assert_eq!(TIGHT.seed(Params { exploit: 0.25 }).exploit, 0.25);
+}
+
+#[test]
+fn a_style_bounds_the_numbers_its_search_may_move_and_pins_the_zero_width_ones() {
+    static BOUNDED: Style = Style {
+        name: "bounded",
+        open_scale: 0.8,
+        profile: ACTIVE,
+        bounds: &[("exploit", 0.3, 0.6)],
+    };
+    static PINNED: Style = Style {
+        name: "pinned",
+        open_scale: 0.8,
+        profile: ACTIVE,
+        bounds: &[("exploit", 0.4, 0.4)],
+    };
+    assert!(BOUNDED.allows("exploit", 0.3));
+    assert!(BOUNDED.allows("exploit", 0.6));
+    assert!(!BOUNDED.allows("exploit", 0.61));
+    // A number the style says nothing about is left to the parameter set's own range.
+    assert!(BOUNDED.allows("unknown", 99.0));
+    // Seeding applies a pin, and a pin is a zero-width bound: the search never moves it.
+    assert_eq!(
+        BOUNDED.seed(Params { exploit: 0.5 }),
+        Params { exploit: 0.5 }
+    );
+    assert_eq!(PINNED.seed(Params { exploit: 0.5 }).exploit, 0.4);
+    assert!(PINNED.allows("exploit", 0.4));
+    assert!(!PINNED.allows("exploit", 0.5));
 }
 
 #[test]

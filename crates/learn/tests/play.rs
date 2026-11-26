@@ -91,6 +91,7 @@ fn a_style_with_no_rules_collects_none() {
         name: "bare",
         open_scale: 1.0,
         profile: Profile::new(&[]),
+        bounds: &[],
     };
     let policy = Policy::new(PolicyKind::Solving, &BARE, Params::DEFAULT);
     assert!(profile_stats(&policy, &Reads::default(), &[(1, "x")]).is_empty());
