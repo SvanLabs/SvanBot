@@ -247,6 +247,25 @@ A rebase does not restart the fleet-wide search. The ship check is unchanged and
 reference; its canary stage is re-based only when the operator approves the new baseline and its
 replayed evidence.
 
+### Per-bot promotions
+
+After the freeze, each bot's search can keep a candidate of its own: one a fresh 6-max
+confirmation put above that bot's slot. The candidate waits until it is played through the
+designated gauntlet — the challenger and the incumbent behind the same cards against the seven
+release opponents at 6-max, each row read at the 5 bb/100 bound — and is put forward only when the
+whole evidence admits:
+
+```sh
+svanbot learn                       # the per-bot search, one step a run
+svanbot play promote <bot> 30       # the gauntlet; proposes only when every row and the confirmation admit
+```
+
+The proposal waits for its bot in `fleet/promotions.json`. With `SVANBOT_PER_BOT_PROMOTION=yes`
+in the bot's env file, the bot starts its guard between hands: the challenger goes into its slot
+and the bot's own standing reference orbits decide. `cleared` keeps the challenger; `harmful` or
+`incomplete` restores the incumbent. Without the variable the proposal stays pending and nothing
+changes.
+
 ### The unattended search
 
 `svanbot learn` is the same search with nobody running it (V11-49). Each run does one step and
