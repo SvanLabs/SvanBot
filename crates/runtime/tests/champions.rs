@@ -67,6 +67,20 @@ fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
 }
 
 #[test]
+fn the_slots_are_listed_by_bot_name_for_the_learner_to_rotate_through() {
+    let fleet = Fleet::in_dir(scratch("list"));
+    assert_eq!(fleet.champion_slots(), Ok(Vec::new()));
+    let a = Params { exploit: 0.2 };
+    let b = Params { exploit: 0.7 };
+    fleet.set_champion("B", &b).unwrap();
+    fleet.set_champion("A", &a).unwrap();
+    assert_eq!(
+        fleet.champion_slots(),
+        Ok(vec![("A".into(), a), ("B".into(), b)])
+    );
+}
+
+#[test]
 fn a_fleet_with_no_champions_file_keeps_playing_the_fleet_champion() {
     // The files a fleet has before Phase 2 are enough: champion.json for the fleet, plays.json
     // for the assignments, and no champions.json at all.
