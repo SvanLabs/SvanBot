@@ -67,19 +67,21 @@ exit 0
   }
 }
 
-test("start brings up every configured bot, the dashboard and the learner", () => {
+test("start brings up every configured bot, the dashboard, the learner and the round-robin", () => {
   withSupervisor((run, log) => {
     const started = run("start.sh");
     expect(started.exitCode).toBe(0);
     // A bot that is already running is left as it is, and is not a failure.
-    expect(log()).toBe("start First\nstart Second\nstart dashboard\nstart learn\n");
+    expect(log()).toBe(
+      "start First\nstart Second\nstart dashboard\nstart learn\nstart round-robin\n",
+    );
   });
 });
 
-test("stop brings down the learner, every bot with a pid file, then the dashboard", () => {
+test("stop brings down the learner and round-robin, every bot with a pid file, then the dashboard", () => {
   withSupervisor((run, log) => {
     expect(run("stop.sh").exitCode).toBe(0);
-    expect(log()).toBe("stop learn\nstop First\nstop Second\nstop dashboard\n");
+    expect(log()).toBe("stop learn\nstop round-robin\nstop First\nstop Second\nstop dashboard\n");
   });
 });
 

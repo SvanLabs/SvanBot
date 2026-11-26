@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stops the fleet: the learner, every bot its supervisor knows (a pid file under
-# ~/.local/state/svanbot/), then the dashboard. Each stop waits for its program to exit.
+# Stops the fleet: the learner and the round-robin, every bot its supervisor knows (a pid file
+# under ~/.local/state/svanbot/), then the dashboard. Each stop waits for its program to exit.
 set -euo pipefail
 
 here=$(dirname -- "${BASH_SOURCE[0]}")
@@ -23,6 +23,6 @@ for file in "${SVANBOT_STATE:-$HOME/.local/state/svanbot}"/*.pid; do
     fi
 done
 
-for name in learn "${bots[@]}" dashboard; do
+for name in learn round-robin "${bots[@]}" dashboard; do
     "$supervisor" stop "$name"
 done

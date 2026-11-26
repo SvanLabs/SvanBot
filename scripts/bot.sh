@@ -9,8 +9,9 @@
 #   svanbot-bot pid <name>      print the program's pid while it runs
 #   svanbot-bot run <name>      the supervisor itself, in the foreground (what start runs)
 #
-# <name> is a bot with an env file in ~/.config/svanbot/, `dashboard` or `learn`. The dashboard
-# listens on 127.0.0.1:5000 unless ~/.config/svanbot/dashboard.conf says otherwise (V11-58).
+# <name> is a bot with an env file in ~/.config/svanbot/, `dashboard`, `learn` or `round-robin`.
+# The dashboard listens on 127.0.0.1:5000 unless ~/.config/svanbot/dashboard.conf says otherwise
+# (V11-58).
 #
 # What the units gave, kept:
 #   - a bot restarts 10 s after a crash, never after exit 0, 1 (the venue refused the key) or 2 (the
@@ -19,6 +20,8 @@
 #   - a 1 GiB address-space cap, so a leak cannot reach the other bots;
 #   - one log each, ~/.local/state/svanbot/<name>.log, rotated once past 64 MiB.
 # The learner runs one step (`svanbot learn`) every half hour at idle priority, as its timer did.
+# The round-robin runs one bounded pass (`svanbot round-robin`) every hour, at idle priority, and
+# reads its rows sequentially.
 set -euo pipefail
 
 lib=${SVANBOT_LIB:-"$HOME/.local/lib/svanbot"}
@@ -26,13 +29,14 @@ state=${SVANBOT_STATE:-"$HOME/.local/state/svanbot"}
 config="$HOME/.config/svanbot"
 restart_sec=${SVANBOT_RESTART_SEC:-10}
 learn_every=${SVANBOT_LEARN_EVERY:-1800}
+round_robin_every=${SVANBOT_ROUND_ROBIN_EVERY:-3600}
 stop_sec=${SVANBOT_STOP_SEC:-90}
 start_limit=5
 start_window=300
 log_cap=$((64 * 1024 * 1024))
 
 usage() {
-    printf 'Usage: %s start|stop|status|pid|run <bot>|dashboard|learn\n' "${0##*/}" >&2
+    printf 'Usage: %s start|stop|status|pid|run <bot>|dashboard|learn|round-robin\n' "${0##*/}" >&2
     exit 2
 }
 
@@ -41,7 +45,7 @@ verb=$1
 name=$2
 case $verb in start | stop | status | pid | run) ;; *) usage ;; esac
 case $name in
-    dashboard | learn) ;;
+    dashboard | learn | round-robin) ;;
     *) [[ $name =~ ^[A-Za-z0-9_]{3,32}$ ]] || usage ;;
 esac
 
@@ -129,7 +133,7 @@ plays_elsewhere() {
 }
 
 start() {
-    if [[ $name != dashboard && $name != learn && ! -f $config/$name.env ]]; then
+    if [[ $name != dashboard && $name != learn && $name != round-robin && ! -f $config/$name.env ]]; then
         printf 'svanbot-bot: %s has no configuration in %s\n' "$name" "$config" >&2
         exit 2
     fi
@@ -139,7 +143,7 @@ start() {
         exit 1
     fi
     local other
-    if [[ $name != dashboard && $name != learn ]] && other=$(plays_elsewhere); then
+    if [[ $name != dashboard && $name != learn && $name != round-robin ]] && other=$(plays_elsewhere); then
         printf 'svanbot-bot: %s already plays as pid %s, outside its supervisor; stop that first\n' \
             "$name" "$other" >&2
         exit 1
@@ -214,10 +218,15 @@ run() {
             argv=("$program" dashboard)
             delay=$((restart_sec < 5 ? restart_sec : 5))
             ;;
-        learn)
-            # A search step plays paired sims on several threads, each with its own stack.
+        learn | round-robin)
+            # A search step and a round-robin pass play sims on several threads, each with its
+            # own stack.
             memory=$((4 * 1024 * 1024))
-            argv=(nice -n 19 ionice -c3 "$program" learn)
+            if [[ $name == learn ]]; then
+                argv=(nice -n 19 ionice -c3 "$program" learn)
+            else
+                argv=(nice -n 19 ionice -c3 "$program" round-robin)
+            fi
             command -v chrt > /dev/null && argv=(chrt -i 0 "${argv[@]}")
             ;;
         *)
@@ -232,7 +241,7 @@ run() {
     esac
     say "supervising $name"
     while ! $stopping; do
-        if [[ $name != learn ]]; then
+        if [[ $name != learn && $name != round-robin ]]; then
             local now kept=() at
             now=$(date +%s)
             for at in "${starts[@]}"; do ((now - at < start_window)) && kept+=("$at"); done
@@ -264,6 +273,9 @@ run() {
         if [[ $name == learn ]]; then
             ((code == 0)) || say "learn step exited $code"
             delay=$learn_every
+        elif [[ $name == round-robin ]]; then
+            ((code == 0)) || say "round-robin pass exited $code"
+            delay=$round_robin_every
         elif ((code == 0)); then
             say "$name exited 0: not restarted"
             break
