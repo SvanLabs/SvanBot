@@ -30,6 +30,7 @@ use crate::ledger::{Ledger, Played};
 use crate::record::Hand;
 use crate::store::Store;
 
+mod experiment;
 mod promotion;
 
 /// What a finished hand came to: the hand as the ledger counted it, if it could be, and notes
@@ -293,6 +294,11 @@ impl<'a> Probing<'a> {
                         note.push_str(&format!(". Calibration was not recorded: {error}"));
                     }
                 }
+                // The experiment the challenger was put forward for reads the same evidence:
+                // the hypothesis, the live reading and the verdict, in one record.
+                if let Some(extra) = self.record_experiment(id, verdict, edge, radius, now_ms) {
+                    note.push_str(&extra);
+                }
                 Ok(Some(note))
             }
             _ => {
@@ -306,6 +312,11 @@ impl<'a> Probing<'a> {
                 };
                 let champion = *self.ledger.champion();
                 if proposal.challenger == champion {
+                    self.retire_experiment(
+                        &proposal,
+                        "dropped: the proposal was the champion",
+                        now_ms,
+                    );
                     self.fleet.end_probe()?;
                     return Ok(Some("the proposal is the champion: dropped".into()));
                 }
@@ -315,6 +326,7 @@ impl<'a> Probing<'a> {
                 {
                     // Its sims measured it against a champion since replaced: the evidence that
                     // put it forward no longer speaks to the champion it would face.
+                    self.retire_experiment(&proposal, "dropped: the champion moved", now_ms);
                     self.fleet.end_probe()?;
                     return Ok(Some(format!(
                         "the proposal of {} was measured against another champion: dropped",
@@ -338,11 +350,15 @@ impl<'a> Probing<'a> {
                 self.ledger
                     .start(proposal.hypothesis(&champion), proposal.challenger, 0);
                 self.running = Some((id, proposal));
-                Ok(Some(format!(
+                let mut note = format!(
                     "probe {id:016x} started: {} against champion {}",
                     proposal.challenger.digest(),
                     champion.digest()
-                )))
+                );
+                if let Some(extra) = self.claim_experiment(&proposal, now_ms) {
+                    note.push_str(&extra);
+                }
+                Ok(Some(note))
             }
         }
     }
@@ -361,6 +377,7 @@ impl<'a> Probing<'a> {
                 self.store
                     .append_probe(id, "frozen", &detail.to_string(), now_ms)
                     .map_err(|error| format!("probe: {error}"))?;
+                self.end_experiment_undecided(id, "frozen", edge, radius, now_ms);
                 self.ledger.finish(false);
                 self.fleet.end_probe()?;
                 Some(format!(
@@ -388,6 +405,7 @@ impl<'a> Probing<'a> {
         self.store
             .append_probe(id, "frozen", "{}", now_ms)
             .map_err(|error| format!("probe: {error}"))?;
+        self.end_experiment_undecided(id, "frozen", 0.0, 0.0, now_ms);
         self.fleet.end_probe()?;
         Ok(Some(format!(
             "probe {id:016x} ended: the reference is frozen, so it was not taken up"

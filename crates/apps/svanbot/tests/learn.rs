@@ -165,8 +165,34 @@ fn a_spent_search_sims_nothing_until_the_champion_changes() {
     for at in 0..6 {
         step(&fleet, 2_000, at, &level.sim()).unwrap();
     }
+    // The sixth sim exhausts the search and writes the bot's own experiment; the canary takes
+    // the offer up, then the spent search offers the waiting experiment again without a sim.
+    let proposal = fleet
+        .take_proposal()
+        .unwrap()
+        .expect("the experiment's proposal");
+    fleet.end_probe().unwrap();
+    assert_eq!(
+        fleet
+            .waiting_experiment()
+            .unwrap()
+            .expect("a waiting experiment")
+            .experiment
+            .claim
+            .challenger(),
+        proposal.challenger
+    );
     let note = step(&fleet, 2_000, 10, &never).unwrap();
-    assert!(note.contains("spent"), "{note}");
+    assert!(
+        note.contains("spent") && note.contains("experiment"),
+        "{note}"
+    );
+    assert_eq!(level.asked.borrow().len(), 6, "a spent search sims nothing");
+    let _ = fleet
+        .take_proposal()
+        .unwrap()
+        .expect("the experiment is offered again");
+    fleet.end_probe().unwrap();
     // A new champion is searched afresh.
     fleet
         .promote(&Params {

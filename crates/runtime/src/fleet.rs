@@ -10,14 +10,12 @@
 //!   promotion path is stopped ([`Reference`], `docs/adr/0006-the-reference-is-frozen.md`).
 //! - `proposal.json`: a challenger the learner puts forward; the canary takes it up, and removes
 //!   it, when no probe is running; a frozen reference stops proposals.
-//! - `searches.json`: each bot's search progress, keyed by the champion it measured, and the
-//!   candidate its search found for its own probe and promotion (Phase 2).
-//! - `promotions.json`: each bot's per-bot proposal, its evidence, and its own guard.
-//! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
-//!   search's log ([`search`]).
-//! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
-//!   its board on the scoreboard, and the newest of each from a tag's commit is what the ship
-//!   bar reads; [`ARENA_HISTORY`] of each league are kept, so a trend is a read, not a re-run.
+//! - `searches.json`: each bot's search progress and the candidate it found (Phase 2).
+//! - `promotions.json` and `experiments.json`: a bot's proposal, and the experiment its own
+//!   record wrote.
+//! - `probe.json` and `search.json`: the canary's running probe and the search's log ([`search`]).
+//! - `arena.json`: the Arena's last runs, each with its league. The newest of a league is its
+//!   board, and [`ARENA_HISTORY`] of each are kept, so a trend is a read, not a re-run.
 //!
 //! A parameter set is numbers the owner tuned, not a read of an opponent, so sharing it crosses no
 //! bot's reads (`docs/adr/0004-reads-are-per-bot.md`). Each number is written as the text that
@@ -35,6 +33,8 @@ mod calibration;
 mod champions;
 mod checks;
 pub use checks::Check;
+mod experiments;
+pub use experiments::{ACTIVE, Evidence, ExperimentRecord, ExperimentStatus};
 mod policies;
 pub use policies::Assignment;
 mod promotions;

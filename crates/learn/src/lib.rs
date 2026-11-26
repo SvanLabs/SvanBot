@@ -21,6 +21,7 @@ pub mod archive;
 pub mod arena;
 pub mod calibration;
 pub mod drift;
+pub mod experiment;
 pub mod exploit;
 pub mod exploiter;
 pub mod field;

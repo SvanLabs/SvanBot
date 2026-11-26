@@ -4,8 +4,10 @@
 
 use std::path::PathBuf;
 
+use svanbot_learn::experiment::{Budget, Claim, Experiment, Metric, StopRule};
+use svanbot_learn::paired::Verdict as SimVerdict;
 use svanbot_learn::probe::Kind;
-use svanbot_runtime::fleet::{Fleet, Proposal};
+use svanbot_runtime::fleet::{ExperimentStatus, Fleet, Proposal};
 use svanbot_runtime::ledger::ORBIT;
 use svanbot_runtime::probing::Probing;
 use svanbot_runtime::record::Hand;
@@ -65,6 +67,41 @@ fn the_canary_mirrors_its_probe_while_it_runs_and_clears_it_when_it_ends() {
     play(&mut canary, next, 1 + 20 * ORBIT, 0);
     assert_eq!(fleet.champion(), Ok(CHALLENGER));
     assert_eq!(fleet.probe(), Ok(None));
+}
+
+#[test]
+fn a_probes_verdict_is_written_into_the_experiment_ledger() {
+    let dir = scratch("experiment-ledger");
+    let fleet = Fleet::in_dir(dir.join("fleet"));
+    let store = Store::open(&dir.join("SurSvan.db"), "SurSvan").unwrap();
+    let mut canary = Probing::open(&store, fleet.clone(), true, 500).0;
+    let experiment = Experiment {
+        claim: Claim::ChallengerKeepsMargin {
+            champion: Params::DEFAULT.digest(),
+            challenger: CHALLENGER,
+            sim: SimVerdict {
+                deals: 100,
+                mbb_per_100: -300.0,
+                ci95: 100.0,
+            },
+        },
+        metric: Metric::LiveEdge,
+        budget: Budget { hands: 120 },
+        stop: StopRule::Guard { margin_bb: 5.0 },
+    };
+    assert_eq!(fleet.open_experiment(&experiment, 400), Ok(true));
+    fleet.propose(&guard(120)).unwrap();
+    // The first hand takes the proposal up: the canary claims the experiment.
+    let next = play(&mut canary, 0, 1, 0);
+    let record = fleet.experiment_for("SurSvan").unwrap().unwrap();
+    assert_eq!(record.status, ExperimentStatus::Testing);
+    // The guard clears, and its verdict and evidence land in the same record.
+    play(&mut canary, next, 1 + 20 * ORBIT, 0);
+    let record = fleet.experiment_for("SurSvan").unwrap().unwrap();
+    assert_eq!(record.status, ExperimentStatus::Cleared);
+    let evidence = record.evidence.expect("the guard's reading");
+    assert!(evidence.hands > 0, "the evidence counts the guard's hands");
+    assert!(record.probe.is_some(), "the probe id is in the record");
 }
 
 #[test]
