@@ -49,6 +49,7 @@ fn a_kill_9_leaves_every_acknowledged_hand_and_reads_back_cleanly() {
     for round in 0..12u64 {
         let dir = scratch(round);
         let path = dir.join("A.svandb");
+        let manifest = dir.join("A.svandb.manifest");
         let mut child = Command::new(CHILD)
             .current_dir(&dir)
             .stdout(Stdio::piped())
@@ -66,6 +67,12 @@ fn a_kill_9_leaves_every_acknowledged_hand_and_reads_back_cleanly() {
             .map_or(0, |last| last + 1);
         acknowledged_total += acknowledged;
 
+        // A kill before the child opened (or first committed) its log leaves no store to read:
+        // nothing was acknowledged, so nothing may be lost. Later rounds get further.
+        if !path.exists() || !manifest.exists() {
+            assert_eq!(acknowledged, 0, "a hand was acknowledged without a store");
+            continue;
+        }
         let db = Svandb::open(&path, "A").unwrap();
         assert!(
             db.totals().unwrap().hands >= acknowledged,
