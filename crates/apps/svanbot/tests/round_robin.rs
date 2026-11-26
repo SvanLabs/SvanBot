@@ -12,8 +12,7 @@ use svanbot_strategy::kind::PolicyKind;
 use svanbot_strategy::style;
 
 fn scratch(name: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("svanbot-round-robin-{}-{name}", std::process::id()));
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir

@@ -14,8 +14,11 @@ use svanbot_strategy::style;
 use super::*;
 
 fn scratch(name: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("svanbot-round-robin-{}-{name}", std::process::id()));
+    // A unit test has no `CARGO_TARGET_TMPDIR`; the build tree's own scratch directory is the
+    // same trusted place, under this worktree's `target/`.
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/round-robin-tests")
+        .join(name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
