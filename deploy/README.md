@@ -252,6 +252,32 @@ svanbot-bot stop learn                         # stops the search; nothing it wr
 Each step runs under the idle CPU scheduler at nice 19 and idle I/O, so a sim takes only CPU the
 bots leave free. To start the search over round the same champion, remove `fleet/search.json`.
 
+### The round-robin
+
+`svanbot round-robin` is the standing test of every assigned bot's gauntlet (V11-93). One pass
+plays, bot by bot, the ten shared opponents heads up, the same ten at the 6-max ring, then a 6-max
+row against each champion in that bot's archive. The rows play one after another, never in
+parallel, and the pass stops at its row budget (`SVANBOT_ROUND_ROBIN_ROWS`, 250 by default). Each
+row's paired bouts are read through a confidence sequence, and the archive rows are the evidence
+`learn::archive::regression` reads: a new champion that loses to an archived one is refused. The
+matrix is standing: each pass appends the row's new bouts, up to 200, and a champion change starts
+it fresh. The regression needs 30 bouts, so its verdict builds over passes, or pass a larger bout
+count to `svanbot round-robin`.
+
+A pass writes `fleet/round-robin.json` with every bot's matrix, its archive, and the regression
+verdict. It never writes `arena.json`, so the ship bar does not read it. The archive is the
+champions the pass has seen replaced; a champion that changes between passes archives the one it
+replaced, five kept newest first.
+
+```sh
+svanbot-bot start round-robin                    # scripts/start.sh starts it too
+tail -f ~/.local/state/svanbot/round-robin.log   # one line a pass
+svanbot-bot stop round-robin                     # nothing it wrote is undone
+```
+
+Its supervisor runs one pass an hour (`SVANBOT_ROUND_ROBIN_EVERY`, 3600 seconds) under the idle
+CPU scheduler at nice 19 and idle I/O, so the pass takes only CPU the bots leave free.
+
 ### A release, start to end
 
 ```sh
@@ -475,7 +501,7 @@ systemctl --user disable --now svanbot-learn.timer svanbot-clean.timer   # where
 rm -f ~/.config/systemd/user/svanbot*.service ~/.config/systemd/user/svanbot*.timer
 rm -rf ~/.config/systemd/user/svanbot-dashboard.service.d
 systemctl --user daemon-reload
-scripts/start.sh                    # every bot, the dashboard and the learner, under the supervisor
+scripts/start.sh                    # every bot, the dashboard, the learner and the round-robin, under the supervisor
 svanbot-bot status SurSvan          # and each other bot: running
 scripts/update.sh <version>         # then the release, canary first, through the supervisor
 ```

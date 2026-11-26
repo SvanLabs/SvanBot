@@ -2,7 +2,7 @@
 //!
 //! It fits the action model on every hand and gates it on held-out hands ([`fit`]), fits the
 //! population priors ([`prior`]), watches the ranges for drift ([`drift`]), classifies how each
-//! opponent adapts ([`adapt`]), and gates reads on what they could cost ([`exploit`]), runs paired sims ([`paired`]), and gives probe verdicts and the harm guard ([`probe`]), and scores the Arena ([`arena`]). It keeps each bot's last five champions and the regression rule that a promotion must clear against them ([`archive`]). It plans
+//! opponent adapts ([`adapt`]), and gates reads on what they could cost ([`exploit`]), runs paired sims ([`paired`]), and gives probe verdicts and the harm guard ([`probe`]), and scores the Arena ([`arena`]). It keeps each bot's last five champions and the regression rule that a promotion must clear against them ([`archive`]), and plans and runs the bounded round-robin over a bot's gauntlet ([`round_robin`]). It plans
 //! the unattended search for a challenger ([`search`]). It takes hands as values and returns its results. Reading and writing the store is
 //! `runtime`'s job.
 //!
@@ -25,4 +25,5 @@ pub mod profile;
 pub mod read_sim;
 pub mod reads;
 pub mod ring;
+pub mod round_robin;
 pub mod search;

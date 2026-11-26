@@ -13,7 +13,7 @@ setDefaultTimeout(20_000);
 afterEach(() => {
   for (const home of homes.splice(0)) {
     // A test that failed half-way may leave a supervisor behind: stop everything it started.
-    for (const name of ["First", "dashboard", "learn"]) bot(home, "stop", name);
+    for (const name of ["First", "dashboard", "learn", "round-robin"]) bot(home, "stop", name);
     rmSync(home, { recursive: true, force: true });
   }
 });
@@ -30,6 +30,19 @@ function home(env: Record<string, string> = { FAKE: "serve" }): string {
   // A `systemctl` that refuses, first on the PATH: nothing under test may reach the live fleet.
   mkdirSync(join(dir, "bin"), { recursive: true });
   writeFileSync(join(dir, "bin/systemctl"), "#!/usr/bin/env bash\nexit 1\n", { mode: 0o755 });
+  // The idle wrappers the supervisor puts in front of the learner and the round-robin: each logs
+  // that it ran, then hands the command on.
+  for (const [tool, skip] of [
+    ["nice", 2],
+    ["ionice", 1],
+    ["chrt", 2],
+  ] as const) {
+    writeFileSync(
+      join(dir, `bin/${tool}`),
+      `#!/usr/bin/env bash\nprintf '%s\\n' "${tool} $*" >> "$FAKE_RUNS.priority"\nshift ${skip}\nexec "$@"\n`,
+      { mode: 0o755 },
+    );
+  }
   mkdirSync(join(dir, ".config/svanbot"), { recursive: true });
   writeFileSync(
     join(dir, ".config/svanbot/First.env"),
@@ -44,7 +57,7 @@ function home(env: Record<string, string> = { FAKE: "serve" }): string {
 printf 'start %s name=%s store=%s ulimit=%s stray=%s\\n' "$*" "\${SVANBOT_NAME:-}" "\${SVANBOT_STORE:-}" "$(ulimit -v)" "\${SVANBOT_ROSTER:-}" >> "$FAKE_RUNS"
 [[ \${1:-} == dashboard ]] && printf 'addr=%s open=%s\\n' "\${SVANBOT_DASHBOARD_ADDR:-}" "\${SVANBOT_DASHBOARD_OPEN:-}" >> "$FAKE_RUNS.dashboard"
 # A learner step ends at once.
-[[ \${1:-} == learn ]] && exit 0
+[[ \${1:-} == learn || \${1:-} == round-robin ]] && exit 0
 case \${FAKE:-serve} in
     serve) trap 'echo term >> "$FAKE_RUNS"; exit 0' TERM; while :; do sleep 0.05; done ;;
     exit:*) exit "\${FAKE#exit:}" ;;
@@ -89,6 +102,7 @@ function spawn(
       SVANBOT_STATE: join(dir, "state"),
       SVANBOT_RESTART_SEC: "0",
       SVANBOT_LEARN_EVERY: "0",
+      SVANBOT_ROUND_ROBIN_EVERY: "0",
       FAKE_RUNS: join(dir, "runs"),
       ...extra,
     },
@@ -175,7 +189,7 @@ test("a failed bot can be started again", () => {
   expect(runs(dir)).toHaveLength(2);
 });
 
-test("the dashboard and the learner run the program's own commands", () => {
+test("the dashboard, learner and round-robin run the program's own commands", () => {
   const dir = home();
   expect(bot(dir, "start", "dashboard").code).toBe(0);
   expect(until(dir, "dashboard", "running")).toBe("running");
@@ -188,6 +202,16 @@ test("the dashboard and the learner run the program's own commands", () => {
   for (let i = 0; i < 100 && runs(dir).length < 2; i++) Bun.sleepSync(50);
   bot(dir, "stop", "learn");
   expect(runs(dir).filter((line) => line.startsWith("start learn ")).length).toBeGreaterThan(1);
+  // The round-robin is one bounded pass a run, at idle priority, then the next pass.
+  writeFileSync(join(dir, "runs"), "");
+  expect(bot(dir, "start", "round-robin").code).toBe(0);
+  for (let i = 0; i < 100 && runs(dir).length < 2; i++) Bun.sleepSync(50);
+  bot(dir, "stop", "round-robin");
+  expect(runs(dir).filter((line) => line.startsWith("start round-robin ")).length).toBeGreaterThan(
+    1,
+  );
+  const priority = readFileSync(join(dir, "runs.priority"), "utf8");
+  expect(priority).toContain("chrt -i 0 nice -n 19 ionice -c3 ");
 });
 
 test("the dashboard listens on port 5000, on loopback, unless it is told otherwise", () => {
