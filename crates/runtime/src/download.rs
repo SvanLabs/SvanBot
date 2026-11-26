@@ -16,6 +16,7 @@
 //! A page is a list, or an object holding the list under `hands`, `items`, `data`, `results` or
 //! `history`. A hand is named by its `hand_id`, or else its `id`.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -71,6 +72,11 @@ pub enum DownloadError {
     Store(StoreError),
     /// The profile named no `agent_id`, so there is no export to read.
     NoAgentId,
+    /// The export declared more hands than it actually supplied.
+    Incomplete {
+        expected: u64,
+        received: u64,
+    },
 }
 
 impl std::fmt::Display for DownloadError {
@@ -79,6 +85,12 @@ impl std::fmt::Display for DownloadError {
             Self::Rest(error) => write!(f, "{error}"),
             Self::Store(error) => write!(f, "{error}"),
             Self::NoAgentId => write!(f, "the profile at {ME} names no agent_id"),
+            Self::Incomplete { expected, received } => {
+                write!(
+                    f,
+                    "the export declared {expected} hands and supplied {received} distinct hand IDs"
+                )
+            }
         }
     }
 }
@@ -108,6 +120,7 @@ pub fn download(
     let profile = rest.get(ME)?;
     let agent_id = text(&profile, &["agent_id"]).ok_or(DownloadError::NoAgentId)?;
     let mut summary = Summary::default();
+    let mut seen = HashSet::new();
     let mut pager = rest.pages(&export_path(&agent_id), PAGE, items);
     while let Some(page) = pager.next_page()? {
         summary.pages += 1;
@@ -116,6 +129,7 @@ pub fn download(
                 summary.skipped += 1;
                 continue;
             };
+            seen.insert(hand_id.clone());
             let hand = Hand {
                 hand_id,
                 table_id: text(item, &["table_id"]).unwrap_or_default(),
@@ -131,6 +145,12 @@ pub fn download(
         }
         summary.offset = pager.offset();
         store.record_download(summary.offset, now_ms())?;
+    }
+    let received = seen.len() as u64;
+    if let Some(expected) = pager.reported_total()
+        && received < expected
+    {
+        return Err(DownloadError::Incomplete { expected, received });
     }
     Ok(summary)
 }

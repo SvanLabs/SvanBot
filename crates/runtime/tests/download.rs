@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use svanbot_runtime::download::{MAX_BODY, PAGE, TIMEOUT, download};
+use svanbot_runtime::download::{DownloadError, MAX_BODY, PAGE, TIMEOUT, download};
 use svanbot_runtime::history::observed_for_fit;
 use svanbot_runtime::limit::Limiter;
 use svanbot_runtime::record::Hand;
@@ -18,11 +18,17 @@ use svanbot_runtime::rest::Rest;
 use svanbot_runtime::store::{Source, Store};
 
 fn venue(pages: Vec<Value>) -> (String, thread::JoinHandle<Vec<String>>) {
+    venue_with_totals(pages.into_iter().map(|page| (page, None)).collect())
+}
+
+fn venue_with_totals(
+    pages: Vec<(Value, Option<u64>)>,
+) -> (String, thread::JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}/api", listener.local_addr().unwrap());
     let served = thread::spawn(move || {
         let mut paths = Vec::new();
-        for page in pages {
+        for (page, total) in pages {
             let (mut stream, _) = listener.accept().unwrap();
             let mut head = Vec::new();
             let mut byte = [0u8; 1];
@@ -33,8 +39,10 @@ fn venue(pages: Vec<Value>) -> (String, thread::JoinHandle<Vec<String>>) {
             let head = String::from_utf8(head).unwrap();
             paths.push(head.split(' ').nth(1).unwrap().to_owned());
             let body = page.to_string();
+            let total =
+                total.map_or_else(String::new, |total| format!("x-total-hands: {total}\r\n"));
             let reply = format!(
-                "HTTP/1.1 200 OK\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+                "HTTP/1.1 200 OK\r\nconnection: close\r\ncontent-type: application/json\r\n{total}content-length: {}\r\n\r\n{body}",
                 body.len()
             );
             stream.write_all(reply.as_bytes()).unwrap();
@@ -42,6 +50,24 @@ fn venue(pages: Vec<Value>) -> (String, thread::JoinHandle<Vec<String>>) {
         paths
     });
     (base, served)
+}
+
+#[test]
+fn a_short_export_that_declares_more_hands_keeps_progress_and_fails() {
+    let (store, _) = store("incomplete");
+    let (base, served) = venue_with_totals(vec![
+        (json!({"agent_id": "a-1"}), None),
+        (json!([{"hand_id": "h-1"}, {"hand_id": "h-1"}]), Some(2)),
+    ]);
+    assert!(matches!(
+        download(&mut rest(&base), &store, || 5),
+        Err(DownloadError::Incomplete {
+            expected: 2,
+            received: 1
+        })
+    ));
+    served.join().unwrap();
+    assert_eq!(store.hands().unwrap().len(), 1);
 }
 
 fn store(name: &str) -> (Store, PathBuf) {
