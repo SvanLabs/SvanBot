@@ -30,6 +30,9 @@ fn loose() -> Assignment {
     }
 }
 
+/// A parameter set that is not the default.
+const CHALLENGER: Params = Params { exploit: 0.1 + 0.2 };
+
 #[test]
 fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
     let dir = scratch("seed");
@@ -61,6 +64,19 @@ fn a_new_slot_is_the_reference_and_each_bot_reads_only_its_own() {
     assert_eq!(fleet.champion(), Ok(reference));
     // A slot is keyed by the exact bot name, as an assignment is.
     assert_eq!(fleet.champion_slot("a"), Ok(None));
+}
+
+#[test]
+fn a_fleet_with_no_champions_file_keeps_playing_the_fleet_champion() {
+    // The files a fleet has before Phase 2 are enough: champion.json for the fleet, plays.json
+    // for the assignments, and no champions.json at all.
+    let dir = scratch("legacy");
+    let fleet = Fleet::in_dir(&dir);
+    fleet.assign("A", tight(), 1).unwrap();
+    fleet.promote(&CHALLENGER).unwrap();
+    assert!(!dir.join("champions.json").exists());
+    assert_eq!(fleet.champion_slot("A"), Ok(None));
+    assert_eq!(fleet.champion_for("A"), Ok(CHALLENGER));
 }
 
 #[test]
