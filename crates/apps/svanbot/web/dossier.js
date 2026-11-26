@@ -3,6 +3,7 @@
 // the class, the evidence and the share of the exploit budget each read has earned.
 
 import { h, panel, table } from "./dom.js";
+import { readsPanel } from "./reads.js";
 
 /** Actions at which a read earns half its class's share: the half-trust point. */
 const HALF = 30;
@@ -23,7 +24,7 @@ function classText(row) {
 }
 
 /** One bot's dossier: every opponent it reads, alphabetical by venue name, never ranked. */
-export function dossierPage(status, name) {
+export function dossierPage(status, name, reads) {
   const title = h("h1", {}, `${name}: dossier`);
   if (!status) {
     return [title, h("p", {}, "This bot's dossier is empty: this bot has written no status.")];
@@ -92,6 +93,7 @@ export function dossierPage(status, name) {
         rows,
       ),
     ),
+    readsPanel(name, reads),
   ].filter(Boolean);
 }
 

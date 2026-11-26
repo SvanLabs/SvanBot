@@ -359,6 +359,8 @@ const state = {
   // path asks for them, and refetched when it changes.
   hands: null,
   handsFor: null,
+  reads: null,
+  readsFor: null,
   trace: null,
   traceFor: null,
   // What changed while the page was open, newest first: the activity log.
@@ -396,6 +398,28 @@ function load(at) {
       })
       .catch((error) => {
         state.hands = { error: error.message };
+        render();
+      });
+  }
+  if (at.view === "dossier" && state.readsFor !== at.bot) {
+    state.readsFor = at.bot;
+    state.reads = null;
+    fetch(`/api/reads/${at.bot}`)
+      .then((answer) =>
+        answer.ok
+          ? answer.json()
+          : answer.json().then(
+              (body) =>
+                Promise.reject(new Error(textOf(body, "The bot's store could not be read."))),
+              () => Promise.reject(new Error("The bot's store could not be read.")),
+            ),
+      )
+      .then((body) => {
+        state.reads = body;
+        render();
+      })
+      .catch((error) => {
+        state.reads = { error: error.message };
         render();
       });
   }
@@ -482,6 +506,7 @@ function render() {
       dossierPage(
         state.fleet.bots.find((bot) => bot.bot === at.bot),
         at.bot,
+        state.reads,
       ),
     dossiers: () => dossierIndex(state.fleet),
     release: () => releasePage(state.fleet, nowMs),
