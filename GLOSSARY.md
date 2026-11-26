@@ -522,6 +522,12 @@ _Avoid_: takeover, relay, baton
 SvanBot's own record of hands, decisions, fits and incidents.
 _Avoid_: database, DB, artifacts
 
+**SvanDB**:
+The prototype of a store as one append-only log a bot: a JSON record a line, a checksummed
+manifest, and an index rebuilt at open. It sits behind the `Store` API for V11-124's measured
+gate; SQLite stays the store until the operator adopts it.
+_Avoid_: database, engine
+
 **Supervisor**:
 `svanbot-bot` (`scripts/bot.sh`): what keeps one bot, the dashboard or the learner running on the
 box. It restarts a crash, stays down after five starts in five minutes, and keeps a pid and a log
