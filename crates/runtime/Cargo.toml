@@ -8,6 +8,11 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+# The crash test's child (V11-128): spawned by `CARGO_BIN_EXE_`, killed with SIGKILL.
+[[bin]]
+name = "svandb-crash-child"
+path = "src/bin/svandb_crash_child.rs"
+
 [dependencies]
 rusqlite.workspace = true
 rustls.workspace = true

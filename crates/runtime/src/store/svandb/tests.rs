@@ -1,7 +1,7 @@
 //! SvanDB's own tests (V11-128): a reopen, a torn tail, a bad checksum, the trace cap, and the
 //! migration gate's bit-exact read comparison against SQLite.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::json;
 use svanbot_core::card::CardSet;
@@ -20,7 +20,11 @@ use crate::record::Hand;
 use crate::session::Incident;
 
 fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("svandb-{}-{name}", std::process::id()));
+    // A compile-time root under the build tree, not an environment read: the scanner's
+    // uncontrolled-path finding is answered for real (V11-126's idiom).
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/dev/svandb-test")
+        .join(name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -301,7 +305,10 @@ fn a_store_belongs_to_one_bot_and_refuses_any_other() {
     let path = dir.join("SurSvan.svandb");
     Svandb::open(&path, "SurSvan").unwrap();
     let refused = Svandb::open(&path, "Svanar").unwrap_err().to_string();
-    assert!(refused.contains("SurSvan"), "{refused}");
+    assert!(
+        refused.contains("SurSvan"),
+        "another bot's open of a store was not refused by name"
+    );
     assert!(Svandb::open(&path, "SurSvan").is_ok());
     assert_eq!(
         Svandb::open_reader(&path).unwrap().bot().unwrap(),
@@ -357,13 +364,21 @@ fn migration_reads_the_same_as_sqlite() {
     assert_eq!(db.open_probe().unwrap(), store.open_probe().unwrap());
     assert_eq!(db.hands().unwrap(), store.hands().unwrap());
     for id in ["h-1", "h-2", "h-3", "h-4", "missing"] {
-        assert_eq!(db.holds(id).unwrap(), store.holds(id).unwrap(), "{id}");
+        assert_eq!(
+            db.holds(id).unwrap(),
+            store.holds(id).unwrap(),
+            "a hand's presence differs after the import"
+        );
         assert_eq!(
             db.hand_quality(id).unwrap(),
             store.hand_quality(id).unwrap(),
-            "{id}"
+            "a hand's quality differs after the import"
         );
-        assert_eq!(db.traces(id).unwrap(), store.traces(id).unwrap(), "{id}");
+        assert_eq!(
+            db.traces(id).unwrap(),
+            store.traces(id).unwrap(),
+            "a hand's traces differ after the import"
+        );
     }
     let (mine, theirs) = (db.hands_for_fit().unwrap(), store.hands_for_fit().unwrap());
     assert_eq!(mine.len(), theirs.len());

@@ -115,7 +115,8 @@ mod tests {
 
     #[test]
     fn the_manifest_round_trips() {
-        let dir = std::env::temp_dir().join(format!("svandb-manifest-{}", std::process::id()));
+        // A compile-time root under the build tree, not an environment read.
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/dev/svandb-manifest");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("A.svandb.manifest");
