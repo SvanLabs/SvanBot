@@ -1,8 +1,10 @@
 //! `svanbot learn` over the bots with a champion slot (V11-76): one bounded step a run, rotating
 //! through the bots, each simulated with its own kind and style.
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use std::cell::RefCell;
 use std::path::PathBuf;
+use std::process::Command;
 
 use svanbot::learn::bot_step;
 use svanbot_learn::paired::Verdict;
@@ -236,4 +238,38 @@ fn no_slot_means_no_search() {
     };
     let note = bot_step(&fleet, 200, 1_600, 100, &sim).unwrap();
     assert!(note.contains("no champion slot"), "{note}");
+}
+
+#[test]
+fn the_cli_searches_the_slotted_bot() {
+    let dir = scratch("cli");
+    let fleet = Fleet::in_dir(&dir);
+    let champion = Params { exploit: 0.4 };
+    fleet.set_champion("A", &champion).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_svanbot"))
+        .env_clear()
+        .env("SVANBOT_FLEET", &dir)
+        .args(["learn", "--deals", "2"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("A screened"), "{stdout}");
+    let search = fleet.bot_search("A", &champion).unwrap();
+    assert_eq!(search.entries.len(), 1);
+    assert_eq!(
+        search
+            .entries
+            .iter()
+            .map(|entry| match entry {
+                svanbot_learn::search::Entry::Simmed { verdict, .. } => verdict.deals,
+                _ => 0,
+            })
+            .sum::<usize>(),
+        2
+    );
 }
