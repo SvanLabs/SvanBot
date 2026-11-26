@@ -193,12 +193,12 @@ impl Fleet {
         }
         let _lock = self.lock_fleet_file(PROMOTIONS)?;
         let mut bots = self.promotions()?;
-        if bots
-            .get(bot)
-            .and_then(|value| status_from(value).ok())
-            .is_some_and(Status::active)
-        {
-            return Ok(false);
+        if let Some(value) = bots.get(bot) {
+            let status =
+                status_from(value).map_err(|error| format!("{PROMOTIONS}: {bot}: {error}"))?;
+            if status.active() {
+                return Ok(false);
+            }
         }
         bots.insert(bot.clone(), promotion_json(promotion));
         self.write(PROMOTIONS, &json!({ "bots": bots }).to_string())?;
