@@ -120,14 +120,15 @@ fn main() -> ExitCode {
     if std::env::args().nth(1).as_deref() == Some("calibration") {
         return calibration::run();
     }
+    if std::env::args().nth(1).as_deref() == Some("download") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        return download::run(&args);
+    }
     // Before the environment is read: a start is a start even when the setup is missing, and the
     // updater's crash loop must see a build that cannot read its env as a build that came up.
     let me = std::env::var("SVANBOT_NAME").unwrap_or_else(|_| "svanbot".into());
     if let Err(error) = open_health(&me).note_start(now_ms(), &running_version()) {
         eprintln!("svanbot: could not record the start: {error}");
-    }
-    if std::env::args().nth(1).as_deref() == Some("download") {
-        return download::run();
     }
     if std::env::args().nth(1).as_deref() == Some("fit") {
         return fit::run();
