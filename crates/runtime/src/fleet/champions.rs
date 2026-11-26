@@ -28,6 +28,21 @@ impl Fleet {
         }
     }
 
+    /// Every bot with a champion slot, by name: the bots the learner round-robins over.
+    pub fn champion_slots(&self) -> Result<Vec<(String, Params)>, String> {
+        let mut slots: Vec<(String, Params)> = self
+            .slots()?
+            .into_iter()
+            .map(|(bot, value)| {
+                params_from(&value)
+                    .map(|params| (bot.clone(), params))
+                    .map_err(|error| format!("{CHAMPIONS}: {bot}: {error}"))
+            })
+            .collect::<Result<_, _>>()?;
+        slots.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+        Ok(slots)
+    }
+
     /// Gives `bot` a new slot, seeded from the fleet champion with the pins of the style it is
     /// assigned applied. A slot that exists is never replaced: a bot's learned champion is not a
     /// seed's to overwrite.

@@ -1,18 +1,22 @@
-//! `svanbot learn` (V11-49): one bounded step of the unattended search, then exit. A timer runs
-//! it at low priority; nobody has to.
+//! `svanbot learn` (V11-49, V11-76): one bounded step of the unattended search, then exit. A
+//! timer runs it at low priority; nobody has to.
 //!
-//! A run reads the fleet's files and nothing else: the champion, a waiting proposal, the canary's
-//! running probe, and the search log. It never opens a store, so no bot's reads reach it
-//! (`docs/adr/0004-reads-are-per-bot.md`). Then it does one of:
+//! A run reads the fleet's files and nothing else: the champion, the champion slots, the
+//! assignments, a waiting proposal, the canary's running probe, and the search logs. It never
+//! opens a store, so no bot's reads reach it (`docs/adr/0004-reads-are-per-bot.md`).
 //!
-//! - **waits**, simming nothing, while a proposal waits or a probe runs: that evidence is pending,
-//!   and a sim against a champion it may replace would be wasted;
-//! - **sims** the next step [`search::next`] asks for, one paired sim of a bounded number of deals,
-//!   and logs it; a confirmation that agrees is proposed in the same run;
-//! - **proposes** a challenger both its sims put above the champion, as a promotion with the
-//!   canary's harm guard of [`GUARD_HANDS`] hands, naming the champion it was measured against,
-//!   and only if the canary has nothing else ([`Fleet::propose_if_free`]);
-//! - says the search round this champion is **spent**, until a promotion gives it a new one.
+//! With a champion slot, a run is one bot's step ([`bot_step`]): the slotted bot whose last
+//! search is oldest rotates in, its assigned kind and style are simulated, and it screens or
+//! confirms one challenger against its own champion. A candidate the confirmation puts above the
+//! champion waits for that bot's probe (#1222); otherwise the incumbent holds.
+//!
+//! Without a slot, the fleet champion's search ([`step`]) runs as before: it **waits**, simming
+//! nothing, while a proposal waits or a probe runs; **sims** the next step [`search::next`] asks
+//! for, one paired sim of a bounded number of deals, and logs it; **proposes** a challenger both
+//! its sims put above the champion, as a promotion with the canary's harm guard of
+//! [`GUARD_HANDS`] hands, naming the champion it was measured against, and only if the canary has
+//! nothing else ([`Fleet::propose_if_free`]); and says the search round this champion is
+//! **spent**, until a promotion gives it a new one.
 //!
 //! Once the reference is frozen (Phase 2's cutover), the fleet-wide search is retired: a run
 //! sims nothing, records that the reference is frozen, and a restart does not resume it
@@ -22,8 +26,11 @@
 
 use svanbot_learn::paired::Verdict;
 use svanbot_learn::probe::Kind;
-use svanbot_learn::search::{self, Entry, Next, Stage, Step};
-use svanbot_runtime::fleet::{Fleet, Proposal};
+use svanbot_learn::search::{self, BotNext, Entry, Next, Stage, Step, next_bot};
+use svanbot_runtime::fleet::{BotSearch, Candidate, Fleet, Proposal};
+use svanbot_strategy::kind::PolicyKind;
+use svanbot_strategy::policy::Policy;
+use svanbot_strategy::style;
 
 /// The hands of a promotion's harm guard on the canary.
 pub const GUARD_HANDS: u64 = 3_000;
@@ -32,8 +39,8 @@ pub const GUARD_MARGIN: f64 = 20.0;
 /// The orbits a probe may take: about 20,000 hands.
 pub const PROBE_ORBITS: u64 = 3_334;
 
-/// Runs one step of the search on `fleet` at `now_ms`, each sim `deals` deals by `sim`, and
-/// returns what it did, as it noted it in the search log.
+/// Runs one bounded step of the unattended search on `fleet` at `now_ms`, each sim `deals` deals
+/// by `sim`, and returns what it did, as it noted it in the search log.
 pub fn step(
     fleet: &Fleet,
     deals: u64,
@@ -138,6 +145,138 @@ pub fn step(
     let note = note.unwrap_or_default();
     fleet.record_search(&ran, &note, now_ms)?;
     Ok(note)
+}
+
+/// Runs one bounded step of the per-bot search at `now_ms`: the bot with a champion slot whose
+/// last search is oldest (ties by name) gets one screening sim on `screen_deals`, or one
+/// confirmation on `confirm_deals` on fresh deals, simulated with the kind and style it is
+/// assigned. A candidate the confirmation put above its champion is kept for that bot's own
+/// probe; otherwise the incumbent holds. Returns what it did, as the bot's search log noted it.
+///
+/// A bot with a candidate waiting is not searched again: that evidence is pending for its probe
+/// (#1222). A bot with no assignment is searched as the reference policy.
+pub fn bot_step(
+    fleet: &Fleet,
+    screen_deals: u64,
+    confirm_deals: u64,
+    now_ms: i64,
+    sim: &dyn Fn(&Policy, &Policy, &Step, u64) -> Verdict,
+) -> Result<String, String> {
+    let slots = fleet.champion_slots()?;
+    if slots.is_empty() {
+        return Ok("no champion slot: nothing to search".into());
+    }
+    let mut waiting = Vec::new();
+    let mut ready = Vec::new();
+    for (bot, champion) in slots {
+        let progress = fleet.bot_search(&bot, &champion)?;
+        if progress.candidate.is_some() {
+            waiting.push(bot);
+        } else {
+            ready.push((bot, champion, progress));
+        }
+    }
+    let Some((bot, champion, progress)) = ready.into_iter().min_by(|left, right| {
+        last_at(&left.2)
+            .cmp(&last_at(&right.2))
+            .then_with(|| left.0.cmp(&right.0))
+    }) else {
+        return Ok(format!(
+            "waits: {} has a candidate for its own probe",
+            waiting.join(", ")
+        ));
+    };
+    let (kind, assigned_style) = match fleet.assignment(&bot)? {
+        Some(assignment) => (assignment.kind, assignment.style),
+        None => (PolicyKind::Solving, &style::STANDARD),
+    };
+    let policy = |params| Policy::new(kind, assigned_style, params);
+    let champion_policy = policy(champion);
+    let (entries, note, candidate) = match next_bot(&champion, assigned_style, &progress.entries) {
+        BotNext::Screen { challenger, seed } => {
+            let step = Step {
+                champion: champion.digest(),
+                challenger,
+                stage: Stage::First,
+                seed,
+            };
+            let verdict = sim(&policy(challenger), &champion_policy, &step, screen_deals);
+            (
+                vec![Entry::Simmed { step, verdict }],
+                format!(
+                    "{bot} screened {} ({}) against {}: {:+.0} mbb/100, 95% ±{:.0}, over {} deals",
+                    challenger.digest(),
+                    describe(&step),
+                    champion.digest(),
+                    verdict.mbb_per_100,
+                    verdict.ci95,
+                    verdict.deals
+                ),
+                None,
+            )
+        }
+        BotNext::Confirm { challenger, seed } => {
+            let step = Step {
+                champion: champion.digest(),
+                challenger,
+                stage: Stage::Confirmation,
+                seed,
+            };
+            let verdict = sim(&policy(challenger), &champion_policy, &step, confirm_deals);
+            (
+                vec![Entry::Simmed { step, verdict }],
+                format!(
+                    "{bot} confirmed {} ({}) against {}: {:+.0} mbb/100, 95% ±{:.0}, over {} deals",
+                    challenger.digest(),
+                    describe(&step),
+                    champion.digest(),
+                    verdict.mbb_per_100,
+                    verdict.ci95,
+                    verdict.deals
+                ),
+                None,
+            )
+        }
+        BotNext::Candidate {
+            challenger,
+            confirmation,
+            ..
+        } => {
+            let candidate = Candidate {
+                challenger,
+                kind,
+                style: assigned_style.name,
+                verdict: confirmation,
+            };
+            (
+                Vec::new(),
+                format!(
+                    "{bot} has candidate {} against {}: confirmation {:+.0} mbb/100, 95% ±{:.0}, over {} deals",
+                    challenger.digest(),
+                    champion.digest(),
+                    confirmation.mbb_per_100,
+                    confirmation.ci95,
+                    confirmation.deals
+                ),
+                Some(candidate),
+            )
+        }
+        BotNext::Held => (
+            Vec::new(),
+            format!(
+                "{bot} held: no challenger round {} beat it; the incumbent stays",
+                champion.digest()
+            ),
+            None,
+        ),
+    };
+    fleet.record_bot_search(&bot, &champion, &entries, &note, now_ms, candidate.as_ref())?;
+    Ok(note)
+}
+
+/// When a bot's search last ran; a bot that has never run is oldest.
+fn last_at(search: &BotSearch) -> i64 {
+    search.last.as_ref().map_or(i64::MIN, |(at, _)| *at)
 }
 
 /// The step in words: what it changes, and which of the challenger's sims it is.

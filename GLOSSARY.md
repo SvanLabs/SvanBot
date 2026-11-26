@@ -282,7 +282,13 @@ _Avoid_: per-bot params, brain (a brain is a policy); a lineage is its whole lin
 
 **Challenger**:
 A parameter set put forward to replace the champion.
-_Avoid_: candidate, mutant, variant
+_Avoid_: mutant, variant
+
+**Candidate**:
+A challenger a bot's search put above that bot's champion on a fresh confirmation, waiting for
+the bot's own probe and promotion (#1222). Only the bot whose slot holds the champion it beat can
+take it up; it is not the canary's proposal.
+_Avoid_: proposal (that is the fleet-wide request), winner
 
 **Frozen reference**:
 The fleet champion at Phase 2's cutover, recorded with its digest and cutover time in
@@ -373,17 +379,27 @@ _Avoid_: round, block, batch
 
 **Proposal**:
 A challenger the learner puts forward for the canary, as a probe or as a promotion.
-_Avoid_: candidate, request, queue entry
+_Avoid_: request, queue entry
 
 **Search**:
-The learner's unattended hunt for a challenger round the champion: each number moved a step down
+The learner's unattended hunt for a challenger round a champion: each number moved a step down
 and up, in rings of shrinking steps, one paired sim a step, every step kept in the search log.
-It waits while a proposal waits or a probe runs.
+From Phase 2, `svanbot learn` runs one bounded step a run, rotating through the bots with a
+champion slot: each challenger is screened on a short run, and the promising ones get a longer
+confirmation on fresh deals. The fleet champion's search waits while a proposal waits or a probe
+runs.
 _Avoid_: optimizer, tuning loop, sweep
 
+**Screening**:
+The short paired sim every challenger gets before a search spends a longer confirmation on it. A
+challenger whose screening mean is at or below its champion is dropped; the promising better half
+goes on.
+_Avoid_: pre-test, quick check, filter
+
 **Confirmation**:
-A second paired sim on fresh deals after the first cleared the same margins. Both sims compare
-the same parameter sets or action models. A single sim cannot qualify a challenger for promotion.
+A paired sim on fresh deals, after a screening or a first sim put a challenger above its champion.
+Both sims compare the same parameter sets or action models. A single sim cannot qualify a
+challenger for promotion.
 _Avoid_: re-test, replication, validation run
 
 **Ledger**:

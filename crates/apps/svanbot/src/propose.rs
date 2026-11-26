@@ -21,9 +21,10 @@ use svanbot_core::rules::Blinds;
 use svanbot_core::spot::Spot;
 use svanbot_learn::paired::{Match, Verdict};
 use svanbot_learn::probe::Kind;
+use svanbot_learn::search::Stage;
 use svanbot_runtime::fleet::{Fleet, Proposal};
 use svanbot_strategy::params::Params;
-use svanbot_strategy::policy;
+use svanbot_strategy::policy::Policy;
 use svanbot_strategy::pricer::Budget;
 use svanbot_strategy::resolve::iterations_for;
 
@@ -67,7 +68,12 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     };
     let mut best: Option<(Params, Verdict)> = None;
     for challenger in asked.challengers {
-        let found = sim(&game, asked.deals, &player(challenger), &player(champion));
+        let found = sim(
+            &game,
+            asked.deals,
+            &player(Policy::reference(challenger)),
+            &player(Policy::reference(champion)),
+        );
         println!(
             "{} against champion {}: {:+.0} mbb/100, 95% CI ±{:.0}, over {} deals (seed {})",
             describe(&challenger, &champion),
@@ -121,9 +127,11 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     }
 }
 
-/// `svanbot learn [--deals <n>]`: one step of the unattended search ([`svanbot::learn`]), each
-/// sim heads up on the step's own seed. It exits 0 whatever the step was, waiting included, and 2
-/// when the fleet's files cannot be read or written.
+/// `svanbot learn [--deals <n>]`: one step of the unattended search ([`svanbot::learn`]). With
+/// champion slots it is one bot's step, rotating through them, and a confirmation is played on
+/// fresh 6-max ring deals; without a slot it is the fleet champion's heads-up step. It exits 0
+/// whatever the step was, waiting included, and 2 when the fleet's files cannot be read or
+/// written.
 pub(crate) fn learn(args: &[String]) -> ExitCode {
     let deals = match args {
         [] => LEARN_DEALS,
@@ -134,6 +142,49 @@ pub(crate) fn learn(args: &[String]) -> ExitCode {
         _ => return learn_usage(),
     };
     let fleet = Fleet::in_dir(crate::fleet_dir());
+    let slots = match fleet.champion_slots() {
+        Ok(slots) => slots,
+        Err(why) => {
+            eprintln!("svanbot learn: the champion slots are refused: {why}");
+            return ExitCode::from(2);
+        }
+    };
+    if !slots.is_empty() {
+        // A screening run is a fifth of the confirmation: enough to rank the challengers, not
+        // enough to decide one.
+        let screen_deals = (deals / 5).max(2);
+        let run = |challenger: &Policy,
+                   champion: &Policy,
+                   step: &svanbot_learn::search::Step,
+                   deals: u64| {
+            let game = Match {
+                blinds: Blinds { small: 10, big: 20 },
+                stack: 2000,
+                seed: step.seed,
+            };
+            let challenger = player(*challenger);
+            let champion = player(*champion);
+            match step.stage {
+                // Screening is cheap and heads up; only the promising challengers buy the
+                // fresh 6-max confirmation.
+                Stage::First => sim(&game, deals, &challenger, &champion),
+                Stage::Confirmation => {
+                    crate::paired::ring_sim(&game, deals, &challenger, &champion)
+                }
+            }
+        };
+        return match svanbot::learn::bot_step(&fleet, screen_deals, deals, svanbot::now_ms(), &run)
+        {
+            Ok(note) => {
+                println!("svanbot learn: {note}");
+                ExitCode::SUCCESS
+            }
+            Err(why) => {
+                eprintln!("svanbot learn: {why}");
+                ExitCode::from(2)
+            }
+        };
+    }
     let champion = match fleet.champion() {
         Ok(champion) => champion,
         Err(why) => {
@@ -149,7 +200,12 @@ pub(crate) fn learn(args: &[String]) -> ExitCode {
             stack: 2000,
             seed: step.seed,
         };
-        sim(&game, deals, &player(step.challenger), &player(champion))
+        sim(
+            &game,
+            deals,
+            &player(Policy::reference(step.challenger)),
+            &player(Policy::reference(champion)),
+        )
     };
     match svanbot::learn::step(&fleet, deals, svanbot::now_ms(), &run) {
         Ok(note) => {
@@ -212,15 +268,17 @@ impl Asked {
     }
 }
 
-/// The policy playing by `params`, as a sim's seat.
-fn player(params: Params) -> impl Fn(&Spot, u64) -> svanbot_core::rules::Action + Sync {
+/// The policy playing under its kind, style and `params`, as a sim's seat.
+fn player(policy: Policy) -> impl Fn(&Spot, u64) -> svanbot_core::rules::Action + Sync {
     move |spot, seed| {
         let budget = Budget {
             samples: SAMPLES,
             seed,
         };
         let iterations = iterations_for(spot.pot, spot.big_blind, spot.board.len());
-        policy::decide(spot, None, &params, budget, iterations)
+        policy
+            .decide(spot, None, &[], budget, iterations, &[])
+            .action
     }
 }
 

@@ -12,6 +12,8 @@
 //!   ([`Reference`], `docs/adr/0006-the-reference-is-frozen.md`).
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
 //!   it up, and removes it, when no probe is running; a frozen reference stops proposals.
+//! - `searches.json`: each bot's search progress, keyed by the champion it measured, and the
+//!   candidate its search found for its own probe and promotion (Phase 2).
 //! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
 //!   search's log ([`search`]).
 //! - `arena.json`: the Arena's last runs, each marked with its league. The newest of a league is
@@ -41,6 +43,8 @@ pub use policies::Assignment;
 mod reference;
 pub use reference::Reference;
 mod search;
+mod searches;
+pub use searches::{BotSearch, Candidate};
 
 pub use search::{SEARCH_KEPT, SearchLog};
 
