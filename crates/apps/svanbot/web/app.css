@@ -270,6 +270,101 @@ kbd {
   box-shadow: var(--shadow);
 }
 
+.management {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.management-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 0;
+}
+
+.management-metrics > div,
+.management-roster {
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--bg-raised);
+}
+
+.management-metrics > div {
+  padding: 1rem 1.1rem;
+}
+
+.management-metrics dt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: var(--step-small);
+  font-weight: 650;
+}
+
+.management-metrics dt .icon {
+  color: var(--cyan);
+}
+
+.management-metrics dd {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.4rem, 1rem + 1.4vw, 2rem);
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.management-metrics small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: var(--step-small);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.45;
+}
+
+.management-roster > h2 {
+  margin: 0;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 1rem;
+}
+
+.management-roster .scroll {
+  margin: 0;
+  padding: 0 0.65rem;
+}
+
+.management-roster table {
+  width: 100%;
+  min-width: 38rem;
+  margin: 0;
+}
+
+.management-roster tbody th {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.management-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+@media (max-width: 48rem) {
+  .management-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .strip::before {
   content: "";
   position: absolute;
@@ -391,20 +486,6 @@ kbd {
   border-color: rgb(167 139 250 / 0.45);
   background: var(--grad-soft);
   box-shadow: 0 6px 24px -10px rgb(124 58 237 / 0.8);
-}
-
-.bot-tab .slot {
-  padding: 0.05rem 0.38rem;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.06);
-  color: var(--dim);
-  font: 600 0.62rem var(--sans);
-  font-variant-numeric: tabular-nums;
-}
-
-.bot-tab[aria-current="page"] .slot {
-  background: rgb(255 255 255 / 0.14);
-  color: #fff;
 }
 
 .strip-end {

@@ -13,7 +13,7 @@ function dot(status, nowMs) {
 
 /** The top bar's tabs: one a bot, with its dot and its place in the fleet; the bot in view lit. */
 export function botTabs(fleet, current, nowMs) {
-  return fleet.bots.map((status, at) =>
+  return fleet.bots.map((status) =>
     h(
       "a",
       {
@@ -23,7 +23,6 @@ export function botTabs(fleet, current, nowMs) {
       },
       dot(status, nowMs),
       h("span", {}, status.bot),
-      h("span", { class: "slot" }, String(at).padStart(2, "0")),
     ),
   );
 }
@@ -73,7 +72,7 @@ export function rail(lead, note, cells) {
       { class: "rail-lead" },
       h("span", { class: "rail-icon" }, icon("pulse")),
       h("b", {}, lead),
-      h("small", {}, note),
+      note ? h("small", {}, note) : null,
     ),
     h(
       "dl",

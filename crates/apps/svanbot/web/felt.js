@@ -3,7 +3,7 @@
 // markup: an opponent chooses their own name.
 
 import { h } from "./dom.js";
-import { chart, rateText, running, winRate } from "./fleet.js";
+import { chart, running } from "./fleet.js";
 import { icon } from "./icons.js";
 
 const SUITS = { h: ["♥", true], d: ["♦", true], c: ["♣", false], s: ["♠", false] };
@@ -103,51 +103,6 @@ export function felt(table, { opponents = null, theme = "arena" } = {}) {
     ),
     seats,
   );
-}
-
-/** The fleet in tiles: how many bots play, the hands they have kept, and the pooled win rate. */
-export function summary(fleet) {
-  const bots = fleet.bots;
-  const playing = bots.filter((bot) => bot.connected).length;
-  const hands = bots.reduce((sum, bot) => sum + (bot.hands ?? 0), 0);
-  const counted = bots.reduce((sum, bot) => sum + (bot.play?.counted ?? 0), 0);
-  const pooled = winRate({
-    counted,
-    won_mbb: bots.reduce((sum, bot) => sum + (bot.play?.won_mbb ?? 0), 0),
-  });
-  const best = [...bots]
-    .filter((bot) => winRate(bot.play) !== null)
-    .sort((a, b) => winRate(b.play) - winRate(a.play))[0];
-  return tiles([
-    [
-      "Bots online",
-      `${playing} of ${bots.length} playing`,
-      `${bots.length - playing} offline`,
-      "",
-      "bots",
-    ],
-    [
-      "Hands played",
-      `${chips(hands)} hands`,
-      `${chips(counted)} counted for the ledger`,
-      "",
-      "cards",
-    ],
-    [
-      "Fleet win rate",
-      rateText(pooled),
-      "pooled over every counted hand",
-      pooled === null ? "" : pooled >= 0 ? "up" : "down",
-      "trend",
-    ],
-    [
-      "Leading bot",
-      best ? best.bot : "—",
-      best ? rateText(winRate(best.play)) : "no counted hands yet",
-      "",
-      "trophy",
-    ],
-  ]);
 }
 
 /**
