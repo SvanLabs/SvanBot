@@ -18,7 +18,7 @@ use svanbot_strategy::action::Seen;
 use crate::lines::Lines;
 use crate::record::Hand;
 use crate::status::Dossier;
-use crate::store::{Source, Store, StoreError};
+use crate::store::{FitHand, Source, Store, StoreError};
 use crate::wire::{Inbound, parse};
 
 mod export;
@@ -36,6 +36,22 @@ pub fn observed(hand: &Hand, number: u64) -> Vec<Observed> {
         number,
         true,
     )
+}
+
+/// Choose one source per hand. An unusable supplemental export cannot hide kept evidence.
+pub fn observed_for_fit(hand: &FitHand, number: u64) -> (Vec<Observed>, Option<bool>) {
+    let kept = observed(&hand.kept, number);
+    if let Some(export) = &hand.export
+        && (!hand.prefer_live || kept.is_empty())
+    {
+        let sides = observed(export, number);
+        if !sides.is_empty() {
+            return (sides, Some(true));
+        }
+        return (kept, Some(false));
+    }
+    let used = hand.kept_is_export.then_some(!kept.is_empty());
+    (kept, used)
 }
 
 fn observed_frames(
@@ -56,19 +72,33 @@ fn observed_frames(
         }
         lines.on(&frame);
     }
+    let Some(me) = me else {
+        return Vec::new();
+    };
     let board = lines.board();
     let showdown = infer_muck && board.len() == 5 && !shown.is_empty();
     // The best hand at the showdown: the best shown, or ours if we were in it.
     let mut best = showdown
         .then(|| shown.iter().map(|&(_, pair)| strength(pair | board)).max())
         .flatten();
-    if showdown && me.is_some_and(|seat| !lines.folded(seat)) && hole.len() == 2 {
+    if showdown && !lines.folded(me) && hole.len() == 2 {
         best = best.max(Some(strength(hole | board)));
     }
     lines
         .seats()
-        .filter(|&seat| Some(seat) != me)
-        .map(|seat| {
+        .filter(|&seat| seat != me)
+        .filter_map(|seat| {
+            // A warm replay can contain the turn or river card without the earlier board.
+            // The bucket evaluator needs a whole board as it was at the action.
+            let seen: Vec<_> = lines
+                .of(seat)
+                .iter()
+                .filter(|act| matches!(act.board.len(), 0 | 3..=5))
+                .map(Seen::of)
+                .collect();
+            if seen.is_empty() {
+                return None;
+            }
             let own = shown
                 .iter()
                 .find(|&&(at, _)| at == seat)
@@ -82,12 +112,12 @@ fn observed_frames(
                 .iter()
                 .filter(|&&(at, _)| at != seat)
                 .fold(CardSet::EMPTY, |cards, &(_, pair)| cards | pair);
-            Observed {
+            Some(Observed {
                 hand: number,
-                seen: lines.of(seat).iter().map(Seen::of).collect(),
+                seen,
                 dead: hole | board | others_shown,
                 outcome,
-            }
+            })
         })
         .collect()
 }

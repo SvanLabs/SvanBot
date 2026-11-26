@@ -20,6 +20,11 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
     if hole.len() != 2 || !matches!(board.len(), 0 | 3..=5) {
         return None;
     }
+    let hero_cards: CardSet = hole.iter().copied().collect();
+    let mut known: CardSet = board.iter().chain(&hole).copied().collect();
+    if known.len() != board.len() + hole.len() {
+        return None;
+    }
     let mut actions: Vec<_> = hand["all_actions"]
         .as_array()?
         .iter()
@@ -119,16 +124,15 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
             active[who] = false;
         }
     }
-    if let Some(reported) = hand["pot_total"].as_u64() {
-        let mut commitments: Vec<_> = dealt
-            .iter()
-            .map(|&seat| lines.committed(seat, &dealt))
-            .collect();
-        commitments.sort_unstable_by(|a, b| b.cmp(a));
-        let refund = commitments[0] - commitments[1];
-        if reported != lines.pot() && reported != lines.pot().checked_sub(refund)? {
-            return None;
-        }
+    let reported = hand["pot_total"].as_u64()?;
+    let mut commitments: Vec<_> = dealt
+        .iter()
+        .map(|&seat| lines.committed(seat, &dealt))
+        .collect();
+    commitments.sort_unstable_by(|a, b| b.cmp(a));
+    let refund = commitments[0] - commitments[1];
+    if reported != lines.pot() && reported != lines.pot().checked_sub(refund)? {
+        return None;
     }
     if dealt_cards < board.len() {
         frames.push(Inbound::CommunityCards {
@@ -136,15 +140,28 @@ pub(super) fn frames(text: &str) -> Option<Vec<Inbound>> {
         });
     }
     if let Some(shown) = hand["shown_cards"].as_object() {
+        let mut pairs = Vec::with_capacity(shown.len());
+        for (who, pair) in shown {
+            let who = who
+                .parse::<usize>()
+                .ok()
+                .filter(|seat| dealt.contains(seat))?;
+            let pair: CardSet = cards(pair)?.into_iter().collect();
+            if who == hero {
+                if pair != hero_cards {
+                    return None;
+                }
+            } else {
+                if pair.len() != 2 || (known | pair).len() != known.len() + 2 {
+                    return None;
+                }
+                known |= pair;
+            }
+            pairs.push((who, pair));
+        }
         frames.push(Inbound::HandResult {
             final_stacks: Vec::new(),
-            shown: shown
-                .iter()
-                .filter_map(|(who, pair)| {
-                    let pair: CardSet = cards(pair)?.into_iter().collect();
-                    (pair.len() == 2).then_some((who.parse().ok()?, pair))
-                })
-                .collect(),
+            shown: pairs,
         });
     }
     Some(frames)

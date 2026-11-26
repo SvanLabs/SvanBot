@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use svanbot_learn::fit::{MARGIN, Prepared, fit, gate, prepare};
-use svanbot_runtime::history::observed;
+use svanbot_runtime::history::observed_for_fit;
 use svanbot_strategy::action::ActionModel;
 
 use crate::{open_store, store_path};
@@ -54,14 +54,24 @@ pub(crate) fn run() -> ExitCode {
             }
         };
     let stored = hands.len();
+    let mut exports_used = 0;
+    let mut exports_skipped = 0;
     let mut observed_hands: Vec<_> = hands
         .iter()
         .enumerate()
-        .map(|(number, hand)| observed(hand, number as u64))
+        .map(|(number, hand)| {
+            let (sides, export) = observed_for_fit(hand, number as u64);
+            exports_used += usize::from(export == Some(true));
+            exports_skipped += usize::from(export == Some(false));
+            sides
+        })
         .filter(|sides| !sides.is_empty())
         .collect();
     drop(hands);
     let eligible = observed_hands.len();
+    eprintln!(
+        "svanbot fit: {eligible} of {stored} hands have opponent actions. Export hands used: {exports_used}. Export hands skipped: {exports_skipped}."
+    );
     let cut = eligible * 4 / 5;
     if eligible - cut < MIN_HELD_OUT {
         println!(
@@ -76,24 +86,26 @@ pub(crate) fn run() -> ExitCode {
             .into_iter()
             .flatten()
             .map(|side| prepare(&side))
+            .filter(|side| side.candidates() > 0)
             .collect()
     };
     let (train, held_out) = (ready(observed_hands), ready(held_out_hands));
     let fitted = fit(&train, ROUNDS, ALPHA);
     let incumbent = load_model(&me).unwrap_or_else(ActionModel::baseline);
     let verdict = gate(&fitted.model, &incumbent, &held_out, MARGIN);
+    let passed = verdict.hands >= MIN_HELD_OUT && verdict.passed;
     println!(
         "svanbot fit: {eligible} of {stored} hands have opponent actions, {} held out: gain {:+.4} nats a hand, lower bound {:+.4}, {}",
         verdict.hands,
         verdict.gain,
         verdict.lower,
-        if verdict.passed {
+        if passed {
             "passed the gate"
         } else {
             "did not pass the gate"
         }
     );
-    if !verdict.passed {
+    if !passed {
         return ExitCode::SUCCESS;
     }
     match model_path(&me).and_then(|path| write_whole(&path, &fitted.model.to_text())) {

@@ -61,7 +61,7 @@ fn shown_cards_without_a_full_board_do_not_require_a_showdown_strength() {
             "hand_id": "h-incomplete", "seat": 0, "dealer_seat": 0,
             "small_blind": 10, "big_blind": 20, "num_players": 2,
             "hole_cards": ["3c", "3d"], "board": [],
-            "shown_cards": {"1": ["Kh", "Kd"]},
+            "shown_cards": {"1": ["Kh", "Kd"]}, "pot_total": 40,
             "all_actions": [
                 {"seat": 0, "sequence_in_hand": 1, "street": "preflop", "action": "call", "amount": 0},
                 {"seat": 1, "sequence_in_hand": 2, "street": "preflop", "action": "check", "amount": 0}
@@ -71,6 +71,22 @@ fn shown_cards_without_a_full_board_do_not_require_a_showdown_strength() {
     let sides = observed(&hand, 0);
     assert_eq!(sides.len(), 1);
     assert_eq!(sides[0].outcome, Outcome::Shown(cards("KhKd")));
+}
+
+#[test]
+fn a_replayed_action_on_an_incomplete_board_is_omitted_from_the_fit() {
+    let hand = Hand {
+        hand_id: "h-replay".into(),
+        table_id: "t-1".into(),
+        traced: Vec::new(),
+        frames: [
+            json!({"type": "hand_start", "hand_id": "h-replay", "seat": 0, "dealer_seat": 0,
+                   "blinds": {"small_blind": 10, "big_blind": 20}}),
+            json!({"type": "community_cards", "cards": ["7h"], "street": "turn"}),
+            json!({"type": "player_action", "seat": 1, "action": "check", "amount": null, "stack": 1000}),
+        ].map(|frame| frame.to_string()).to_vec(),
+    };
+    assert!(observed(&hand, 0).is_empty());
 }
 
 /// Seat 2 is us. Seat 0 raises, calls the flop, bets the river and shows; seat 4 calls to the

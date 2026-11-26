@@ -470,6 +470,7 @@ mod hands;
 mod trace;
 mod window;
 
+pub use hands::FitHand;
 pub use trace::{TRACED_HANDS, TracedHand};
 pub use window::ExportLine;
 
