@@ -240,7 +240,7 @@ where
 
     /// The next page, or `None` at the end. A page shorter than the limit is the last one. An
     /// empty page is tried again, backing off, up to [`EMPTY_PAGE_TRIES`] times in all, and then
-    /// taken as the end.
+    /// taken as the end. A reported zero total confirms an empty first page immediately.
     pub fn next_page(&mut self) -> Result<Option<Vec<Value>>, RestError> {
         if self.done {
             return Ok(None);
@@ -258,6 +258,9 @@ where
             self.reported_total = self.reported_total.or(total);
             let items = (self.items)(&page)
                 .ok_or_else(|| RestError::Body(format!("no list in the page at {path}")))?;
+            if items.is_empty() && self.offset == 0 && total == Some(0) {
+                break;
+            }
             if !items.is_empty() {
                 self.offset += items.len() as u64;
                 self.done = items.len() < self.limit as usize;

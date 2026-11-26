@@ -1,5 +1,20 @@
-use super::{Store, StoreError};
+use rusqlite::{Transaction, params};
+
+use super::{Source, Store, StoreError, trace};
 use crate::record::Hand;
+
+pub(super) const SEASON_DOWNLOAD_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS verified_season_exports (
+    season_id   TEXT NOT NULL,
+    hands       INTEGER NOT NULL CHECK (hands >= 0),
+    recorded_ms INTEGER NOT NULL,
+    PRIMARY KEY (season_id, hands)
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS verified_season_exports_no_update BEFORE UPDATE ON verified_season_exports
+    BEGIN SELECT RAISE(ABORT, 'verified season exports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS verified_season_exports_no_delete BEFORE DELETE ON verified_season_exports
+    BEGIN SELECT RAISE(ABORT, 'verified season exports are append-only'); END;
+";
 
 /// A hand and its distinct export, kept apart until the fit validates either copy.
 pub struct FitHand {
@@ -10,9 +25,68 @@ pub struct FitHand {
 }
 
 impl Store {
+    pub(crate) fn owner(&self) -> Result<String, StoreError> {
+        Ok(self
+            .db
+            .query_row("SELECT value FROM meta WHERE key = 'bot'", [], |row| {
+                row.get(0)
+            })?)
+    }
+
+    /// Keeps a hand. Returns false if it is kept already: the first copy stands.
+    pub fn append_hand(
+        &self,
+        hand: &Hand,
+        source: Source,
+        recorded_ms: i64,
+    ) -> Result<bool, StoreError> {
+        let tx = self.db.unchecked_transaction()?;
+        let added = keep_hand(&tx, hand, source, recorded_ms)?;
+        tx.commit()?;
+        Ok(added)
+    }
+
+    /// Append a small group of exported hands with one commit.
+    pub(crate) fn append_history(&self, hands: &[(Hand, i64)]) -> Result<u32, StoreError> {
+        if hands.is_empty() {
+            return Ok(0);
+        }
+        let tx = self.db.unchecked_transaction()?;
+        let mut added = 0;
+        for (hand, recorded_ms) in hands {
+            added += u32::from(keep_hand(&tx, hand, Source::History, *recorded_ms)?);
+        }
+        tx.commit()?;
+        Ok(added)
+    }
+
     /// A download's writer may wait for live hands to finish committing.
     pub(crate) fn wait_for_download_writer(&self) -> Result<(), StoreError> {
         self.db.busy_timeout(std::time::Duration::from_secs(30))?;
+        Ok(())
+    }
+
+    pub(crate) fn verified_season(&self, season_id: &str) -> Result<u64, StoreError> {
+        let hands: i64 = self.db.query_row(
+            "SELECT COALESCE(MAX(hands), 0) FROM verified_season_exports WHERE season_id = ?1",
+            [season_id],
+            |row| row.get(0),
+        )?;
+        Ok(u64::try_from(hands).unwrap_or(0))
+    }
+
+    pub(crate) fn record_verified_season(
+        &self,
+        season_id: &str,
+        hands: u64,
+        recorded_ms: i64,
+    ) -> Result<(), StoreError> {
+        let hands = i64::try_from(hands).map_err(|e| StoreError(e.to_string()))?;
+        self.db.execute(
+            "INSERT INTO verified_season_exports (season_id, hands, recorded_ms)
+             VALUES (?1, ?2, ?3) ON CONFLICT (season_id, hands) DO NOTHING",
+            params![season_id, hands, recorded_ms],
+        )?;
         Ok(())
     }
 
@@ -87,6 +161,40 @@ impl Store {
         })
         .collect()
     }
+}
+
+fn keep_hand(
+    tx: &Transaction<'_>,
+    hand: &Hand,
+    source: Source,
+    recorded_ms: i64,
+) -> Result<bool, StoreError> {
+    // The hand and its traces are one write. A trace has no meaning without its hand.
+    let frames = format!("[{}]", hand.frames.join(","));
+    let added = tx.execute(
+        "INSERT INTO hands (hand_id, table_id, source, recorded_ms, frames)
+         VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (hand_id) DO NOTHING",
+        params![
+            hand.hand_id,
+            hand.table_id,
+            source.name(),
+            recorded_ms,
+            frames
+        ],
+    )?;
+    if added == 1 {
+        trace::keep(tx, hand)?;
+    } else if source == Source::History {
+        tx.execute(
+            "INSERT INTO hand_exports (hand_id, frame)
+             SELECT hand_id, json_extract(?2, '$[0]') FROM hands
+             WHERE hand_id = ?1 AND frames <> ?2
+               AND json_array_length(?2) = 1 AND json_type(?2, '$[0]') = 'object'
+             ON CONFLICT (hand_id) DO NOTHING",
+            params![hand.hand_id, frames],
+        )?;
+    }
+    Ok(added == 1)
 }
 
 fn hand(hand_id: String, table_id: String, frames: &str) -> Result<Hand, StoreError> {
