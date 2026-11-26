@@ -3,7 +3,7 @@
 //! the sims that fill it.
 
 use svanbot_strategy::kind::PolicyKind;
-use svanbot_strategy::params::{Digest, Params};
+use svanbot_strategy::params::Params;
 
 use crate::paired::Verdict;
 
@@ -41,13 +41,6 @@ pub struct Evidence {
     pub style: &'static str,
     pub fresh: Verdict,
     pub gauntlet: Vec<GauntletRow>,
-}
-
-impl Evidence {
-    /// The incumbent's digest: the evidence is stale when the slot no longer holds it.
-    pub fn incumbent(&self) -> Digest {
-        self.incumbent.digest()
-    }
 }
 
 /// What the gate says about a set of evidence.

@@ -67,11 +67,6 @@ impl Status {
     pub const fn active(self) -> bool {
         matches!(self, Self::Pending | Self::Guarding)
     }
-
-    /// A finished promotion: the bot may make another proposal.
-    pub const fn terminal(self) -> bool {
-        !self.active()
-    }
 }
 
 /// One bot's promotion: the evidence it rests on, and how far its guard has got.
@@ -105,13 +100,6 @@ impl Promotion {
             decided_ms: None,
             note: None,
         }
-    }
-
-    /// The same proposal with its note set, for the gate's refusal or wait.
-    #[must_use]
-    pub fn noting(mut self, note: impl Into<String>) -> Self {
-        self.note = Some(note.into());
-        self
     }
 
     /// A proposal built from a bot's search candidate and the gauntlet rows run for it. The
@@ -156,7 +144,19 @@ impl Fleet {
     /// the incumbent and assignment the evidence names. Returns whether it was put forward: a
     /// pending or guarding promotion is never replaced.
     pub fn propose_bot(&self, promotion: &Promotion) -> Result<bool, String> {
-        self.refuse_frozen_promotion()?;
+        self.refuse_unfrozen_promotion()?;
+        if promotion.guard_hands == 0 {
+            return Err(format!(
+                "{PROMOTIONS}: {}'s guard has no hands",
+                promotion.bot
+            ));
+        }
+        if !(promotion.harm_margin.is_finite() && promotion.harm_margin > 0.0) {
+            return Err(format!(
+                "{PROMOTIONS}: {}'s harm margin is not positive",
+                promotion.bot
+            ));
+        }
         let bot = &promotion.bot;
         match gate(&promotion.evidence) {
             Gate::Admitted => {}
@@ -278,7 +278,7 @@ impl Fleet {
     /// The frozen reference stops fleet-wide promotions, not a bot's own slot; a per-bot
     /// promotion is allowed, but only when the reference is frozen, so its live control is the
     /// frozen reference every bot shares. Before the freeze the fleet search owns the fleet.
-    fn refuse_frozen_promotion(&self) -> Result<(), String> {
+    fn refuse_unfrozen_promotion(&self) -> Result<(), String> {
         if self.reference()?.is_none() {
             return Err(format!(
                 "{PROMOTIONS}: the reference is not frozen; a per-bot promotion waits for the freeze"

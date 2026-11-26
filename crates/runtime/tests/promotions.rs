@@ -183,6 +183,23 @@ fn incomplete_or_refused_evidence_writes_nothing() {
 }
 
 #[test]
+fn a_guard_with_no_hands_or_no_harm_margin_is_refused() {
+    let (_dir, fleet) = fixture("guard-bounds");
+    let mut no_hands = proposal("A", admitted(INCUMBENT, TIGHT.name));
+    no_hands.guard_hands = 0;
+    assert!(fleet.propose_bot(&no_hands).unwrap_err().contains("guard"));
+    let mut no_margin = proposal("A", admitted(INCUMBENT, TIGHT.name));
+    no_margin.harm_margin = 0.0;
+    assert!(
+        fleet
+            .propose_bot(&no_margin)
+            .unwrap_err()
+            .contains("margin")
+    );
+    assert_eq!(fleet.bot_promotion("A"), Ok(None));
+}
+
+#[test]
 fn a_pending_promotion_is_superseded_without_moving_the_slot() {
     let (_dir, fleet) = fixture("supersede");
     let proposed = proposal("A", admitted(INCUMBENT, TIGHT.name));
