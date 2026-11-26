@@ -1,4 +1,4 @@
-use rusqlite::{Transaction, params};
+use rusqlite::{Connection, Transaction, params};
 
 use super::{Source, Store, StoreError, trace};
 use crate::record::Hand;
@@ -82,6 +82,19 @@ impl Store {
         Ok(())
     }
 
+    /// One hand's provenance text: what its frames said about how it was recorded. `None` when
+    /// the hand is not kept, or was recorded before the column existed.
+    pub fn hand_quality(&self, hand_id: &str) -> Result<Option<String>, StoreError> {
+        let mut query = self
+            .db
+            .prepare("SELECT quality FROM hands WHERE hand_id = ?1")?;
+        let mut rows = query.query([hand_id])?;
+        match rows.next()? {
+            Some(row) => Ok(row.get(0)?),
+            None => Ok(None),
+        }
+    }
+
     /// Every kept hand, in the order it was kept. Each frame comes back as compact JSON.
     pub fn hands(&self) -> Result<Vec<Hand>, StoreError> {
         self.read_hands("SELECT hand_id, table_id, frames FROM hands ORDER BY rowid")
@@ -163,15 +176,17 @@ fn keep_hand(
 ) -> Result<bool, StoreError> {
     // The hand and its traces are one write. A trace has no meaning without its hand.
     let frames = format!("[{}]", hand.frames.join(","));
+    let quality = quality(&hand.frames);
     let added = tx.execute(
-        "INSERT INTO hands (hand_id, table_id, source, recorded_ms, frames)
-         VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (hand_id) DO NOTHING",
+        "INSERT INTO hands (hand_id, table_id, source, recorded_ms, frames, quality)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT (hand_id) DO NOTHING",
         params![
             hand.hand_id,
             hand.table_id,
             source.name(),
             recorded_ms,
-            frames
+            frames,
+            quality
         ],
     )?;
     if added == 1 {
@@ -198,4 +213,60 @@ fn hand(hand_id: String, table_id: String, frames: &str) -> Result<Hand, StoreEr
         frames: frames.iter().map(ToString::to_string).collect(),
         traced: Vec::new(),
     })
+}
+
+/// What a hand's frames say about how it was recorded, as the row's `quality` text: the parser
+/// revision, how many frames arrived, how many do not parse, whether the hand finished (a
+/// `hand_result` is in the frames), and whether any betting action's amount was left out by the
+/// venue and is therefore inferred rather than observed.
+///
+/// The raw frames stay the record; this is the mark beside them, so "missing" never reads as
+/// "no" and a lossy parse is visible where the hand is read.
+fn quality(frames: &[String]) -> String {
+    let mut unparsed = 0usize;
+    let mut complete = false;
+    let mut inferred_amounts = 0usize;
+    for text in frames {
+        // The store's `json_valid` check refuses a frame that is not JSON at all, so a kept
+        // frame is at least JSON; what it can still lack is a `type` to route it by.
+        let Ok(frame) = serde_json::from_str::<serde_json::Value>(text) else {
+            unparsed += 1;
+            continue;
+        };
+        match frame["type"].as_str() {
+            Some("hand_result") => complete = true,
+            Some("player_action") => {
+                let action = frame["action"].as_str().unwrap_or("");
+                if frame["amount"].is_null() && !matches!(action, "check" | "fold") {
+                    inferred_amounts += 1;
+                }
+            }
+            // Any named frame is routable, known or a venue extension. An unnamed one is not.
+            Some(_) => {}
+            None => unparsed += 1,
+        }
+    }
+    serde_json::json!({
+        "parser": crate::wire::DOCS_REVISION,
+        "frames": frames.len(),
+        "unparsed": unparsed,
+        "complete": complete,
+        "inferred_amounts": inferred_amounts,
+    })
+    .to_string()
+}
+
+/// Adds the provenance column to a store recorded before it existed. Old rows read `NULL`:
+/// unknown provenance, not clean provenance. Append-only triggers do not stand in the way of
+/// a schema change; no row is rewritten.
+pub(crate) fn migrate(db: &Connection) -> Result<(), StoreError> {
+    let has: bool = db.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_info('hands') WHERE name = 'quality')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has {
+        db.execute("ALTER TABLE hands ADD COLUMN quality TEXT", [])?;
+    }
+    Ok(())
 }

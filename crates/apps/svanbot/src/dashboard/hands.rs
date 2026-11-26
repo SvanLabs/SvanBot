@@ -48,6 +48,10 @@ pub(super) fn hands_json(config: &Config, bot: &str) -> Option<(u16, String)> {
                 "table_id": hand.table_id,
                 "recorded_ms": hand.recorded_ms,
                 "decisions": hand.decisions,
+                "quality": hand
+                    .quality
+                    .as_deref()
+                    .and_then(|text| serde_json::from_str::<Value>(text).ok()),
             })
         })
         .collect();
