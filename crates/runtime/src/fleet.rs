@@ -1,13 +1,17 @@
 //! What the fleet's bots share about parameter sets, through two files in one directory beside
 //! their stores:
 //!
-//! - `champion.json`: the parameter set every bot plays by. The canary writes it when a
-//!   promotion's harm guard clears, and each bot reads it between hands. With no file, the
-//!   champion is [`Params::DEFAULT`].
+//! - `champion.json`: the parameter set every bot plays by before the freeze. The canary writes
+//!   it when a promotion's harm guard clears, and each bot reads it between hands. With no file,
+//!   the champion is [`Params::DEFAULT`]. Once `reference.json` exists this file is ignored.
 //! - `champions.json`: each bot's own champion slot, seeded from `champion.json` and moved only
 //!   by that bot's search and promotion (Phase 2). A bot with no entry plays the fleet champion.
+//! - `reference.json`: the frozen reference (Phase 2's cutover): the champion in play, its digest
+//!   and cutover time, and the references it replaced. While it exists, it is the champion every
+//!   bot without a slot plays, and the fleet-wide proposal and promotion path is stopped
+//!   ([`Reference`], `docs/adr/0006-the-reference-is-frozen.md`).
 //! - `proposal.json`: a challenger the learner puts forward, with how to try it. The canary takes
-//!   it up, and removes it, when no probe is running.
+//!   it up, and removes it, when no probe is running; a frozen reference stops proposals.
 //! - `searches.json`: each bot's search progress, keyed by the champion it measured, and the
 //!   candidate its search found for its own probe and promotion (Phase 2).
 //! - `probe.json` and `search.json`: the canary's running probe, mirrored, and the unattended
@@ -36,6 +40,8 @@ mod checks;
 pub use checks::Check;
 mod policies;
 pub use policies::Assignment;
+mod reference;
+pub use reference::Reference;
 mod search;
 mod searches;
 pub use searches::{BotSearch, Candidate};
@@ -357,8 +363,12 @@ impl Fleet {
         Self { dir: dir.into() }
     }
 
-    /// The champion: the last promoted parameter set, or the default before any promotion.
+    /// The champion: the frozen reference once it is frozen, else the last promoted parameter
+    /// set, or the default before any promotion.
     pub fn champion(&self) -> Result<Params, String> {
+        if let Some(reference) = self.reference()? {
+            return Ok(reference.params);
+        }
         match fs::read_to_string(self.dir.join("champion.json")) {
             Ok(text) => {
                 let value: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -368,13 +378,17 @@ impl Fleet {
         }
     }
 
-    /// Makes `champion` the parameter set the fleet plays by.
+    /// Makes `champion` the parameter set the fleet plays by. Refused once the reference is
+    /// frozen: only an operator rebase moves it.
     pub fn promote(&self, champion: &Params) -> Result<(), String> {
+        self.refuse_when_frozen("promotions are stopped; an operator rebase moves the reference")?;
         self.write("champion.json", &params_json(champion).to_string())
     }
 
-    /// Puts `proposal` forward, in place of any that still waits.
+    /// Puts `proposal` forward, in place of any that still waits. Refused once the reference is
+    /// frozen: the fleet-wide search and its proposals are stopped.
     pub fn propose(&self, proposal: &Proposal) -> Result<(), String> {
+        self.refuse_when_frozen("fleet-wide proposals are stopped")?;
         self.write("proposal.json", &proposal.to_json())
     }
 
@@ -387,6 +401,15 @@ impl Fleet {
     ///
     /// [`end_probe`]: Fleet::end_probe
     pub fn take_proposal(&self) -> Result<Option<Proposal>, String> {
+        if self.reference()?.is_some() {
+            // A proposal left waiting at cutover, or written by a racing writer, is not taken up.
+            match fs::remove_file(self.dir.join("proposal.json")) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(format!("fleet: {error}")),
+            }
+            return Ok(None);
+        }
         let path = self.dir.join("proposal.json");
         let Ok(text) = fs::read_to_string(&path) else {
             return Ok(None);

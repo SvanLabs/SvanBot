@@ -17,6 +17,12 @@ use crate::ring::ring_seen;
 pub const SAMPLES: u64 = 2_000;
 pub const STABLEMATE: &str = "stablemate ";
 
+/// Whether `name` is a row measured apart from the release rows: a stablemate row or a bot's own
+/// field. The ship bar reads neither, and neither enters a policy's standard comparison.
+pub fn apart(name: &str) -> bool {
+    name.starts_with(STABLEMATE) || crate::field::is_row(name)
+}
+
 pub type Take = fn(&Reads, &[(usize, &str)], &ActionModel, f64) -> Vec<Personal>;
 
 /// A decider reading the named opponents through the supplied read policy.
