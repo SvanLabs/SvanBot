@@ -209,6 +209,15 @@ pub struct Policy {
     pub kind: PolicyKind,
     pub style: &'static Style,
     pub params: Params,
+    continuation_pin: ContinuationPin,
+}
+
+/// Which share of the next-street opponent continuation the re-solve pins to its selected model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContinuationPin {
+    Fixed,
+    Zero,
+    EvidenceCap,
 }
 
 impl Policy {
@@ -217,6 +226,7 @@ impl Policy {
             kind,
             style,
             params,
+            continuation_pin: ContinuationPin::Fixed,
         }
     }
 
@@ -226,6 +236,14 @@ impl Policy {
 
     pub fn name(&self) -> String {
         format!("{}/{}", self.kind.name(), self.style.name)
+    }
+
+    /// Varies the continuation pin for an experiment while leaving the selected range model and
+    /// the read-mixing parameters in place.
+    #[must_use]
+    pub fn with_continuation_pin(mut self, continuation_pin: ContinuationPin) -> Self {
+        self.continuation_pin = continuation_pin;
+        self
     }
 
     pub fn decide(
@@ -272,14 +290,23 @@ impl Policy {
             .collect();
         let model = models.first().copied().unwrap_or(population);
         let street = Street::of(spot.board);
+        let pin = match self.continuation_pin {
+            ContinuationPin::Fixed => self.params.exploit,
+            ContinuationPin::Zero => 0.0,
+            ContinuationPin::EvidenceCap => {
+                let trust = reads
+                    .first()
+                    .copied()
+                    .flatten()
+                    .filter(|read| read.class == Class::Fixed)
+                    .and_then(|read| read.trust)
+                    .filter(|trust| trust.is_finite())
+                    .unwrap_or(0.0);
+                self.params.exploit.clamp(0.0, 1.0) * trust.clamp(0.0, 1.0)
+            }
+        };
         let resolved = match self.kind {
-            PolicyKind::Solving => resolve(
-                spot,
-                Some(model),
-                self.params.exploit,
-                iterations,
-                budget.seed,
-            ),
+            PolicyKind::Solving => resolve(spot, Some(model), pin, iterations, budget.seed),
             PolicyKind::Pricing => None,
         };
         match resolved {

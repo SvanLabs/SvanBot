@@ -86,8 +86,28 @@ pub(crate) fn play_bout(
     policy: &Policy,
     fixed: Option<u64>,
 ) -> Vec<f64> {
+    play_bout_with_reads(
+        game,
+        league,
+        opponent,
+        number,
+        policy,
+        fixed,
+        Reads::deciding,
+    )
+}
+
+pub(crate) fn play_bout_with_reads(
+    game: &Match,
+    league: League,
+    opponent: Opponent,
+    number: u64,
+    policy: &Policy,
+    fixed: Option<u64>,
+    take: play::Take,
+) -> Vec<f64> {
     let seats = league.seats();
-    let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, Reads::deciding, None))
+    let challenger = &BoutReader::new(play::reading(*policy, fixed, seats, take, None))
         .with_profile_stats(!policy.style.profile.is_empty());
     let pricer = deciders::pricer();
     let deals = number * BOUT..(number + 1) * BOUT;

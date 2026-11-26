@@ -185,6 +185,11 @@ One of the compiled ways a policy chooses. `solving` is today's: the profile, th
 then the pricer. `pricing` never re-solves.
 _Avoid_: engine, mode
 
+**Continuation pin**:
+The share of the opponent's next-street play that the re-solve fixes to its selected action
+model. The remaining share can respond freely. The pin affects the continuation, while the
+selected range model reads the current hand.
+
 **Style**:
 A named, designed way of playing. It pins some of the numbers a policy plays by and names the
 profile it plays with; the rest come from the bot's champion. `standard` is today's play. A

@@ -9,16 +9,18 @@ use svanbot::play;
 use svanbot::play::guard::{Guarded, guard};
 use svanbot_learn::arena::BOUT;
 use svanbot_learn::margin::{Admission, MARGIN};
+use svanbot_learn::reads::Reads;
 use svanbot_runtime::fleet::{ArenaRow, ArenaRun, Check, Fleet, League};
 use svanbot_runtime::ship::{self, Bar, Bout, CAP_HOURS};
 use svanbot_strategy::kind::PolicyKind;
-use svanbot_strategy::policy::Policy;
+use svanbot_strategy::policy::{ContinuationPin, Policy};
 use svanbot_strategy::style::{self, Style};
 
 use crate::arena::{self, Opponent};
 use crate::{arena_ship, deciders};
 
 const USAGE: &str = "usage: svanbot play arena <solving|pricing> <standard|tight|loose> [league] <bouts> [seed] [iterations] [out.json]
+       svanbot play pin <fixed|zero|cap> [league] <bouts> [seed] [iterations] [out.json]
        svanbot play check <kind> <style> <bouts|--until-decided> [seed] [iterations]
        svanbot play assign <bot> <kind> <style>
        svanbot play revert <bot>
@@ -47,7 +49,22 @@ fn command(args: &[String]) -> CommandResult {
     match args {
         [name, kind, style, tail @ ..] if name == "arena" => {
             let (kind, style) = policy_names(kind, style)?;
-            play_arena(&fleet, kind, style, tail)
+            play_arena(&fleet, kind, style, tail, None)
+        }
+        [name, arm, tail @ ..] if name == "pin" => {
+            let pin = match arm.as_str() {
+                "fixed" => ContinuationPin::Fixed,
+                "zero" => ContinuationPin::Zero,
+                "cap" => ContinuationPin::EvidenceCap,
+                _ => return Err((2, format!("unknown continuation pin {arm}\n{USAGE}"))),
+            };
+            play_arena(
+                &fleet,
+                PolicyKind::Solving,
+                &style::STANDARD,
+                tail,
+                Some((pin, arm)),
+            )
         }
         [name, kind, style, tail @ ..] if name == "check" => {
             let (kind, style) = policy_names(kind, style)?;
@@ -132,6 +149,7 @@ fn play_arena(
     kind: PolicyKind,
     style: &'static Style,
     args: &[String],
+    pin: Option<(ContinuationPin, &str)>,
 ) -> CommandResult {
     let (league, args) = match args.first().and_then(|name| League::named(name)) {
         Some(league) => (league, &args[1..]),
@@ -142,7 +160,13 @@ fn play_arena(
     }
     let settings = settings(&args[..args.len().min(3)])?;
     let champion = fleet.champion().map_err(|error| (2, error))?;
-    let policy = Policy::new(kind, style, champion);
+    let mut policy = Policy::new(kind, style, champion);
+    let take: svanbot_learn::play::Take = if let Some((pin, _)) = pin {
+        policy = policy.with_continuation_pin(pin);
+        Reads::personal
+    } else {
+        Reads::deciding
+    };
     let game = deciders::game(settings.seed);
     let mut opponents = Opponent::all();
     opponents.extend(style::ALL.map(Opponent::Stablemate));
@@ -151,10 +175,21 @@ fn play_arena(
         Opponent::name,
         settings.bouts,
         |opponent, number| {
-            arena::play_bout(&game, league, opponent, number, &policy, settings.fixed)
+            arena::play_bout_with_reads(
+                &game,
+                league,
+                opponent,
+                number,
+                &policy,
+                settings.fixed,
+                take,
+            )
         },
     );
-    let name = format!("{}@{}", policy.name(), champion.digest());
+    let name = match pin {
+        Some((_, arm)) => format!("{}@{}/pin-{arm}", policy.name(), champion.digest()),
+        None => format!("{}@{}", policy.name(), champion.digest()),
+    };
     let run = arena::report(league, name, game.seed, settings.fixed, rows);
     fleet
         .record_policy_arena(&run)
