@@ -12,6 +12,9 @@ says otherwise, they win.
 - Every bot gets its own **policy**: a **kind** (the logic), a **style** (the character) and a
   **champion** (the numbers it learns for itself). The operator's word for it is "brain".
 - Five brains, working names: **Anchor**, **Hunter**, **Grinder**, **Gambler**, **Chameleon**.
+  Locked as the final names 2026-11-27 (V11-136, #1320): no rename in code or fleet files. The
+  machine-readable style keys in play (`standard`, `tight`, `loose`, `anchor`, `hunter`) stay as
+  they are; a brain's name is the prose label for a policy, not a fleet-file key.
 - It is a program of six phases. Phase 1 is a thin tracer that proves the plumbing with two bots, one
   mechanic (opening width) and one new opponent (a stablemate). The later phases bring per-bot
   learning, a standing round-robin with stronger opponents, the engines, and adaptive style.
@@ -332,6 +335,7 @@ bot plays the reference.
 12. "Round-robin" and "gauntlet" avoid the glossary's **League**; the reference *arm* reuses its **Arm**.
 13. The ship bar tests the reference policy only.
 14. Exploiters wait for the `Exploiting` kind, so they land in Phase 4, not Phase 3.
+15. The five brain names stay as above (locked 2026-11-27); no style-key migration.
 
 ## Left to the builder
 
