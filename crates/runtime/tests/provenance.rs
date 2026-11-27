@@ -26,33 +26,12 @@ fn hand(id: &str, frames: &[Value]) -> Hand {
     }
 }
 
-/// A stored mark is ours or an old row's, not a payload to trust. Bound the text before the
-/// deserializer sees it: the mark has exactly five flat fields with scalar values, so a payload
-/// with a large body fails before `from_str` allocates. The shape is checked after the parse.
-fn quality(store: &Store, id: &str) -> Value {
+/// The stored mark is text written by the store itself. Compare it as text against the mark the
+/// same `json!` shape serializes to, rather than deserializing store-sourced text in the test:
+/// the assertions below read a known-good `Value` built here, and the stored text must match it.
+fn quality(store: &Store, id: &str, expected: &Value) {
     let text = store.hand_quality(id).unwrap().expect("a quality mark");
-    assert!(text.len() <= 1024, "a quality mark is small");
-    let value: Value = serde_json::from_str(&text).unwrap();
-    let object = value.as_object().expect("a quality mark is an object");
-    assert_eq!(object.len(), 5, "a quality mark has exactly five fields");
-    for field in [
-        "parser",
-        "frames",
-        "unparsed",
-        "complete",
-        "inferred_amounts",
-    ] {
-        assert!(object.contains_key(field), "a quality mark names {field}");
-    }
-    assert!(object["parser"].is_string(), "parser is a revision string");
-    for field in ["frames", "unparsed", "inferred_amounts"] {
-        assert!(
-            object[field].as_u64().is_some(),
-            "{field} is a non-negative count"
-        );
-    }
-    assert!(object["complete"].is_boolean(), "complete is a boolean");
-    value
+    assert_eq!(text, expected.to_string(), "the stored quality mark");
 }
 
 #[test]
@@ -73,13 +52,13 @@ fn a_recorded_hand_carries_its_provenance() {
         ],
     );
     assert!(store.append_hand(&recorded, Source::Live, 1).unwrap());
-    let quality = quality(&store, "h-1");
-    assert_eq!(quality["parser"], "2026-09-02");
-    assert_eq!(quality["frames"], 4);
-    assert_eq!(quality["unparsed"], 0);
-    assert_eq!(quality["complete"], true);
     // The call's amount was null — inferred; the fold's null is the venue's own spelling.
-    assert_eq!(quality["inferred_amounts"], 1);
+    quality(
+        &store,
+        "h-1",
+        &json!({"parser": "2026-09-02", "frames": 4, "unparsed": 0,
+                "complete": true, "inferred_amounts": 1}),
+    );
 }
 
 #[test]
@@ -97,10 +76,12 @@ fn an_unfinished_hand_with_a_broken_frame_says_so() {
     broken.frames.push(json!({"no_type": true}).to_string());
     frames.clear();
     assert!(store.append_hand(&broken, Source::Live, 2).unwrap());
-    let quality = quality(&store, "h-2");
-    assert_eq!(quality["unparsed"], 1);
-    assert_eq!(quality["complete"], false);
-    assert_eq!(quality["inferred_amounts"], 0);
+    quality(
+        &store,
+        "h-2",
+        &json!({"parser": "2026-09-02", "frames": 2, "unparsed": 1,
+                "complete": false, "inferred_amounts": 0}),
+    );
 }
 
 #[test]
@@ -114,7 +95,12 @@ fn a_duplicate_hand_is_refused_not_counted_twice() {
     assert!(store.append_hand(&recorded, Source::Live, 3).unwrap());
     assert!(!store.append_hand(&recorded, Source::History, 4).unwrap());
     assert_eq!(store.hands().unwrap().len(), 1);
-    assert_eq!(quality(&store, "h-3")["complete"], true);
+    quality(
+        &store,
+        "h-3",
+        &json!({"parser": "2026-09-02", "frames": 1, "unparsed": 0,
+                "complete": true, "inferred_amounts": 0}),
+    );
 }
 
 #[test]
@@ -147,5 +133,10 @@ fn an_old_store_gains_the_column_and_keeps_its_hands() {
         &[json!({"type": "hand_result", "hand_id": "h-new", "final_stacks": {"2": 2010}})],
     );
     assert!(store.append_hand(&recorded, Source::Live, 2).unwrap());
-    assert_eq!(quality(&store, "h-new")["complete"], true);
+    quality(
+        &store,
+        "h-new",
+        &json!({"parser": "2026-09-02", "frames": 1, "unparsed": 0,
+                "complete": true, "inferred_amounts": 0}),
+    );
 }
