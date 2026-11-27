@@ -6,9 +6,9 @@ name: check
 
 on:
   pull_request:
-    branches: [main, v11]
+    branches: [main]
   push:
-    branches: [main, v11]
+    branches: [main]
   # Advisories arrive with no change of ours. GitHub runs a schedule only from the default branch,
   # so this runs from main.
   schedule:
@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0 # provenance reads every commit since the base branch
       - uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
       - run: bun install --cwd tools --frozen-lockfile
-      # Our own crates are cached too, keyed by the lockfile and toolchain, and saved only from v11.
+      # Our own crates are cached too, keyed by the lockfile and toolchain, and saved only from main.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: ". -> target/dev"
