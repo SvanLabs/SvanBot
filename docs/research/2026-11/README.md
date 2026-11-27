@@ -18,3 +18,4 @@ tickets that carry its decisions.
 | [09 what a gate can trust](09-what-a-gate-can-trust.md) | V11-21, V11-22 |
 | [10 the luck of decisions](10-the-luck-of-decisions.md) | V11-71, V11-72 |
 | [11 poker AI research for Five Brains](11-2026-poker-research.md) | V11-88, V11-90 |
+| [12 the next generation](12-next-generation.md) | V11-138, the next map |
