@@ -26,9 +26,33 @@ fn hand(id: &str, frames: &[Value]) -> Hand {
     }
 }
 
+/// A stored mark is ours or an old row's, not a payload to trust. Bound the text before the
+/// deserializer sees it: the mark has exactly five flat fields with scalar values, so a payload
+/// with a large body fails before `from_str` allocates. The shape is checked after the parse.
 fn quality(store: &Store, id: &str) -> Value {
     let text = store.hand_quality(id).unwrap().expect("a quality mark");
-    serde_json::from_str(&text).unwrap()
+    assert!(text.len() <= 1024, "a quality mark is small");
+    let value: Value = serde_json::from_str(&text).unwrap();
+    let object = value.as_object().expect("a quality mark is an object");
+    assert_eq!(object.len(), 5, "a quality mark has exactly five fields");
+    for field in [
+        "parser",
+        "frames",
+        "unparsed",
+        "complete",
+        "inferred_amounts",
+    ] {
+        assert!(object.contains_key(field), "a quality mark names {field}");
+    }
+    assert!(object["parser"].is_string(), "parser is a revision string");
+    for field in ["frames", "unparsed", "inferred_amounts"] {
+        assert!(
+            object[field].as_u64().is_some(),
+            "{field} is a non-negative count"
+        );
+    }
+    assert!(object["complete"].is_boolean(), "complete is a boolean");
+    value
 }
 
 #[test]
