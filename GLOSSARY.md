@@ -196,7 +196,8 @@ _Avoid_: dummy, test bot, persona
 **Policy**:
 How a bot chooses a decision at any spot: the chance of each action, sizes included. It is a kind,
 a style and a parameter set, and a designed one is a brain: Anchor, Hunter, Grinder, Gambler and
-Chameleon are the five planned.
+Chameleon are the five, their names locked 2026-11-27 (V11-136). A brain's name is prose; the
+bot's assignment names its kind and style, which are the machine-readable keys.
 _Avoid_: strategy (for one bot's rules)
 
 **Policy kind**:
